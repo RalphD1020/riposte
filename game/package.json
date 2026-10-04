@@ -1,0 +1,22 @@
+{
+  "name": "@riposte/game",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./scripts/serve-web.mjs",
+    "lint": "node ./scripts/lint.mjs",
+    "typecheck": "node ./scripts/godot.mjs scripts:check",
+    "test": "node ./scripts/godot.mjs test",
+    "test:headless": "node ./scripts/godot.mjs test",
+    "test:tooling": "node ./scripts/test-exit-propagation.mjs",
+    "check": "node ./scripts/godot.mjs check",
+    "godot:version": "node ./scripts/godot.mjs version",
+    "godot:import": "node ./scripts/godot.mjs import",
+    "godot:scripts:check": "node ./scripts/godot.mjs scripts:check",
+    "godot:test": "node ./scripts/godot.mjs test",
+    "godot:check": "node ./scripts/godot.mjs check",
+    "export:web": "node ./scripts/export-web.mjs",
+    "export:templates": "node ./scripts/install-export-templates.mjs"
+  }
+}

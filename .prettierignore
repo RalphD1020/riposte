@@ -1,0 +1,20 @@
+node_modules
+pnpm-lock.yaml
+dist
+.next
+.turbo
+coverage
+**/coverage
+out
+*.tsbuildinfo
+.secrets.baseline
+next-env.d.ts
+
+# Godot source/config — formatted by Godot-specific tooling
+game/**/*.gd
+game/**/*.tscn
+game/**/*.tres
+game/**/*.res
+
+# Godot generated
+game/.godot/

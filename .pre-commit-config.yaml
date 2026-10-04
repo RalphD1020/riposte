@@ -1,0 +1,54 @@
+# Keep in sync with `pnpm check` and `.github/workflows/ci.yml`.
+# Local hooks call the same pnpm scripts as CI so flags cannot drift.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: detect-private-key
+      - id: check-case-conflict
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        name: Detect new secrets only (via baseline)
+        entry: detect-secrets-hook
+        language: python
+        exclude: '^(pnpm-lock\.yaml)$'
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: pnpm run format:check
+        language: system
+        pass_filenames: false
+
+      - id: eslint
+        name: ESLint (all packages, max-warnings=0)
+        entry: pnpm run lint
+        language: system
+        pass_filenames: false
+        files: '\.(js|jsx|ts|tsx|mjs)$'
+
+      - id: typecheck
+        name: Typecheck (Turbo)
+        entry: pnpm run typecheck
+        language: system
+        pass_filenames: false
+
+      - id: integrity
+        name: Integrity (merge / size / case)
+        entry: pnpm run integrity:check
+        language: system
+        pass_filenames: false
+
+      - id: security
+        name: Security (gitignore + secret filenames + PEM/AWS)
+        entry: pnpm run security:check
+        language: system
+        pass_filenames: false

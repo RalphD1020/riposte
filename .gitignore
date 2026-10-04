@@ -1,25 +1,79 @@
-# Godot 4.2+ specific ignores
-~*.dll
+# dependencies
+node_modules
+.pnpm-store
 
-# Godot 4+ specific ignores
-.godot/
-.nomedia
+# generated artifacts (never source)
+dist/
+.next
+out
+build
+.turbo
+*.tsbuildinfo
+next-env.d.ts
 
-# Godot-specific ignores
+# environment
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# reports
+.reports/
+
+# testing
+coverage
+playwright-report
+test-results
+playwright/.cache
+/blob-report/
+e2e/.results/
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# os
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# editors
+*.swp
+*.swo
+*~
+.idea
+.vscode/settings.json
+.vscode/launch.json
+
+# cursor
+.cursor/
+
+# secrets
+*.pem
+
+# project-specific
+.scratch
+.impl
+
+# auto-generated agent files (next dev regenerates these)
+**/CLAUDE.md
+apps/web/AGENTS.md
+
+# packaged artifacts
+tmp/
+*.tgz
+
+# Godot generated / import cache
+game/.godot/
+**/.godot/export_credentials.cfg
 .import/
+.nomedia
 export.cfg
-export_credentials.cfg
-*.tmp
-
-# Imported translations (automatically generated from CSV files)
 *.translation
 
-# Mono-specific ignores
-.mono/
-data_*/
+# Mono/C# artifacts if they appear accidentally
+game/.mono/
 mono_crash.*.json
-
-# Export outputs
-*.exe
-# Uncomment if your project does not version PCK files as runtime dependencies.
-# *.pck
+*.tmp

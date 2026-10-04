@@ -1,0 +1,42 @@
+{
+  "name": "riposte-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.18.2",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:web": "pnpm --filter @riposte/web dev",
+    "build": "node scripts/build.mjs",
+    "game:export:web": "node game/scripts/export-web.mjs",
+    "game:export:templates": "node game/scripts/install-export-templates.mjs",
+    "build:static": "turbo build:static",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "turbo run test test:coverage",
+    "test:fast": "turbo test",
+    "test:coverage": "turbo test:coverage",
+    "test:tooling": "pnpm --filter @riposte/game test:tooling",
+    "format": "prettier --write --ignore-unknown . && turbo format",
+    "format:check": "prettier --check --ignore-unknown . && turbo format:check",
+    "docs:generate": "node scripts/docs-generate.mjs",
+    "docs:check": "node scripts/docs-check.mjs",
+    "arch:check": "node scripts/check-architecture.mjs",
+    "integrity:check": "node scripts/check-integrity.mjs",
+    "security:check": "node scripts/check-security.mjs",
+    "check": "node scripts/check.mjs",
+    "verify": "node scripts/verify.mjs",
+    "kill": "node scripts/kill-servers.mjs",
+    "pre-commit": "pre-commit run --all-files",
+    "clean": "node scripts/clean.mjs",
+    "reinstall": "node scripts/reinstall.mjs",
+    "dependencies:refresh": "pnpm install"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.9",
+    "typescript": "^6.0.3"
+  }
+}
