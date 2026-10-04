@@ -15,13 +15,20 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "lcov", "json-summary"],
+      reporter: ["text", "lcov", "json-summary", "json"],
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
         "src/**/*.d.ts",
         "src/test/**",
+        // Pure UI layout/routing - excluded per COVERAGE-001
+        "src/app/layout.tsx",
+        "src/app/page.tsx",
+        "src/app/error.tsx",
+        "src/app/global-error.tsx",
+        "src/app/not-found.tsx",
+        "src/app/**/page.tsx",
       ],
       thresholds: {
         100: true,

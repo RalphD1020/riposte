@@ -84,15 +84,24 @@ Root `dev` / `lint` / `typecheck` / `test` call Turbo. `check` / `build` / `veri
 
 ## Coverage
 
-Measured `src` in packages that define `test:coverage` must stay at 100% statements, branches, functions, and lines. Do not maintain coverage through ignore/exclude/expect/disable or meaningless execution-only tests.
+Measured `src` in packages that define `test:coverage` must stay at 100% statements, branches, functions, and lines per file. Do not maintain coverage through ignore/exclude/expect/disable or meaningless execution-only tests. `@riposte/web` `test:coverage` is measured Vitest. `@riposte/game` `test` / `test:headless` is the behavioral harness; game has no `test:coverage` until GDScript coverage is actually measured. Root `pnpm test` runs game `test` plus web `test:coverage`.
+
+When 100% coverage exposes an uncovered branch: (1) test reachable behavior, (2) test the authoritative failure boundary, or (3) delete unreachable code. Do not rewrite conditionals solely to change instrumentation.
+
+**Production scope**: If code affects authoritative state, simulation outcome, economy, progression, win/loss, matchmaking, ELO ratings, deterministic hashes, or shipping product behavior, it MUST be in covered scope and MUST NOT reside in a coverage-excluded directory.
 
 ## Performance
 
 Performance is architectural. The website server-renders, ships minimal JS, and uses the system font stack. The game must not run on the Next.js main thread. See [docs/architecture/PERFORMANCE.md](./docs/architecture/PERFORMANCE.md).
 
+## itch.io vs this website
+
+- itch.io hosts the **Godot Web** export (`dist/game/web/`).
+- This Next.js app is the informational/community site.
+- `build:static` is for static **website** hosts. It is not the itch game pipeline.
+
 ## Secrets
 
 Never commit `.env`, `*.pem`, or `**/.godot/export_credentials.cfg`. `export_presets.cfg` is committed configuration.
 
-Agents do not create git commits unless the human asks
-physics combat dueling game
+Agents do not create git commits unless the human asks.

@@ -23,7 +23,7 @@ If code violates spec, the implementation is defective unless the spec has been 
 0. Inspect `docs/` and `spec/` before implementing.
 1. `.impl/` is temporary working memory. Promote durable facts to `docs/`, `spec/`, or `examples/`.
 2. Committed markdown must not reference `.impl/`.
-3. COVERAGE-001: 100% line/function/branch/statement coverage per file on all non-UX/UI production sources (TypeScript: `perFile: true`). GDScript coverage: behavioral gate green until measured by a real collector. Do not weaken thresholds or use ignore/exclude/expect/disable.
+3. COVERAGE-001: 100% line/function/branch/statement coverage per file on all non-UX/UI production sources (TypeScript: `perFile: true`). GDScript coverage: behavioral gate green until measured by a real collector. Do not weaken thresholds or use ignore/exclude/expect/disable. TEST-TRUTH-001: every behavioral test asserts its fixture (ARRANGE), perturbation (PERTURB), production code (ACT), contract (ASSERT). Do not use `assert()` for release behavior. ZERO-TOLERANCE-001: zero `@warning_ignore`; Godot default warnings are errors.
 4. Use root commands (`pnpm check`, `pnpm test`, `pnpm lint`, `pnpm typecheck`) for validation.
 5. Package task names are the monorepo abstraction. Do not hardcode root scripts to `@riposte/web` or `@riposte/game`.
 6. `apps/web` and `game` are siblings. Next.js must not own the Godot runtime. Do not put `.gd`, `.tscn`, `.tres`, or `project.godot` under `apps/web`.
@@ -38,6 +38,14 @@ If code violates spec, the implementation is defective unless the spec has been 
 - Never introduce committed references to `.impl/`.
 - Use Compatibility for Web (WEB-001).
 - Follow [docs/reference/godot.md](./docs/reference/godot.md) for Godot conventions. Authoritative runtime: Godot **4.7.2-stable**.
+
+## Coverage
+
+Measured `src` in packages that define `test:coverage` must stay at 100% statements, branches, functions, and lines per file. Do not maintain coverage through ignore/exclude/expect/disable or meaningless execution-only tests.
+
+When 100% coverage exposes an uncovered branch: (1) test reachable behavior, (2) test the authoritative failure boundary, or (3) delete unreachable code. Do not rewrite conditionals solely to change instrumentation.
+
+Matchmaking, ELO systems, and all production logic affecting outcomes MUST be in covered scope.
 
 ## Commands
 
