@@ -41,7 +41,7 @@ Turbo skips packages that omit a script. Root `pnpm lint` must not hardcode `--f
 
 ## itch.io
 
-The itch.io HTML5 upload is the Godot Web export, not a Next.js static game. Owned-web Play refers to that instance via `NEXT_PUBLIC_PLAY_URL` (stubbed empty until published). Localhost Play navigates to the standalone `:8060` export. `pnpm build:static` exports the **website** only.
+The itch.io HTML5 upload is the Godot Web export, not a Next.js static game. Owned-web Play refers to that instance via `NEXT_PUBLIC_PLAY_URL` (stubbed empty until published). Localhost Play navigates to the standalone `:8060` export (WEB-005, [docs/concepts/web.md](../concepts/web.md)). `pnpm build:static` exports the **website** only.
 
 ## Cleanup
 

@@ -2,72 +2,50 @@
 
 > See also: [spec/invariants.md](../../spec/invariants.md) (COVERAGE-001, TEST-TRUTH-001)
 > See also: [docs/architecture/monorepo.md](../architecture/monorepo.md)
-> Source: `vitest.config.ts`, test suites
+> Source: `apps/web/vitest.config.ts`, `game/tests/`
 
-## Coverage Requirements
+## Gates
 
-| Package         | Tool                                              |
-| --------------- | ------------------------------------------------- |
-| `@riposte/web`  | Vitest + `@vitest/coverage-v8`, 100% thresholds   |
-| `@riposte/game` | Godot headless harness (behavioral, not measured) |
+| Package         | Tool                           | Gate                                                                                         |
+| --------------- | ------------------------------ | -------------------------------------------------------------------------------------------- |
+| `@riposte/web`  | Vitest + `@vitest/coverage-v8` | 100% per file (statements, branches, functions, lines) + manifest check                      |
+| `@riposte/game` | Godot headless harness         | Behavioral: every suite green, zero engine ERROR/WARNING, zero leaks (not measured coverage) |
 
-`pnpm test` is `turbo run test test:coverage` (Godot harness + website v8 100%). `pnpm test:fast` is `turbo test` (harness + web without coverage). `pnpm test:coverage` is measured coverage only (web today; no game script until GDScript is measured). `pnpm check` runs `--import`, lint, typecheck, docs, arch, and `test:tooling`. It MUST NOT re-run the full behavior suites. `pnpm verify` is check then test then build.
+`pnpm test` is `turbo run test test:coverage` (Godot harness + website coverage). `pnpm test:fast` skips coverage. `pnpm check` runs `--import`, lint, typecheck, format, docs, arch, integrity, security, and `test:tooling`; it MUST NOT re-run behavior suites. `pnpm verify` is check → test → build.
 
-## Web Coverage Scope
+## Web coverage scope
 
-`@riposte/web` includes `src/**/*.{ts,tsx}` except tests, `*.d.ts`, and `src/test/**`. Do not exclude pages to dodge coverage.
+`src/**/*.{ts,tsx}` except tests, `*.d.ts`, and `src/test/**`. Routes and layouts are covered too (`apps/web/src/app/AppRoutes.test.tsx`); do not exclude pages to dodge coverage. `test:coverage` then runs `apps/web/scripts/check-coverage-manifest.mjs`: a source file no test imports fails the gate. `apps/web/src/app/theme.test.ts` is the website contrast gate.
 
-**Thresholds**: `100: true, perFile: true` — every file must hit 100% statements, branches, functions, and lines.
+## Game harness
 
-**Manifest check**: `apps/web/scripts/check-coverage-manifest.mjs` verifies that every in-scope source file appears in the coverage report. A new file with no test imports MUST fail the manifest check, not silently disappear from coverage.
+`game/tests/harness/headless_runner.gd` runs `SUITES` in order and prints one `RIPOSTE_RESULT` line. A suite fails on any failed assertion, a zero-assertion case, or leaked orphan nodes; the runner fails on engine errors or ObjectDB leaks at exit (the root waits briefly so the audio thread releases stopped voices). Cases are `test_*` methods and may `await`.
 
-## GDScript Coverage
+| Area         | Suites (suite name)                                                                        | Proves                                                                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Harness      | HARNESS                                                                                    | Assertion semantics, vacuity detection                                                                                                                                                                                                                   |
+| Domain       | MATH, CMD, RULES, MOVE, FACE, ATTACK, COMMIT, COLLIDE, CONTACT, DAMAGE, ROUND, REPLAY, SYM | Determinism, input language, physics, damage, rounds, replay + tamper detection, point symmetry                                                                                                                                                          |
+| Application  | INPUT, DRIVER, SETTINGS, TUTORIAL, SESSION, CPU, APP-SHELL                                 | Input merge, clock/hitstop, persistence sanitizing + bus layout, coaching, sessions, CPU fairness + difficulty order, UI scale, safe area, glyph coverage, every `InputActions` name in the InputMap, side-by-side menus only on short landscape screens |
+| Presentation | PRES-THEME, PRES-KIT, PRES-SNAPSHOT, PRES-CAMERA, PRES-PRESENTER, PRES-HUD                 | Contrast (independent formula), theme variations, kit resolution, projection, framing, feedback, HUD, touch                                                                                                                                              |
+| End to end   | APP-E2E                                                                                    | Real `main.tscn`: menu → quick play → results → rematch → pause → quit; training from How to Play; settings drill-down persistence                                                                                                                       |
 
-`@riposte/game` `test` / `test:headless` is the behavioral harness (suites expected to pass). This is **not** measured GDScript line coverage. Do not add `test:coverage` until a collector measures it.
+APP-E2E drives frames through `MatchScreen.advance_frame` (the same path `_process` uses) with `_process` disabled, pins seeds, and uses a scratch settings file. Shared fixtures live in `game/tests/harness/` (`DuelFixture.of_type` is the one event filter).
 
-The gates are explicit:
+Balance tool (not a suite): `godot --headless --path game --script res://tools/balance_report.gd` prints CPU-vs-CPU matchups (wins, rounds, hits, parries, charge, round length) with the shipping rules; read-only.
 
-- **Behavioral gate**: all suites green, zero engine ERROR/WARNING.
-- **Web coverage gate**: 100% scoped non-visual production lines (perFile).
-- **GDScript coverage gate**: 100% line/function/branch (NOT VERIFIED until collector exists).
+## Test design (TEST-TRUTH-001)
 
-## Test Design (TEST-TRUTH-001)
+ARRANGE (assert the fixture) → PERTURB → ACT (production code) → ASSERT (independent expectation). Lint rejects tautologies, commented-out or skipped assertions, and `Engine.time_scale` changes. Do not add tests whose only job is to inflate coverage.
 
-Every behavioral test MUST:
+## Production scope
 
-1. **ARRANGE** — set up fixture, assert preconditions
-2. **PERTURB** — apply the change being tested
-3. **ACT** — run production code
-4. **ASSERT** — verify the contract
-
-Anti-vacuity rules:
-
-- No `assert_true(true)` or tautologies
-- No disabled/skipped tests
-- No zero-assertion functions
-- No commented-out assertions
-- No coverage-ignore directives
-
-Do not add tests whose only job is to inflate coverage.
-
-## Production Scope
-
-If code affects any of these, it MUST be in the covered scope:
-
-- Authoritative state
-- Simulation outcome
-- Economy / progression
-- Win/loss determination
-- Matchmaking results
-- ELO calculations
-- Deterministic hashes
-- Shipping product behavior
+Code affecting authoritative state, simulation outcome, win/loss, deterministic hashes, matchmaking, ELO, or shipping product behavior MUST be in covered scope.
 
 ## Commands
 
 ```bash
-pnpm test                    # Full test + coverage
-pnpm test:fast               # Tests without coverage
-pnpm test:coverage           # Coverage only
-pnpm --filter @riposte/web test:coverage
+pnpm test                                   # harness + web coverage
+pnpm test:fast                              # without coverage
+pnpm --filter @riposte/web test:coverage    # web only
+RIPOSTE_SUITE=APP-E2E pnpm --filter @riposte/game test   # one game suite
 ```

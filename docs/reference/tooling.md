@@ -15,9 +15,9 @@ pnpm game:export:web   # Clean-room dist/game/web/ then --export-release Web
 pnpm build:static      # Next.js static export (website hosts, not itch game)
 pnpm lint              # ESLint + game source scanners (not Godot import)
 pnpm typecheck         # tsc + GDScript load
-pnpm test              # Vitest 100% + Godot harness
+pnpm test              # Vitest 100% + manifest check + Godot harness
 pnpm test:tooling      # Fail-fixture gate (not inside pnpm test)
-pnpm check             # import + lint + typecheck + docs/arch + tooling
+pnpm check             # import + lint + typecheck + format + docs/arch + tooling
 pnpm verify            # check then test then build
 pnpm test:fast
 pnpm format
@@ -42,6 +42,18 @@ pnpm --filter @riposte/game godot:version
 pnpm --filter @riposte/game godot:import
 pnpm --filter @riposte/game godot:test
 ```
+
+## Docs check
+
+`pnpm docs:check` (`scripts/docs-check.mjs`) keeps the doc graph honest in both directions:
+
+- committed markdown never references the local implementation-plan folder, and every `docs/` page has a `See also:` / `Source:` header;
+- every `docs/…md` path and `spec/invariants.md#anchor` cited from code resolves;
+- every relative markdown link and every backticked repository path in committed markdown exists.
+
+## Report runners
+
+`check`, `build`, and `verify` are synchronous Node runners that share `scripts/reports.mjs` (`runEchoed` spawns with echoed output; `writeReport` writes `latest.json` + `latest.md`). The expected Godot version lives once in `scripts/godot-bin.mjs` (`EXPECTED_GODOT_VERSION`).
 
 ## Reports
 

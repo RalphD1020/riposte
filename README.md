@@ -1,6 +1,6 @@
 # Riposte
 
-Browser-first Godot game with a Next.js informational site.
+Physics-driven 1v1 sword duel for the browser (Godot) with a Next.js gateway site. Two verbs, real steel.
 
 ## Authority
 
@@ -20,11 +20,27 @@ Conflict: **spec > code > docs > .impl**. Code that violates spec is defective. 
 | [README.md](./README.md) | Universal guidelines + commands (this file)  |
 | [docs/](./docs/)         | Package/system docs                          |
 | [spec/](./spec/)         | Implementation-independent contracts         |
-| [examples/](./examples/) | Consumer proofs (reserved)                   |
+| [examples/](./examples/) | Consumer proofs (authored presentation kit)  |
 | [AGENTS.md](./AGENTS.md) | Agent navigation                             |
 | `.impl/` (local only)    | LLM implementation plans — **not committed** |
 
-Start with [docs/architecture/monorepo.md](./docs/architecture/monorepo.md) and [spec/invariants.md](./spec/invariants.md).
+Start with [docs/architecture/monorepo.md](./docs/architecture/monorepo.md), [spec/invariants.md](./spec/invariants.md), and the game concept index [docs/concepts/game.md](./docs/concepts/game.md).
+
+## Architecture in one screen
+
+```text
+game/src/domain        deterministic 60 Hz duel; PlayerCommand in, events out      SIM-001, CMD-001
+game/src/application   sessions, controllers, CPU, clock, app shell (composes all) CPU-001, HITSTOP-001
+game/src/presentation  snapshots → presenter → proxies, feedback, HUD, touch       PRES-001
+game/content           rules values + one PresentationKit per identity            PRES-KIT-001
+apps/web               static gateway; every Play goes through /play admission    WEB-005, WEB-006
+```
+
+- Determinism: `SimMath` scalars, `SeededRng`, fixed ticks, SHA-256 state hash, verified replays (SIM-002, SIM-MATH-001, SIM-RNG-001).
+- Art, animation, and sound change in one place: the identity's kit ([examples/presentation-kit.md](./examples/presentation-kit.md)).
+- Styles: `RiposteTheme` type variations (game) and `apps/web/src/app/globals.css` semantic classes (web) share one light palette; no inline styles except runtime safe-area margins. Copy lives in `AppCopy` / `HudCopy` (game) and `SiteCopy` (web).
+- No magic strings or numbers: each vocabulary has one home (`DuelEventKeys`, `InputActions`, `ProductEvents`, `AudioBuses`, `ContentIds`, rules content, named tunables); lint rejects literal event payload keys ([docs/reference/godot.md](./docs/reference/godot.md#centralized-names)).
+- Accessibility is tested: contrast pairs, 48 px targets with one UI unit ≥ one CSS px, glyph coverage, mobile layouts (UX-001).
 
 ## Priority order
 
@@ -62,9 +78,9 @@ pnpm game:export:web   # clean-room dist/game/web/ then --export-release Web
 pnpm build:static      # Next.js static export (website hosts, not itch game)
 pnpm lint              # ESLint + game source scanners (not Godot import)
 pnpm typecheck         # tsc + GDScript load
-pnpm test              # Vitest 100% + Godot harness
+pnpm test              # Vitest 100% + manifest check + Godot harness
 pnpm test:tooling      # Fail-fixture gate (not inside pnpm test)
-pnpm check             # import + lint + typecheck + docs/arch + tooling; writes .reports/check
+pnpm check             # import + lint + typecheck + format + docs/arch + tooling; writes .reports/check
 pnpm verify            # check then test then build
 pnpm test:fast
 pnpm format
@@ -97,7 +113,7 @@ Performance is architectural. The website server-renders, ships minimal JS, and 
 ## itch.io vs this website
 
 - itch.io hosts the **Godot Web** export (`dist/game/web/`).
-- This Next.js app is the informational/community site.
+- This Next.js app is the informational/community site. Play on localhost opens `http://127.0.0.1:8060/`; elsewhere it opens `NEXT_PUBLIC_PLAY_URL` once published ([docs/concepts/web.md](./docs/concepts/web.md)).
 - `build:static` is for static **website** hosts. It is not the itch game pipeline.
 
 ## Secrets

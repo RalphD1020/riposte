@@ -1,25 +1,38 @@
 "use client";
 
+/**
+ * Root error boundary. Supplies html/body because the root layout is gone.
+ *
+ * @see ../../../../docs/concepts/ux.md
+ * @see ../../../../docs/concepts/web.md
+ */
+
+import { ErrorRecovery } from "@/components/ErrorRecovery";
+import { SkipLink } from "@/components/SkipLink";
+import { SiteCopy, SiteName, SitePath } from "@/content/site";
+import "./globals.css";
+
 export default function GlobalError({
-  error,
-  reset,
+  retry,
 }: {
-  error: Error & { digest?: string };
-  reset: () => void;
+  readonly error: Error & { digest?: string };
+  readonly retry: () => void;
 }) {
   return (
     <html lang="en">
+      <head>
+        <title>{SiteName}</title>
+      </head>
       <body>
-        <main className="flex min-h-screen flex-col items-center justify-center">
-          <h1 className="text-2xl font-bold mb-4">Something went wrong</h1>
-          <p className="mb-4 text-gray-600">{error.message}</p>
-          <button
-            onClick={() => reset()}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Try again
-          </button>
-        </main>
+        <div className="site-shell">
+          <SkipLink />
+          <main id="main-content" className="site-main" tabIndex={-1}>
+            <ErrorRecovery onRetry={retry} headingLevel="h1" />
+            <a className="text-link" href={SitePath.home}>
+              {SiteCopy.backHome}
+            </a>
+          </main>
+        </div>
       </body>
     </html>
   );

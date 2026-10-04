@@ -7,8 +7,9 @@
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
+  EXPECTED_GODOT_VERSION,
   assertGodotVersion,
   classifyGodotTestOutcome,
   godotHarnessFailed,
@@ -16,8 +17,8 @@ import {
   parseRiposteResult,
   resolvePnpm,
 } from "./godot-bin.mjs";
+import { ROOT, writeReport } from "./reports.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..");
 const GAME = join(ROOT, "game");
 const PNPM = resolvePnpm();
 
@@ -200,7 +201,7 @@ const markdownLines = [
   "Environment",
   `- Node: ${process.version}`,
   `- pnpm: ${PNPM.command} ${PNPM.prefix.join(" ")}`.trim(),
-  `- Godot expected: 4.7.2.stable`,
+  `- Godot expected: ${EXPECTED_GODOT_VERSION}`,
   `- Godot actual: ${godotInfo?.normalized ?? "unresolved"}`,
   `- Godot source: ${godotInfo?.source ?? "none"}`,
   `- Godot binary: ${godotInfo?.binary ?? "none"}`,
@@ -289,15 +290,7 @@ const report = {
     warnings: step.issues.warnings.length,
   })),
   skipped,
-  markdown: markdownLines.join("\n"),
 };
 
-const outDir = join(ROOT, ".reports", "check");
-mkdirSync(outDir, { recursive: true });
-writeFileSync(
-  join(outDir, "latest.json"),
-  `${JSON.stringify(report, null, 2)}\n`,
-);
-writeFileSync(join(outDir, "latest.md"), report.markdown);
-console.log(report.markdown);
+writeReport("check", report, markdownLines.join("\n"));
 if (!ok) process.exit(1);

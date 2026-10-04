@@ -22,13 +22,6 @@ export default defineConfig({
         "src/**/*.test.tsx",
         "src/**/*.d.ts",
         "src/test/**",
-        // Pure UI layout/routing - excluded per COVERAGE-001
-        "src/app/layout.tsx",
-        "src/app/page.tsx",
-        "src/app/error.tsx",
-        "src/app/global-error.tsx",
-        "src/app/not-found.tsx",
-        "src/app/**/page.tsx",
       ],
       thresholds: {
         100: true,

@@ -1,13 +1,19 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { SiteCopy, SitePath } from "@/content/site";
+
+export const metadata: Metadata = {
+  title: SiteCopy.notFoundTitle,
+};
 
 export default function NotFound() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center">
-      <h1 className="text-4xl font-bold mb-4">404</h1>
-      <p className="mb-4">Page not found</p>
-      <Link href="/" className="text-blue-600 hover:underline">
-        Return home
+    <div className="page">
+      <h1 className="page__title">{SiteCopy.notFoundTitle}</h1>
+      <p className="page__lede">{SiteCopy.notFoundBody}</p>
+      <Link className="text-link" href={SitePath.home}>
+        {SiteCopy.backHome}
       </Link>
-    </main>
+    </div>
   );
 }

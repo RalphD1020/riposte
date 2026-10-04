@@ -1,20 +1,27 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { SiteCopy } from "@/content/site";
 import { ErrorRecovery } from "./ErrorRecovery";
 
 describe("ErrorRecovery", () => {
-  it("renders error message", () => {
-    const error = new Error("Test error message");
-    const reset = vi.fn();
-    render(<ErrorRecovery error={error} reset={reset} />);
-    expect(screen.getByText("Test error message")).toBeInTheDocument();
+  it("alerts in plain language and retries on request", async () => {
+    const retry = vi.fn();
+    render(<ErrorRecovery onRetry={retry} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(SiteCopy.errorBody);
+    expect(
+      screen.getByRole("heading", { level: 2, name: SiteCopy.errorTitle }),
+    ).toBeInTheDocument();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: SiteCopy.tryAgain }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
-  it("calls reset when try again is clicked", () => {
-    const error = new Error("Test error");
-    const reset = vi.fn();
-    render(<ErrorRecovery error={error} reset={reset} />);
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(reset).toHaveBeenCalledTimes(1);
+  it("can own the page heading when the layout is gone", () => {
+    render(<ErrorRecovery onRetry={vi.fn()} headingLevel="h1" />);
+    expect(
+      screen.getByRole("heading", { level: 1, name: SiteCopy.errorTitle }),
+    ).toBeInTheDocument();
   });
 });

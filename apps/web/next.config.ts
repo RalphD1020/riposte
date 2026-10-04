@@ -3,10 +3,13 @@ import { readFileSync } from "node:fs";
 
 /**
  * Security headers for the informational site.
- * No `'unsafe-eval'` — this app does not compile shaders.
+ * No `'unsafe-eval'` — this app does not compile shaders. It embeds nothing,
+ * so frames are refused in both directions.
  *
  * When `STATIC_EXPORT=true`, produces a static site (`out/`) for static
- * hosts. `async headers()` is incompatible with `output: 'export'`.
+ * hosts. `async headers()` and `proxy.ts` are unsupported by `output:
+ * 'export'`; static hosts set their own headers and `PlayGateway` performs
+ * play admission in the browser.
  *
  * itch.io does **not** receive this Next.js app. The canonical itch artifact
  * is the Godot Web export at `dist/game/web/`.
@@ -28,7 +31,7 @@ const cspDirectives = [
   "img-src 'self' data:",
   "font-src 'self'",
   "connect-src 'self'",
-  "frame-src 'self'",
+  "frame-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "object-src 'none'",
@@ -39,6 +42,10 @@ const securityHeaders = [
   { key: "Content-Security-Policy", value: cspDirectives },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains",
+  },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",

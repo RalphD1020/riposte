@@ -1,13 +1,18 @@
 "use client";
 
+/**
+ * Route-segment error boundary. Layout chrome stays mounted.
+ *
+ * @see ../../../../docs/concepts/ux.md
+ */
+
 import { ErrorRecovery } from "@/components/ErrorRecovery";
 
-export default function Error({
-  error,
-  reset,
+export default function RouteError({
+  retry,
 }: {
-  error: Error & { digest?: string };
-  reset: () => void;
+  readonly error: Error & { digest?: string };
+  readonly retry: () => void;
 }) {
-  return <ErrorRecovery error={error} reset={reset} />;
+  return <ErrorRecovery onRetry={retry} />;
 }

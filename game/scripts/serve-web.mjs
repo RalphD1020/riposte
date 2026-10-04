@@ -1,61 +1,81 @@
 #!/usr/bin/env node
 
 /**
- * Serve the Godot Web export on localhost for development.
+ * Serve the canonical Godot Web export (`dist/game/web/`) the way itch will.
+ * Loopback only. Next.js does not own this process (MONO-001).
+ * The export is single-threaded (WEB-003), so no cross-origin isolation
+ * headers are required.
+ *
+ * @see ../../spec/invariants.md#web-004
+ * @see ../../docs/guides/local-dev.md
  */
 
-import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { createServer } from "node:http";
+import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const GAME_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
-const DIST_WEB = join(GAME_ROOT, "..", "..", "dist", "game", "web");
-const PORT = 8060;
+const WEB_ROOT = resolve(GAME_ROOT, "..", "dist", "game", "web");
+const PORT = Number(process.env.RIPOSTE_GODOT_WEB_PORT ?? 8060);
+const HOST = process.env.RIPOSTE_GODOT_WEB_HOST ?? "127.0.0.1";
 
-const MIME_TYPES = {
-  ".html": "text/html",
-  ".js": "application/javascript",
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
   ".wasm": "application/wasm",
+  ".pck": "application/octet-stream",
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
-  ".pck": "application/octet-stream",
+  ".json": "application/json; charset=utf-8",
 };
 
-if (!existsSync(DIST_WEB)) {
-  console.error(`Web export not found at ${DIST_WEB}`);
-  console.error(
-    "Run `pnpm game:export:web` to build the Godot Web export first.",
-  );
-  process.exit(1);
+/** Resolve a request path inside WEB_ROOT, rejecting traversal. */
+function safePath(urlPath) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0] || "/");
+  } catch {
+    return null;
+  }
+  const relative = decoded === "/" ? "/index.html" : decoded;
+  const target = resolve(WEB_ROOT, `.${relative}`);
+  if (target !== WEB_ROOT && !target.startsWith(`${WEB_ROOT}${sep}`)) {
+    return null;
+  }
+  return target;
 }
 
-const server = createServer((req, res) => {
-  let pathname = req.url?.split("?")[0] ?? "/";
-  if (pathname === "/") pathname = "/index.html";
+function missingExportPage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Riposte Godot Web</title></head><body><main><h1>Godot Web export not found</h1><p>Run <code>pnpm game:export:web</code> to build <code>dist/game/web/</code> (WEB-004), then reload.</p></main></body></html>`;
+}
 
-  const filePath = join(DIST_WEB, pathname);
-
-  if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-    res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("Not Found");
+const server = createServer((request, response) => {
+  const target = safePath(request.url ?? "/");
+  if (target == null) {
+    response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Forbidden");
     return;
   }
-
-  const ext = extname(filePath);
-  const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
-
-  // Required headers for SharedArrayBuffer (if threading is used)
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
-
-  res.writeHead(200, { "Content-Type": contentType });
-  createReadStream(filePath).pipe(res);
+  if (existsSync(target) && statSync(target).isFile()) {
+    response.writeHead(200, {
+      "Content-Type":
+        CONTENT_TYPES[extname(target)] ?? "application/octet-stream",
+      "Cache-Control": "no-store",
+    });
+    createReadStream(target).pipe(response);
+    return;
+  }
+  const isRoot = target === resolve(WEB_ROOT, "index.html");
+  response.writeHead(isRoot ? 200 : 404, {
+    "Content-Type": "text/html; charset=utf-8",
+  });
+  response.end(
+    isRoot ? missingExportPage() : "<!doctype html><title>Not found</title>",
+  );
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Serving Godot Web export at http://127.0.0.1:${PORT}/`);
-  console.log(`Source: ${DIST_WEB}`);
-  console.log("Press Ctrl+C to stop.");
+server.listen(PORT, HOST, () => {
+  console.log(`Godot Web serve http://${HOST}:${PORT}/ <- ${WEB_ROOT}`);
 });

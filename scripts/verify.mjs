@@ -2,51 +2,33 @@
 
 /**
  * check → test → build. Release/admin command.
+ *
+ * @see ../docs/reference/tooling.md
  */
 
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolvePnpm } from "./godot-bin.mjs";
+import { ROOT, runEchoed, writeReport } from "./reports.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..");
 const started = Date.now();
 const PNPM = resolvePnpm();
 
-function runNode(script) {
-  const result = spawnSync(process.execPath, [join(ROOT, "scripts", script)], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: process.env,
-    shell: false,
-  });
-  process.stdout.write(result.stdout ?? "");
-  process.stderr.write(result.stderr ?? "");
-  return result.status === 0;
-}
-
-function runPnpm(scriptName) {
-  const result = spawnSync(PNPM.command, [...PNPM.prefix, scriptName], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: process.env,
-    shell: false,
-  });
-  process.stdout.write(result.stdout ?? "");
-  process.stderr.write(result.stderr ?? "");
-  return result.status === 0;
-}
+const runNode = (script) =>
+  runEchoed(process.execPath, [join(ROOT, "scripts", script)]) === 0;
+const runPnpm = (scriptName) =>
+  runEchoed(PNPM.command, [...PNPM.prefix, scriptName]) === 0;
+const readReport = (name) => {
+  const path = join(ROOT, ".reports", name, "latest.json");
+  return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
+};
 
 const checkOk = runNode("check.mjs");
 const testOk = checkOk ? runPnpm("test") : false;
 const buildOk = testOk ? runNode("build.mjs") : false;
 const duration = ((Date.now() - started) / 1000).toFixed(2);
-const checkReport = existsSync(join(ROOT, ".reports/check/latest.json"))
-  ? JSON.parse(readFileSync(join(ROOT, ".reports/check/latest.json"), "utf8"))
-  : null;
-const buildReport = existsSync(join(ROOT, ".reports/build/latest.json"))
-  ? JSON.parse(readFileSync(join(ROOT, ".reports/build/latest.json"), "utf8"))
-  : null;
+const checkReport = readReport("check");
+const buildReport = readReport("build");
 
 const markdown = [
   "# RIPOSTE VERIFY",
@@ -68,12 +50,9 @@ const markdown = [
   "",
 ].join("\n");
 
-const outDir = join(ROOT, ".reports", "verify");
-mkdirSync(outDir, { recursive: true });
-writeFileSync(
-  join(outDir, "latest.json"),
-  `${JSON.stringify({ check: checkOk, test: testOk, build: buildOk, checkReport, buildReport, markdown }, null, 2)}\n`,
+writeReport(
+  "verify",
+  { check: checkOk, test: testOk, build: buildOk, checkReport, buildReport },
+  markdown,
 );
-writeFileSync(join(outDir, "latest.md"), markdown);
-console.log(markdown);
 if (!checkOk || !testOk || !buildOk) process.exit(1);

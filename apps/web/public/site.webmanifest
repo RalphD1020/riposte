@@ -1,0 +1,16 @@
+{
+  "name": "Riposte",
+  "short_name": "Riposte",
+  "description": "A physics-driven sword duel for the browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#404548",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

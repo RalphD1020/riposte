@@ -1,6 +1,23 @@
-[gd_scene load_steps=2 format=3 uid="uid://main"]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/main/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://src/presentation/camera/duel_camera_rig.gd" id="2_rig"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1_main")
+
+[node name="WorldRoot" type="Node3D" parent="."]
+
+[node name="PresentationMount" type="Node3D" parent="WorldRoot"]
+
+[node name="CameraRig" type="Node3D" parent="WorldRoot"]
+script = ExtResource("2_rig")
+
+[node name="UiRoot" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2

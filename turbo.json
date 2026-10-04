@@ -8,7 +8,6 @@
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
       "env": [
         "STATIC_EXPORT",
-        "NEXT_PUBLIC_DISTRIBUTION_CHANNEL",
         "NEXT_PUBLIC_PLAY_URL",
         "NEXT_PUBLIC_LOCAL_PLAY_URL",
         "NEXT_PUBLIC_APP_VERSION",
@@ -21,7 +20,6 @@
       "outputs": ["out/**"],
       "env": [
         "STATIC_EXPORT",
-        "NEXT_PUBLIC_DISTRIBUTION_CHANNEL",
         "NEXT_PUBLIC_PLAY_URL",
         "NEXT_PUBLIC_LOCAL_PLAY_URL",
         "NEXT_PUBLIC_APP_VERSION",

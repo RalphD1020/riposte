@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Atomic Godot CLI. Does not generate .godot/global_script_class_cache.cfg.
+ * Atomic Godot CLI. Does not generate .godot/global_script_class_cache.cfg
+ * by hand; `--import` (the editor scan) owns it.
  *
- * version | import | scripts:check | test | check (no harness)
+ * version | import | scripts:check (import + load) | test | check (no harness)
+ *
+ * @see ../../docs/reference/tooling.md
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -67,7 +70,10 @@ function runImport() {
   return printAndMaybeFail(result, { failOnWarning: true });
 }
 
-function runScriptsCheck() {
+function runScriptsCheck({ refreshClassCache = true } = {}) {
+  // Refresh the global class cache first so newly added `class_name` scripts
+  // resolve; a stale cache would make the typecheck verdict meaningless.
+  if (refreshClassCache) runImport();
   const resolved = resolveGodot();
   const result = spawnGodot(
     [
@@ -181,15 +187,15 @@ function runCheck() {
   runVersion();
   runImport();
   runLint();
-  runScriptsCheck();
+  runScriptsCheck({ refreshClassCache: false });
   runTooling();
 }
 
 const commands = {
   version: runVersion,
   import: runImport,
-  "scripts:check": runScriptsCheck,
-  typecheck: runScriptsCheck,
+  "scripts:check": () => runScriptsCheck(),
+  typecheck: () => runScriptsCheck(),
   test: runTest,
   "test:headless": runTest,
   check: runCheck,

@@ -1,16 +1,31 @@
+/**
+ * Landing page: one primary action (Play Riposte), what the game is, how to
+ * learn it, and the community stubs.
+ *
+ * @see ../../../../docs/concepts/web.md
+ * @see ../../../../docs/concepts/ux.md
+ */
+
+import Link from "next/link";
+import { CommunityCtas } from "@/components/CommunityCtas";
+import { PlayCta } from "@/components/PlayCta";
+import { getRuntimeConfig } from "@/config/runtimeConfig";
+import { SiteCopy, SiteName, SitePath } from "@/content/site";
+
 export function HomePage() {
+  const { community, support } = getRuntimeConfig();
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-4xl font-bold mb-4">Riposte</h1>
-      <p className="text-lg text-gray-600 mb-8">A browser-first Godot game</p>
-      <div className="flex gap-4">
-        <a
-          href="/play"
-          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Play Now
-        </a>
+    <div className="hero">
+      <h1 className="hero__title">{SiteName}</h1>
+      <p className="hero__tagline">{SiteCopy.tagline}</p>
+      <p className="page__lede">{SiteCopy.homeLead}</p>
+      <div className="hero__actions">
+        <PlayCta />
+        <Link className="secondary-button" href={SitePath.howToPlay}>
+          {SiteCopy.howToPlay}
+        </Link>
       </div>
-    </main>
+      <CommunityCtas community={community} support={support} />
+    </div>
   );
 }

@@ -13,7 +13,7 @@
     "format": "prettier --write --ignore-unknown .",
     "format:check": "prettier --check --ignore-unknown .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage --coverage.enabled"
+    "test:coverage": "vitest run --coverage --coverage.enabled && node ./scripts/check-coverage-manifest.mjs"
   },
   "dependencies": {
     "next": "^16.3.4",

@@ -1,21 +1,29 @@
-"use client";
+/**
+ * Shared recovery UI for route and root error boundaries. Shows plain
+ * language, never the raw error message (it may expose internals).
+ *
+ * @see ../../../../docs/concepts/ux.md
+ */
 
-interface ErrorRecoveryProps {
-  error: Error & { digest?: string };
-  reset: () => void;
+import { SiteCopy } from "@/content/site";
+
+export interface ErrorRecoveryProps {
+  readonly onRetry: () => void;
+  readonly headingLevel?: "h1" | "h2";
 }
 
-export function ErrorRecovery({ error, reset }: ErrorRecoveryProps) {
+export function ErrorRecovery({
+  onRetry,
+  headingLevel = "h2",
+}: ErrorRecoveryProps) {
+  const Heading = headingLevel;
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-2xl font-bold mb-4">Something went wrong</h1>
-      <p className="mb-4 text-gray-600">{error.message}</p>
-      <button
-        onClick={() => reset()}
-        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-      >
-        Try again
+    <div className="page" role="alert">
+      <Heading className="page__title">{SiteCopy.errorTitle}</Heading>
+      <p className="page__lede">{SiteCopy.errorBody}</p>
+      <button type="button" className="primary-button" onClick={onRetry}>
+        {SiteCopy.tryAgain}
       </button>
-    </main>
+    </div>
   );
 }

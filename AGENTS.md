@@ -32,12 +32,17 @@ If code violates spec, the implementation is defective unless the spec has been 
 
 ## Riposte game work
 
-- Read `.impl/INDEX.md` when available.
-- Normative game contracts live in `spec/`.
-- Durable explanations live in `docs/`.
-- Never introduce committed references to `.impl/`.
-- Use Compatibility for Web (WEB-001).
-- Follow [docs/reference/godot.md](./docs/reference/godot.md) for Godot conventions. Authoritative runtime: Godot **4.7.2-stable**.
+- Read `.impl/INDEX.md` when available. Concept index: [docs/concepts/game.md](./docs/concepts/game.md).
+- Normative game contracts live in `spec/`. Durable explanations live in `docs/`. Never introduce committed references to `.impl/`.
+- Use Compatibility for Web (WEB-001). Follow [docs/reference/godot.md](./docs/reference/godot.md). Authoritative runtime: Godot **4.7.2-stable**.
+- Simulation (SIM-001): only `DuelSimulation.step` advances state, one `PlayerCommand` per fighter per 60 Hz tick (CMD-001). Domain uses `SimMath` scalars (SIM-MATH-001) and `SeededRng` (SIM-RNG-001); no engine types, singletons, signals, or upward dependencies (lint). Rules values live in `game/content/rules/`; changing one bumps `DuelRules.version` (SIM-002).
+- Combat (COMBAT-001–003): tap = 0% charge 90° cut; arc `90° + 90° × charge`; swept collision; parry/riposte are classified outcomes; damage is relational strike quality; criticals are convergence. Docs name mechanisms; numbers live only in content.
+- CPU (CPU-001): same commands and rules as a human; delayed perception of the opponent; difficulty is profile data.
+- Presentation (PRES-001): reads `MatchState` only through `SnapshotProjector`; emits requests/intents; never names an application class or content identity. Art/animation/sound change only in the identity's `PresentationKit` (PRES-KIT-001; [examples/presentation-kit.md](./examples/presentation-kit.md)). Hitstop is wall-clock only (HITSTOP-001).
+- App shell: `RiposteApp` composes; `ScreenRouter` holds one screen; every match/rematch is a fresh `MatchSession`. Menu controls come from `UiKit`; strings from `AppCopy` / `HudCopy`; styles from `RiposteTheme` type variations (`add_theme_*_override` only for runtime safe-area margins via `RiposteTheme.apply_insets`).
+- Names have one home ([docs/reference/godot.md](./docs/reference/godot.md#centralized-names)): payload keys `DuelEventKeys` (lint-enforced), input `InputActions`, telemetry `ProductEvents.PROP_*`, buses `AudioBuses`, settings `PlayerSettings.KEY_*`. Tunables are named constants (gameplay numbers only in `game/content/rules/`).
+- UX-001: contrast pairs tested; ≥ 48 px targets with one UI unit ≥ one CSS px (`UiScale`); never color alone; only glyphs the shipped font renders (draw icons in `HudIcons`); menus fit a 360 px-tall landscape phone.
+- Web (WEB-005, WEB-006): every Play links to `/play`; `resolvePlayAdmission` decides (proxy in server builds, `PlayGateway` in static exports). Only `runtimeConfig.ts` reads `NEXT_PUBLIC_*`; destinations are validated; stubs say "Coming soon". Styles only in `globals.css`; copy only in `site.ts`.
 
 ## Coverage
 

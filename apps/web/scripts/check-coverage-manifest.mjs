@@ -21,14 +21,7 @@ const COVERAGE_JSON = join(ROOT, "coverage", "coverage-final.json");
 const EXCLUDE_PATTERNS = [
   /\.test\.(ts|tsx)$/,
   /\.d\.ts$/,
-  /[\\/]test[\\/]/,
-  // Pure UI layout/routing - excluded per COVERAGE-001
-  /[\\/]app[\\/]layout\.tsx$/,
-  /[\\/]app[\\/]page\.tsx$/,
-  /[\\/]app[\\/]error\.tsx$/,
-  /[\\/]app[\\/]global-error\.tsx$/,
-  /[\\/]app[\\/]not-found\.tsx$/,
-  /[\\/]app[\\/][^/]+[\\/]page\.tsx$/,
+  /(^|[\\/])src[\\/]test[\\/]/,
 ];
 
 function walkSourceFiles(dir, acc = []) {
