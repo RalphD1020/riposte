@@ -52,7 +52,7 @@ func _ready() -> void:
 	## Put the local player at the bottom of the screen. The world does not
 	## move; only this viewer does (SIDE-001).
 	app.camera_rig.look_from(session.state.fighter(config.human_slot).side)
-	presenter = MatchPresenter.create(kits, options, app.camera_rig, config.rules.arena_radius, SnapshotProjector.project(session.state, config.rules))
+	presenter = MatchPresenter.create(kits, options, app.camera_rig, config.rules.platform_radius, config.rules.edge_warning_inset, SnapshotProjector.project(session.state, config.rules))
 	presenter.hitstop_requested.connect(driver.hold)
 	app.presentation_mount.add_child(presenter)
 	_build_ui(config)

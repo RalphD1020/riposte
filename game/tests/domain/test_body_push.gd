@@ -269,12 +269,11 @@ func test_arena_separation_is_mass_aware() -> void:
 	a.vx = 2.0
 	b.vx = -2.0
 	var body_radius := _rules.fighter.body_radius
-	var limit := _rules.arena_radius - body_radius
 	var light := 40.0
 	var heavy := 120.0
 	var a_before := a.x
 	var b_before := b.x
-	ArenaConstraints.separate(a, b, body_radius, limit, light, heavy)
+	ArenaConstraints.separate(a, b, body_radius, light, heavy)
 	var gap := SimMath.length(b.x - a.x, b.y - a.y)
 	assert_near(gap, body_radius * 2.0, 1e-6, "bodies pushed apart to contact distance")
 	var light_moved := absf(a.x - a_before)
@@ -292,10 +291,9 @@ func test_equal_mass_separation_is_symmetric() -> void:
 	a.vx = 2.0
 	b.vx = -2.0
 	var body_radius := _rules.fighter.body_radius
-	var limit := _rules.arena_radius - body_radius
 	var a_before := a.x
 	var b_before := b.x
-	ArenaConstraints.separate(a, b, body_radius, limit, 80.0, 80.0)
+	ArenaConstraints.separate(a, b, body_radius, 80.0, 80.0)
 	var a_moved := absf(a.x - a_before)
 	var b_moved := absf(b.x - b_before)
 	assert_near(a_moved, b_moved, 1e-9, "equal-mass separation moves both by the same amount")
@@ -327,4 +325,4 @@ func test_body_push_detected_during_fast_approach() -> void:
 
 
 func test_tick_order_version_bumped_for_body_push() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 8, "body push in contact loop bumps tick order")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 9, "body push in contact loop bumps tick order")

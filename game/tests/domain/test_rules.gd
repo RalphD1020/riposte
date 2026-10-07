@@ -137,4 +137,4 @@ func test_stamina_enters_the_state_hash() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 17, "rules version tracks gameplay-affecting changes")
+	assert_eq(rules.version, 18, "rules version tracks gameplay-affecting changes")

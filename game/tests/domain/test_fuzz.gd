@@ -266,7 +266,7 @@ func test_generated_streams_keep_the_duel_physical() -> void:
 		var runner := _play(seed_value, _generate(seed_value, 503), _generate(seed_value, 601))
 		assert_true(runner.is_sound(), "seed %d held every invariant: %s" % [seed_value, runner.violation_summary()])
 		var touching := 2.0 * _rules.fighter.body_radius
-		var limit := _rules.arena_radius - _rules.fighter.body_radius
+		var limit := _rules.platform_radius - _rules.fighter.body_radius
 		for slot in 2:
 			var me := runner.state.fighter(slot)
 			assert_finite(me.speed(), "seed %d slot %d has a finite speed" % [seed_value, slot])

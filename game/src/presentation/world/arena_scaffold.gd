@@ -12,7 +12,8 @@ const RING_WIDTH := 0.08
 ## The boundary ring is a torus flattened to a painted line.
 const RING_FLATTEN := 0.15
 const FLOOR_THICKNESS := 0.2
-const FLOOR_MARGIN := 0.6
+## The visible floor edge IS the physical cliff — no invisible margin.
+const EDGE_STRIP_DROP := 0.02
 const CIRCLE_SEGMENTS := 64
 const CENTER_MARK_RADIUS := 0.3
 ## Home marks sit at each side's spawn, which is what makes the arena's
@@ -22,14 +23,14 @@ const HOME_MARK_INNER := 0.55
 const HOME_MARK_HEIGHT := 0.004
 
 
-static func create(kit: PresentationKit, arena_radius: float, spawn_offset: float) -> ArenaScaffold:
+static func create(kit: PresentationKit, platform_radius: float, edge_warning_inset: float, spawn_offset: float) -> ArenaScaffold:
 	var scaffold := ArenaScaffold.new()
 	scaffold.name = "Arena"
 	scaffold._build_environment()
 	if kit.scene != null:
 		scaffold.add_child(kit.scene.instantiate())
 	else:
-		scaffold._build_floor(arena_radius)
+		scaffold._build_floor(platform_radius, edge_warning_inset)
 		scaffold._build_home_marks(spawn_offset)
 	return scaffold
 
@@ -54,20 +55,33 @@ func _build_environment() -> void:
 	add_child(key)
 
 
-func _build_floor(arena_radius: float) -> void:
+func _build_floor(platform_radius: float, edge_warning_inset: float) -> void:
+	var warning_radius := platform_radius - edge_warning_inset
+	## Main floor: extends to the platform edge (the visible cliff).
 	var floor_mesh := CylinderMesh.new()
-	floor_mesh.top_radius = arena_radius + FLOOR_MARGIN
-	floor_mesh.bottom_radius = arena_radius + FLOOR_MARGIN
+	floor_mesh.top_radius = platform_radius
+	floor_mesh.bottom_radius = platform_radius
 	floor_mesh.height = FLOOR_THICKNESS
 	floor_mesh.radial_segments = CIRCLE_SEGMENTS
 	_add("Floor", floor_mesh, RiposteTheme.WORLD_FLOOR, Vector3(0.0, -FLOOR_THICKNESS * 0.5, 0.0))
+	## Warning ring: visual marker at the old boundary.
 	var ring_mesh := TorusMesh.new()
-	ring_mesh.inner_radius = arena_radius - RING_WIDTH * 0.5
-	ring_mesh.outer_radius = arena_radius + RING_WIDTH * 0.5
+	ring_mesh.inner_radius = warning_radius - RING_WIDTH * 0.5
+	ring_mesh.outer_radius = warning_radius + RING_WIDTH * 0.5
 	ring_mesh.rings = CIRCLE_SEGMENTS
 	ring_mesh.ring_segments = 6
 	var ring := _add("BoundaryRing", ring_mesh, RiposteTheme.WORLD_RING, Vector3(0.0, 0.01, 0.0))
 	ring.scale = Vector3(1.0, RING_FLATTEN, 1.0)
+	## Edge strip: annular disc between warning ring and platform edge.
+	## Slightly dropped to create a visual depth cue at the cliff.
+	if edge_warning_inset > 0.0:
+		var edge_mesh := TorusMesh.new()
+		edge_mesh.inner_radius = warning_radius
+		edge_mesh.outer_radius = platform_radius
+		edge_mesh.rings = CIRCLE_SEGMENTS
+		edge_mesh.ring_segments = 4
+		var edge := _add("EdgeStrip", edge_mesh, RiposteTheme.WORLD_FLOOR_EDGE, Vector3(0.0, -EDGE_STRIP_DROP, 0.0))
+		edge.scale = Vector3(1.0, RING_FLATTEN, 1.0)
 	var mark_mesh := CylinderMesh.new()
 	mark_mesh.top_radius = CENTER_MARK_RADIUS
 	mark_mesh.bottom_radius = CENTER_MARK_RADIUS

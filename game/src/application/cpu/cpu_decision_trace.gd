@@ -26,6 +26,11 @@ var arena_pressure: float = 0.0
 ## Whether a burst was started on this decision.
 var burst_started: bool = false
 var burst_is_lateral: bool = false
+## Edge awareness fields for future ML corpus.
+var edge_clearance: float = 0.0
+var outward_radial_speed: float = 0.0
+var stopping_margin: float = 0.0
+var voluntary_ring_out_risk: bool = false
 
 
 const MOVE_COUNT := 5
@@ -51,4 +56,7 @@ static func create(
 	trace.stamina_depletion = assessment.stamina_depletion
 	trace.tempo_opportunity = assessment.tempo_opportunity
 	trace.arena_pressure = assessment.arena_pressure
+	trace.edge_clearance = assessment.edge_clearance
+	trace.outward_radial_speed = assessment.outward_radial_speed
+	trace.stopping_margin = assessment.stopping_margin
 	return trace

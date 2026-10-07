@@ -77,6 +77,10 @@ var lateral_dash_weight: float = 0.0
 ## computes expected stamina cost from the motor physics, not from authored
 ## action-specific constants.
 var stamina_cost_weight: float = 0.0
+## How aggressively to exploit opponent edge position. Hard uses this to
+## herd the opponent toward the cliff and recognize knockback ring-out
+## opportunities. Scaling `edge_position_advantage` from TacticalAssessment.
+var edge_exploit_weight: float = 0.0
 
 
 static func for_difficulty(level: MatchConfig.Difficulty) -> CpuProfile:
@@ -128,6 +132,8 @@ static func easy() -> CpuProfile:
 	profile.lateral_dash_weight = 0.0
 	## Easy ignores stamina and overextends.
 	profile.stamina_cost_weight = 0.0
+	## Easy has no awareness of edge positioning.
+	profile.edge_exploit_weight = 0.0
 	return profile
 
 
@@ -168,6 +174,8 @@ static func medium() -> CpuProfile:
 	profile.lateral_dash_weight = 0.05
 	## Medium starts conserving stamina.
 	profile.stamina_cost_weight = 0.3
+	## Medium notices edge positioning but does not actively exploit it.
+	profile.edge_exploit_weight = 0.2
 	return profile
 
 
@@ -230,4 +238,6 @@ static func hard() -> CpuProfile:
 	profile.lateral_dash_weight = 0.12
 	## Hard spends deliberately — only when the expected gain justifies it.
 	profile.stamina_cost_weight = 0.6
+	## Hard actively herds the opponent toward the cliff.
+	profile.edge_exploit_weight = 0.6
 	return profile

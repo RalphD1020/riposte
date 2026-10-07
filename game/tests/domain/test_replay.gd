@@ -109,7 +109,7 @@ func _check(state: MatchState, rules: DuelRules, violations: PackedStringArray) 
 				violations.append("non-finite value at tick %d" % state.tick)
 		if fighter.health < 0.0 or fighter.health > rules.fighter.max_health:
 			violations.append("health out of range at tick %d" % state.tick)
-		if SimMath.length(fighter.x, fighter.y) > rules.arena_radius - rules.fighter.body_radius + 1e-9:
+		if SimMath.length(fighter.x, fighter.y) > rules.platform_radius - rules.fighter.body_radius + 1e-9:
 			violations.append("left the arena at tick %d" % state.tick)
 		if absf(w.angle) > rules.weapon.guard_limit + 1e-12:
 			violations.append("blade beyond guard at tick %d" % state.tick)

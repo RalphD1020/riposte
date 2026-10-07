@@ -43,7 +43,7 @@ extends RefCounted
 ## See also: /docs/concepts/simulation.md
 
 ## Bump deliberately when the sequence above changes.
-const TICK_ORDER_VERSION := 8
+const TICK_ORDER_VERSION := 9
 
 var rules: DuelRules
 var _collision := CollisionSystem.new()
@@ -167,7 +167,7 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 		var fighter := state.fighter(slot)
 		if fighter.is_alive() and not fighter.is_falling:
 			var crossing := ArenaConstraints.detect_edge_crossing(
-				_start[slot].x, _start[slot].y, fighter.x, fighter.y, rules.arena_radius
+				_start[slot].x, _start[slot].y, fighter.x, fighter.y, rules.platform_radius
 			)
 			if crossing >= 0.0:
 				fighter.is_falling = true
@@ -239,6 +239,24 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 		_start[1].write(state.fighter(1))
 		ContactResolver.resolve(state, _report, rules, tick, toi, events, _scratch)
 		_carry(state, 1.0 - toi)
+		## Post-impulse support-loss: contact resolution (body push, knockback)
+		## may have carried a fighter past the platform edge. Mark them falling
+		## now rather than waiting for the next tick.
+		for slot in 2:
+			var fighter := state.fighter(slot)
+			if fighter.is_alive() and not fighter.is_falling:
+				if SimMath.length(fighter.x, fighter.y) >= rules.platform_radius:
+					fighter.is_falling = true
+					events.append(DuelEvent.create(
+						DuelEventTypes.RING_OUT, tick, slot, DuelEvent.NONE,
+						{
+							DuelEventKeys.POSITION_X: fighter.x,
+							DuelEventKeys.POSITION_Y: fighter.y,
+							DuelEventKeys.VELOCITY_X: fighter.vx,
+							DuelEventKeys.VELOCITY_Y: fighter.vy,
+							DuelEventKeys.TOI: toi,
+						}
+					))
 		_finish[0].write(state.fighter(0))
 		_finish[1].write(state.fighter(1))
 		elapsed = toi
@@ -307,7 +325,7 @@ func _step_post_round_free(state: MatchState, command_0: PlayerCommand, command_
 			var crossing := ArenaConstraints.detect_edge_crossing(
 				fighter.x - fighter.vx * SimulationTimebase.TICK_SECONDS,
 				fighter.y - fighter.vy * SimulationTimebase.TICK_SECONDS,
-				fighter.x, fighter.y, rules.arena_radius
+				fighter.x, fighter.y, rules.platform_radius
 			)
 			if crossing >= 0.0:
 				fighter.is_falling = true

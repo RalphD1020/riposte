@@ -360,7 +360,7 @@ func test_effort_written_to_scratch() -> void:
 
 
 func test_tick_order_version_bumped() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 8, "stamina drain changes the tick order")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 9, "stamina drain changes the tick order")
 
 
 # -- Phase 3.1: FighterTickScratch motor exertion -------------------------

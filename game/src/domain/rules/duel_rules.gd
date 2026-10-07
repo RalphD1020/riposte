@@ -19,7 +19,8 @@ var combat: CombatTuning
 
 ## Arena: circular, open edge (ring-out on crossing).
 var arena_id: StringName = &""
-var arena_radius: float = 0.0
+var platform_radius: float = 0.0
+var edge_warning_inset: float = 0.0
 var spawn_offset: float = 0.0
 
 ## Match format. rounds_to_win = 3 is best of five.
@@ -42,8 +43,13 @@ func is_valid() -> bool:
 		and combat.is_valid()
 		and rounds_to_win > 0
 		and max_rounds >= rounds_to_win * 2 - 1
-		and arena_radius > spawn_offset + fighter.body_radius
+		and platform_radius > spawn_offset + fighter.body_radius
 		and spawn_offset > fighter.body_radius
 		and round_time_limit_ticks > 0
 		and post_round_free_ticks >= 0
 	)
+
+
+## Visual warning ring radius, derived from the physical platform edge.
+func warning_ring_radius() -> float:
+	return platform_radius - edge_warning_inset

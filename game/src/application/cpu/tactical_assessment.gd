@@ -36,6 +36,17 @@ var withdrawal_urge: float = 0.0
 var stamina_depletion: float = 0.0
 ## Utility scores for all 4 burst directions.
 var burst_scores: PackedFloat64Array = PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+## Own distance to the platform edge (m). Higher = safer.
+var edge_clearance: float = 0.0
+## Radial component of own velocity (m/s). Positive = moving toward edge.
+var outward_radial_speed: float = 0.0
+## Stopping distance at current outward speed: v_r² / (2 × a_inward).
+var stopping_margin: float = 0.0
+## Opponent's distance to the platform edge (m).
+var opponent_edge_clearance: float = 0.0
+## Positional edge advantage: opponent_pressure - own_pressure. Positive =
+## opponent is closer to the cliff.
+var edge_position_advantage: float = 0.0
 
 
 static func evaluate(
@@ -89,11 +100,23 @@ static func _assess_line(assessment: TacticalAssessment, seen: CpuObservation, m
 
 
 static func _assess_arena(assessment: TacticalAssessment, seen: CpuObservation, me: FighterState, rules: DuelRules) -> void:
-	if rules.arena_radius <= SimMath.EPSILON:
+	if rules.platform_radius <= SimMath.EPSILON:
 		return
 	var my_dist := SimMath.length(me.x, me.y)
 	var opp_dist := SimMath.length(seen.opp_x, seen.opp_y)
-	assessment.arena_pressure = (opp_dist - my_dist) / rules.arena_radius
+	assessment.arena_pressure = (opp_dist - my_dist) / rules.platform_radius
+	assessment.edge_clearance = rules.platform_radius - my_dist
+	assessment.opponent_edge_clearance = rules.platform_radius - opp_dist
+	var my_r := my_dist
+	var opp_r := opp_dist
+	var my_pressure := SimMath.clamp01(1.0 - my_r / rules.platform_radius) if rules.platform_radius > SimMath.EPSILON else 0.0
+	var opp_pressure := SimMath.clamp01(1.0 - opp_r / rules.platform_radius) if rules.platform_radius > SimMath.EPSILON else 0.0
+	assessment.edge_position_advantage = opp_pressure - my_pressure
+	if my_dist > SimMath.EPSILON:
+		assessment.outward_radial_speed = (me.x * me.vx + me.y * me.vy) / my_dist
+	var brake_accel := rules.fighter.brake_accel()
+	if assessment.outward_radial_speed > 0.0 and brake_accel > SimMath.EPSILON:
+		assessment.stopping_margin = assessment.outward_radial_speed * assessment.outward_radial_speed / (2.0 * brake_accel)
 
 
 static func _assess_withdrawal(assessment: TacticalAssessment, me: FighterState) -> void:
@@ -166,7 +189,7 @@ static func _evaluate_bursts(
 static func _edge_risk_axial(me: FighterState, delta: float, rules: DuelRules) -> float:
 	var post_x := me.x + me.duel_forward_x * delta
 	var post_y := me.y + me.duel_forward_y * delta
-	var edge_dist := rules.arena_radius - SimMath.length(post_x, post_y)
+	var edge_dist := rules.platform_radius - SimMath.length(post_x, post_y)
 	return SimMath.clamp01(1.0 - edge_dist / CpuController.EDGE_MARGIN)
 
 
@@ -176,5 +199,5 @@ static func _edge_risk_lateral(me: FighterState, delta: float, rules: DuelRules)
 	var right_y := -me.duel_forward_x
 	var post_x := me.x + right_x * delta
 	var post_y := me.y + right_y * delta
-	var edge_dist := rules.arena_radius - SimMath.length(post_x, post_y)
+	var edge_dist := rules.platform_radius - SimMath.length(post_x, post_y)
 	return SimMath.clamp01(1.0 - edge_dist / CpuController.EDGE_MARGIN)

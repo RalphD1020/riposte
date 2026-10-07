@@ -19,7 +19,7 @@ static func resolve(a: FighterState, b: FighterState, rules: DuelRules) -> void:
 		return
 	var mass := rules.fighter.mass
 	for _pass in SEPARATION_PASSES:
-		separate(a, b, rules.fighter.body_radius, rules.arena_radius, mass, mass)
+		separate(a, b, rules.fighter.body_radius, mass, mass)
 
 
 ## Swept point-circle edge crossing. Given a center that linearly interpolates
@@ -49,10 +49,10 @@ static func detect_edge_crossing(sx: float, sy: float, fx: float, fy: float, rad
 ## Push two overlapping bodies apart along the line between them.
 ##
 ## Position correction and velocity correction both use inverse-mass
-## weighting, so a heavier fighter moves less (PHYS-005). Wall proximity
-## still overrides: a body already against the wall has nowhere to go,
-## and the other must absorb the whole separation.
-static func separate(a: FighterState, b: FighterState, body_radius: float, limit: float, mass_a: float = 1.0, mass_b: float = 1.0) -> void:
+## weighting, so a heavier fighter moves less (PHYS-005). The arena has no
+## wall: separation is purely physical and may push a fighter past the
+## platform edge, producing a ring-out.
+static func separate(a: FighterState, b: FighterState, body_radius: float, mass_a: float = 1.0, mass_b: float = 1.0) -> void:
 	var min_distance := body_radius * 2.0
 	var dx := b.x - a.x
 	var dy := b.y - a.y
@@ -65,19 +65,13 @@ static func separate(a: FighterState, b: FighterState, body_radius: float, limit
 		nx = dx / distance
 		ny = dy / distance
 	var overlap := min_distance - distance
-	var room_a := SimMath.ray_exit_distance(a.x, a.y, -nx, -ny, limit)
-	var room_b := SimMath.ray_exit_distance(b.x, b.y, nx, ny, limit)
 	var inv_total := 1.0 / mass_a + 1.0 / mass_b
 	var share_a := (1.0 / mass_a) / inv_total if inv_total > SimMath.EPSILON else 0.5
 	var share_b := 1.0 - share_a
-	var push_a := minf(overlap * share_a, room_a)
-	var push_b := minf(overlap * share_b, room_b)
-	push_a += minf(overlap - push_a - push_b, room_a - push_a)
-	push_b += minf(overlap - push_a - push_b, room_b - push_b)
-	a.x -= nx * push_a
-	a.y -= ny * push_a
-	b.x += nx * push_b
-	b.y += ny * push_b
+	a.x -= nx * overlap * share_a
+	a.y -= ny * overlap * share_a
+	b.x += nx * overlap * share_b
+	b.y += ny * overlap * share_b
 	var closing := (a.vx - b.vx) * nx + (a.vy - b.vy) * ny
 	if closing > 0.0:
 		var delta_a := closing * share_a

@@ -25,7 +25,7 @@ static func new_state(rules: DuelRules, seed_value: int) -> MatchState:
 	## corrected at runtime — a spawn outside the boundary is authoring error.
 	for fighter in state.fighters:
 		var distance := SimMath.length(fighter.x, fighter.y)
-		if distance >= rules.arena_radius:
+		if distance >= rules.platform_radius:
 			return null
 	return state
 

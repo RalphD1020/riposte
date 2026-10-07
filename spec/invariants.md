@@ -290,6 +290,14 @@ Behavioural support. A claimed tactical proficiency MUST declare a minimum count
 
 Where a test grades an emergent outcome rather than an authored value, calibration seeds and acceptance seeds MUST be disjoint, and the acceptance corpus MUST NOT be inspected while tuning. A claim whose effect size is too small for the affordable sample MUST be measured by a diagnostic tool rather than gated; raising the sample until a gate passes re-creates the overfitting the split prevents.
 
+### CPU-006
+
+Edge safety. `EdgeSafetyEvaluator` is a pure stateless predictor that evaluates candidate commands against `platform_radius` using real motor laws (`locomotion_force/mass`, `burst_force/mass`, capability scaling). The safety filter is identical across all difficulties (Layer A); difficulty changes tactical judgment only (Layer B via `TacticalAssessment` edge features and `CpuProfile.edge_exploit_weight`). Walk safety activates only when the fighter is within `body_radius` of the platform edge; further out, edge steering handles avoidance. Burst safety is the hard filter: a burst that would cross the platform MUST be suppressed. If no safe candidate exists, the CPU MUST choose the candidate with maximum `min_clearance`. The CPU MUST remain fully vulnerable to forced ring-outs (opponent impulse, body collision, unavoidable momentum).
+
+### ARENA-001
+
+Platform geometry. The arena has one authoritative physical dimension: `DuelRules.platform_radius`. The warning ring radius is derived: `platform_radius - edge_warning_inset`. Body separation uses pure inverse-mass overlap resolution with no arena-wall clamping. A fighter whose center-of-mass crosses `platform_radius` loses support (`is_falling = true`). Post-impulse support loss: after contact resolution carries remainder positions, any living non-falling fighter past `platform_radius` MUST be marked falling and emit `RING_OUT`. Every physical cause — walk, dash, knockback, body push, stagger drift — MAY produce a ring-out through normal trajectory evaluation.
+
 ---
 
 ## Sides (SIDE)

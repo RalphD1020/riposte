@@ -216,7 +216,7 @@ func test_finished_match_emits_no_further_faults() -> void:
 
 
 func test_tick_order_version_is_pinned() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 8, "the canonical tick order is version 8; bump this deliberately")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 9, "the canonical tick order is version 9; bump this deliberately")
 
 
 func test_input_edges_resolve_before_the_motor() -> void:

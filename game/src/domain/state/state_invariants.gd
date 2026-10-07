@@ -83,7 +83,7 @@ static func check(state: MatchState, rules: DuelRules) -> StringName:
 	for fighter in state.fighters:
 		if fighter.is_alive() and not fighter.is_falling:
 			var distance := SimMath.length(fighter.x, fighter.y)
-			if distance > rules.arena_radius + BOUND_SLACK:
+			if distance > rules.platform_radius + BOUND_SLACK:
 				return ARENA_ESCAPE
 	return check_contact(state, rules)
 

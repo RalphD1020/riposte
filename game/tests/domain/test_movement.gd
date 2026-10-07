@@ -15,7 +15,7 @@ func _init() -> void:
 
 ## Furthest a body centre may sit from the arena centre.
 func _limit() -> float:
-	return _rules.arena_radius - _rules.fighter.body_radius
+	return _rules.platform_radius - _rules.fighter.body_radius
 
 
 func _fighter() -> FighterState:
@@ -96,11 +96,11 @@ func test_staggered_and_dead_fighters_move_poorly() -> void:
 
 func test_arena_edge_is_open() -> void:
 	var fighter := _fighter()
-	DuelFixture.place(fighter, _rules.arena_radius - 0.01, 0.0, 0.0)
+	DuelFixture.place(fighter, _rules.platform_radius - 0.01, 0.0, 0.0)
 	fighter.vx = 3.0
 	var finish_x := fighter.x + fighter.vx / 60.0
 	var crossing := ArenaConstraints.detect_edge_crossing(
-		fighter.x, fighter.y, finish_x, fighter.y, _rules.arena_radius
+		fighter.x, fighter.y, finish_x, fighter.y, _rules.platform_radius
 	)
 	assert_true(crossing > 0.0, "a fighter moving outward near the edge crosses it")
 
@@ -112,7 +112,7 @@ func test_bodies_never_overlap() -> void:
 	DuelFixture.place(b, 0.3, 0.0, PI)
 	a.vx = 2.0
 	b.vx = -2.0
-	ArenaConstraints.separate(a, b, _rules.fighter.body_radius, _limit())
+	ArenaConstraints.separate(a, b, _rules.fighter.body_radius)
 	assert_near(DuelGeometry.distance(a, b), 0.54, 1e-9, "pushed apart to two radii")
 	assert_near(a.vx - b.vx, 0.0, 1e-9, "approach velocity removed")
 
@@ -122,7 +122,7 @@ func test_coincident_bodies_separate_deterministically() -> void:
 	var b := _fighter()
 	DuelFixture.place(a, 1.0, 1.0, 0.0)
 	DuelFixture.place(b, 1.0, 1.0, 0.0)
-	ArenaConstraints.separate(a, b, _rules.fighter.body_radius, _limit())
+	ArenaConstraints.separate(a, b, _rules.fighter.body_radius)
 	assert_near(a.x, 0.73, 1e-9, "slot 0 resolved toward -x")
 	assert_near(b.x, 1.27, 1e-9, "slot 1 resolved toward +x")
 	assert_eq(a.y, 1.0, "no vertical drift")

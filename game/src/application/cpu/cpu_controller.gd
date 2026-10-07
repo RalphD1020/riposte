@@ -195,6 +195,9 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void
 	## Corner pressure: press harder when opponent is near the wall.
 	if assessment.arena_pressure > 0.0:
 		utilities[Move.APPROACH] += profile.corner_pressure_weight * assessment.arena_pressure
+	## Edge exploitation: Hard herds the opponent toward the cliff.
+	if assessment.edge_position_advantage > 0.0 and profile.edge_exploit_weight > 0.0:
+		utilities[Move.APPROACH] += profile.edge_exploit_weight * assessment.edge_position_advantage
 	if threatened and not striking:
 		utilities[Move.RETREAT] = profile.retreat_weight * (1.0 - SimMath.clamp01((perceived - reach) / RETREAT_RAMP))
 	## Point threat: the opponent's tip is aimed at the CPU.
@@ -216,6 +219,7 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void
 	if (seen.opp_phase == CombatPhase.Id.NEUTRAL or opp_charging) and profile.pressure_weight > 0.0:
 		utilities[Move.BAIT] = profile.bait_weight * (1.0 - pressure / profile.pressure_weight)
 	_move = _best_move(utilities)
+	_move = _safe_move(utilities, me)
 	_orbit_sign = seen.opp_swing_dir
 	_consider_burst(utilities[_move], striking, assessment, me)
 	_attack = Attack.NONE
@@ -262,25 +266,22 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void
 ## gesture for it. Approach and retreat trigger axial dashes (forward/back);
 ## orbit triggers a lateral dash (side-step) when the profile allows it.
 ## Bait never dashes — baiting holds spacing, dashing spends it.
-## Near the arena edge, suppress dashes that would carry the fighter outward
-## (ring-out awareness).
+## EdgeSafetyEvaluator filters any burst whose predicted trajectory crosses
+## the platform edge.
 func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessment, me: FighterState) -> void:
 	if profile.burst_weight <= 0.0 or _burst_cursor < BURST_SCRIPT.size() or striking:
 		return
 	if utility < BURST_UTILITY_MIN:
 		return
-	## Suppress bursts near the arena edge. The normal steering pull keeps the
-	## CPU from walking off, but a scripted dash gesture bypasses it. Retreats
-	## away from the center when already near the edge are the main risk.
-	var edge_radius := SimMath.length(me.x, me.y)
-	var edge_zone := _rules.arena_radius - EDGE_MARGIN
-	if edge_radius > edge_zone:
-		if _move == Move.RETREAT:
-			return
+	var capability := _move_capability(me)
 	## Axial burst: approach or retreat.
 	if _move == Move.APPROACH or _move == Move.RETREAT:
 		var sign_for_move := 1.0 if _move == Move.APPROACH else -1.0
 		if _rng.next_float() >= profile.burst_weight:
+			return
+		var kind := MovementGestureState.BurstKind.FORWARD_DASH if sign_for_move > 0.0 else MovementGestureState.BurstKind.BACK_DASH
+		var safety := EdgeSafetyEvaluator.evaluate_burst(me, kind, _rules, capability)
+		if safety.crosses_platform:
 			return
 		_burst_sign = sign_for_move
 		_burst_is_lateral = false
@@ -295,7 +296,19 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 			return
 		if _rng.next_float() >= profile.lateral_dash_weight:
 			return
-		_burst_sign = _orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else -_orbit_sign
+		var cw_kind := MovementGestureState.BurstKind.RIGHT_STEP
+		var ccw_kind := MovementGestureState.BurstKind.LEFT_STEP
+		var chosen_kind := cw_kind if best_lateral == TacticalAssessment.BURST_CLOCKWISE else ccw_kind
+		var safety := EdgeSafetyEvaluator.evaluate_burst(me, chosen_kind, _rules, capability)
+		if safety.crosses_platform:
+			## Try the other lateral direction.
+			var alt_kind := ccw_kind if best_lateral == TacticalAssessment.BURST_CLOCKWISE else cw_kind
+			safety = EdgeSafetyEvaluator.evaluate_burst(me, alt_kind, _rules, capability)
+			if safety.crosses_platform:
+				return
+			_burst_sign = -_orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else _orbit_sign
+		else:
+			_burst_sign = _orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else -_orbit_sign
 		_burst_is_lateral = true
 		_burst_cursor = 0
 
@@ -306,6 +319,90 @@ static func _best_move(utilities: PackedFloat64Array) -> Move:
 		if utilities[index] > utilities[best]:
 			best = index
 	return best as Move
+
+
+## Movement capability scalar for the current fighter state.
+func _move_capability(me: FighterState) -> float:
+	var stamina_max := StaminaModel.max_for_health(
+		me.health, _rules.fighter.max_health, _rules.fighter.base_stamina, _rules.combat
+	)
+	return CapabilityModel.resolve_movement(
+		me.health, _rules.fighter.max_health, me.stamina, stamina_max, _rules.combat
+	)
+
+
+## Steer vector (duel axes) for a given Move, used by the safety evaluator to
+## predict trajectory without executing a real step.
+func _steer_for_move(move: Move, me: FighterState) -> PackedFloat64Array:
+	var distance := _sight_distance
+	var tx := 1.0
+	var ty := 0.0
+	if distance > SimMath.EPSILON:
+		tx = (_sight_x - me.x) / distance
+		ty = (_sight_y - me.y) / distance
+	var x := 0.0
+	var y := 0.0
+	match move:
+		Move.APPROACH:
+			x = tx
+			y = ty
+		Move.RETREAT:
+			x = -tx
+			y = -ty
+		Move.ORBIT:
+			x = -ty * _orbit_sign * ORBIT_TANGENT + tx * ORBIT_CLOSE
+			y = tx * _orbit_sign * ORBIT_TANGENT + ty * ORBIT_CLOSE
+		Move.BAIT:
+			var hover := _reach() + BAIT_MARGIN
+			if distance > hover + BAIT_BAND:
+				x = tx * BAIT_STEP
+				y = ty * BAIT_STEP
+			elif distance < hover - BAIT_BAND:
+				x = -tx * BAIT_STEP
+				y = -ty * BAIT_STEP
+			else:
+				x = -ty * _orbit_sign * BAIT_DRIFT
+				y = tx * _orbit_sign * BAIT_DRIFT
+	return DuelGeometry.to_duel(x, y, tx, ty)
+
+
+## Choose the best utility move that does not voluntarily cross the platform
+## edge. If no candidate is safe, choose the one with maximum clearance.
+## Walk safety only activates when the fighter is already close to the edge
+## (within twice its body radius). Further out, the edge steering in _steer()
+## handles avoidance. Burst safety is the hard filter (handled in
+## _consider_burst), because a burst commits and cannot be steered.
+func _safe_move(utilities: PackedFloat64Array, me: FighterState) -> Move:
+	var chosen := _best_move(utilities)
+	var radius := SimMath.length(me.x, me.y)
+	if radius < _rules.platform_radius - _rules.fighter.body_radius:
+		return chosen
+	var capability := _move_capability(me)
+	var steer := _steer_for_move(chosen, me)
+	var safety := EdgeSafetyEvaluator.evaluate_walk(me, steer[0], steer[1], _rules, capability)
+	if not safety.crosses_platform:
+		return chosen
+	## The best move would cross the platform from near the edge. Try
+	## alternatives in utility order.
+	var ranked: Array[int] = []
+	for i in utilities.size():
+		ranked.append(i)
+	ranked.sort_custom(func(a: int, b: int) -> bool: return utilities[a] > utilities[b])
+	var best_clearance_move := chosen
+	var best_clearance := safety.min_clearance
+	for idx in ranked:
+		var move := idx as Move
+		if move == chosen:
+			continue
+		var alt_steer := _steer_for_move(move, me)
+		var alt_safety := EdgeSafetyEvaluator.evaluate_walk(me, alt_steer[0], alt_steer[1], _rules, capability)
+		if not alt_safety.crosses_platform:
+			return move
+		if alt_safety.min_clearance > best_clearance:
+			best_clearance = alt_safety.min_clearance
+			best_clearance_move = move
+	## All candidates fall — choose the one with maximum survival.
+	return best_clearance_move
 
 
 func _execute(tick: int, me: FighterState) -> PlayerCommand:
@@ -382,7 +479,7 @@ func _steer(me: FighterState) -> PackedFloat64Array:
 				x = -ty * _orbit_sign * BAIT_DRIFT
 				y = tx * _orbit_sign * BAIT_DRIFT
 	var radius := SimMath.length(me.x, me.y)
-	var edge := _rules.arena_radius - EDGE_MARGIN
+	var edge := _rules.platform_radius - EDGE_MARGIN
 	if radius > edge:
 		var pull := SimMath.clamp01((radius - edge) / EDGE_RAMP)
 		x = SimMath.mix(x, -me.x / radius, pull)

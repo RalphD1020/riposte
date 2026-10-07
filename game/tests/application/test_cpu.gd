@@ -211,6 +211,7 @@ const PROFILE_POLICY: Array[String] = [
 	"charge_min", "charge_max",
 	"corner_pressure_weight", "tempo_awareness", "withdrawal_discipline",
 	"lateral_dash_weight", "stamina_cost_weight",
+	"edge_exploit_weight",
 ]
 
 
@@ -462,7 +463,7 @@ func test_assessment_reads_arena_pressure() -> void:
 	var state := DuelFixture.state(rules)
 	state.fighter(0).x = 0.0
 	state.fighter(0).y = 0.0
-	state.fighter(1).x = rules.arena_radius * 0.8
+	state.fighter(1).x = rules.platform_radius * 0.8
 	state.fighter(1).y = 0.0
 	var seen := CpuObservation.observe(state, 0, rules)
 	var reach := rules.weapon.tip_radius + rules.fighter.body_radius

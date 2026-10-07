@@ -23,7 +23,7 @@ Dependency direction: application → presentation → domain; content is data a
 
 ### Canonical tick order
 
-"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **6**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
+"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **9**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
 
 ```text
  1. guard: a finished match accepts no further steps
@@ -40,7 +40,9 @@ Dependency direction: application → presentation → domain; content is data a
 12. bind upkeep
 13. unified chronological contact loop: detect earliest TOI among blade↔blade,
     blade→body, tip→body, body↔body, arena boundary; seek to impact; resolve
-    according to interaction type (PHYS-008); carry remainder
+    according to interaction type (PHYS-008); carry remainder; post-carry
+    support-loss check: any living non-falling fighter past platform_radius
+    is marked falling and emits RING_OUT
 14. stamina step: drain from scratch work, recovery if below threshold,
     apply contact shock, clamp
 15. contact pair lifecycle upkeep (blade + weapon-body)

@@ -42,14 +42,14 @@ var _snap: bool = true
 var _disposed: bool = false
 
 
-static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, arena_radius: float, first: PresentationSnapshot) -> MatchPresenter:
+static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> MatchPresenter:
 	var presenter := MatchPresenter.new()
 	presenter.name = "MatchPresentation"
 	presenter._kits = kits
 	presenter._options = options
 	presenter._camera = camera
 	presenter._haptics.enabled = options.haptics
-	presenter._build(arena_radius, first)
+	presenter._build(platform_radius, edge_warning_inset, first)
 	return presenter
 
 
@@ -127,8 +127,8 @@ func detach_and_dispose() -> void:
 	queue_free()
 
 
-func _build(arena_radius: float, first: PresentationSnapshot) -> void:
-	_arena = ArenaScaffold.create(_kits.arena, arena_radius, first.spawn_offset)
+func _build(platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> void:
+	_arena = ArenaScaffold.create(_kits.arena, platform_radius, edge_warning_inset, first.spawn_offset)
 	add_child(_arena)
 	for slot in 2:
 		var row := first.fighter(slot)

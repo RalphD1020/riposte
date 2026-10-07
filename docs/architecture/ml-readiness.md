@@ -80,19 +80,23 @@ Local outcomes for reward/value estimation. Measured at the decision's temporal 
 
 Structured sidecar emitted per CPU decision. Fixed typed fields, never dictionaries:
 
-| Field               | Type               | Description                          |
-| ------------------- | ------------------ | ------------------------------------ |
-| `tick`              | int                | Decision tick                        |
-| `observation_tick`  | int                | Tick of the observation used         |
-| `move_scores`       | PackedFloat64Array | Utility scores [5]                   |
-| `chosen_move`       | Move enum          | Selected footwork                    |
-| `chosen_attack`     | Attack enum        | Selected attack intent               |
-| `measure_quality`   | float              | From TacticalAssessment              |
-| `initiative`        | float              | From TacticalAssessment              |
-| `stamina_depletion` | float              | From TacticalAssessment              |
-| `tempo_opportunity` | float              | From TacticalAssessment              |
-| `arena_pressure`    | float              | From TacticalAssessment              |
-| `burst_started`     | bool               | Whether a burst gesture was launched |
-| `burst_is_lateral`  | bool               | Lateral vs axial burst               |
+| Field                     | Type               | Description                                                       |
+| ------------------------- | ------------------ | ----------------------------------------------------------------- |
+| `tick`                    | int                | Decision tick                                                     |
+| `observation_tick`        | int                | Tick of the observation used                                      |
+| `move_scores`             | PackedFloat64Array | Utility scores [5]                                                |
+| `chosen_move`             | Move enum          | Selected footwork                                                 |
+| `chosen_attack`           | Attack enum        | Selected attack intent                                            |
+| `measure_quality`         | float              | From TacticalAssessment                                           |
+| `initiative`              | float              | From TacticalAssessment                                           |
+| `stamina_depletion`       | float              | From TacticalAssessment                                           |
+| `tempo_opportunity`       | float              | From TacticalAssessment                                           |
+| `arena_pressure`          | float              | From TacticalAssessment                                           |
+| `burst_started`           | bool               | Whether a burst gesture was launched                              |
+| `burst_is_lateral`        | bool               | Lateral vs axial burst                                            |
+| `edge_clearance`          | float              | Own distance from platform edge (platform_radius - center_dist)   |
+| `outward_radial_speed`    | float              | Positive = moving toward edge                                     |
+| `stopping_margin`         | float              | Worst outward radial speed at farthest predicted trajectory point |
+| `voluntary_ring_out_risk` | float              | 1.0 if chosen move crosses platform, else 0.0                     |
 
 Source: `game/src/application/cpu/cpu_decision_trace.gd`

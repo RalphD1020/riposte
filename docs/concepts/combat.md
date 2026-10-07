@@ -80,32 +80,32 @@ Calibration order matters, because it is the only order in which the numbers mea
 
 ## Mechanisms → code
 
-| Mechanism                                                      | Code                                                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Footwork in duel axes, stability                               | `game/src/domain/combat/movement_system.gd`                                          |
-| Facing and tracking (degrades with commitment)                 | `game/src/domain/combat/facing_system.gd`                                            |
-| Arena boundary and mass-aware body separation (PHYS-005)       | `game/src/domain/combat/arena_constraints.gd`                                        |
-| Input language, motor, phases, recovery (COMBAT-001)           | `game/src/domain/combat/weapon_system.gd`                                            |
-| Commitment `K`                                                 | `game/src/domain/combat/commitment_model.gd`                                         |
-| Swept collision (COMBAT-002) — blade, blade-body, body-body    | `game/src/domain/combat/collision_system.gd`, `fighter_pose.gd`, `contact_report.gd` |
-| Blade impulse, deflection, bind, parry, body push (COMBAT-003) | `game/src/domain/combat/contact_resolver.gd`                                         |
-| Relational contact: `v_rel`, impulse, severity (PHYS-001)      | `game/src/domain/combat/impact_model.gd`, `impact_result.gd`                         |
-| Structural coupling and effective mass (PHYS-002)              | `game/src/domain/combat/structural_coupling.gd`                                      |
-| Strike quality and damage curve (COMBAT-003)                   | `game/src/domain/combat/damage_model.gd`, `strike_result.gd`                         |
-| Initiative / time-to-threat                                    | `game/src/domain/combat/initiative_model.gd`                                         |
-| Shared geometry (distance, bearing, duel axes, closing speed)  | `game/src/domain/combat/duel_geometry.gd`                                            |
-| Contact lifecycle and hysteresis (COMBAT-007)                  | `game/src/domain/state/contact_pair_state.gd`                                        |
-| Chronological contact loop (COMBAT-007)                        | `game/src/domain/match/duel_simulation.gd`                                           |
-| Per-tick totality check (COMBAT-006)                           | `game/src/domain/state/state_invariants.gd`                                          |
-| Guard classification — diagnostic only (COMBAT-005)            | `game/src/domain/state/guard_region.gd`                                              |
-| Swing semantics — descriptions only (COMBAT-009)               | `game/src/domain/combat/swing_semantics.gd`                                          |
-| Body-contact classification (COMBAT-010)                       | `game/src/domain/combat/contact_resolver.gd`, `strike_result.gd`                     |
-| Reading a swing from the primitives (COMBAT-009)               | `game/src/presentation/entities/sword_trail_3d.gd`                                   |
-| Impact feedback from physical channels (COMBAT-009)            | `game/src/presentation/match/match_presenter.gd`                                     |
-| Cardinal sides and spawns (SIDE-001)                           | `game/src/domain/state/duel_side.gd`, `game/src/domain/match/duel_setup.gd`          |
-| Local perspective flip — presentation only (SIDE-001)          | `game/src/presentation/camera/duel_camera_rig.gd`                                    |
-| Physical baseline and scaling laws (CONTENT-002, PHYS-005)     | `game/src/domain/rules/physical_baseline.gd`                                         |
-| Authored build, derived accelerations (PHYS-005, PHYS-006)     | `game/src/domain/rules/fighter_definition.gd`, `weapon_definition.gd`                |
+| Mechanism                                                           | Code                                                                                 |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Footwork in duel axes, stability                                    | `game/src/domain/combat/movement_system.gd`                                          |
+| Facing and tracking (degrades with commitment)                      | `game/src/domain/combat/facing_system.gd`                                            |
+| Arena boundary and mass-aware body separation (PHYS-005, ARENA-001) | `game/src/domain/combat/arena_constraints.gd`                                        |
+| Input language, motor, phases, recovery (COMBAT-001)                | `game/src/domain/combat/weapon_system.gd`                                            |
+| Commitment `K`                                                      | `game/src/domain/combat/commitment_model.gd`                                         |
+| Swept collision (COMBAT-002) — blade, blade-body, body-body         | `game/src/domain/combat/collision_system.gd`, `fighter_pose.gd`, `contact_report.gd` |
+| Blade impulse, deflection, bind, parry, body push (COMBAT-003)      | `game/src/domain/combat/contact_resolver.gd`                                         |
+| Relational contact: `v_rel`, impulse, severity (PHYS-001)           | `game/src/domain/combat/impact_model.gd`, `impact_result.gd`                         |
+| Structural coupling and effective mass (PHYS-002)                   | `game/src/domain/combat/structural_coupling.gd`                                      |
+| Strike quality and damage curve (COMBAT-003)                        | `game/src/domain/combat/damage_model.gd`, `strike_result.gd`                         |
+| Initiative / time-to-threat                                         | `game/src/domain/combat/initiative_model.gd`                                         |
+| Shared geometry (distance, bearing, duel axes, closing speed)       | `game/src/domain/combat/duel_geometry.gd`                                            |
+| Contact lifecycle and hysteresis (COMBAT-007)                       | `game/src/domain/state/contact_pair_state.gd`                                        |
+| Chronological contact loop (COMBAT-007)                             | `game/src/domain/match/duel_simulation.gd`                                           |
+| Per-tick totality check (COMBAT-006)                                | `game/src/domain/state/state_invariants.gd`                                          |
+| Guard classification — diagnostic only (COMBAT-005)                 | `game/src/domain/state/guard_region.gd`                                              |
+| Swing semantics — descriptions only (COMBAT-009)                    | `game/src/domain/combat/swing_semantics.gd`                                          |
+| Body-contact classification (COMBAT-010)                            | `game/src/domain/combat/contact_resolver.gd`, `strike_result.gd`                     |
+| Reading a swing from the primitives (COMBAT-009)                    | `game/src/presentation/entities/sword_trail_3d.gd`                                   |
+| Impact feedback from physical channels (COMBAT-009)                 | `game/src/presentation/match/match_presenter.gd`                                     |
+| Cardinal sides and spawns (SIDE-001)                                | `game/src/domain/state/duel_side.gd`, `game/src/domain/match/duel_setup.gd`          |
+| Local perspective flip — presentation only (SIDE-001)               | `game/src/presentation/camera/duel_camera_rig.gd`                                    |
+| Physical baseline and scaling laws (CONTENT-002, PHYS-005)          | `game/src/domain/rules/physical_baseline.gd`                                         |
+| Authored build, derived accelerations (PHYS-005, PHYS-006)          | `game/src/domain/rules/fighter_definition.gd`, `weapon_definition.gd`                |
 
 ## Attack language (COMBAT-001)
 

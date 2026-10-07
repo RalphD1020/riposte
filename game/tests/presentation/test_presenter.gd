@@ -35,7 +35,7 @@ func _mount(options: PresentationOptions = PresentationOptions.new()) -> Mount:
 	mount.camera.configure(RiposteKits.camera_profile())
 	mount.state = DuelSetup.new_state(_rules, 1)
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), _rules)
-	mount.presenter = MatchPresenter.create(kits, options, mount.camera, _rules.arena_radius, SnapshotProjector.project(mount.state, _rules))
+	mount.presenter = MatchPresenter.create(kits, options, mount.camera, _rules.platform_radius, _rules.edge_warning_inset, SnapshotProjector.project(mount.state, _rules))
 	mount.root.add_child(mount.presenter)
 	mount.presenter.hitstop_requested.connect(func(seconds: float) -> void: mount.hitstops.append(seconds))
 	return mount

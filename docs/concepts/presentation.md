@@ -121,7 +121,7 @@ The authoritative weapon angle drives the blade visual. Character animation visu
 | Snapshot + projector (the only read boundary)                                                             | `game/src/presentation/snapshot/`                                            |
 | Arena axes: world = (x, 0, −y), yaw = θ + π/2                                                             | `game/src/presentation/spatial/arena_transform.gd`                           |
 | Passive fighter proxy (primitive or authored; x-ray blade) and sword trail                                | `game/src/presentation/entities/`                                            |
-| Arena scaffold (floor, ring, lights)                                                                      | `game/src/presentation/world/arena_scaffold.gd`                              |
+| Arena scaffold (floor to `platform_radius`, warning ring at `warning_ring_radius`, edge strip, lights)    | `game/src/presentation/world/arena_scaffold.gd`                              |
 | Duel camera (fixed orientation, smooth zoom, tiny impulses)                                               | `game/src/presentation/camera/`                                              |
 | VFX (capped), audio (pooled voices; SFX + Music buses), haptics                                           | `game/src/presentation/vfx/`, `audio/`, `feedback/`                          |
 | Coordinator                                                                                               | `game/src/presentation/match/match_presenter.gd`                             |

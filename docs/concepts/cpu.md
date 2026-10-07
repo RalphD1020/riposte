@@ -71,14 +71,28 @@ A caution for anyone adding a new reading: the profile weights are calibrated ag
 
 Where to tune: profile weights (`cpu_profile.gd`) decide how much each consideration matters per difficulty; the named constants at the top of `cpu_controller.gd` are the heuristic's shape (thresholds, ramps, tolerances, steering) shared by every difficulty. `CpuObservation` carries only what decisions read, so the per-tick perception cost stays two `time_to_threat` calls. Measure changes with `game/tools/balance_report.gd`.
 
-| Concept             | Code                                              |
-| ------------------- | ------------------------------------------------- |
-| Controller          | `game/src/application/cpu/cpu_controller.gd`      |
-| Profiles            | `game/src/application/cpu/cpu_profile.gd`         |
-| Delayed observation | `game/src/application/cpu/cpu_observation.gd`     |
-| Tactical assessment | `game/src/application/cpu/tactical_assessment.gd` |
-| Decision trace      | `game/src/application/cpu/cpu_decision_trace.gd`  |
-| Behavior proofs     | `game/tests/application/test_cpu.gd`              |
+| Concept             | Code                                                |
+| ------------------- | --------------------------------------------------- |
+| Controller          | `game/src/application/cpu/cpu_controller.gd`        |
+| Profiles            | `game/src/application/cpu/cpu_profile.gd`           |
+| Delayed observation | `game/src/application/cpu/cpu_observation.gd`       |
+| Tactical assessment | `game/src/application/cpu/tactical_assessment.gd`   |
+| Decision trace      | `game/src/application/cpu/cpu_decision_trace.gd`    |
+| Edge safety         | `game/src/application/cpu/edge_safety_evaluator.gd` |
+| Edge safety result  | `game/src/application/cpu/edge_safety_result.gd`    |
+| Behavior proofs     | `game/tests/application/test_cpu.gd`                |
+| Edge safety proofs  | `game/tests/application/test_edge_safety.gd`        |
+
+## Edge safety (CPU-006)
+
+The CPU avoids voluntary self-ring-outs through a two-layer system:
+
+- **Layer A (Safety)**: `EdgeSafetyEvaluator` is a pure stateless predictor using real motor laws (`locomotion_force/mass`, `burst_force/mass`, capability scaling from stamina/health). It forward-integrates position/velocity over a dynamic prediction horizon (`WALK_HORIZON_TICKS = 10` for walking, `burst_ticks + BRAKE_MARGIN_TICKS` for dashes). Returns `EdgeSafetyResult` with `crosses_platform`, `min_clearance`, `stopping_margin`, `recoverable`. The safety filter is **identical across all difficulties**.
+- **Layer B (Tactical)**: `TacticalAssessment` edge features (`edge_clearance`, `outward_radial_speed`, `stopping_margin`, `opponent_edge_clearance`, `edge_position_advantage`) feed into CPU approach utility through `CpuProfile.edge_exploit_weight` (Easy=0.0, Medium=0.2, Hard=0.6). Difficulty changes only this tactical layer.
+
+Walk safety only activates when the fighter is within `body_radius` of the platform edge — further out, the edge steering in `_steer()` handles avoidance. Burst safety is the hard filter: any burst whose predicted trajectory crosses the platform is suppressed. If no safe candidate exists, the CPU chooses maximum `min_clearance` (survival), never an invisible wall or idle clamp.
+
+The CPU remains fully vulnerable to forced ring-outs from combat physics. The safety layer prevents voluntary walks and dashes off the cliff; it cannot prevent a knockback impulse or body separation from pushing the fighter past `platform_radius`.
 
 ## Decision traces
 
