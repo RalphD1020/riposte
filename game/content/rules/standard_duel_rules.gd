@@ -1,22 +1,24 @@
 class_name StandardDuelRules
 extends RefCounted
 
-## MVP-0 rule content: the normalized duelist, the bastard sword, the standard
-## arena, best of five. This file is the single place to tune MVP-0 numbers.
+## MVP-0 rule content: the standard arena, best of five, and the combat
+## constants that govern contact.
 ##
-## Reference fighter 1.75 m tall with a 0.27 m footprint (COMBAT §4). Bastard
-## sword 1.22 m overall with a ~0.97 m effective blade and ~1.6 kg (COMBAT §5).
-## Tap threshold 7 ticks ≈ 117 ms; full charge 54 ticks ≈ 0.9 s past it.
+## A rule set *selects* its fighter and weapon by id and tunes the arena around
+## them; it does not author them. The fighter and the sword are content in their
+## own right and live in their own catalogs (CONTENT-001), which is what makes
+## "same rules, different duelist" a one-line change instead of a fork of this
+## file.
 ##
-## See also: /docs/concepts/combat.md
+## See also: /docs/concepts/content.md, /docs/concepts/combat.md
 
 
 static func create() -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 1
-	rules.fighter = duelist()
-	rules.weapon = bastard_sword()
+	rules.version = 15
+	rules.fighter = FighterCatalog.of(ContentIds.FIGHTER_DUELIST)
+	rules.weapon = WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD)
 	rules.combat = combat_tuning()
 	rules.arena_id = ContentIds.ARENA_STANDARD
 	rules.arena_radius = 8.0
@@ -41,90 +43,6 @@ static func training() -> DuelRules:
 	return rules
 
 
-static func duelist() -> FighterDefinition:
-	var fighter := FighterDefinition.new()
-	fighter.id = ContentIds.FIGHTER_DUELIST
-	fighter.body_radius = 0.27
-	fighter.max_health = 100.0
-	fighter.max_speed = 4.2
-	fighter.move_accel = 22.0
-	fighter.brake_accel = 30.0
-	fighter.speed_forward = 1.0
-	fighter.speed_lateral = 0.92
-	fighter.speed_backward = 0.78
-	fighter.turn_speed_max = 9.0
-	fighter.turn_accel = 60.0
-	fighter.track_gain = 14.0
-	fighter.translation_commit_penalty = 0.32
-	fighter.accel_commit_penalty = 0.66
-	fighter.tracking_commit_penalty = 0.72
-	fighter.overswing_tracking_penalty = 0.1
-	fighter.min_tracking = 0.12
-	fighter.counter_rotation_penalty = 0.5
-	fighter.counter_rotation_reference_rate = 3.0
-	fighter.stability_floor = 0.35
-	fighter.stability_rate = 3.0
-	fighter.stability_accel_weight = 0.35
-	fighter.stability_turn_weight = 0.25
-	fighter.stagger_translation = 0.55
-	fighter.stagger_tracking = 0.35
-	return fighter
-
-
-static func bastard_sword() -> WeaponDefinition:
-	var weapon := WeaponDefinition.new()
-	weapon.id = ContentIds.WEAPON_BASTARD_SWORD
-	weapon.hilt_radius = 0.25
-	weapon.tip_radius = 1.22
-	weapon.blade_radius = 0.022
-	weapon.mass = 1.6
-	weapon.inertia = 1.0
-	weapon.guard_angle = PI * 0.25
-	weapon.guard_limit = PI * 0.75
-	weapon.min_arc = PI * 0.5
-	weapon.max_arc = PI
-	weapon.tap_threshold_ticks = 7
-	weapon.charge_ticks = 54
-	weapon.buffer_ticks = 6
-	weapon.swing_speed_tap = 10.5
-	weapon.swing_speed_full = 20.0
-	weapon.swing_accel_tap = 130.0
-	weapon.swing_accel_full = 150.0
-	weapon.brake_accel_tap = 220.0
-	weapon.brake_accel_full = 150.0
-	weapon.windup_speed = 6.0
-	weapon.windup_gain = 18.0
-	weapon.windup_accel = 60.0
-	weapon.hold_damping = 40.0
-	weapon.control_speed = 1.2
-	weapon.tap_commitment = 0.4
-	weapon.recovery_base_ticks = 6
-	weapon.recovery_commit_ticks = 16.0
-	weapon.recovery_overswing_ticks_per_rad = 8.0
-	weapon.recovery_displacement_ticks_per_speed = 1.5
-	weapon.recovery_facing_ticks_per_rad = 6.0
-	weapon.recovery_balance_ticks = 8.0
-	weapon.recovery_max_ticks = 48
-	weapon.restitution = 0.35
-	weapon.deflect_fraction = 0.4
-	weapon.contact_cooldown_ticks = 6
-	weapon.bind_speed = 1.4
-	weapon.bind_ticks = 20
-	weapon.bind_loser_recovery_ticks = 10
-	weapon.reference_closing_speed = 10.5
-	weapon.efficiency_fractions = PackedFloat64Array([0.0, 0.35, 0.7, 1.0])
-	weapon.efficiency_values = PackedFloat64Array([0.35, 0.75, 1.0, 0.8])
-	weapon.edge_floor = 0.3
-	weapon.knockback_speed = 3.0
-	weapon.stagger_quality = 0.45
-	weapon.stagger_base_ticks = 9
-	weapon.stagger_scale_ticks = 18.0
-	weapon.swing_stop_base = 0.25
-	weapon.swing_stop_scale = 0.5
-	weapon.swing_end_quality = 0.4
-	return weapon
-
-
 static func combat_tuning() -> CombatTuning:
 	var combat := CombatTuning.new()
 	combat.exposure_base = 0.9
@@ -137,17 +55,45 @@ static func combat_tuning() -> CombatTuning:
 	combat.exposure_stagger = 0.2
 	combat.exposure_min = 0.75
 	combat.exposure_max = 1.5
-	combat.damage_qualities = PackedFloat64Array([0.0, 0.2, 0.4, 0.6, 0.8, 0.95, 1.0, 1.2])
-	combat.damage_values = PackedFloat64Array([0.0, 4.0, 14.0, 30.0, 55.0, 85.0, 100.0, 120.0])
-	combat.max_physical_quality = 1.25
+	## Damage is read from severity, which goes as `v²`, so the curve's domain
+	## is wider and its low end flatter than a speed-linear one: a slow cut is
+	## a scratch, and the interesting decisions live between a half-reference
+	## and a double-reference strike.
+	combat.damage_qualities = PackedFloat64Array([0.0, 0.1, 0.25, 0.45, 0.72, 1.0, 1.4, 1.8, 2.4])
+	combat.damage_values = PackedFloat64Array([0.0, 2.0, 7.0, 20.0, 38.0, 56.0, 76.0, 95.0, 120.0])
+	## Compressive at the top on purpose. Severity goes as `v²`, but injury
+	## does not: a cut that already opens a fighter up is not improved by more
+	## energy. Without this the quadratic would make heavy charges strictly
+	## dominant and spacing, timing and punishment would stop paying.
+	combat.max_physical_quality = 1.6
 	combat.damage_scale = 1.0
-	combat.critical_quality = 0.7
+	combat.critical_quality = 1.2
 	combat.critical_blade_min = 0.45
 	combat.critical_blade_max = 0.9
 	combat.critical_alignment = 0.85
 	combat.critical_exposure = 1.0
-	combat.reference_weapon_mass = 1.6
-	combat.blade_inertia_stability_floor = 0.6
+	## Structural coupling. Speed, acceleration debt and body rotation each
+	## erode plant quality; the blend with movement coherence is deliberately
+	## minority-weighted so footwork shapes a strike without dominating it.
+	## The floor keeps lateral and retreating swordplay viable: planted is the
+	## most controlled stance, not the universally optimal one.
+	combat.plant_speed_weight = 0.25
+	combat.plant_accel_weight = 0.4
+	combat.plant_turn_weight = 0.2
+	combat.coupling_coherence_share = 0.35
+	combat.coupling_floor = 0.3
+	## The 80 kg body is the *reservoir* a strike may draw on, never its
+	## automatic strike mass: a sword couples a fraction of it, and well-
+	## coupled contact lands around 19 kg-equivalent.
+	combat.body_contribution_mass = 20.0
+	combat.resist_plant_floor = 0.45
+	combat.reference_strike_mass = 18.6
+	## The reference strike: `reference_strike_mass` closing at the weapon's
+	## `reference_closing_speed` of 10.5 m/s. `J = m v` and `E = ½ m v²`, so
+	## normalized impulse and severity both read 1.0 for exactly that hit.
+	combat.reference_impulse = 195.3
+	combat.reference_severity = 1025.3
+	combat.blade_inertia_coupling_floor = 0.6
 	combat.blade_inertia_commit_bonus = 0.5
 	combat.blade_solid_speed = 3.0
 	combat.blade_strong_speed = 8.0
@@ -155,4 +101,63 @@ static func combat_tuning() -> CombatTuning:
 	combat.parry_margin_seconds = 0.08
 	combat.substep_travel = 0.03
 	combat.max_substeps = 48
+	## Chronological contact loop. Six resolutions is far more than a duel
+	## produces in a 16.7 ms tick, so hitting it means the geometry is wrong.
+	combat.max_contacts_per_tick = 6
+	## Twice the blade radius: blades must visibly part, not merely stop
+	## overlapping, before they can clash again.
+	combat.separation_epsilon = 0.044
+	combat.bind_escape_ticks = 30
+	## Stamina (STAMINA-001). The ceiling tracks health: at full health the
+	## fighter's pool is 100; at zero health a quarter of it has been lost to
+	## injury. Shock is moderate — a reference cut costs ~22 stamina — so a
+	## fighter can absorb a few hits before capability starts to erode, and
+	## resting brings it back slowly.
+	combat.stamina_health_share = 0.25
+	combat.stamina_shock_rate = 0.4
+	combat.stamina_exertion_rate = 5.0
+	combat.stamina_recovery_rate = 8.0
+	combat.stamina_recovery_effort_ceiling = 0.1
+	## Stamina normalization: max power × tick for the baseline fighter/weapon.
+	## Movement: LOCOMOTION_FORCE × max_speed × dt (1760 × 4.2 / 60).
+	## Turn: turn_torque × turn_speed_max × dt (175 × 9.0 / 60).
+	## Weapon: weapon_torque_scale × swing_torque_full × swing_speed_full × dt
+	##         (1.0 × 148.5 × 20.0 / 60).
+	combat.stamina_move_reference_work = 123.2
+	combat.stamina_turn_reference_work = 26.25
+	combat.stamina_weapon_reference_work = 49.5
+	## Work-type weights: driving > braking > static hold (STAMINA-001).
+	combat.stamina_drive_weight = 1.0
+	combat.stamina_brake_weight = 0.5
+	combat.stamina_hold_weight = 0.3
+	## Capability. Injury alone can cost up to 35% of motor authority; fatigue
+	## alone up to 25%. The additive floor of 0.4 ensures even a badly hurt,
+	## exhausted fighter retains 40% of their force and torque — enough to
+	## swing and turn, never enough to fight at full speed.
+	combat.capability_injury_max = 0.35
+	combat.capability_fatigue_max = 0.25
+	combat.capability_floor = 0.4
+	## Body-body collision: nearly inelastic so fighters don't bounce off each
+	## other. Mass-aware inverse impulse handles the asymmetry (PHYS-005).
+	combat.body_restitution = 0.05
+	## Tangential friction. Bounded by Coulomb's law: a glancing shoulder bump
+	## sheds some lateral speed but cannot halt a side-step. 0.3 keeps the
+	## effect visible without making every bump a wall.
+	combat.body_friction = 0.3
+	## Point-strike classification (COMBAT-010). Thresholds are deliberately
+	## permissive for pokes (walking into a point is common) and strict for
+	## the burst-alignment needed to make one a thrust.
+	combat.point_strike_alignment = 0.4
+	combat.point_strike_incidence = 0.3
+	combat.point_strike_severity = 0.15
+	combat.graze_quality = 0.05
+	## A burst must be within ~37° of the sword axis to qualify as a thrust.
+	combat.thrust_burst_alignment = 0.8
+	## POKE lethality threshold (COMBAT-011). Physical quality at or above this
+	## value makes a POKE an instant kill. Tuned so walking-speed pokes are
+	## survivable but an opponent dashing onto a held point is lethal.
+	combat.poke_lethal_quality = 0.9
+	## Game-feel pushback. Slightly above 1.0 for readable defender displacement.
+	## Never reflected back into blade reaction.
+	combat.body_push_feel_scale = 1.2
 	return combat

@@ -18,6 +18,9 @@ var match_winner: int = MatchPhase.NO_WINNER
 var end_reason: StringName = &""
 var intro_ticks: int = 0
 var time_left_ticks: int = 0
+## How far out from the centre each side's home end sits, so the arena can
+## mark its north-south axis where the fighters actually start (SIDE-001).
+var spawn_offset: float = 0.0
 var fighters: Array[PresentationFighter] = []
 ## Debug overlay (COMBAT §76).
 var distance: float = 0.0

@@ -17,6 +17,8 @@ Never commit:
 
 Strict CSP (no `unsafe-eval`, `frame-src 'none'`, `frame-ancestors 'none'`, `object-src 'none'`, `form-action 'self'`, `base-uri 'self'`), `X-Frame-Options: DENY`, `nosniff`, HSTS, strict referrer policy, and a Permissions-Policy denying camera, microphone, and geolocation. Static hosts must set equivalent headers themselves.
 
+`/game/:path*` — the staged Godot Web export served at `/play` — gets a **path-scoped** policy adding `script-src 'wasm-unsafe-eval'` for WebAssembly and `worker-src 'self' blob:` for the audio worklet. It is scoped rather than site-wide on purpose: widening the main policy to cover one directory would hand those capabilities to every page that does not need them. `'unsafe-eval'` still appears nowhere, and the export stays single-threaded (`thread_support=false`), so no `SharedArrayBuffer` and therefore no COOP/COEP cross-origin isolation is required — which is why the game can sit on our own origin beside ordinary pages. `runtimeConfig.test.ts` asserts both the scoping and the absence of `'unsafe-eval'`.
+
 ## Untrusted input
 
 - **Environment destinations** are validated before use (WEB-006): public URLs https only; local play loopback http or same-origin paths; protocol-relative, `javascript:`, and malformed values become unconfigured.

@@ -108,6 +108,20 @@ func _show_section(index: int) -> void:
 				settings.screen_shake = on
 				_app.save_settings()
 			)
+			## Both of these change how loudly a cue is drawn and nothing
+			## else. Off is a supported way to play, not a handicap: the
+			## sweet region is still where it was, and combat stays readable
+			## from blade position, wind-back, and recovery alone (UX §54).
+			UiKit.caption(self, AppCopy.SETTING_TRAIL)
+			UiKit.segmented(self, AppCopy.TRAIL_LEVELS, settings.trail_strength, func(level: int) -> void:
+				settings.trail_strength = level as PlayerSettings.TrailStrength
+				_app.save_settings()
+			, AppCopy.SETTING_TRAIL)
+			UiKit.caption(self, AppCopy.SETTING_SWEET_SPOT)
+			UiKit.segmented(self, AppCopy.SWEET_SPOT_LEVELS, settings.sweet_spot, func(level: int) -> void:
+				settings.sweet_spot = level as PlayerSettings.SweetSpot
+				_app.save_settings()
+			, AppCopy.SETTING_SWEET_SPOT)
 		Section.CONTROLS:
 			UiKit.caption(self, AppCopy.SETTING_CONTROL_OPACITY)
 			var choose_level := func(level: int) -> void:

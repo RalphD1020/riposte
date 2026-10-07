@@ -14,6 +14,7 @@ const TOP := 96.0
 
 var _label: Label
 var _last_contact: String = NONE
+var _profile: PackedStringArray = PackedStringArray()
 
 
 static func create() -> DebugOverlay:
@@ -27,6 +28,43 @@ static func create() -> DebugOverlay:
 	overlay.add_child(overlay._label)
 	overlay.visible = false
 	return overlay
+
+
+## Record the match's physical profile (COMBAT §41). Shown because almost
+## every surprise in tuning turns out to be a derived quantity disagreeing
+## with the authored one: a sluggish fighter is usually carrying more inertia
+## than anyone intended. Seeing `I` and `α = τ/I` beside the mass and torque
+## they came from is what makes that visible instead of mysterious.
+##
+## Captured once, since definitions are immutable for the life of the match.
+func describe(fighter: FighterDefinition, weapon: WeaponDefinition) -> void:
+	_profile = PackedStringArray([
+		(
+			"body %.2f m · %.1f kg (×%.2f) · I %.2f kg·m² · move %.0f N (%.1f m/s²) · turn %.0f N·m (%.1f rad/s²)"
+			% [
+				fighter.height,
+				fighter.mass,
+				fighter.mass_ratio(),
+				fighter.moment_of_inertia(),
+				fighter.locomotion_force,
+				fighter.move_accel(),
+				fighter.turn_torque,
+				fighter.turn_accel(),
+			]
+		),
+		(
+			"blade %.2f m · %.2f kg (×%.2f) · I %.2f kg·m² (×%.2f) · swing %.0f N·m · tip %.1f m/s"
+			% [
+				weapon.length(),
+				weapon.mass,
+				weapon.mass_ratio(),
+				weapon.moment_of_inertia(),
+				weapon.inertia_ratio(),
+				weapon.swing_torque_full,
+				weapon.swing_speed_full * weapon.tip_radius,
+			]
+		),
+	])
 
 
 func observe(events: Array[DuelEvent]) -> void:
@@ -45,7 +83,7 @@ func observe(events: Array[DuelEvent]) -> void:
 func update(snapshot: PresentationSnapshot, fps: float) -> void:
 	if not visible or snapshot == null:
 		return
-	var lines := PackedStringArray()
+	var lines := _profile.duplicate()
 	lines.append("tick %d · %d fps" % [snapshot.tick, roundi(fps)])
 	lines.append("distance %.2f m · closing %.2f m/s · orbit %.2f rad/s" % [snapshot.distance, snapshot.closing_speed, snapshot.orbit_rate])
 	for fighter in snapshot.fighters:

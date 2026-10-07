@@ -2,6 +2,7 @@
 
 > See also: [README.md](../../README.md), [docs/architecture/monorepo.md](../architecture/monorepo.md)
 > See also: [docs/concepts/simulation.md](../concepts/simulation.md), [docs/concepts/presentation.md](../concepts/presentation.md)
+> See also: [spec/invariants.md](../../spec/invariants.md) — WEB-001, WEB-003, WEB-004, PRES-KIT-001, SIM-MATH-001, ZERO-TOLERANCE-001
 > Source: `game/project.godot`, `game/scripts/lint.mjs`
 
 ## Version and renderer
@@ -51,6 +52,15 @@ One home per vocabulary; never retype a literal:
 | Styles, sizes, colors                         | `RiposteTheme` tokens and type variations        |
 | Copy                                          | `AppCopy` (menus), `HudCopy` (HUD)               |
 | Content identities                            | `ContentIds`                                     |
+| Platform / display feature strings            | `Platform` (`is_web()`, `is_headless()`)         |
+| Browser safe-area JSON contract               | `SafeArea.WEB_PROPERTY` / `KEY_*` / `KEYS`       |
+
+Two of these cross a boundary no compiler checks, so both are gated by tests instead:
+
+- `SafeArea`'s global name and inset keys must match hand-written JavaScript in `export_presets.cfg`'s head include. A rename there does not error — it silently reports a zero inset and puts the HUD under a phone notch. `APP-SHELL` asserts the preset publishes exactly `SafeArea.KEYS` and the global `SafeArea` evaluates.
+- The export shell's loading CSS paints the first thing a player on `/play` ever sees, before any of this code exists. It is the one surface the theme cannot reach at runtime, so `PRES-THEME` asserts those colors are `RiposteTheme.STEEL_900` and `TEXT_ON_DARK` and that the pair still passes contrast.
+
+`Platform` is deliberately thin. Touch layout is `DisplayServer.is_touchscreen_available()`, not a platform guess, and `OS.has_feature("mobile")` is false in a browser and lint-rejected; if a web-mobile branch ever becomes necessary, `web_android` / `web_ios` belong in `Platform` beside the rest.
 
 ## GDScript
 
@@ -63,10 +73,31 @@ One home per vocabulary; never retype a literal:
 - Tunables are named constants at the top of the file that owns them (gameplay values in `game/content/rules/`; per-identity feel in kits; generic feel in the presenter / directors).
 - Nodes in the tree `queue_free`; swap screens with `remove_child` + `queue_free` so `_exit_tree` teardown runs first. Never free a button inside its own signal (defer the page swap).
 
+## Animation and rigs
+
+Authored art arrives as a `PresentationKit.scene` and nothing else moves (PRES-KIT-001). The proxy either builds its primitive or instantiates the kit scene, so the boundary is a handful of names rather than a code path:
+
+| The kit provides                    | The proxy does                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------- |
+| `scene`                             | Instantiates it under `VisualRoot`; the primitive body is not built               |
+| `visual_transform`                  | Applied to `VisualRoot` — the one place to correct an exporter's scale or up-axis |
+| `color_targets`                     | Finds each named `MeshInstance3D` and gives it the combatant color, once at build |
+| `animation_clips` (semantic → clip) | Plays the mapped clip on a descendant named `AnimationPlayer`                     |
+
+Node contract: the root carries the ground pose and yaw, `VisualRoot` carries the kit transform and procedural motion, and `SwordPivot` hangs under `VisualRoot` at the kit's `blade_height` and is rotated by the gameplay weapon angle. `Shadow` and `ChargeRing` stay on the ground outside `VisualRoot` so a death tilt does not tip them. An authored character scene supplies the **body**; the blade stays the pivot's, because `blade_points()` is what trails, sparks, and the debug vectors read, and a second blade owned by the model would be a blade the game cannot see.
+
+Rules for anything authored later:
+
+- **An `AnimationPlayer` stores clips; an `AnimationTree` controls blending.** Both belong _inside_ the authored scene, not in `src/presentation`. The kit keeps naming clips by semantic (`IDLE`, `MOVE`, `CHARGE`, `SWING`, `HIT`, `STAGGER`, `DEATH`); if a rig wants a locomotion `BlendSpace2D`, a body `StateMachine`, and one-shots for bursts, that graph is the scene's business and the semantic names are still the whole interface.
+- **`animation_clips` keys MUST be a subset of the declared semantics.** A clip nobody asks for never plays; a semantic with no clip falls back to procedural motion rather than freezing.
+- **Animation never decides anything.** A clip may not gate a hit, extend a window, or change a timing — the proxy is posed from the snapshot every frame and `_animate` only picks what to look like (PRES-001).
+- **Set materials once at build, never per frame.** Combatant color goes through `color_targets`; a rig must not bake a side's color into its own materials, and per-frame material work on a shared resource would leak between fighters.
+- **No physics nodes.** The simulation owns position, facing, and contact; a `CharacterBody3D` or an `Area3D` in a kit scene is a second opinion about the fight.
+
 ## Harness
 
 `godot --headless --fixed-fps 60 --path game res://tests/harness/run_headless.tscn` (`pnpm --filter @riposte/game test`). `RIPOSTE_SUITE=<name>` runs one suite. See [docs/reference/testing.md](./testing.md).
 
 ## Export
 
-`pnpm game:export:web` writes `dist/game/web/` clean-room (fail closed on missing artifacts or safe-area include); `pnpm --filter @riposte/game dev` serves it on `127.0.0.1:8060`. Export excludes `tests/*` and `tools/*`.
+`pnpm game:export:web` writes `dist/game/web/` clean-room (fail closed on missing artifacts or safe-area include); `pnpm --filter @riposte/game dev` serves it on `127.0.0.1:8060`. Export excludes `tests/*` and `tools/*`. `pnpm game:stage:web` then **copies** that directory into `apps/web/public/game/` so the site can serve it at `/play` (WEB-004); `dist/game/web/` stays the canonical itch upload.

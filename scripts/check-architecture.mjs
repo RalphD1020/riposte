@@ -8,6 +8,12 @@
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import {
+  REQUIRED_ARTIFACTS,
+  STAGE_DIR,
+  exportProblems,
+  shellProblems,
+} from "./stage-web-game.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const errors = [];
@@ -147,6 +153,44 @@ if (
   fail(
     'root script "verify" must be check then test then build (scripts/verify.mjs)',
   );
+}
+
+/**
+ * Staging the Web export is the one place Next touches Godot output
+ * (MONO-001, WEB-004). The dangerous failure is a `/play` that serves a shell
+ * and then 404s on the wasm, because that looks like a working deploy — so
+ * the fail-closed behaviour is asserted here rather than trusted.
+ */
+if (
+  typeof rootPkg.scripts?.["game:stage:web"] !== "string" ||
+  !rootPkg.scripts["game:stage:web"].includes("stage-web-game.mjs")
+) {
+  fail('root script "game:stage:web" must run scripts/stage-web-game.mjs');
+}
+const stageRelative = relative(ROOT, STAGE_DIR).replaceAll("\\", "/");
+if (!readFileSync(join(ROOT, ".gitignore"), "utf-8").includes(stageRelative)) {
+  fail(`${stageRelative} is build output and must be gitignored`);
+}
+if (exportProblems("", () => false).length !== 1) {
+  fail("staging must refuse a missing export with exactly one explanation");
+}
+for (const missing of REQUIRED_ARTIFACTS) {
+  const problems = exportProblems(
+    "dist/game/web",
+    (path) => !String(path).endsWith(missing),
+  );
+  if (problems.length !== 1 || !problems[0].includes(missing)) {
+    fail(`staging must refuse an export missing ${missing}`);
+  }
+}
+if (shellProblems("<html><body>Riposte</body></html>").length !== 2) {
+  fail("staging must refuse a page that is not the engine's own shell");
+}
+if (shellProblems("Engine GODOT_THREADS_ENABLED = true").length !== 1) {
+  fail("WEB-003: staging must refuse a threaded shell");
+}
+if (shellProblems("Engine GODOT_THREADS_ENABLED = false").length !== 0) {
+  fail("staging must accept the real single-threaded shell");
 }
 
 const gameScripts = gamePkg?.scripts ?? {};

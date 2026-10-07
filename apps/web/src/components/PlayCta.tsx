@@ -1,8 +1,12 @@
 /**
- * Play control. Always a full navigation to `/play`, where play admission
- * decides the destination (proxy in server mode, PlayGateway in static
- * exports), so this component never inspects hosts or configuration.
+ * Play control. Always a plain anchor to `/play` — a full navigation, not a
+ * client-side route change, because on the server build `/play` is a rewrite
+ * to the staged export and a router transition would never reach it.
  *
+ * `/play` resolves the destination; this component never inspects hosts or
+ * configuration, so there is exactly one place admission is decided.
+ *
+ * @see ../config/runtimeConfig.ts — resolvePlaySurface
  * @see ../../../../docs/concepts/web.md
  * @see ../../../../spec/invariants.md — WEB-005
  */

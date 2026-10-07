@@ -43,6 +43,12 @@ const CODE_FILE = /\.(gd|ts|tsx|mjs|css)$/;
 const MARKDOWN_ROOTS = ["docs", "spec", "examples"];
 const MARKDOWN_FILES = ["README.md", "AGENTS.md", "game/README.md"];
 const REPO_PATH = /^(?:game|apps|scripts|docs|spec|examples)\/[\w@./-]+$/;
+/**
+ * Paths docs may name that only exist after a build. They are gitignored
+ * artifacts, so requiring them on disk would make the docs gate depend on
+ * whether someone had run an export.
+ */
+const BUILD_OUTPUTS = new Set(["apps/web/public/game"]);
 
 function walk(dir, accept, callback) {
   if (!existsSync(dir)) return;
@@ -133,7 +139,11 @@ function checkMarkdownTargets() {
     }
     for (const match of content.matchAll(/`([^`\s]+)`/g)) {
       const path = match[1].replace(/\/$/, "");
-      if (REPO_PATH.test(path) && !existsSync(join(ROOT, path))) {
+      if (
+        REPO_PATH.test(path) &&
+        !BUILD_OUTPUTS.has(path) &&
+        !existsSync(join(ROOT, path))
+      ) {
         errors.push(`${file} names missing path ${match[1]}`);
       }
     }

@@ -24,8 +24,11 @@ static func cues() -> Dictionary:
 			PresentationKit.CUE_BLADE_LIGHT: _clang(0.12, 0.35),
 			PresentationKit.CUE_BLADE_SOLID: _clang(0.2, 0.6),
 			PresentationKit.CUE_BLADE_STRONG: _clang(0.32, 0.9),
+			PresentationKit.CUE_BIND: _grind(),
 			PresentationKit.CUE_BODY_LIGHT: _thud(0.12, 0.45),
 			PresentationKit.CUE_BODY_HEAVY: _thud(0.22, 0.85),
+			PresentationKit.CUE_BODY_POKE: _poke(),
+			PresentationKit.CUE_BODY_THRUST: _thrust(),
 			PresentationKit.CUE_CRITICAL: _critical(),
 			PresentationKit.CUE_SWING: _whoosh(0.18, 0.4),
 			PresentationKit.CUE_CHARGE: _tension(0.45, 0.18),
@@ -42,6 +45,16 @@ static func _clang(duration: float, gain: float) -> AudioStreamWAV:
 		for frequency: float in partials:
 			tone += sin(TAU * frequency * t) / 3.0
 		return gain * exp(-t * 22.0) * (0.8 * tone + 0.2 * noise)
+	)
+
+
+## A bind is blades pinned and grinding, not a clang that happens to be quiet:
+## it sustains instead of decaying, so the two situations never sound alike.
+static func _grind() -> AudioStreamWAV:
+	return _render(0.28, func(t: float, noise: float) -> float:
+		var envelope := clampf(t * 30.0, 0.0, 1.0) * clampf((0.28 - t) * 12.0, 0.0, 1.0)
+		var scrape := sin(TAU * (420.0 + 90.0 * sin(TAU * 11.0 * t)) * t)
+		return 0.45 * envelope * (0.45 * scrape + 0.55 * noise)
 	)
 
 
@@ -62,6 +75,22 @@ static func _tension(duration: float, gain: float) -> AudioStreamWAV:
 	return _render(duration, func(t: float, _noise: float) -> float:
 		var frequency := 300.0 + 400.0 * t / duration
 		return gain * sin(TAU * frequency * t) * clampf(t * 8.0, 0.0, 1.0) * (1.0 - t / duration)
+	)
+
+
+## A poke is a narrow, sharp contact — higher pitch than a thud, fast decay.
+static func _poke() -> AudioStreamWAV:
+	return _render(0.14, func(t: float, noise: float) -> float:
+		return 0.55 * exp(-t * 26.0) * (0.65 * sin(TAU * 280.0 * t) + 0.35 * noise)
+	)
+
+
+## A thrust is a committed puncture — deeper than a poke, slightly sustained.
+static func _thrust() -> AudioStreamWAV:
+	return _render(0.2, func(t: float, noise: float) -> float:
+		var body := sin(TAU * (140.0 - 40.0 * t) * t)
+		var ring := sin(TAU * 600.0 * t) * exp(-t * 20.0)
+		return 0.7 * exp(-t * 14.0) * (0.55 * body + 0.25 * ring + 0.2 * noise)
 	)
 
 

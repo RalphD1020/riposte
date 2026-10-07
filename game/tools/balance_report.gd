@@ -4,10 +4,29 @@ extends SceneTree
 ## rules, printed as a compact table. Read-only; changes nothing.
 ##
 ## Run: godot --headless --path game --script res://tools/balance_report.gd
+## Takes a few minutes. Not a gate; nothing fails here.
 ##
-## See also: /docs/reference/testing.md
+## This tool owns the one ladder claim the suite deliberately does not gate.
+## Hard's edge over Medium is real but small — about 54.5% of duels — and no
+## sample a per-commit suite can afford distinguishes that from a coin. So
+## `test_cpu.gd` gates Medium and Hard over Easy, where the margin is near
+## ceiling, and the Hard-over-Medium effect *size* is read here instead.
+##
+## Read the `matches`, `rounds`, and `hits` columns together. Within a single
+## seed they move together, so three agreeing numbers on a short run are one
+## observation, not three.
+##
+## See also: /docs/concepts/cpu.md, /docs/reference/testing.md
 
-const SEEDS: Array[int] = [11, 22, 33, 44, 55, 66]
+## A contiguous block well clear of both corpora in `test_cpu.gd`, so reading
+## this never contaminates the acceptance seeds. Large enough that a ~5-point
+## win-rate edge is visible; raise it, do not curate it.
+const SEEDS: Array[int] = [
+	201, 202, 203, 204, 205, 206, 207, 208, 209, 210,
+	211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
+	221, 222, 223, 224, 225, 226, 227, 228, 229, 230,
+	231, 232, 233, 234, 235, 236, 237, 238, 239, 240,
+]
 const MAX_TICKS := 40000
 
 
@@ -18,7 +37,46 @@ func _initialize() -> void:
 			if second <= first:
 				continue
 			_report(first, second)
+	## Mirror matches, so a tactic's support is not confounded by facing a
+	## different-difficulty opponent who creates openings at a different rate.
+	for level in levels:
+		_tactics(level)
 	quit(0)
+
+
+## Why a profile wins, not just whether. A win rate cannot distinguish "Hard
+## perceives whiffs sooner but never converts them" from "Hard converts but
+## gives the openings back", and those have opposite fixes (CPU-005).
+func _tactics(difficulty: MatchConfig.Difficulty) -> void:
+	var rules := StandardDuelRules.create()
+	var totals := TacticalAudit.create(0, rules, difficulty)
+	for match_seed in SEEDS:
+		for slot in 2:
+			var levels: Array[MatchConfig.Difficulty] = [difficulty, difficulty]
+			var session := _session(levels, match_seed)
+			var audit := TacticalAudit.create(slot, session.config.rules, difficulty)
+			for _tick in MAX_TICKS:
+				if session.is_finished():
+					break
+				session.step()
+				audit.observe(session.state)
+			totals.absorb(audit)
+	print("\n%s tactics over %d duels" % [MatchConfig.difficulty_label(difficulty), SEEDS.size() * 2])
+	print("  %-34s %8s %8s  %s" % ["behaviour", "support", "rate", "verdict"])
+	for metric in totals.metrics():
+		print(
+			(
+				"  %-34s %8d %7.1f%%  %s"
+				% [
+					metric.label,
+					metric.support,
+					metric.rate() * 100.0,
+					TacticalAudit.verdict_label(metric.verdict()),
+				]
+			)
+		)
+	var share := 0.0 if totals.total_ticks == 0 else float(totals.ideal_measure_ticks) / float(totals.total_ticks)
+	print("  %-34s %8d %7.1f%%" % ["time held at ideal measure", totals.total_ticks, share * 100.0])
 
 
 func _report(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty) -> void:

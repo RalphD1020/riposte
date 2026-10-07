@@ -4,6 +4,8 @@ node_modules
 
 # generated artifacts (never source)
 dist/
+# the Godot Web export staged for /play; the canonical copy is dist/game/web/
+apps/web/public/game/
 .next
 out
 build

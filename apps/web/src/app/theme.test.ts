@@ -86,6 +86,26 @@ describe("theme contrast", () => {
     expect(SiteTheme.themeColor).toBe(token("steel"));
   });
 
+  /**
+   * `SiteTheme` claims the manifest and the favicon match these tokens, and
+   * on a phone that claim is visible: `theme_color` paints the browser
+   * chrome and `background_color` is the whole screen while an installed app
+   * starts. Both are hand-authored files no bundler checks.
+   */
+  it("keeps the installable app's colors in step too", () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve(process.cwd(), "public/site.webmanifest"), "utf8"),
+    ) as { background_color: string; theme_color: string };
+    expect(manifest.background_color).toBe(SiteTheme.background);
+    expect(manifest.theme_color).toBe(SiteTheme.themeColor);
+    const favicon = readFileSync(
+      resolve(process.cwd(), "public/favicon.svg"),
+      "utf8",
+    );
+    expect(favicon).toContain(`fill="${SiteTheme.themeColor}"`);
+    expect(favicon).toContain(token("accent-on-steel"));
+  });
+
   it("fails loudly on a missing token", () => {
     expect(() => token("does-not-exist")).toThrow(
       "missing --color-does-not-exist",

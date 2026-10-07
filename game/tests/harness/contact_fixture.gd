@@ -59,3 +59,11 @@ static func body_report(attacker: int, x: float, y: float) -> ContactReport:
 	report.body_x[attacker] = x
 	report.body_y[attacker] = y
 	return report
+
+
+static func body_push_report(nx: float, ny: float) -> ContactReport:
+	var report := ContactReport.new()
+	report.body_push = true
+	report.body_push_nx = nx
+	report.body_push_ny = ny
+	return report

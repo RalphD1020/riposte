@@ -17,8 +17,13 @@ var round_winner: int = MatchPhase.NO_WINNER
 var match_winner: int = MatchPhase.NO_WINNER
 var end_reason: StringName = &""
 var fighters: Array[FighterState] = []
-## Ticks before another blade-on-blade impact may register.
-var blade_cooldown: int = 0
+## Lifecycle of the blade-on-blade pair. MVP-0 has exactly one pair; adding a
+## shield or a second weapon adds instances here, not new booleans.
+var blade_contact := ContactPairState.new()
+## Lifecycle of weapon→body contacts, one per attacker (COMBAT-007, PHYS-008).
+## weapon_body_contacts[i] tracks whether attacker i's blade is currently
+## inside the opponent's body volume.
+var weapon_body_contacts: Array[WeaponBodyContact] = [WeaponBodyContact.new(), WeaponBodyContact.new()]
 
 
 func fighter(slot: int) -> FighterState:

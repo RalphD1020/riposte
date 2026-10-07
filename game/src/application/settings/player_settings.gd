@@ -28,14 +28,27 @@ const KEY_REDUCED_FLASH := "reduced_flash"
 const KEY_CHARGE_INDICATOR := "show_charge_indicator"
 const KEY_HIGH_CONTRAST := "high_contrast_weapons"
 const KEY_SCREEN_SHAKE := "screen_shake"
+const KEY_TRAIL := "trail_strength"
+const KEY_SWEET_SPOT := "sweet_spot"
 const KEY_OPACITY := "opacity"
 const KEY_HAPTICS := "haptics"
 const KEY_DIFFICULTY := "difficulty"
+const KEY_FLASH_INTENSITY := "flash_intensity"
+const KEY_PARTICLE_INTENSITY := "particle_intensity"
+const KEY_COMBAT_READABILITY := "combat_readability"
 
 enum ControlOpacity { LOW, MEDIUM, HIGH }
+enum TrailStrength { OFF, SUBTLE, FULL }
+enum SweetSpot { OFF, STANDARD, STRONG }
+enum CombatReadability { NORMAL, ENHANCED }
 
 ## Touch control alpha per ControlOpacity level.
 const OPACITY_LEVELS: PackedFloat64Array = [0.2, 0.5, 0.85]
+## Blade ribbon prominence and sweet-region emphasis per level. `STRONG`
+## exceeds 1 deliberately: accessibility may draw a cue more loudly, and
+## nothing here can move the region, the damage, or the timing (UX §54).
+const TRAIL_LEVELS: PackedFloat64Array = [0.0, 0.55, 1.0]
+const SWEET_SPOT_LEVELS: PackedFloat64Array = [0.0, 1.0, 1.8]
 
 var master_volume: float = 1.0
 var music_volume: float = 0.7
@@ -45,7 +58,12 @@ var reduced_motion: bool = false
 var reduced_flash: bool = false
 var show_charge_indicator: bool = false
 var high_contrast_weapons: bool = false
-var screen_shake: bool = true
+var screen_shake: float = 1.0
+var flash_intensity: float = 1.0
+var particle_intensity: float = 1.0
+var combat_readability: CombatReadability = CombatReadability.NORMAL
+var trail_strength: TrailStrength = TrailStrength.FULL
+var sweet_spot: SweetSpot = SweetSpot.STANDARD
 var control_opacity: ControlOpacity = ControlOpacity.MEDIUM
 var haptics: bool = true
 var difficulty: MatchConfig.Difficulty = MatchConfig.Difficulty.MEDIUM
@@ -70,7 +88,12 @@ func load_from(path: String = PATH) -> void:
 	reduced_flash = _flag(config.get_value(SECTION_DISPLAY, KEY_REDUCED_FLASH, reduced_flash), reduced_flash)
 	show_charge_indicator = _flag(config.get_value(SECTION_GAMEPLAY, KEY_CHARGE_INDICATOR, show_charge_indicator), show_charge_indicator)
 	high_contrast_weapons = _flag(config.get_value(SECTION_GAMEPLAY, KEY_HIGH_CONTRAST, high_contrast_weapons), high_contrast_weapons)
-	screen_shake = _flag(config.get_value(SECTION_GAMEPLAY, KEY_SCREEN_SHAKE, screen_shake), screen_shake)
+	screen_shake = _shake(config.get_value(SECTION_GAMEPLAY, KEY_SCREEN_SHAKE, screen_shake))
+	flash_intensity = _volume(config.get_value(SECTION_GAMEPLAY, KEY_FLASH_INTENSITY, flash_intensity), flash_intensity)
+	particle_intensity = _volume(config.get_value(SECTION_GAMEPLAY, KEY_PARTICLE_INTENSITY, particle_intensity), particle_intensity)
+	combat_readability = clampi(_whole(config.get_value(SECTION_GAMEPLAY, KEY_COMBAT_READABILITY, combat_readability), combat_readability), 0, CombatReadability.ENHANCED) as CombatReadability
+	trail_strength = clampi(_whole(config.get_value(SECTION_GAMEPLAY, KEY_TRAIL, trail_strength), trail_strength), 0, TrailStrength.FULL) as TrailStrength
+	sweet_spot = clampi(_whole(config.get_value(SECTION_GAMEPLAY, KEY_SWEET_SPOT, sweet_spot), sweet_spot), 0, SweetSpot.STRONG) as SweetSpot
 	control_opacity = clampi(_whole(config.get_value(SECTION_CONTROLS, KEY_OPACITY, control_opacity), control_opacity), 0, ControlOpacity.HIGH) as ControlOpacity
 	haptics = _flag(config.get_value(SECTION_CONTROLS, KEY_HAPTICS, haptics), haptics)
 	difficulty = clampi(_whole(config.get_value(SECTION_MATCH, KEY_DIFFICULTY, difficulty), difficulty), 0, MatchConfig.Difficulty.HARD) as MatchConfig.Difficulty
@@ -87,6 +110,11 @@ func save_to(path: String = PATH) -> bool:
 	config.set_value(SECTION_GAMEPLAY, KEY_CHARGE_INDICATOR, show_charge_indicator)
 	config.set_value(SECTION_GAMEPLAY, KEY_HIGH_CONTRAST, high_contrast_weapons)
 	config.set_value(SECTION_GAMEPLAY, KEY_SCREEN_SHAKE, screen_shake)
+	config.set_value(SECTION_GAMEPLAY, KEY_FLASH_INTENSITY, flash_intensity)
+	config.set_value(SECTION_GAMEPLAY, KEY_PARTICLE_INTENSITY, particle_intensity)
+	config.set_value(SECTION_GAMEPLAY, KEY_COMBAT_READABILITY, combat_readability)
+	config.set_value(SECTION_GAMEPLAY, KEY_TRAIL, trail_strength)
+	config.set_value(SECTION_GAMEPLAY, KEY_SWEET_SPOT, sweet_spot)
 	config.set_value(SECTION_CONTROLS, KEY_OPACITY, control_opacity)
 	config.set_value(SECTION_CONTROLS, KEY_HAPTICS, haptics)
 	config.set_value(SECTION_MATCH, KEY_DIFFICULTY, difficulty)
@@ -96,6 +124,14 @@ func save_to(path: String = PATH) -> bool:
 
 func opacity_value() -> float:
 	return OPACITY_LEVELS[control_opacity]
+
+
+func trail_value() -> float:
+	return TRAIL_LEVELS[trail_strength]
+
+
+func sweet_spot_value() -> float:
+	return SWEET_SPOT_LEVELS[sweet_spot]
 
 
 ## Scale the layout's buses (default_bus_layout.tres) to the saved volumes.
@@ -126,3 +162,13 @@ static func _flag(value: Variant, fallback: bool) -> bool:
 
 static func _whole(value: Variant, fallback: int) -> int:
 	return int(value) if typeof(value) == TYPE_INT else fallback
+
+
+## Migrate screen_shake from bool (legacy) to float. `true` → 1.0, `false` → 0.0.
+static func _shake(value: Variant) -> float:
+	if typeof(value) == TYPE_BOOL:
+		return 1.0 if bool(value) else 0.0
+	if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+		var number := float(value)
+		return clampf(number, 0.0, 1.0) if is_finite(number) else 1.0
+	return 1.0

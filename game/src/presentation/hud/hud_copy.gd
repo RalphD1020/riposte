@@ -15,12 +15,24 @@ const ROUND_WON := "ROUND WON"
 const ROUND_LOST := "ROUND LOST"
 const ROUND_DRAWN := "ROUND DRAWN"
 const TIME_UP := "TIME"
+const TRADE := "TRADE"
 const VICTORY := "VICTORY"
 const DEFEAT := "DEFEAT"
 const DRAW := "DRAW"
+## Side belongs on the plate, not only in the arena's colours (SIDE-001):
+## colour alone is not a label, and a player who cannot distinguish the two
+## palettes still needs to know which end is theirs.
+const SIDED := "%s · %s"
 const HEALTH := "%s health"
 const HEALTH_VALUE := "%d of %d"
+const STAMINA := "%s stamina"
+const STAMINA_VALUE := "%d of %d"
 const ROUNDS_WON := "%s rounds won: %d of %d"
+
+
+## Name a fighter by who they are *and* which end they hold.
+static func sided(label: String, side: DuelSide.Id) -> String:
+	return SIDED % [label, DuelSide.label(side)]
 
 
 ## Round intro thirds: ROUND N → READY → DUEL (UX §24); result and match
@@ -34,7 +46,8 @@ static func banner(snapshot: PresentationSnapshot, human_slot: int) -> String:
 			return READY if snapshot.phase_ticks < 2 * third else DUEL
 		MatchPhase.Id.ROUND_RESULT:
 			var outcome := _outcome(snapshot.round_winner, human_slot, ROUND_WON, ROUND_LOST, ROUND_DRAWN)
-			return "%s · %s" % [TIME_UP, outcome] if snapshot.end_reason == MatchPhase.REASON_TIMEOUT else outcome
+			var cause := _cause(snapshot.end_reason)
+			return outcome if cause.is_empty() else "%s · %s" % [cause, outcome]
 		MatchPhase.Id.MATCH_ENDED:
 			return outcome_title(snapshot.match_winner, human_slot)
 	return ""
@@ -46,6 +59,17 @@ static func outcome_title(winner: int, human_slot: int) -> String:
 
 static func clock(ticks: int) -> String:
 	return SimulationTimebase.format_clock(ticks)
+
+
+## Two endings would otherwise look arbitrary: the clock running out, and a
+## round won while dying because the opponent's blade arrived later.
+static func _cause(reason: StringName) -> String:
+	match reason:
+		MatchPhase.REASON_TIMEOUT:
+			return TIME_UP
+		MatchPhase.REASON_TRADE_FIRST_CONTACT:
+			return TRADE
+	return ""
 
 
 static func _outcome(winner: int, human_slot: int, won: String, lost: String, drawn: String) -> String:

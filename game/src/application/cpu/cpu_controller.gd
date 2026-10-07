@@ -21,7 +21,7 @@ extends FighterController
 ## See also: /docs/concepts/cpu.md
 
 enum Move { HOLD, APPROACH, RETREAT, ORBIT, BAIT }
-enum Attack { NONE, TAP, CHARGE }
+enum Attack { NONE, TAP, HOLD }
 
 const MEMORY_TICKS := 40
 const HOLD_UTILITY := 0.15
@@ -48,6 +48,13 @@ const INITIATIVE_MARGIN := 0.05
 const INITIATIVE_RANGE := 0.2
 ## Initiative (s) that earns full tap weight.
 const INITIATIVE_FULL := 0.3
+## Opening that earns full punish weight. A fighter in recovery with a
+## committed blade reads around here, which is what "open" used to mean as a
+## yes/no — the point of the reading is the gradient either side of it, not a
+## different scale.
+const OPENING_FULL := 0.6
+## How far an opening may lean the charge draw toward full commitment.
+const CHARGE_OPENING_LEAN := 0.35
 ## Orbit even a lightly committed swing at least this much.
 const ORBIT_MIN_COMMITMENT := 0.4
 
@@ -73,6 +80,16 @@ const BAIT_DRIFT := 0.4
 const EDGE_MARGIN := 1.2
 const EDGE_RAMP := 1.0
 
+## A dash is not a CPU ability. The CPU types the gesture: full deflection,
+## genuine rest, full deflection again, on its own command stream, and
+## `DirectionalTapRecognizer` reads it exactly as it reads a thumb. There is
+## no private dash call to make, which is the whole point — the CPU cannot
+## reach a movement state a player cannot.
+const BURST_SCRIPT: Array[float] = [1.0, 1.0, 0.0, 0.0, 1.0]
+## Only dash when the footwork decision was decisive. Dashing out of an
+## ambivalent step is how an opponent starts looking twitchy rather than sharp.
+const BURST_UTILITY_MIN := 0.6
+
 var profile: CpuProfile
 ## Tick of the observation the last decision used (proves perception delay).
 var last_perceived_tick: int = -1
@@ -87,10 +104,17 @@ var _charge_target: float = 0.0
 var _holding: bool = false
 var _hold_ticks: int = 0
 var _idle_ticks: int = 0
+## Position in the dash gesture being typed, and which duel direction into.
+var _burst_cursor: int = BURST_SCRIPT.size()
+var _burst_sign: float = 0.0
+## Whether the current burst is lateral (X axis) or axial (Y axis).
+var _burst_is_lateral: bool = false
 ## Where the opponent is believed to be now, and how far from the CPU.
 var _sight_x: float = 0.0
 var _sight_y: float = 0.0
 var _sight_distance: float = 0.0
+## Decision traces (Phase 8a). Sidecar telemetry, never authoritative.
+var traces: Array[CpuDecisionTrace] = []
 
 
 static func create(rules: DuelRules, cpu_profile: CpuProfile, match_seed: int, slot: int) -> CpuController:
@@ -114,7 +138,7 @@ func command_for(state: MatchState, slot: int) -> PlayerCommand:
 	_perceive(seen, me, state.tick)
 	if state.tick >= _next_decision_tick:
 		last_perceived_tick = seen.tick
-		_decide(seen, me)
+		_decide(seen, me, state.tick)
 		_next_decision_tick = state.tick + profile.decision_ticks + _rng.next_int(0, profile.decision_jitter)
 	return _execute(state.tick, me)
 
@@ -127,6 +151,10 @@ func _forget() -> void:
 	_move = Move.APPROACH
 	_idle_ticks = 0
 	_next_decision_tick = 0
+	_burst_cursor = BURST_SCRIPT.size()
+	_burst_sign = 0.0
+	_burst_is_lateral = false
+	traces.clear()
 
 
 func _reach() -> float:
@@ -146,9 +174,10 @@ func _perceive(seen: CpuObservation, me: FighterState, tick: int) -> void:
 	_sight_distance = SimMath.length(_sight_x - me.x, _sight_y - me.y)
 
 
-func _decide(seen: CpuObservation, me: FighterState) -> void:
+func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void:
 	var reach := _reach()
 	var perceived := _sight_distance + _rng.next_range(-profile.range_error, profile.range_error)
+	var assessment := TacticalAssessment.evaluate(seen, me, perceived, reach, _rules, profile)
 	var opp_charging := seen.opp_phase == CombatPhase.Id.CHARGING
 	var threatened := (seen.opponent_swinging() or (opp_charging and seen.opp_charge > THREAT_CHARGE)) and perceived < reach + THREAT_RANGE
 	var open := seen.opponent_open()
@@ -160,23 +189,42 @@ func _decide(seen: CpuObservation, me: FighterState) -> void:
 	utilities[Move.APPROACH] = (profile.aggression + pressure) * SimMath.clamp01((perceived - desired) / APPROACH_RAMP)
 	if open:
 		utilities[Move.APPROACH] += profile.punish_weight * SimMath.clamp01((perceived - reach * PUNISH_REACH_SHARE) / PUNISH_RAMP)
+	## Tempo: exploit recovery/overswing windows.
+	if assessment.tempo_opportunity > 0.0:
+		utilities[Move.APPROACH] += profile.tempo_awareness * assessment.tempo_opportunity
+	## Corner pressure: press harder when opponent is near the wall.
+	if assessment.arena_pressure > 0.0:
+		utilities[Move.APPROACH] += profile.corner_pressure_weight * assessment.arena_pressure
 	if threatened and not striking:
 		utilities[Move.RETREAT] = profile.retreat_weight * (1.0 - SimMath.clamp01((perceived - reach) / RETREAT_RAMP))
+	## Point threat: the opponent's tip is aimed at the CPU.
+	if seen.opp_point_threat > 0.3 and perceived < reach + THREAT_RANGE and not striking:
+		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.point_threat_weight * seen.opp_point_threat)
+		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], profile.point_threat_weight * seen.opp_point_threat * 0.6)
 	if perceived < profile.tap_range - SMOTHERED_MARGIN and not striking:
 		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.spacing_weight)
 	var initiative := seen.opp_threat_time - seen.my_threat_time
 	if initiative < -INITIATIVE_MARGIN and perceived < reach + INITIATIVE_RANGE and not striking:
 		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.initiative_weight)
+	## Withdrawal: retreat or orbit after own committed attack.
+	if assessment.withdrawal_urge > 0.0 and profile.withdrawal_discipline > 0.0:
+		var wd := profile.withdrawal_discipline * assessment.withdrawal_urge
+		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], wd)
+		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], wd * 0.5)
 	if seen.opponent_swinging() or opp_charging:
-		utilities[Move.ORBIT] = profile.angle_weight * maxf(seen.opp_commitment, ORBIT_MIN_COMMITMENT)
+		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], profile.angle_weight * maxf(seen.opp_commitment, ORBIT_MIN_COMMITMENT))
 	if (seen.opp_phase == CombatPhase.Id.NEUTRAL or opp_charging) and profile.pressure_weight > 0.0:
 		utilities[Move.BAIT] = profile.bait_weight * (1.0 - pressure / profile.pressure_weight)
 	_move = _best_move(utilities)
 	_orbit_sign = seen.opp_swing_dir
+	_consider_burst(utilities[_move], striking, assessment)
 	_attack = Attack.NONE
 	if _holding or not ready:
 		return
 	var intercept := (opp_charging or seen.opp_phase == CombatPhase.Id.LAUNCH) and perceived <= reach
+	## Indes: interception when opponent is committed and own tap can arrive.
+	if assessment.indes_opportunity > 0.0 and perceived <= reach + THREAT_RANGE:
+		intercept = true
 	var tap_quality := _range_quality(perceived, profile.tap_range, TAP_TOLERANCE)
 	var tap := 0.0
 	if tap_quality >= MIN_RANGE_QUALITY:
@@ -186,15 +234,60 @@ func _decide(seen: CpuObservation, me: FighterState) -> void:
 			+ profile.initiative_weight * SimMath.clamp01(initiative / INITIATIVE_FULL)
 			+ (profile.punish_weight if open else 0.0)
 			+ (profile.intercept_weight if intercept else 0.0)
+			+ profile.tempo_awareness * assessment.tempo_opportunity
 		)
 	var charge := _range_quality(perceived, profile.charge_range, CHARGE_TOLERANCE) * (profile.charge_weight + pressure * CHARGE_PRESSURE_SHARE)
 	charge *= OPEN_CHARGE_BOOST if open else 1.0
 	charge *= THREATENED_CHARGE_DAMP if threatened else 1.0
+	## Stamina-aware charge dampening: holding a charge is expensive motor
+	## work, so the CPU discounts charge utility by depletion × weight.
+	if profile.stamina_cost_weight > 0.0 and assessment.stamina_depletion > 0.0:
+		charge *= 1.0 - assessment.stamina_depletion * profile.stamina_cost_weight * 0.5
 	if tap >= charge and tap > profile.attack_threshold:
 		_attack = Attack.TAP
 	elif charge > profile.attack_threshold:
-		_attack = Attack.CHARGE
-		_charge_target = _rng.next_range(profile.charge_min, profile.charge_max)
+		_attack = Attack.HOLD
+		_charge_target = SimMath.mix(
+			_rng.next_range(profile.charge_min, profile.charge_max),
+			profile.charge_max,
+			CHARGE_OPENING_LEAN * SimMath.clamp01(seen.opp_opening / OPENING_FULL)
+		)
+	var trace := CpuDecisionTrace.create(decision_tick, seen.tick, utilities, _move, _attack, assessment)
+	trace.burst_started = _burst_cursor == 0
+	trace.burst_is_lateral = _burst_is_lateral
+	traces.append(trace)
+
+
+## Decide whether this footwork is worth a dash, and if so start typing the
+## gesture for it. Approach and retreat trigger axial dashes (forward/back);
+## orbit triggers a lateral dash (side-step) when the profile allows it.
+## Bait never dashes — baiting holds spacing, dashing spends it.
+func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessment) -> void:
+	if profile.burst_weight <= 0.0 or _burst_cursor < BURST_SCRIPT.size() or striking:
+		return
+	if utility < BURST_UTILITY_MIN:
+		return
+	## Axial burst: approach or retreat.
+	if _move == Move.APPROACH or _move == Move.RETREAT:
+		var sign_for_move := 1.0 if _move == Move.APPROACH else -1.0
+		if _rng.next_float() >= profile.burst_weight:
+			return
+		_burst_sign = sign_for_move
+		_burst_is_lateral = false
+		_burst_cursor = 0
+		return
+	## Lateral burst: orbit may become a side-step.
+	if _move == Move.ORBIT and profile.lateral_dash_weight > 0.0:
+		var best_lateral := TacticalAssessment.BURST_CLOCKWISE
+		if assessment.burst_scores[TacticalAssessment.BURST_COUNTERCLOCKWISE] > assessment.burst_scores[TacticalAssessment.BURST_CLOCKWISE]:
+			best_lateral = TacticalAssessment.BURST_COUNTERCLOCKWISE
+		if assessment.burst_scores[best_lateral] < BURST_UTILITY_MIN:
+			return
+		if _rng.next_float() >= profile.lateral_dash_weight:
+			return
+		_burst_sign = _orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else -_orbit_sign
+		_burst_is_lateral = true
+		_burst_cursor = 0
 
 
 static func _best_move(utilities: PackedFloat64Array) -> Move:
@@ -206,7 +299,7 @@ static func _best_move(utilities: PackedFloat64Array) -> Move:
 
 
 func _execute(tick: int, me: FighterState) -> PlayerCommand:
-	var steer := _steer(me)
+	var steer := _burst_step() if _burst_cursor < BURST_SCRIPT.size() else _steer(me)
 	var pressed := false
 	var released := false
 	if _holding:
@@ -216,7 +309,9 @@ func _execute(tick: int, me: FighterState) -> PlayerCommand:
 		var in_reach := _sight_distance <= _reach() + profile.release_slack
 		var charged := charging and weapon.charge >= _charge_target
 		var interrupted := not charging and weapon.phase != CombatPhase.Id.NEUTRAL
-		var held_too_long := _hold_ticks > _rules.weapon.tap_threshold_ticks + _rules.weapon.charge_ticks + HOLD_LIMIT_EXTRA_TICKS
+		## A blade that is pinned or already at the guard limit stops earning
+		## charge, so a target it cannot reach would otherwise hold forever.
+		var held_too_long := _hold_ticks > _rules.weapon.tap_threshold_ticks + _rules.weapon.windback_limit_ticks(_rules.fighter.weapon_torque_scale) + HOLD_LIMIT_EXTRA_TICKS
 		if interrupted or held_too_long or (charged and (in_reach or profile.release_any_range)):
 			released = true
 			_holding = false
@@ -230,6 +325,18 @@ func _execute(tick: int, me: FighterState) -> PlayerCommand:
 			_hold_ticks = 0
 		_attack = Attack.NONE
 	return PlayerCommand.create(tick, steer[0], steer[1], pressed, released)
+
+
+## One tick of the dash gesture, in duel axes. Axial bursts go on the Y axis
+## (forward/back), lateral bursts on X (right/left). The rest ticks are real
+## rests: the recognizer requires the intent to come genuinely to neutral
+## between taps, so a CPU that merely eased off would never earn a dash.
+func _burst_step() -> PackedFloat64Array:
+	var deflection := BURST_SCRIPT[_burst_cursor] * _burst_sign
+	_burst_cursor += 1
+	if _burst_is_lateral:
+		return PackedFloat64Array([deflection, 0.0])
+	return PackedFloat64Array([0.0, deflection])
 
 
 ## Footwork vector toward / away from / around the perceived opponent, with
@@ -270,4 +377,9 @@ func _steer(me: FighterState) -> PackedFloat64Array:
 		var pull := SimMath.clamp01((radius - edge) / EDGE_RAMP)
 		x = SimMath.mix(x, -me.x / radius, pull)
 		y = SimMath.mix(y, -me.y / radius, pull)
-	return PackedFloat64Array([x, y])
+	## The CPU reasons in world geometry but must speak the same duel-relative
+	## command language a keyboard does (CPU-001), so the vector is expressed
+	## in the axis it *believes* the opponent lies on. Where its perception is
+	## stale the simulation's true basis will bend the step slightly — which is
+	## the reaction delay showing up in footwork, exactly as it should.
+	return DuelGeometry.to_duel(x, y, tx, ty)

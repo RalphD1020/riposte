@@ -101,7 +101,12 @@ func test_training_dummy_answers_only_inside_reach() -> void:
 	for _i in TrainingDummyController.ATTACK_INTERVAL_TICKS + 5:
 		far = far or dummy.command_for(runner.state, 1).attack_pressed
 	assert_false(far, "no attack while the player is out of reach")
-	runner.state.fighter(0).x = runner.state.fighter(1).x - 1.2
+	## Step the player into the dummy's reach along the line between them,
+	## whichever way the seeded sides put it (SIDE-001).
+	var player := runner.state.fighter(0)
+	var dummy_body := runner.state.fighter(1)
+	player.x = dummy_body.x + SimMath.cosine(dummy_body.facing) * 1.2
+	player.y = dummy_body.y + SimMath.sine(dummy_body.facing) * 1.2
 	var answered := false
 	for _i in TrainingDummyController.ATTACK_INTERVAL_TICKS + 5:
 		answered = answered or dummy.command_for(runner.state, 1).attack_pressed

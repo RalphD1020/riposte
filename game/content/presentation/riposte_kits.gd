@@ -69,8 +69,11 @@ static func factory_kits() -> Array[PresentationKit]:
 		PresentationKit.CUE_BLADE_LIGHT,
 		PresentationKit.CUE_BLADE_SOLID,
 		PresentationKit.CUE_BLADE_STRONG,
+		PresentationKit.CUE_BIND,
 		PresentationKit.CUE_BODY_LIGHT,
 		PresentationKit.CUE_BODY_HEAVY,
+		PresentationKit.CUE_BODY_POKE,
+		PresentationKit.CUE_BODY_THRUST,
 		PresentationKit.CUE_CRITICAL,
 	]:
 		sword.audio_cues[cue] = audio[cue]

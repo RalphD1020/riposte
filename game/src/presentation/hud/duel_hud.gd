@@ -17,6 +17,8 @@ var human_slot: int = 0
 var _labels: PackedStringArray = PackedStringArray(["", ""])
 var _frame: MarginContainer
 var _bars: Array[ProgressBar] = []
+var _stamina_bars: Array[ProgressBar] = []
+var _condition_labels: Array[Label] = []
 var _pips: Array[PipRow] = []
 var _round: Label
 var _clock: Label
@@ -27,6 +29,8 @@ var _prompt_title: Label
 var _prompt_detail: Label
 var _pause: Button
 var _shown_health: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
+var _shown_stamina: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
+var _shown_condition: PackedInt32Array = PackedInt32Array([-1, -1])
 var _shown_wins: PackedInt32Array = PackedInt32Array([-1, -1])
 var _shown_round: int = -1
 var _shown_banner: String = ""
@@ -55,6 +59,16 @@ func update(snapshot: PresentationSnapshot) -> void:
 			bar.max_value = fighter.max_health
 			bar.value = fighter.health
 			bar.accessibility_description = HudCopy.HEALTH_VALUE % [ceili(fighter.health), ceili(fighter.max_health)]
+		if fighter.stamina != _shown_stamina[side]:
+			_shown_stamina[side] = fighter.stamina
+			var sbar := _stamina_bars[side]
+			sbar.max_value = maxf(fighter.stamina_max, 1.0)
+			sbar.value = fighter.stamina
+			sbar.accessibility_description = HudCopy.STAMINA_VALUE % [ceili(fighter.stamina), ceili(fighter.stamina_max)]
+		var cond_int := int(fighter.condition)
+		if cond_int != _shown_condition[side]:
+			_shown_condition[side] = cond_int
+			_condition_labels[side].text = FighterCondition.label(fighter.condition)
 		var wins := snapshot.scores[_slot_on(side)]
 		if wins != _shown_wins[side]:
 			_shown_wins[side] = wins
@@ -104,6 +118,14 @@ func clock_text() -> String:
 
 func health_bar(side: int) -> ProgressBar:
 	return _bars[side]
+
+
+func stamina_bar(side: int) -> ProgressBar:
+	return _stamina_bars[side]
+
+
+func condition_label(side: int) -> Label:
+	return _condition_labels[side]
 
 
 func pips(side: int) -> PipRow:
@@ -197,6 +219,24 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	bar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
 	stack.add_child(bar)
 	_bars.append(bar)
+	var sbar := ProgressBar.new()
+	sbar.theme_type_variation = &"StaminaBar"
+	sbar.show_percentage = false
+	sbar.min_value = 0.0
+	sbar.max_value = 100.0
+	sbar.value = 100.0
+	sbar.custom_minimum_size = Vector2(0.0, RiposteTheme.STAMINA_BAR_HEIGHT)
+	sbar.mouse_filter = MOUSE_FILTER_IGNORE
+	sbar.accessibility_name = HudCopy.STAMINA % _labels[side]
+	sbar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
+	stack.add_child(sbar)
+	_stamina_bars.append(sbar)
+	var cond := Label.new()
+	cond.theme_type_variation = &"HudConditionLabel"
+	cond.text = FighterCondition.label(FighterCondition.Id.HEALTHY)
+	cond.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if side == 1 else HORIZONTAL_ALIGNMENT_LEFT
+	stack.add_child(cond)
+	_condition_labels.append(cond)
 
 
 func _center_plate(row: HBoxContainer) -> void:

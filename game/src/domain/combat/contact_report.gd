@@ -18,6 +18,10 @@ var blade_by: float = 0.0
 var body: Array[bool] = [false, false]
 var body_x: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
 var body_y: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
+## Two fighter bodies overlapped — a shoulder check or bump.
+var body_push: bool = false
+var body_push_nx: float = 0.0
+var body_push_ny: float = 0.0
 
 
 func clear() -> void:
@@ -25,7 +29,8 @@ func clear() -> void:
 	blade = false
 	body[0] = false
 	body[1] = false
+	body_push = false
 
 
 func any() -> bool:
-	return blade or body[0] or body[1]
+	return blade or body[0] or body[1] or body_push

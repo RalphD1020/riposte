@@ -48,6 +48,11 @@ func test_banner_walks_round_ready_duel_then_names_the_outcome() -> void:
 	state.round_winner = 1
 	state.end_reason = MatchPhase.REASON_TIMEOUT
 	assert_eq(HudCopy.banner(_project(state), 1), "TIME · ROUND WON", "timeouts say so")
+	## Winning a round you also died in needs explaining, or it reads as a bug.
+	state.end_reason = MatchPhase.REASON_TRADE_FIRST_CONTACT
+	assert_eq(HudCopy.banner(_project(state), 1), "TRADE · ROUND WON", "and so does a trade won on arrival order")
+	state.end_reason = MatchPhase.REASON_KILL
+	assert_eq(HudCopy.banner(_project(state), 1), "ROUND WON", "an ordinary kill needs no explanation")
 	state.set_phase(MatchPhase.Id.MATCH_ENDED)
 	state.match_winner = 1
 	assert_eq(HudCopy.banner(_project(state), 0), "DEFEAT", "match outcome from the human's side")
@@ -75,6 +80,37 @@ func test_hud_shows_health_pips_round_and_low_time_from_the_humans_side() -> voi
 	hud.update(_project(state))
 	assert_eq(hud.clock_text(), "", "no clock with time to spare")
 	assert_eq(hud.banner_text(), "", "no banner mid-round")
+	hud.queue_free()
+
+
+func test_hud_shows_stamina_bar_and_condition() -> void:
+	var hud := DuelHud.create("YOU", "CPU · Medium", 0)
+	_root().add_child(hud)
+	var state := _state()
+	state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
+	hud.update(_project(state))
+	assert_eq(hud.stamina_bar(0).value, _rules.fighter.base_stamina, "full stamina at start")
+	assert_eq(hud.condition_label(0).text, "HEALTHY", "full health is HEALTHY")
+	state.fighter(0).stamina = _rules.fighter.base_stamina * 0.5
+	state.fighter(0).health = _rules.fighter.max_health * 0.2
+	hud.update(_project(state))
+	assert_true(hud.stamina_bar(0).value < _rules.fighter.base_stamina, "stamina bar drained")
+	assert_eq(hud.condition_label(0).text, "CRITICAL", "20% health is CRITICAL")
+	hud.queue_free()
+
+
+## Side must be legible as text, not only as a colour (SIDE-001): a player who
+## cannot distinguish the two palettes still has to know which end is theirs.
+func test_plates_name_the_side_as_well_as_the_fighter() -> void:
+	var state := _state()
+	var mine := state.fighter(1).side
+	var hud := DuelHud.create(HudCopy.sided("YOU", mine), HudCopy.sided("CPU · Medium", DuelSide.other(mine)), 1)
+	_root().add_child(hud)
+	hud.update(_project(state))
+	var label := hud.pips(0).accessibility_name
+	assert_true(label.contains("YOU"), "the plate still says who it is")
+	assert_true(label.contains(DuelSide.label(mine)), "and which end they hold")
+	assert_false(label.contains(DuelSide.label(DuelSide.other(mine))), "without naming the other one")
 	hud.queue_free()
 
 

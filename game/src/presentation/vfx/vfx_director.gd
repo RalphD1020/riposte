@@ -23,6 +23,16 @@ const RING_OUTER := 0.36
 ## Rings grow from RING_START to RING_END times their requested size.
 const RING_START := 0.4
 const RING_END := 1.6
+## Burst dust: flat puffs that stay on the floor and spread *backwards* from
+## the heading, growing as they settle. Deliberately ground-bound and slow, so
+## footwork and a blade ribbon can never share a silhouette (UX §19).
+const DUST_LIFE := 0.34
+const DUST_HEIGHT := 0.02
+const DUST_SIZE := 0.16
+const DUST_END_SCALE := 2.1
+const DUST_SPREAD := 0.8
+const DUST_SPEED_MIN := 0.35
+const DUST_ALPHA := 0.4
 const STREAK_LIFE := 0.16
 const STREAK_WIDTH := 0.05
 const STREAK_THICKNESS := 0.02
@@ -47,6 +57,7 @@ var last_cue: StringName = &""
 var _effects: Array[Effect] = []
 var _random := RandomNumberGenerator.new()
 var _spark_mesh := QuadMesh.new()
+var _dust_mesh := QuadMesh.new()
 var _ring_mesh := TorusMesh.new()
 var _materials: Dictionary = {}
 
@@ -55,6 +66,7 @@ func _init() -> void:
 	name = "Vfx"
 	_random.seed = COSMETIC_SEED
 	_spark_mesh.size = Vector2(SPARK_SIZE, SPARK_SIZE)
+	_dust_mesh.size = Vector2(DUST_SIZE, DUST_SIZE)
 	_ring_mesh.inner_radius = RING_INNER
 	_ring_mesh.outer_radius = RING_OUTER
 	_ring_mesh.rings = 24
@@ -70,6 +82,25 @@ func sparks(world: Vector3, normal: Vector3, color: Color, count: int, speed: fl
 		var lift := Vector3.UP * _random.randf_range(0.0, SPARK_LIFT)
 		var velocity := (spread + lift).normalized() * speed * _random.randf_range(SPARK_SPEED_MIN, 1.0)
 		_spawn(_spark_mesh, _billboard(color), world, velocity, SPARK_LIFE, 1.0, 0.0)
+
+
+## Floor dust kicked up by a burst of footwork, spraying opposite `heading`
+## (world, horizontal) from the fighter's feet.
+func dust(world: Vector3, heading: Vector3, color: Color, count: int, speed: float, flash_scale: float) -> void:
+	last_cue = PresentationKit.VFX_IMPACT
+	var away := -heading
+	if away.length_squared() < MIN_SCALE:
+		away = Vector3.FORWARD
+	away = away.normalized()
+	var ground := Vector3(world.x, DUST_HEIGHT, world.z)
+	var total := maxi(1, roundi(float(count) * flash_scale))
+	for _i in total:
+		var spread := away.rotated(Vector3.UP, _random.randf_range(-DUST_SPREAD, DUST_SPREAD))
+		var velocity := spread * speed * _random.randf_range(DUST_SPEED_MIN, 1.0)
+		var puff := _spawn(_dust_mesh, _flat(Color(color, DUST_ALPHA)), ground, velocity, DUST_LIFE, flash_scale, DUST_END_SCALE * flash_scale)
+		## Laid flat on the floor rather than billboarded, so it reads as
+		## ground scuff instead of as another airborne spark.
+		puff.node.basis = Basis.from_euler(Vector3(-PI * 0.5, 0.0, 0.0))
 
 
 func ring(world: Vector3, color: Color, size: float, flash_scale: float) -> void:
@@ -149,6 +180,8 @@ func _shared(color: Color, billboard: bool) -> StandardMaterial3D:
 		material.albedo_color = color
 		material.no_depth_test = true
 		material.render_priority = RENDER_PRIORITY
+		if color.a < 1.0:
+			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		if billboard:
 			material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 		_materials[key] = material

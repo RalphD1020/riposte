@@ -18,6 +18,9 @@ const RING_HEIGHT := 0.02
 const RING_GAP := 0.14
 const RING_WIDTH := 0.06
 const RING_SEGMENTS := 32
+## Tessellation of the primitive cylinders. Low on purpose: this is a mobile
+## budget, and an authored kit scene replaces these meshes entirely.
+const RADIAL_SEGMENTS := 24
 const OUTLINE_GROW := 0.028
 const FLASH_SECONDS := 0.12
 ## Peak emission of the hit flash (scaled down by Reduced Flash).
@@ -163,7 +166,7 @@ func _build_primitive_body(body_radius: float) -> void:
 	body_mesh.top_radius = body_radius
 	body_mesh.bottom_radius = body_radius
 	body_mesh.height = height
-	body_mesh.radial_segments = 24
+	body_mesh.radial_segments = RADIAL_SEGMENTS
 	_body_material = _material(body_color(), false)
 	_body_material.emission_enabled = true
 	_body_material.emission = RiposteTheme.CRITICAL
@@ -173,7 +176,7 @@ func _build_primitive_body(body_radius: float) -> void:
 	outline_mesh.top_radius = body_radius + OUTLINE_GROW
 	outline_mesh.bottom_radius = body_radius + OUTLINE_GROW
 	outline_mesh.height = height + OUTLINE_GROW
-	outline_mesh.radial_segments = 24
+	outline_mesh.radial_segments = RADIAL_SEGMENTS
 	var outline := _material(outline_color(), true)
 	outline.cull_mode = BaseMaterial3D.CULL_FRONT
 	_add_mesh(_visual_root, "Outline", outline_mesh, outline, Vector3(0.0, height * 0.5, 0.0))
@@ -211,7 +214,7 @@ func _build_ground(body_radius: float) -> void:
 	shadow_mesh.top_radius = body_radius * 1.2
 	shadow_mesh.bottom_radius = body_radius * 1.2
 	shadow_mesh.height = 0.002
-	shadow_mesh.radial_segments = 24
+	shadow_mesh.radial_segments = RADIAL_SEGMENTS
 	var shadow := _material(RiposteTheme.SHADOW, true)
 	shadow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_add_mesh(self, "Shadow", shadow_mesh, shadow, Vector3(0.0, SHADOW_HEIGHT, 0.0))

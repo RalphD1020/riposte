@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { resolvePnpm } from "./godot-bin.mjs";
 import { ROOT, runEchoed, writeReport } from "./reports.mjs";
+import { isStaged } from "./stage-web-game.mjs";
 
 const PNPM = resolvePnpm();
 const started = Date.now();
@@ -23,6 +24,7 @@ const status = runEchoed(PNPM.command, [
 const ok = status === 0;
 const duration = ((Date.now() - started) / 1000).toFixed(2);
 const hasExportPreset = existsSync(join(ROOT, "game/export_presets.cfg"));
+const staged = isStaged();
 
 const markdown = [
   "# Riposte Build Report",
@@ -44,6 +46,11 @@ const markdown = [
     ? "Committed `game/export_presets.cfg` is present."
     : "Missing `game/export_presets.cfg` — export will fail closed.",
   "",
+  "## Staged `/play`",
+  staged
+    ? "PASS staged artifact at `apps/web/public/game/index.html` (served at `/play`)."
+    : "No staged artifact — `/play` falls back to the itch link. Run `pnpm game:export:web && pnpm game:stage:web`.",
+  "",
   `FINAL: ${ok ? "PASS" : "FAIL"}`,
   "",
 ].join("\n");
@@ -55,6 +62,7 @@ writeReport(
     durationSec: Number(duration),
     web: { artifact: "apps/web/.next/", ok },
     godot: { skipped: true, export_presets: hasExportPreset },
+    play: { staged, artifact: "apps/web/public/game/index.html" },
   },
   markdown,
 );

@@ -7,6 +7,10 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/ux.md
 
+## Slider granularity: 20 steps across the range. Coarse enough that a thumb
+## on a phone lands where it meant to, and it is what an arrow key moves by.
+const SLIDER_STEP := 0.05
+
 
 static func title(host: Container, text: String) -> Label:
 	var label := _label(host, text, &"TitleLabel")
@@ -117,7 +121,7 @@ static func slider_row(host: Container, text: String, value: float, on_change: C
 	var slider := HSlider.new()
 	slider.min_value = 0.0
 	slider.max_value = 1.0
-	slider.step = 0.05
+	slider.step = SLIDER_STEP
 	slider.value = value
 	slider.accessibility_name = text
 	slider.custom_minimum_size = Vector2(0.0, RiposteTheme.TOUCH_TARGET)

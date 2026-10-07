@@ -59,6 +59,33 @@ func test_touch_overrides_keys_while_a_thumb_is_down() -> void:
 	assert_eq(input.consume(1).move_x, PlayerCommand.AXIS_MAX, "keys again once the thumb lifts")
 
 
+## Two thumbs at once is the normal mobile posture, not an edge case: one
+## steers while the other attacks. Both have to survive the same tick, or
+## every attack on a phone would cancel the footwork that set it up.
+func test_a_second_finger_attacking_preserves_both_inputs() -> void:
+	var input := HumanInputState.new()
+	input.set_touch_axis(0.0, 1.0, true)
+	input.attack_down(HumanInputState.SOURCE_TOUCH)
+	var both := input.consume(0)
+	assert_eq(both.move_y, PlayerCommand.AXIS_MAX, "the steering thumb is still steering")
+	assert_true(both.attack_pressed, "while the other thumb presses")
+	## And the reverse order, because a player does not coordinate their
+	## thumbs to the tick.
+	var reversed := HumanInputState.new()
+	reversed.attack_down(HumanInputState.SOURCE_TOUCH)
+	reversed.set_touch_axis(-1.0, 0.0, true)
+	var swapped := reversed.consume(0)
+	assert_eq(swapped.move_x, -PlayerCommand.AXIS_MAX, "steering arrives after the press just as well")
+	assert_true(swapped.attack_pressed, "and the press is still owed")
+	## Lifting the steering thumb must not release the attack: they are
+	## different fingers reporting through the same source name.
+	reversed.set_touch_axis(0.0, 0.0, false)
+	var lifted := reversed.consume(1)
+	assert_eq(lifted.move_x, 0, "steering stops")
+	assert_false(lifted.attack_released, "but the attack is still held")
+	assert_true(reversed.is_attack_held(), "by the finger that pressed it")
+
+
 func test_human_controller_reads_its_input() -> void:
 	var controller := HumanController.new()
 	var state := DuelFixture.state(DuelFixture.rules())

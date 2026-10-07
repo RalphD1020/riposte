@@ -134,6 +134,8 @@ func presentation_options() -> PresentationOptions:
 	options.screen_shake = settings.screen_shake
 	options.show_charge_indicator = settings.show_charge_indicator
 	options.high_contrast_weapons = settings.high_contrast_weapons
+	options.trail_strength = settings.trail_value()
+	options.sweet_spot_cue = settings.sweet_spot_value()
 	options.haptics = settings.haptics
 	options.touch_layout = touch_layout()
 	return options
@@ -160,7 +162,7 @@ func _on_window_resized() -> void:
 ## Browsers only grant fullscreen inside a user gesture, so on Web the saved
 ## preference applies when toggled, never at boot.
 func _apply_display_mode(from_gesture: bool) -> void:
-	if DisplayServer.get_name() == "headless" or (OS.has_feature("web") and not from_gesture):
+	if Platform.is_headless() or (Platform.is_web() and not from_gesture):
 		return
 	var mode := DisplayServer.window_get_mode()
 	var is_full := mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN

@@ -88,6 +88,16 @@ static func length(x: float, y: float) -> float:
 	return sqrt(x * x + y * y)
 
 
+## How far a point may travel along a unit direction before leaving the
+## circle of `radius` centred on the origin. Zero when it is already outside.
+static func ray_exit_distance(px: float, py: float, dx: float, dy: float, radius: float) -> float:
+	var along := px * dx + py * dy
+	var slack := radius * radius - (px * px + py * py)
+	if slack <= 0.0:
+		return 0.0
+	return sqrt(along * along + slack) - along
+
+
 static func clamp01(value: float) -> float:
 	return clampf(value, 0.0, 1.0)
 

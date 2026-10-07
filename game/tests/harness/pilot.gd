@@ -52,12 +52,10 @@ func _wander(state: MatchState, slot: int) -> PlayerCommand:
 	var me := state.fighter(slot)
 	var them := state.opponent_of(slot)
 	if _move_left <= 0:
-		var dx := them.x - me.x
-		var dy := them.y - me.y
-		var distance := maxf(SimMath.length(dx, dy), 0.001)
-		var toward := 0.7 if distance > 1.6 else -0.2
-		_move_x = dx / distance * toward + _rng.next_range(-0.6, 0.6)
-		_move_y = dy / distance * toward + _rng.next_range(-0.6, 0.6)
+		## Duel axes (MOVE-001): +y closes, -y backs off, x drifts sideways.
+		var toward := 0.7 if DuelGeometry.distance(me, them) > 1.6 else -0.2
+		_move_x = _rng.next_range(-0.6, 0.6)
+		_move_y = toward + _rng.next_range(-0.6, 0.6)
 		_move_left = _rng.next_int(4, 24)
 	_move_left -= 1
 	var pressed := false
@@ -79,8 +77,9 @@ func _approach_and_tap(state: MatchState, slot: int) -> PlayerCommand:
 	var them := state.opponent_of(slot)
 	if _tapped or state.phase != MatchPhase.Id.ROUND_ACTIVE:
 		return PlayerCommand.idle(state.tick)
+	## Duel axes make this script point-symmetric by construction: "close the
+	## distance" is the same command for either slot (MOVE-001).
 	if DuelGeometry.distance(me, them) > 1.3:
-		var direction := 1.0 if them.x > me.x else -1.0
-		return PlayerCommand.create(state.tick, direction, 0.0)
+		return PlayerCommand.create(state.tick, 0.0, 1.0)
 	_tapped = true
 	return PlayerCommand.create(state.tick, 0.0, 0.0, true, true)

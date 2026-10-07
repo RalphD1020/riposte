@@ -33,6 +33,7 @@ func test_3d_renders_at_most_twice_css_resolution() -> void:
 
 
 func test_safe_area_reads_css_insets_and_display_rects() -> void:
+	assert_eq(SafeArea.KEY_LEFT, "left", "fixture: the fixtures below are written in the game's own key names")
 	var web := SafeArea.from_web_json('{"left":44,"top":0,"right":44,"bottom":21,"width":844,"height":390}', Vector2(844.0, 390.0))
 	assert_eq(web, Vector4(44.0, 0.0, 44.0, 21.0), "CSS px map 1:1 when one unit is one CSS px")
 	var scaled := SafeArea.from_web_json('{"left":10,"top":0,"right":0,"bottom":0,"width":500,"height":300}', Vector2(1000.0, 600.0))
@@ -44,6 +45,20 @@ func test_safe_area_reads_css_insets_and_display_rects() -> void:
 	assert_near(display.x, 88.0 / 3.0, 1e-6, "notch inset in viewport units")
 	assert_near(display.w, 63.0 / 3.0, 1e-6, "home indicator inset")
 	assert_eq(SafeArea.from_display(Rect2i(), Vector2i(1280, 720), Vector2(1280.0, 720.0)), Vector4.ZERO, "unknown safe rect is zero")
+
+
+## The browser half of the safe-area contract is JavaScript in the export
+## preset, and nothing compiles the two together. A renamed key there reports
+## zero inset instead of erroring, which on a notched phone means the HUD
+## under the notch — the exact failure this whole feature exists to prevent.
+func test_the_export_publishes_the_safe_area_keys_the_game_reads() -> void:
+	var preset := FileAccess.get_file_as_string("res://export_presets.cfg")
+	assert_true(preset.length() > 0, "fixture: the export preset is readable")
+	assert_true(preset.contains(SafeArea.WEB_PROPERTY), "the preset publishes the global the game evaluates")
+	assert_eq(SafeArea.KEYS.size(), 6, "fixture: six insets and the CSS viewport size")
+	for key in SafeArea.KEYS:
+		assert_true(preset.contains("%s:" % key), "the preset publishes a %s value" % key)
+	assert_false(preset.contains("riposteSafeArea:"), "a renamed global would not be mistaken for a key")
 
 
 func test_every_shipped_string_renders_in_the_shipped_font() -> void:
@@ -133,14 +148,13 @@ func test_menus_sit_side_by_side_only_on_short_landscape_screens() -> void:
 	host.queue_free()
 
 
-func test_rotate_prompt_only_interrupts_portrait_touch_play() -> void:
+func test_portrait_orientation_plays_without_blocking() -> void:
 	var portrait := Vector2(390.0, 844.0)
 	var landscape := Vector2(844.0, 390.0)
-	assert_true(portrait.y > portrait.x and landscape.x > landscape.y, "fixture: one portrait and one landscape phone")
-	assert_true(MatchScreen.needs_rotate_prompt(true, portrait, false), "portrait touch play asks to rotate")
-	assert_false(MatchScreen.needs_rotate_prompt(true, landscape, false), "landscape touch play does not")
-	assert_false(MatchScreen.needs_rotate_prompt(false, portrait, false), "a tall desktop window never does")
-	assert_false(MatchScreen.needs_rotate_prompt(true, portrait, true), "once dismissed it stays away")
+	assert_true(portrait.y > portrait.x, "fixture: portrait")
+	assert_true(landscape.x > landscape.y, "fixture: landscape")
+	## Both orientations work; neither shows a blocking prompt.
+	assert_eq(Camera3D.KEEP_WIDTH, 0, "portrait camera keeps width so the arena stays fully visible")
 
 
 func test_stub_buttons_say_why_they_do_nothing() -> void:

@@ -54,6 +54,10 @@ const RADIUS := 6
 const BORDER_WIDTH := 2
 const FOCUS_WIDTH := 3
 const FOCUS_GAP := 3
+## Padding inside a styled box. Not `SECTION_GAP`: a gap separates siblings,
+## this is the space a control keeps around its own label.
+const BOX_PAD_X := 16
+const BOX_PAD_Y := 10
 const COLUMN_MAX_WIDTH := 440.0
 const SHEET_WIDTH := 360.0
 ## Label column beside a slider, so label and slider share one 48 px row.
@@ -72,6 +76,7 @@ const FONT_H2 := 28
 const FONT_H1 := 44
 const FONT_DISPLAY := 56
 const HEALTH_BAR_HEIGHT := 14.0
+const STAMINA_BAR_HEIGHT := 8.0
 
 ## --- Duel world (UX §7, §13, §18, §80) -------------------------------------
 const WORLD_BACKGROUND := Color("d7d9d6")
@@ -79,6 +84,12 @@ const WORLD_BACKGROUND := Color("d7d9d6")
 const WORLD_FLOOR := Color("7f857b")
 const WORLD_FLOOR_EDGE := Color("6a7067")
 const WORLD_RING := STEEL_900
+## Home-end tints (SIDE-001). Deliberately close to the floor: cardinality is
+## orientation, not decoration, and the floor must never compete with blade
+## readability. Each end is also a different *shape*, so the two ends stay
+## distinguishable without relying on colour.
+const WORLD_HOME_LIGHT := Color("949a8d")
+const WORLD_HOME_DARK := Color("646a60")
 const WORLD_AMBIENT := Color("eceeea")
 const WORLD_AMBIENT_ENERGY := 0.65
 const WORLD_KEY := Color("fffaf0")
@@ -265,10 +276,10 @@ static func _box(fill: Color, border: Color, border_width: int, radius: int = RA
 	box.border_color = border
 	box.set_border_width_all(border_width)
 	box.set_corner_radius_all(radius)
-	box.content_margin_left = 16
-	box.content_margin_right = 16
-	box.content_margin_top = 10
-	box.content_margin_bottom = 10
+	box.content_margin_left = BOX_PAD_X
+	box.content_margin_right = BOX_PAD_X
+	box.content_margin_top = BOX_PAD_Y
+	box.content_margin_bottom = BOX_PAD_Y
 	return box
 
 

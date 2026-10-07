@@ -15,9 +15,21 @@ const MUSIC_VOLUME_DB := -6.0
 ## stays audible.
 const SPATIAL_UNIT_SIZE := 8.0
 
+## The wind-back tension layer. Pitch and level ride the earned wind-back from
+## the resting blade to the most that is physically reachable; because `charge`
+## already saturates there, the plateau at the top is the simulation's, not an
+## authored cap (COMBAT-009).
+const TENSION_PITCH_REST := 0.85
+const TENSION_PITCH_FULL := 1.35
+const TENSION_DB_REST := -24.0
+const TENSION_DB_FULL := -7.0
+
 var last_cue: StringName = &""
 var _spatial: Array[AudioStreamPlayer3D] = []
 var _flat: Array[AudioStreamPlayer] = []
+## One held voice per fighter, kept out of the pool: a wind-back lasts many
+## frames and must not be stolen by the next blade clash.
+var _tension: Array[AudioStreamPlayer3D] = []
 var _music: AudioStreamPlayer
 var _next_spatial: int = 0
 var _next_flat: int = 0
@@ -37,6 +49,13 @@ func _init() -> void:
 		flat.bus = AudioBuses.SFX
 		add_child(flat)
 		_flat.append(flat)
+	for _i in 2:
+		var held := AudioStreamPlayer3D.new()
+		held.bus = AudioBuses.SFX
+		held.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
+		held.unit_size = SPATIAL_UNIT_SIZE
+		add_child(held)
+		_tension.append(held)
 	_music = AudioStreamPlayer.new()
 	_music.bus = AudioBuses.MUSIC
 	_music.volume_db = MUSIC_VOLUME_DB
@@ -90,9 +109,44 @@ func play_flat(cue: StringName, kit: PresentationKit, volume_db: float = 0.0) ->
 	return true
 
 
+## Hold or update one fighter's wind-back tension. Idempotent per frame: the
+## voice is started once and then simply retuned, so the layer tightens
+## continuously instead of retriggering.
+func hold_tension(slot: int, kit: PresentationKit, world: Vector3, charge: float) -> bool:
+	if kit == null or not kit.has_audio(PresentationKit.CUE_CHARGE):
+		return false
+	var voice := _tension[slot]
+	var earned := clampf(charge, 0.0, 1.0)
+	voice.position = world
+	voice.pitch_scale = lerpf(TENSION_PITCH_REST, TENSION_PITCH_FULL, earned)
+	voice.volume_db = lerpf(TENSION_DB_REST, TENSION_DB_FULL, earned)
+	if not voice.playing:
+		voice.stream = kit.stream_for(PresentationKit.CUE_CHARGE)
+		voice.play()
+		last_cue = PresentationKit.CUE_CHARGE
+	return true
+
+
+## Let the tension go. Called whenever the blade stops winding back, including
+## on release, cancel, death, and round reset, so a held layer can never
+## outlive the swing that earned it.
+func release_tension(slot: int) -> void:
+	_tension[slot].stop()
+
+
+func is_tension_held(slot: int) -> bool:
+	return _tension[slot].playing
+
+
+func tension_pitch(slot: int) -> float:
+	return _tension[slot].pitch_scale
+
+
 func stop_all() -> void:
 	for voice in _spatial:
 		voice.stop()
 	for voice in _flat:
+		voice.stop()
+	for voice in _tension:
 		voice.stop()
 	_music.stop()

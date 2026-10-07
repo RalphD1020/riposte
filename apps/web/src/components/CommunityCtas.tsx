@@ -44,12 +44,19 @@ function CommunityCta({
   );
 }
 
+/**
+ * itch.io sits here, beside Discord and Patreon, rather than behind the Play
+ * button: the game is served from this origin now, so itch is somewhere else
+ * it also lives — a secondary home, not the front door.
+ */
 export function CommunityCtas({
   community,
   support,
+  itch,
 }: {
   readonly community: Destination;
   readonly support: Destination;
+  readonly itch: Destination;
 }) {
   return (
     <section className="community-ctas" aria-labelledby="community-heading">
@@ -59,6 +66,7 @@ export function CommunityCtas({
       <div className="community-ctas__row">
         <CommunityCta destination={community} label={SiteCopy.discord} />
         <CommunityCta destination={support} label={SiteCopy.patreon} />
+        <CommunityCta destination={itch} label={SiteCopy.itch} />
       </div>
     </section>
   );

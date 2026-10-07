@@ -23,10 +23,6 @@ var touch: TouchControls
 var pause_overlay: PauseOverlay
 var debug_overlay: DebugOverlay
 var tutorial: TutorialTracker
-var _rotate_prompt: Control
-var _rotate_dismissed: bool = false
-var _rotate_seen: bool = false
-var _rotate_blocking: bool = false
 var _user_paused: bool = false
 var _finished: bool = false
 var _touch_layout: bool = false
@@ -53,6 +49,9 @@ func _ready() -> void:
 		return
 	var options := app.presentation_options()
 	_touch_layout = options.touch_layout
+	## Put the local player at the bottom of the screen. The world does not
+	## move; only this viewer does (SIDE-001).
+	app.camera_rig.look_from(session.state.fighter(config.human_slot).side)
 	presenter = MatchPresenter.create(kits, options, app.camera_rig, config.rules.arena_radius, SnapshotProjector.project(session.state, config.rules))
 	presenter.hitstop_requested.connect(driver.hold)
 	app.presentation_mount.add_child(presenter)
@@ -129,31 +128,12 @@ func quit_to_menu() -> void:
 	app.quit_match()
 
 
-func dismiss_rotate_prompt() -> void:
-	_rotate_dismissed = true
-	relayout()
-
-
-## Touch devices held in portrait get a dismissable rotate prompt (UX §30);
-## desktop windows of any shape never do.
-static func needs_rotate_prompt(touch_layout: bool, area: Vector2, dismissed: bool) -> bool:
-	return touch_layout and area.y > area.x and not dismissed
-
-
 func relayout() -> void:
 	if session == null:
 		return
 	var insets := app.safe_insets()
 	hud.layout_insets(insets)
 	touch.set_insets(insets)
-	var blocking := needs_rotate_prompt(_touch_layout, size, _rotate_dismissed)
-	if blocking and not _rotate_seen:
-		_rotate_seen = true
-		app.telemetry.record_product(ProductEvents.ORIENTATION_PROMPT_SEEN)
-	if blocking != _rotate_blocking:
-		_rotate_blocking = blocking
-		_rotate_prompt.visible = blocking
-		_sync_clock()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -163,12 +143,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		if _user_paused:
 			pause_overlay.back()
-		elif not _rotate_blocking:
+		else:
 			pause()
 		return
 	if event.is_action_pressed(InputActions.TOGGLE_DEBUG) and OS.is_debug_build():
 		get_viewport().set_input_as_handled()
 		debug_overlay.visible = not debug_overlay.visible
+		## The numbers and the vectors are one mode. Reading "closing speed
+		## 4.2" without seeing which way the tip is going is half the picture,
+		## and splitting them across two keys only ever meant forgetting one.
+		presenter.debug_vectors().visible = debug_overlay.visible
 		return
 	if driver.paused or _finished or event.is_echo() or not event.is_action(InputActions.ATTACK):
 		return
@@ -204,7 +188,7 @@ func _advance_tick() -> void:
 ## Stopped by the user or by the rotate prompt. Resuming drops the backlog
 ## so a long pause never fast-forwards the duel.
 func _sync_clock() -> void:
-	var stopped := _user_paused or _rotate_blocking
+	var stopped := _user_paused
 	if stopped and not driver.paused:
 		human.input.cancel_all()
 	if driver.paused and not stopped:
@@ -215,12 +199,35 @@ func _sync_clock() -> void:
 
 func _show_tutorial_step() -> void:
 	hud.show_prompt(AppCopy.tutorial_title(tutorial.step), AppCopy.tutorial_detail(tutorial.step))
+	_cue_partner()
 	if tutorial.is_complete():
 		app.telemetry.record_product(ProductEvents.TUTORIAL_COMPLETED)
 
 
+## Ask the training partner for the beat the current lesson needs. Done here
+## rather than inside either of them: the tracker only watches, the partner
+## only types commands, and the drill script is the screen's business.
+func _cue_partner() -> void:
+	for controller in session.controllers:
+		var partner := controller as TrainingDummyController
+		if partner == null:
+			continue
+		match tutorial.step:
+			TutorialTracker.Step.SWEET_SPOT:
+				partner.beat = TrainingDummyController.Beat.BIG_SWING
+			TutorialTracker.Step.MOMENTUM:
+				partner.beat = TrainingDummyController.Beat.PACE
+			_:
+				partner.beat = TrainingDummyController.Beat.SPAR
+
+
 func _build_ui(config: MatchConfig) -> void:
-	hud = DuelHud.create(AppCopy.YOU, AppCopy.opponent_label(config), config.human_slot)
+	var mine := session.state.fighter(config.human_slot).side
+	hud = DuelHud.create(
+		HudCopy.sided(AppCopy.YOU, mine),
+		HudCopy.sided(AppCopy.opponent_label(config), DuelSide.other(mine)),
+		config.human_slot
+	)
 	hud.pause_pressed.connect(pause)
 	add_child(hud)
 	touch = TouchControls.new()
@@ -234,22 +241,12 @@ func _build_ui(config: MatchConfig) -> void:
 	if _touch_layout:
 		touch.reveal()
 	debug_overlay = DebugOverlay.create()
+	debug_overlay.describe(session.config.rules.fighter, session.config.rules.weapon)
 	add_child(debug_overlay)
 	pause_overlay = PauseOverlay.create(app)
 	pause_overlay.resume_requested.connect(resume, CONNECT_DEFERRED)
 	pause_overlay.quit_requested.connect(quit_to_menu, CONNECT_DEFERRED)
 	add_child(pause_overlay)
-	_rotate_prompt = Control.new()
-	_rotate_prompt.name = "RotatePrompt"
-	_rotate_prompt.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
-	_rotate_prompt.mouse_filter = MOUSE_FILTER_STOP
-	var sheet := UiKit.sheet(_rotate_prompt)
-	var rotate_title := UiKit.heading(sheet, AppCopy.ROTATE_TITLE)
-	rotate_title.accessibility_live = AccessibilityServer.LIVE_POLITE
-	UiKit.body(sheet, AppCopy.ROTATE_BODY)
-	UiKit.button(sheet, AppCopy.CONTINUE_ANYWAY, dismiss_rotate_prompt, &"PrimaryButton")
-	_rotate_prompt.visible = false
-	add_child(_rotate_prompt)
 
 
 func _on_touch_move(vector: Vector2, active: bool) -> void:

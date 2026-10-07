@@ -50,12 +50,14 @@ func test_attack_steps_follow_the_real_inputs() -> void:
 	assert_eq(tracker.step, TutorialTracker.Step.BLADES, "next: blades")
 
 
-func test_blade_contact_completes_the_tutorial() -> void:
+func test_blade_contact_opens_the_physical_lessons() -> void:
 	var state := _active_state()
 	var tracker := TutorialTracker.create(0)
 	tracker.step = TutorialTracker.Step.BLADES
 	assert_true(tracker.observe(state, _event(DuelEventTypes.BLADE_CONTACT, -1)), "blades met")
-	assert_true(tracker.is_complete(), "tutorial complete")
+	assert_eq(tracker.step, TutorialTracker.Step.SWEET_SPOT, "the five verbs done, the physics next")
+	assert_false(tracker.observe(state, _event(DuelEventTypes.BLADE_CONTACT, -1)), "a second clash is not the sweet-spot lesson")
+	tracker.step = TutorialTracker.Step.COMPLETE
 	assert_false(tracker.observe(state, _event(DuelEventTypes.BLADE_CONTACT, -1)), "complete stays complete")
 
 
@@ -82,3 +84,99 @@ func test_training_session_drives_the_first_steps() -> void:
 	human.input.attack_up(HumanInputState.SOURCE_KEY)
 	tracker.observe(session.state, session.step())
 	assert_eq(tracker.step, TutorialTracker.Step.CHARGE, "a real tap completed QUICK CUT")
+
+
+## -- PHYSICAL LESSONS --
+
+
+func _hit(blade_fraction: float, closing: float) -> Array[DuelEvent]:
+	var events: Array[DuelEvent] = [
+		DuelEvent.create(
+			DuelEventTypes.BODY_HIT,
+			0,
+			0,
+			1,
+			{
+				DuelEventKeys.BLADE_FRACTION: blade_fraction,
+				DuelEventKeys.CLOSING_SPEED: closing,
+			}
+		)
+	]
+	return events
+
+
+func test_the_sweet_spot_lesson_is_passed_by_where_the_blade_met() -> void:
+	var state := _active_state()
+	var tracker := TutorialTracker.create(0)
+	tracker.step = TutorialTracker.Step.SWEET_SPOT
+	assert_false(tracker.observe(state, _hit(0.2, 6.0)), "a hit near the hilt teaches the wrong thing")
+	assert_false(tracker.observe(state, _hit(0.99, 6.0)), "and so does the very end of the blade")
+	assert_true(tracker.observe(state, _hit(0.7, 1.0)), "the percussion band passes, however gentle the hit")
+	assert_eq(tracker.step, TutorialTracker.Step.MOMENTUM, "next: momentum")
+
+
+func test_the_sweet_spot_lesson_ignores_the_opponents_hits() -> void:
+	var state := _active_state()
+	var tracker := TutorialTracker.create(0)
+	tracker.step = TutorialTracker.Step.SWEET_SPOT
+	var theirs: Array[DuelEvent] = [
+		DuelEvent.create(DuelEventTypes.BODY_HIT, 0, 1, 0, {DuelEventKeys.BLADE_FRACTION: 0.7, DuelEventKeys.CLOSING_SPEED: 6.0})
+	]
+	assert_false(tracker.observe(state, theirs), "being hit well is not a pass")
+
+
+func test_the_momentum_lesson_wants_the_contrast_not_a_number() -> void:
+	var state := _active_state()
+	var tracker := TutorialTracker.create(0)
+	tracker.step = TutorialTracker.Step.MOMENTUM
+	assert_false(tracker.observe(state, _hit(0.7, 5.0)), "one hit is not a comparison")
+	assert_false(tracker.observe(state, _hit(0.7, 5.4)), "two near-identical hits felt the same")
+	assert_true(tracker.observe(state, _hit(0.7, 5.0 * TutorialTracker.MOMENTUM_CONTRAST)), "a clearly harder hit completes the pair")
+	assert_true(tracker.is_complete(), "training complete")
+
+
+func test_the_partner_winds_up_and_swings_on_its_own_cadence() -> void:
+	var rules := StandardDuelRules.training()
+	var state := DuelFixture.state(rules)
+	state.phase = MatchPhase.Id.ROUND_ACTIVE
+	var dummy := TrainingDummyController.create(rules)
+	dummy.beat = TrainingDummyController.Beat.BIG_SWING
+	var presses := 0
+	var releases := 0
+	var moved := false
+	for _i in TrainingDummyController.SWING_PERIOD_TICKS:
+		var command := dummy.command_for(state, 1)
+		if command.attack_pressed:
+			presses += 1
+		if command.attack_released:
+			releases += 1
+		if command.move_x != 0 or command.move_y != 0:
+			moved = true
+	assert_eq(presses, 1, "one wind-back per period, whether or not anyone is in reach")
+	assert_eq(releases, 1, "and one release")
+	assert_false(moved, "a still target: the drill is about your spacing, not theirs")
+
+
+func test_the_partner_paces_in_and_out_without_attacking() -> void:
+	var rules := StandardDuelRules.training()
+	var state := DuelFixture.state(rules)
+	state.phase = MatchPhase.Id.ROUND_ACTIVE
+	var dummy := TrainingDummyController.create(rules)
+	dummy.beat = TrainingDummyController.Beat.PACE
+	var closing := PackedFloat64Array()
+	for _i in TrainingDummyController.PACE_TICKS * 2:
+		var command := dummy.command_for(state, 1)
+		assert_false(command.attack_pressed or command.attack_released, "the momentum drill never swings back")
+		closing.append(command.axis_y())
+	assert_eq(closing[0], 1.0, "walks in first")
+	assert_eq(closing[TrainingDummyController.PACE_TICKS - 1], 1.0, "and keeps walking in long enough to be read")
+	assert_eq(closing[TrainingDummyController.PACE_TICKS], -1.0, "then walks out")
+
+
+func test_the_partner_stands_down_between_rounds() -> void:
+	var rules := StandardDuelRules.training()
+	var state := DuelFixture.state(rules)
+	var dummy := TrainingDummyController.create(rules)
+	dummy.beat = TrainingDummyController.Beat.PACE
+	assert_eq(state.phase, MatchPhase.Id.ROUND_INTRO, "precondition: intro")
+	assert_true(dummy.command_for(state, 1).is_idle(), "no drill runs before the round does")

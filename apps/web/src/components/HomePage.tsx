@@ -13,7 +13,7 @@ import { getRuntimeConfig } from "@/config/runtimeConfig";
 import { SiteCopy, SiteName, SitePath } from "@/content/site";
 
 export function HomePage() {
-  const { community, support } = getRuntimeConfig();
+  const { community, support, publicPlay } = getRuntimeConfig();
   return (
     <div className="hero">
       <h1 className="hero__title">{SiteName}</h1>
@@ -25,7 +25,11 @@ export function HomePage() {
           {SiteCopy.howToPlay}
         </Link>
       </div>
-      <CommunityCtas community={community} support={support} />
+      <CommunityCtas
+        community={community}
+        support={support}
+        itch={publicPlay}
+      />
     </div>
   );
 }

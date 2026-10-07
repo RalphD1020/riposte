@@ -15,9 +15,14 @@ const FLOOR_THICKNESS := 0.2
 const FLOOR_MARGIN := 0.6
 const CIRCLE_SEGMENTS := 64
 const CENTER_MARK_RADIUS := 0.3
+## Home marks sit at each side's spawn, which is what makes the arena's
+## north-south axis legible at a glance (SIDE-001).
+const HOME_MARK_RADIUS := 0.75
+const HOME_MARK_INNER := 0.55
+const HOME_MARK_HEIGHT := 0.004
 
 
-static func create(kit: PresentationKit, arena_radius: float) -> ArenaScaffold:
+static func create(kit: PresentationKit, arena_radius: float, spawn_offset: float) -> ArenaScaffold:
 	var scaffold := ArenaScaffold.new()
 	scaffold.name = "Arena"
 	scaffold._build_environment()
@@ -25,6 +30,7 @@ static func create(kit: PresentationKit, arena_radius: float) -> ArenaScaffold:
 		scaffold.add_child(kit.scene.instantiate())
 	else:
 		scaffold._build_floor(arena_radius)
+		scaffold._build_home_marks(spawn_offset)
 	return scaffold
 
 
@@ -67,6 +73,31 @@ func _build_floor(arena_radius: float) -> void:
 	mark_mesh.bottom_radius = CENTER_MARK_RADIUS
 	mark_mesh.height = 0.004
 	_add("CenterMark", mark_mesh, RiposteTheme.WORLD_FLOOR_EDGE, Vector3(0.0, 0.003, 0.0))
+
+
+## One mark per end, at the spawn. Light's is a filled disc and Dark's is a
+## ring, so the two ends read as different even without colour — side is
+## never communicated by colour alone (SIDE-001).
+func _build_home_marks(spawn_offset: float) -> void:
+	var disc := CylinderMesh.new()
+	disc.top_radius = HOME_MARK_RADIUS
+	disc.bottom_radius = HOME_MARK_RADIUS
+	disc.height = HOME_MARK_HEIGHT
+	disc.radial_segments = CIRCLE_SEGMENTS
+	_home_mark(DuelSide.Id.LIGHT_SOUTH, disc, RiposteTheme.WORLD_HOME_LIGHT, spawn_offset)
+	var ring := TorusMesh.new()
+	ring.inner_radius = HOME_MARK_INNER
+	ring.outer_radius = HOME_MARK_RADIUS
+	ring.rings = CIRCLE_SEGMENTS
+	ring.ring_segments = 6
+	_home_mark(DuelSide.Id.DARK_NORTH, ring, RiposteTheme.WORLD_HOME_DARK, spawn_offset).scale = Vector3(
+		1.0, RING_FLATTEN, 1.0
+	)
+
+
+func _home_mark(side: DuelSide.Id, mesh: Mesh, tint: Color, spawn_offset: float) -> MeshInstance3D:
+	var home := ArenaTransform.to_world(0.0, DuelSide.spawn_y(side, spawn_offset), HOME_MARK_HEIGHT)
+	return _add("Home%s" % DuelSide.label(side), mesh, tint, home)
 
 
 func _add(mesh_name: String, mesh: Mesh, color: Color, offset: Vector3) -> MeshInstance3D:

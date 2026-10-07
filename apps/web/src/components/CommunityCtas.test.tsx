@@ -9,6 +9,7 @@ describe("CommunityCtas", () => {
       <CommunityCtas
         community={{ status: "unconfigured" }}
         support={{ status: "unconfigured" }}
+        itch={{ status: "unconfigured" }}
       />,
     );
     const discord = screen.getByRole("button", {
@@ -36,6 +37,7 @@ describe("CommunityCtas", () => {
           status: "configured",
           href: "https://patreon.example/riposte",
         }}
+        itch={{ status: "configured", href: "https://stub.itch.io/riposte" }}
       />,
     );
     const discord = screen.getByRole("link", {
@@ -49,5 +51,10 @@ describe("CommunityCtas", () => {
         name: `${SiteCopy.patreon} ${SiteCopy.opensInNewTab}`,
       }),
     ).toHaveAttribute("href", "https://patreon.example/riposte");
+    expect(
+      screen.getByRole("link", {
+        name: `${SiteCopy.itch} ${SiteCopy.opensInNewTab}`,
+      }),
+    ).toHaveAttribute("href", "https://stub.itch.io/riposte");
   });
 });

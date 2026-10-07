@@ -13,6 +13,8 @@ export default tseslint.config(
       "node_modules/**",
       "coverage/**",
       "next-env.d.ts",
+      // Engine output staged for /play: Godot owns it, we only serve it.
+      "public/game/**",
       "scripts/**",
     ],
   },

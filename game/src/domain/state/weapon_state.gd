@@ -12,12 +12,32 @@ var phase_ticks: int = 0
 var angle: float = 0.0
 var speed: float = 0.0
 ## Charge C ∈ [0, 1] while charging; the launched swing keeps `swing_charge`.
+## Charge is never a timer: it is `earned_windback` expressed as a fraction.
 var charge: float = 0.0
+## Where the blade was when the current hold began. Winding back only earns
+## charge beyond this (or beyond the canonical guard, whichever is further),
+## so neither restoring an under-prepared blade nor inheriting a collision's
+## displacement is worth anything.
+var hold_start_angle: float = 0.0
+## Outward travel this hold has actually bought, in radians. Monotonic within
+## a hold — letting the blade drift back does not refund it — and reset the
+## moment the hold ends.
+var earned_windback: float = 0.0
+## Which side of the facing the blade is committed to: +1 the fighter's left,
+## -1 their right. Updated only once the blade is clear of the centre
+## deadzone, so a blade hovering near 0° cannot chatter between sides and
+## flip the next swing's direction tick to tick.
+var stable_side: float = -1.0
 ## +1 sweeps counter-clockwise (right → left), -1 clockwise (left → right).
 var swing_dir: float = 1.0
-var windup_base: float = 0.0
+## Motor authority this swing was launched with, from the release angle
+## (`WeaponDefinition.readiness`). Captured once and never recomputed in
+## flight: an under-prepared cut must not gain power by crossing centre.
+var launch_readiness: float = 0.0
 var swing_start: float = 0.0
 var swing_end: float = 0.0
+## The charge this swing was launched with. Like `launch_readiness`, read once
+## at release and never recomputed in flight.
 var swing_charge: float = 0.0
 var swing_hit: bool = false
 var swing_contact: bool = false
@@ -35,16 +55,20 @@ func set_phase(next: CombatPhase.Id) -> void:
 		phase_ticks = 0
 
 
-func reset(guard_angle: float) -> void:
+## `resting_angle` is the signed canonical guard this fighter starts from.
+func reset(resting_angle: float) -> void:
 	phase = CombatPhase.Id.NEUTRAL
 	phase_ticks = 0
-	angle = guard_angle
+	angle = resting_angle
 	speed = 0.0
 	charge = 0.0
-	swing_dir = 1.0
-	windup_base = guard_angle
-	swing_start = guard_angle
-	swing_end = guard_angle
+	hold_start_angle = resting_angle
+	earned_windback = 0.0
+	stable_side = 1.0 if resting_angle > 0.0 else -1.0
+	swing_dir = -stable_side
+	launch_readiness = 0.0
+	swing_start = resting_angle
+	swing_end = resting_angle
 	swing_charge = 0.0
 	swing_hit = false
 	swing_contact = false

@@ -20,6 +20,18 @@ const PARRY := &"parry"
 const BIND_STARTED := &"bind_started"
 const BIND_ENDED := &"bind_ended"
 const BODY_HIT := &"body_hit"
+const BODY_POKE := &"body_poke"
+const BODY_THRUST := &"body_thrust"
 const CRITICAL_HIT := &"critical_hit"
 const STAGGERED := &"staggered"
 const FIGHTER_KILLED := &"fighter_killed"
+## A double tap in one duel direction earned a burst of footwork.
+const BURST_STARTED := &"burst_started"
+## Two fighter bodies collided. Not a blade hit — a shoulder check or an
+## accidental bump. Resolved with inverse-mass impulse (PHYS-005).
+const BODY_PUSH := &"body_push"
+## The chronological contact loop hit its bound. A diagnostic, not a hit: the
+## pair is held in contact rather than allowed to tunnel.
+const CONTACT_SATURATED := &"contact_saturated"
+## Authoritative state violated an invariant; the match is a no-contest.
+const SIMULATION_FAULT := &"simulation_fault"

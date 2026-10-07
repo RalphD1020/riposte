@@ -1,39 +1,50 @@
 import { render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { HOSTED_PLAY_PATH } from "@/config/runtimeConfig";
 import { SiteCopy, SitePath } from "@/content/site";
 import { PlayGateway, PlayView, replaceLocation } from "./PlayGateway";
 
-const LOCAL = { status: "configured", href: "http://127.0.0.1:8060/" } as const;
+const HOSTED = { status: "configured", href: HOSTED_PLAY_PATH } as const;
+const ITCH = {
+  status: "configured",
+  href: "https://stub.itch.io/riposte",
+} as const;
 const UNPUBLISHED = { status: "unconfigured" } as const;
 
 describe("PlayView", () => {
-  it("announces that it is checking before the host is known", () => {
-    render(<PlayView admission={null} />);
-    expect(
-      screen.getByRole("heading", {
-        level: 1,
-        name: SiteCopy.playCheckingTitle,
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      SiteCopy.playCheckingBody,
-    );
-  });
-
   it("offers a manual link while opening a configured destination", () => {
-    render(<PlayView admission={{ surface: "local", destination: LOCAL }} />);
+    render(<PlayView admission={{ surface: "hosted", destination: HOSTED }} />);
     expect(screen.getByRole("status")).toHaveTextContent(
       SiteCopy.playOpeningBody,
     );
     expect(
       screen.getByRole("link", { name: SiteCopy.playOpeningCta }),
-    ).toHaveAttribute("href", LOCAL.href);
+    ).toHaveAttribute("href", HOSTED.href);
+  });
+
+  /**
+   * Arriving on a different site unannounced is the one failure this page can
+   * produce that looks like a bug to the visitor.
+   */
+  it("says so when the hop leaves this site", () => {
+    render(<PlayView admission={{ surface: "itch", destination: ITCH }} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      SiteCopy.playOpeningBodyItch,
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent(
+      SiteCopy.playOpeningBody,
+    );
+    expect(
+      screen.getByRole("link", { name: SiteCopy.playOpeningCta }),
+    ).toHaveAttribute("href", ITCH.href);
   });
 
   it("explains an unpublished game and offers the way home", () => {
     render(
-      <PlayView admission={{ surface: "public", destination: UNPUBLISHED }} />,
+      <PlayView
+        admission={{ surface: "unpublished", destination: UNPUBLISHED }}
+      />,
     );
     expect(
       screen.getByRole("heading", { name: SiteCopy.playUnpublishedTitle }),
@@ -45,31 +56,38 @@ describe("PlayView", () => {
 });
 
 describe("PlayGateway", () => {
-  it("prerenders a neutral checking state, since static HTML cannot know the host", () => {
+  /**
+   * The surface is a build-time fact, so the prerendered HTML already names
+   * the destination. The old gateway could not: it waited for the browser to
+   * report a hostname, which meant every visitor read "Finding your duel"
+   * first, including the ones whose answer was already known.
+   */
+  it("prerenders the resolved destination rather than a checking state", () => {
     const navigate = vi.fn();
     const html = renderToString(
       <PlayGateway
-        localPlay={LOCAL}
-        publicPlay={UNPUBLISHED}
+        admission={{ surface: "hosted", destination: HOSTED }}
         navigate={navigate}
       />,
     );
-    expect(html).toContain(SiteCopy.playCheckingTitle);
-    expect(html).not.toContain(SiteCopy.playOpeningTitle);
+    expect(html).toContain(SiteCopy.playOpeningTitle);
+    expect(html).toContain(HOSTED_PLAY_PATH);
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("navigates a loopback visitor to the local export", () => {
-    expect(window.location.hostname).toBe("localhost");
+  /**
+   * The static export has no rewrites, so this hop is how `/play` reaches the
+   * export staged on the same origin.
+   */
+  it("navigates to the staged export on this origin", () => {
     const navigate = vi.fn();
     render(
       <PlayGateway
-        localPlay={LOCAL}
-        publicPlay={UNPUBLISHED}
+        admission={{ surface: "hosted", destination: HOSTED }}
         navigate={navigate}
       />,
     );
-    expect(navigate).toHaveBeenCalledExactlyOnceWith(LOCAL.href);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(HOSTED_PLAY_PATH);
     expect(
       screen.getByRole("heading", { name: SiteCopy.playOpeningTitle }),
     ).toBeInTheDocument();
@@ -79,8 +97,7 @@ describe("PlayGateway", () => {
     const navigate = vi.fn();
     render(
       <PlayGateway
-        localPlay={UNPUBLISHED}
-        publicPlay={UNPUBLISHED}
+        admission={{ surface: "unpublished", destination: UNPUBLISHED }}
         navigate={navigate}
       />,
     );

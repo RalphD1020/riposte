@@ -19,7 +19,7 @@ func _decide_round(runner: SimRunner, loser: int) -> void:
 	runner.skip_intro()
 	for slot in 2:
 		if loser == -1 or slot == loser:
-			runner.state.fighter(slot).health = 0.0
+			DuelFixture.kill(runner.state.fighter(slot))
 	runner.idle(1 + runner.simulation.rules.result_ticks)
 
 
@@ -47,7 +47,11 @@ func test_a_kill_ends_the_round_and_scores() -> void:
 	runner.skip_intro()
 	var a := runner.state.fighter(0)
 	var b := runner.state.fighter(1)
-	b.x = a.x + 1.1
+	## Stand the target just inside reach along whichever way `a` is actually
+	## looking: spawns are cardinal and the sides are seeded (SIDE-001), so a
+	## fixed world offset would sometimes put them off the attack line.
+	b.x = a.x + SimMath.cosine(a.facing) * 1.1
+	b.y = a.y + SimMath.sine(a.facing) * 1.1
 	b.health = 1.0
 	runner.simulation.step(runner.state, PlayerCommand.create(runner.state.tick, 0.0, 0.0, true, true), PlayerCommand.idle(runner.state.tick))
 	runner.idle(40)
@@ -81,6 +85,23 @@ func test_double_kill_is_a_drawn_round() -> void:
 	assert_eq(runner.state.scores, PackedInt32Array([0, 0]), "nobody scores")
 
 
+## A mutual kill is only a draw when nothing separates the two blows. Give one
+## blade a later arrival and the round must go the other way — and it must do
+## so from either slot, or the arena itself is biased.
+func test_a_trade_goes_to_whoever_fell_second() -> void:
+	for fell_first in 2:
+		var runner := _runner()
+		runner.skip_intro()
+		for slot in 2:
+			DuelFixture.kill(runner.state.fighter(slot))
+		runner.state.fighter(1 - fell_first).lethal_fraction = 0.5
+		runner.idle(1 + runner.simulation.rules.result_ticks)
+		var ended := runner.first(DuelEventTypes.ROUND_ENDED)
+		assert_eq(int(ended.number(DuelEventKeys.WINNER)), 1 - fell_first, "the blade that landed first takes the round")
+		assert_eq(ended.text(DuelEventKeys.REASON), String(MatchPhase.REASON_TRADE_FIRST_CONTACT), "as a trade, not a draw")
+		assert_eq(runner.state.scores[1 - fell_first], 1, "and it scores")
+
+
 func test_best_of_five_ends_at_three() -> void:
 	var runner := _runner()
 	for _round in 3:
@@ -112,7 +133,8 @@ func test_next_round_resets_canonical_state() -> void:
 	_decide_round(runner, 1)
 	assert_eq(runner.state.round_number, 2, "second round")
 	assert_eq(runner.state.phase, MatchPhase.Id.ROUND_INTRO, "back to the intro")
-	assert_eq(a.x, -runner.simulation.rules.spawn_offset, "canonical position")
+	assert_eq(a.x, 0.0, "back on the centre line")
+	assert_eq(a.y, DuelSide.spawn_y(a.side, runner.simulation.rules.spawn_offset), "at its own end of the arena")
 	assert_eq(a.health, runner.simulation.rules.fighter.max_health, "full health")
 	assert_eq(a.weapon.angle, -runner.simulation.rules.weapon.guard_angle, "canonical guard")
 

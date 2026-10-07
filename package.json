@@ -11,6 +11,7 @@
     "dev:web": "pnpm --filter @riposte/web dev",
     "build": "node scripts/build.mjs",
     "game:export:web": "node game/scripts/export-web.mjs",
+    "game:stage:web": "node scripts/stage-web-game.mjs",
     "game:export:templates": "node game/scripts/install-export-templates.mjs",
     "build:static": "turbo build:static",
     "typecheck": "turbo typecheck",

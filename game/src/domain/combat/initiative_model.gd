@@ -21,9 +21,9 @@ static func time_to_threat(fighter: FighterState, opponent: FighterState, rules:
 		CombatPhase.Id.DEAD:
 			return UNREACHABLE
 		CombatPhase.Id.NEUTRAL:
-			ready = maxf(0.0, absf(weapon.speed) - definition.control_speed) / definition.hold_damping
+			ready = maxf(0.0, absf(weapon.speed) - definition.control_speed) / definition.hold_accel(rules.fighter.weapon_torque_scale)
 		CombatPhase.Id.OVERSWING:
-			ready = absf(weapon.speed) / definition.brake_accel(weapon.swing_charge)
+			ready = absf(weapon.speed) / definition.brake_accel(weapon.swing_charge, rules.fighter.weapon_torque_scale)
 			ready += float(definition.recovery_base_ticks) * dt + definition.recovery_commit_ticks * weapon.commitment * dt
 		CombatPhase.Id.RECOVERY:
 			ready = float(weapon.recovery_left) * dt

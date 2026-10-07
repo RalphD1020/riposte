@@ -1,6 +1,6 @@
 # Example: authored presentation kit
 
-> See also: [docs/concepts/presentation.md](../docs/concepts/presentation.md)
+> See also: [docs/concepts/presentation.md](../docs/concepts/presentation.md), [docs/reference/godot.md](../docs/reference/godot.md) — the rig and animation contract
 > Source: `game/src/presentation/kit/presentation_kit.gd`, `game/content/presentation/riposte_kits.gd`
 
 Replace the duelist's primitive capsule with a Blender model, its animations, and a custom swing sound. One new kit file; no code changes (PRES-KIT-001).

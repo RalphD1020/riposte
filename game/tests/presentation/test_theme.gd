@@ -44,6 +44,21 @@ func test_every_text_pair_meets_aa() -> void:
 	assert_eq(failing.size(), 0, "text pairs below 4.5:1: %s" % ", ".join(failing))
 
 
+## The first thing a player on `/play` sees is hand-written CSS in the export
+## preset, painted before any of this code exists. It is the one surface the
+## theme cannot reach at runtime, so it is checked here instead — otherwise
+## "the loading frame is on-brand" is a claim with nothing behind it.
+func test_the_loading_frame_is_painted_in_the_proven_on_steel_pair() -> void:
+	var preset := FileAccess.get_file_as_string("res://export_presets.cfg")
+	assert_true(preset.contains("html/head_include="), "fixture: the head include is where the first paint comes from")
+	var background := "#%s" % RiposteTheme.STEEL_900.to_html(false)
+	var text := "#%s" % RiposteTheme.TEXT_ON_DARK.to_html(false)
+	assert_true(preset.contains("background: %s" % background), "the frame is steel (%s)" % background)
+	assert_true(preset.contains("color: %s" % text), "its text is the on-dark token (%s)" % text)
+	assert_true(preset.contains("content=\\\"%s\\\"" % background), "the browser chrome is told the same color")
+	assert_true(_contrast(RiposteTheme.TEXT_ON_DARK, RiposteTheme.STEEL_900) >= TEXT_MIN, "and that pair is a proven one")
+
+
 func test_the_documented_near_miss_is_not_allowed() -> void:
 	var ratio := _contrast(RiposteTheme.MAUVE_300, RiposteTheme.STEEL_900)
 	assert_true(ratio < TEXT_MIN, "mauve on steel is 4.48:1 and must never carry text (%.3f)" % ratio)

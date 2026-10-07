@@ -18,3 +18,9 @@ game/**/*.res
 
 # Godot generated
 game/.godot/
+
+# Third-party addons (not our source)
+game/addons/
+
+# Godot Web export staged for /play (engine output, not our source)
+apps/web/public/game/

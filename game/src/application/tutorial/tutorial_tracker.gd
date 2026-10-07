@@ -2,15 +2,30 @@ class_name TutorialTracker
 extends RefCounted
 
 ## Demonstrated, not explained (UX §57): MOVE → QUICK CUT → CHARGE → RELEASE
-## → BLADES ARE PHYSICAL. Each step completes from what the player actually
-## did in the simulation; the HUD maps steps to copy.
+## → BLADES ARE PHYSICAL → SWEET SPOT → MOMENTUM. Each step completes from
+## what the player actually did in the simulation; the HUD maps steps to copy.
 ##
-## See also: /docs/concepts/ux.md
+## The last two steps teach the physics the first five let you feel, and both
+## are checked against quantities the strike itself carried (COMBAT-009). That
+## matters more than it sounds: a lesson scored on its own idea of a good hit
+## could pass a player for something the game does not reward, which is worse
+## than no lesson. No equation is ever shown — a drill is passed by doing the
+## thing, and the only feedback is the hit.
+##
+## See also: /docs/concepts/ux.md, /docs/concepts/combat.md
 
-enum Step { MOVE, QUICK_CUT, CHARGE, RELEASE, BLADES, COMPLETE }
+enum Step { MOVE, QUICK_CUT, CHARGE, RELEASE, BLADES, SWEET_SPOT, MOMENTUM, COMPLETE }
 
 const MOVE_DISTANCE := 1.0
 const CHARGE_TARGET := 0.5
+
+## How much harder one hit has to be than another before the player has
+## demonstrably *felt* the difference rather than scattered.
+##
+## A ratio between their own two hits, not an absolute speed: the contrast is
+## the lesson, and an absolute threshold would be a different test for a fast
+## fighter than a slow one.
+const MOMENTUM_CONTRAST := 1.6
 
 var step: Step = Step.MOVE
 var _slot: int = 0
@@ -18,6 +33,8 @@ var _travel: float = 0.0
 var _last_x: float = 0.0
 var _last_y: float = 0.0
 var _tracking: bool = false
+var _softest: float = 0.0
+var _hardest: float = 0.0
 
 
 static func create(slot: int) -> TutorialTracker:
@@ -54,6 +71,25 @@ func observe(state: MatchState, events: Array[DuelEvent]) -> bool:
 			for event in events:
 				if event.type == DuelEventTypes.BLADE_CONTACT or event.type == DuelEventTypes.BIND_STARTED:
 					return _advance_if(true)
+		Step.SWEET_SPOT:
+			## Where on the blade, and nothing else. Not the damage and not
+			## the grade: a thin hit from a huge swing can out-damage a
+			## perfect one from a small swing, and passing the player for that
+			## would teach them to wind up instead of to aim.
+			for event in events:
+				if event.type == DuelEventTypes.BODY_HIT and event.actor == _slot:
+					if SwingSemantics.in_sweet_region(event.number(DuelEventKeys.BLADE_FRACTION)):
+						return _advance_if(true)
+		Step.MOMENTUM:
+			for event in events:
+				if event.type != DuelEventTypes.BODY_HIT or event.actor != _slot:
+					continue
+				var closing := event.number(DuelEventKeys.CLOSING_SPEED)
+				if closing <= 0.0:
+					continue
+				_hardest = maxf(_hardest, closing)
+				_softest = closing if _softest <= 0.0 else minf(_softest, closing)
+			return _advance_if(_softest > 0.0 and _hardest >= _softest * MOMENTUM_CONTRAST)
 	return false
 
 

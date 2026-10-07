@@ -11,6 +11,8 @@
  *   engine-independent: no scene types, no float32 engine vectors, no engine
  *   singletons, no platform-libm math (use SimMath), no randomness outside
  *   SeededRng, no output, no signals, no await.
+ * - Physics drives classification: `GuardRegion` is a description of the
+ *   blade, so it may not appear in `src/domain/combat` or `src/domain/match`.
  * - PRES-001 `src/presentation` never drives the simulation, never names an
  *   application class, and contains no content identities (kits own
  *   identity). Layer bans are derived from each layer's `class_name`s.
@@ -36,6 +38,7 @@ function walk(dir, callback) {
     if (
       entry.name === ".godot" ||
       entry.name === "coverage" ||
+      entry.name === "addons" ||
       entry.name.startsWith(".")
     )
       continue;
@@ -255,6 +258,18 @@ SIM_RULES.push(
 const SIM_ALLOW = new Set(["src/domain/rng/seeded_rng.gd:rng"]);
 scanCode("src/domain", SIM_RULES, { allow: SIM_ALLOW });
 scanCode("content/rules", SIM_RULES);
+
+// --- Physics drives classification, never the reverse ------------------------
+const CLASSIFICATION_RULES = [
+  {
+    id: "guard-region",
+    pattern: /\bGuardRegion\b/,
+    reason:
+      "GuardRegion describes the blade for HUD/telemetry; physics must branch on continuous angle, readiness and earned wind-back instead",
+  },
+];
+scanCode("src/domain/combat", CLASSIFICATION_RULES);
+scanCode("src/domain/match", CLASSIFICATION_RULES);
 
 // --- PRES-001 ----------------------------------------------------------------
 scanCode("src/presentation", [

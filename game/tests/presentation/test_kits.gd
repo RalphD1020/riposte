@@ -70,6 +70,22 @@ func test_a_scene_kit_replaces_the_primitive_and_takes_combatant_color() -> void
 	proxy.free()
 
 
+func test_mapped_clips_stay_inside_the_semantics_the_proxy_asks_for() -> void:
+	var catalog := RiposteKits.build_catalog()
+	for kit_id in RiposteKits.required_ids():
+		var shipped := catalog.resolve(kit_id, PresentationKit.PRIMITIVE_FIGHTER)
+		assert_eq(shipped.unknown_clip_semantics().size(), 0, "%s maps no clip the proxy never plays" % kit_id)
+	var typo := PresentationKit.new()
+	typo.animation_clips = {PresentationKit.ANIM_SWING: &"swing_a", &"SWNIG": &"swing_b"}
+	var unknown := typo.unknown_clip_semantics()
+	assert_eq(unknown.size(), 1, "the typo is reported")
+	assert_eq(unknown[0], "SWNIG", "and reported by name, not repaired into the nearest semantic")
+	assert_eq(typo.clip_for(PresentationKit.ANIM_SWING), &"swing_a", "the correct mapping still resolves")
+	assert_eq(typo.clip_for(&"SWNIG"), &"swing_b", "a lookup is not the gate - the gate is")
+	for semantic in PresentationKit.ANIM_SEMANTICS:
+		assert_true(semantic != &"", "every declared semantic is nameable")
+
+
 func test_placeholder_audio_is_deterministic_and_cached() -> void:
 	var first := PlaceholderAudio.cues()
 	var second := PlaceholderAudio.cues()

@@ -82,6 +82,25 @@ func test_random_play_never_breaks_state_invariants() -> void:
 	assert_eq(violations.size(), 0, "invariants held: %s" % ", ".join(violations.slice(0, 5)))
 
 
+## Events are derived from commands + versioned rules: replaying the record
+## through a fresh simulation regenerates exactly the same events.
+func test_events_are_derived_from_commands() -> void:
+	var runner := _played(7)
+	var rules := DuelFixture.rules()
+	var live_events := runner.events.duplicate()
+	assert_true(live_events.size() > 20, "precondition: enough events to compare (%d)" % live_events.size())
+	var replay_sim := DuelSimulation.create(rules)
+	var replay_state := replay_sim.new_match(runner.record.seed_value)
+	var replay_events: Array[DuelEvent] = []
+	for index in runner.record.tick_count():
+		replay_events.append_array(replay_sim.step(replay_state, runner.record.command_at(0, index), runner.record.command_at(1, index)))
+	assert_eq(replay_events.size(), live_events.size(), "same event count")
+	for i in replay_events.size():
+		assert_eq(replay_events[i].type, live_events[i].type, "event %d type matches" % i)
+		assert_eq(replay_events[i].tick, live_events[i].tick, "event %d tick matches" % i)
+		assert_eq(replay_events[i].actor, live_events[i].actor, "event %d actor matches" % i)
+
+
 func _check(state: MatchState, rules: DuelRules, violations: PackedStringArray) -> void:
 	for fighter in state.fighters:
 		var w := fighter.weapon

@@ -223,12 +223,18 @@ func test_touch_moves_and_attacks_through_the_same_input_path() -> void:
 	var touch := screen.touch
 	var me := screen.session.state.fighter(0)
 	var start_x := me.x
+	var start_y := me.y
+	var forward_x := me.duel_forward_x
+	var forward_y := me.duel_forward_y
 	var stick := touch.move_zone().get_center()
 	assert_true(touch.handle(_finger(0, stick, true)), "a thumb in the move zone claims the stick")
-	touch.handle(_slide(0, stick - Vector2(TouchControls.JOYSTICK_RADIUS, 0.0)))
+	## Footwork is duel-relative (MOVE-001), so a thumb pushed away from the
+	## player closes the measure rather than walking a compass direction.
+	touch.handle(_slide(0, stick - Vector2(0.0, TouchControls.JOYSTICK_RADIUS)))
 	for _i in 6:
 		screen.advance_frame(FRAME)
-	assert_true(me.x < start_x - 0.05, "pushing the stick left walks left (%.3f → %.3f)" % [start_x, me.x])
+	var advance := (me.x - start_x) * forward_x + (me.y - start_y) * forward_y
+	assert_true(advance > 0.05, "pushing the stick forward walks toward the opponent (%.3f m)" % advance)
 	touch.handle(_finger(0, stick, false))
 	var zone := touch.attack_zone().get_center()
 	touch.handle(_finger(1, zone, true))
@@ -241,6 +247,66 @@ func test_touch_moves_and_attacks_through_the_same_input_path() -> void:
 	screen.advance_frame(FRAME)
 	assert_false(screen.human.input.is_attack_held(), "an OS-canceled touch drops the attack")
 	assert_eq(_swings(screen), 1, "and never swings")
+	await _shutdown(booted)
+
+
+## Sequentially is not the same as simultaneously: a right thumb that steals
+## the stick, or a left thumb that drops the hold, only shows up when both are
+## down at once. Independent `index` values are the whole mechanism.
+func test_both_thumbs_work_at_the_same_time() -> void:
+	var booted := await _boot_ready()
+	var screen := await _active_duel(booted)
+	var touch := screen.touch
+	var me := screen.session.state.fighter(0)
+	var stick := touch.move_zone().get_center()
+	var forward_x := me.duel_forward_x
+	var forward_y := me.duel_forward_y
+	var start_x := me.x
+	var start_y := me.y
+	touch.handle(_finger(0, stick, true))
+	touch.handle(_slide(0, stick - Vector2(0.0, TouchControls.JOYSTICK_RADIUS)))
+	touch.handle(_finger(1, touch.attack_zone().get_center(), true))
+	assert_true(screen.human.input.is_attack_held(), "the right thumb holds while the left thumb steers")
+	for _i in 8:
+		screen.advance_frame(FRAME)
+	assert_true(screen.human.input.is_attack_held(), "and keeps holding across frames of movement")
+	var advance := (me.x - start_x) * forward_x + (me.y - start_y) * forward_y
+	assert_true(advance > 0.05, "while the fighter really walked forward (%.3f m)" % advance)
+	assert_true(me.weapon.charge > 0.0, "and the wind-back earned charge at the same time")
+	touch.handle(_finger(1, touch.attack_zone().get_center(), false))
+	screen.advance_frame(FRAME)
+	assert_eq(_swings(screen), 1, "releasing the right thumb swings once")
+	assert_true(touch.handle(_slide(0, stick)), "and the left thumb still owns its stick")
+	await _shutdown(booted)
+
+
+## MOVE-002 through a thumb. The gesture is "the same direction twice" in duel
+## axes, so this taps the sector and comes to rest, never a screen point.
+func test_a_thumb_double_tap_bursts_in_the_duel_direction() -> void:
+	var booted := await _boot_ready()
+	var screen := await _active_duel(booted)
+	var touch := screen.touch
+	var stick := touch.move_zone().get_center()
+	var reach := TouchControls.JOYSTICK_RADIUS
+	var offsets := {
+		MovementGestureState.BurstKind.FORWARD_DASH: Vector2(0.0, -reach),
+		MovementGestureState.BurstKind.BACK_DASH: Vector2(0.0, reach),
+		MovementGestureState.BurstKind.RIGHT_STEP: Vector2(reach, 0.0),
+		MovementGestureState.BurstKind.LEFT_STEP: Vector2(-reach, 0.0),
+	}
+	for kind: MovementGestureState.BurstKind in offsets.keys():
+		var before := _bursts(screen)
+		for _tap in 2:
+			touch.handle(_finger(0, stick, true))
+			touch.handle(_slide(0, stick + (offsets[kind] as Vector2)))
+			screen.advance_frame(FRAME)
+			## Lifting the thumb *is* coming to rest; the recognizer requires
+			## it between taps, so a held push can never dash.
+			touch.handle(_finger(0, stick, false))
+			screen.advance_frame(FRAME)
+		var launched := _bursts(screen)
+		assert_eq(launched.size(), before.size() + 1, "one burst per double tap, not two")
+		assert_eq(launched[launched.size() - 1], kind, "and it is the direction the thumb pushed")
 	await _shutdown(booted)
 
 
@@ -303,7 +369,13 @@ func test_f3_toggles_combat_diagnostics_in_debug_builds() -> void:
 	_push(_key(KEY_F3, true))
 	assert_true(screen.debug_overlay.visible, "F3 shows them")
 	screen.advance_frame(FRAME)
-	assert_true(screen.debug_overlay.text().contains("distance"), "with live spacing numbers")
+	var text := screen.debug_overlay.text()
+	assert_true(text.contains("distance"), "with live spacing numbers")
+	## The physical profile has to be there too: a derived inertia that
+	## disagrees with the authored mass is the single most common cause of a
+	## fighter feeling wrong, and it is invisible without this.
+	assert_true(text.contains("body") and text.contains("kg"), "and the fighter's physical profile")
+	assert_true(text.contains("blade") and text.contains("tip"), "and the weapon's")
 	_push(_key(KEY_F3, true))
 	assert_false(screen.debug_overlay.visible, "F3 hides them again")
 	await _shutdown(booted)
@@ -341,6 +413,14 @@ func _swings(screen: MatchScreen) -> int:
 		if event.type == DuelEventTypes.ATTACK_RELEASED and event.actor == 0:
 			count += 1
 	return count
+
+
+func _bursts(screen: MatchScreen) -> Array[MovementGestureState.BurstKind]:
+	var kinds: Array[MovementGestureState.BurstKind] = []
+	for event in screen.session.events:
+		if event.type == DuelEventTypes.BURST_STARTED and event.actor == 0:
+			kinds.append(int(event.number(DuelEventKeys.BURST)) as MovementGestureState.BurstKind)
+	return kinds
 
 
 func _finger(index: int, at: Vector2, down: bool, canceled: bool = false) -> InputEventScreenTouch:

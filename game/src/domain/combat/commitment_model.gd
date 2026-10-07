@@ -3,9 +3,16 @@ extends RefCounted
 
 ## Commitment K and its consequences for footwork and tracking
 ## (COMBAT §20, §21, §26, §62). Power creates positional debt: K rises with
-## charge and swing phase and multiplies down translation, acceleration, and
-## tracking. These are continuous curves, not table switches.
+## charge and swing phase and reduces the *authority* to change motion —
+## acceleration and turn torque — never the motion itself (PHYS-003). These
+## are continuous curves, not table switches.
 ##
+## Commitment answers "how hard is this action to change?". It is a different
+## question from structural coupling ("how well is the body supporting this
+## impact?"), and the two must not be conflated: a fully charged swing thrown
+## mid-sidestep is maximally committed and badly structured at the same time.
+##
+## Implements: /spec/invariants.md#phys-003
 ## See also: /docs/concepts/combat.md
 
 ## Phase factor F_phase (COMBAT §20). Recovery decays linearly to zero.
@@ -40,22 +47,33 @@ static func commitment(weapon: WeaponState, definition: WeaponDefinition) -> flo
 	return 0.0
 
 
+## What the body is *trying* to do, as a fraction of its top speed. Commitment
+## MUST NOT appear here (PHYS-003): a committed fighter who was already driving
+## forward keeps driving forward. Death and stagger are constraints on intent,
+## not commitment — a corpse stops asking to move and brakes.
 static func translation_multiplier(fighter: FighterState, definition: FighterDefinition) -> float:
 	match fighter.weapon.phase:
 		CombatPhase.Id.DEAD:
 			return 0.0
 		CombatPhase.Id.STAGGER:
 			return definition.stagger_translation
-	return 1.0 - definition.translation_commit_penalty * fighter.weapon.commitment
+	return 1.0
 
 
-static func accel_multiplier(fighter: FighterState, definition: FighterDefinition) -> float:
-	match fighter.weapon.phase:
-		CombatPhase.Id.DEAD:
-			return 0.0
-		CombatPhase.Id.STAGGER:
-			return definition.stagger_translation
-	return 1.0 - definition.accel_commit_penalty * fighter.weapon.commitment
+## Movement authority `A_move ∈ (0, 1]`: how much of the body's acceleration is
+## still available to change velocity. This is the whole of what commitment
+## costs in footwork — existing momentum continues untouched, so starting a
+## heavy swing mid-stride keeps the stride and merely makes it expensive to
+## brake or strafe. A corpse keeps full braking authority so it slides to rest
+## rather than coasting forever.
+static func move_authority(fighter: FighterState, definition: FighterDefinition) -> float:
+	if fighter.weapon.phase == CombatPhase.Id.DEAD:
+		return 1.0
+	return clampf(
+		1.0 - definition.accel_commit_penalty * fighter.weapon.commitment,
+		definition.min_move_authority,
+		1.0
+	)
 
 
 ## Opponent orbiting against the committed swing direction, normalized to [0, 1].

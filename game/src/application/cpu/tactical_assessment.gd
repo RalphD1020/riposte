@@ -1,0 +1,180 @@
+class_name TacticalAssessment
+extends RefCounted
+
+## Compact tactical state derived from CpuObservation and own fighter state.
+## One evaluator across all difficulties (CPU-004): the assessment is the same
+## pure function; profiles weight how much each signal matters.
+##
+## See also: /docs/concepts/cpu.md
+
+## Burst evaluation indices: one score per direction.
+const BURST_FORWARD := 0
+const BURST_BACKWARD := 1
+const BURST_CLOCKWISE := 2
+const BURST_COUNTERCLOCKWISE := 3
+const BURST_COUNT := 4
+
+## How close the perceived distance is to the preferred range, [0, 1].
+var measure_quality: float = 0.0
+## Time differential (seconds). Positive = own fighter threatens first.
+var initiative: float = 0.0
+## Opponent in recovery/overswing and we can arrive in time, [0, 1].
+var tempo_opportunity: float = 0.0
+## Opponent committed (LAUNCH/swinging) and own tap can intercept, [0, 1].
+var indes_opportunity: float = 0.0
+## Own blade alignment toward opponent center, [0, 1].
+var line_advantage: float = 0.0
+## How pressed the opponent is relative to own edge distance, [-1, 1].
+## Positive = opponent is closer to the wall.
+var arena_pressure: float = 0.0
+## Opponent commitment from the observation.
+var opponent_commitment: float = 0.0
+## Urgency to withdraw after own committed attack, [0, 1].
+var withdrawal_urge: float = 0.0
+## Own stamina depletion [0, 1]. 0 = full, 1 = empty. Scaled by profile's
+## stamina_cost_weight to penalize costly actions when exhausted.
+var stamina_depletion: float = 0.0
+## Utility scores for all 4 burst directions.
+var burst_scores: PackedFloat64Array = PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+
+
+static func evaluate(
+	seen: CpuObservation,
+	me: FighterState,
+	perceived_distance: float,
+	reach: float,
+	rules: DuelRules,
+	profile: CpuProfile,
+) -> TacticalAssessment:
+	var assessment := TacticalAssessment.new()
+	var desired := profile.tap_range if WeaponSystem.can_start_attack(me, rules.weapon) else profile.engage_range
+	assessment.measure_quality = SimMath.clamp01(1.0 - absf(perceived_distance - desired) / CpuController.APPROACH_RAMP)
+	assessment.initiative = seen.opp_threat_time - seen.my_threat_time
+	assessment.opponent_commitment = seen.opp_commitment
+	_assess_tempo(assessment, seen, perceived_distance, reach, rules)
+	_assess_indes(assessment, seen)
+	_assess_line(assessment, seen, me)
+	_assess_arena(assessment, seen, me, rules)
+	_assess_withdrawal(assessment, me)
+	_assess_stamina(assessment, me, rules)
+	_evaluate_bursts(assessment, seen, me, perceived_distance, reach, desired, rules, profile)
+	return assessment
+
+
+static func _assess_tempo(assessment: TacticalAssessment, seen: CpuObservation, perceived_distance: float, reach: float, rules: DuelRules) -> void:
+	if seen.opp_phase != CombatPhase.Id.RECOVERY and seen.opp_phase != CombatPhase.Id.OVERSWING:
+		return
+	var gap := maxf(0.0, perceived_distance - reach)
+	var close_time := gap / maxf(rules.fighter.max_speed, SimMath.EPSILON)
+	var window := maxf(seen.opp_threat_time, SimMath.EPSILON)
+	assessment.tempo_opportunity = SimMath.clamp01(1.0 - close_time / window)
+
+
+static func _assess_indes(assessment: TacticalAssessment, seen: CpuObservation) -> void:
+	var committed := seen.opp_phase == CombatPhase.Id.LAUNCH or CombatPhase.is_swinging(seen.opp_phase)
+	if committed and assessment.initiative > 0.0:
+		assessment.indes_opportunity = SimMath.clamp01(assessment.initiative / CpuController.INITIATIVE_FULL)
+
+
+static func _assess_line(assessment: TacticalAssessment, seen: CpuObservation, me: FighterState) -> void:
+	var dx := seen.opp_x - me.x
+	var dy := seen.opp_y - me.y
+	var dist := SimMath.length(dx, dy)
+	if dist <= SimMath.EPSILON:
+		return
+	var blade_angle := DuelGeometry.blade_angle(me)
+	var blade_x := SimMath.cosine(blade_angle)
+	var blade_y := SimMath.sine(blade_angle)
+	assessment.line_advantage = maxf(0.0, blade_x * dx / dist + blade_y * dy / dist)
+
+
+static func _assess_arena(assessment: TacticalAssessment, seen: CpuObservation, me: FighterState, rules: DuelRules) -> void:
+	if rules.arena_radius <= SimMath.EPSILON:
+		return
+	var my_dist := SimMath.length(me.x, me.y)
+	var opp_dist := SimMath.length(seen.opp_x, seen.opp_y)
+	assessment.arena_pressure = (opp_dist - my_dist) / rules.arena_radius
+
+
+static func _assess_withdrawal(assessment: TacticalAssessment, me: FighterState) -> void:
+	var own_committed := (
+		CombatPhase.is_swinging(me.weapon.phase)
+		or me.weapon.phase == CombatPhase.Id.OVERSWING
+		or me.weapon.phase == CombatPhase.Id.RECOVERY
+	)
+	if own_committed:
+		assessment.withdrawal_urge = SimMath.clamp01(me.weapon.commitment + (1.0 - me.stability))
+
+
+static func _assess_stamina(assessment: TacticalAssessment, me: FighterState, rules: DuelRules) -> void:
+	var max_stamina := StaminaModel.max_for_health(me.health, rules.fighter.max_health, rules.fighter.base_stamina, rules.combat)
+	if max_stamina <= SimMath.EPSILON:
+		assessment.stamina_depletion = 1.0
+		return
+	assessment.stamina_depletion = SimMath.clamp01(1.0 - me.stamina / max_stamina)
+
+
+## Score each burst direction: measure improvement, tactical gain, and edge
+## risk. The formula is intentionally coarse — it picks which direction to
+## dash, not how far the dash will carry.
+static func _evaluate_bursts(
+	assessment: TacticalAssessment,
+	_seen: CpuObservation,
+	me: FighterState,
+	perceived_distance: float,
+	_reach: float,
+	desired: float,
+	rules: DuelRules,
+	profile: CpuProfile,
+) -> void:
+	var approach_ramp := CpuController.APPROACH_RAMP
+	var burst_estimate := rules.fighter.burst_speed_axial * float(rules.fighter.burst_ticks) * SimulationTimebase.TICK_SECONDS
+	var lateral_estimate := rules.fighter.burst_speed_lateral * float(rules.fighter.burst_ticks) * SimulationTimebase.TICK_SECONDS
+	## Forward: closes distance. Good when approaching from outside.
+	var fwd_dist := maxf(0.0, perceived_distance - burst_estimate)
+	var fwd_measure := SimMath.clamp01(1.0 - absf(fwd_dist - desired) / approach_ramp)
+	var fwd_edge := _edge_risk_axial(me, burst_estimate, rules)
+	assessment.burst_scores[BURST_FORWARD] = fwd_measure + assessment.tempo_opportunity - fwd_edge
+	## Backward: opens distance. Good when withdrawing or threatened.
+	var back_dist := perceived_distance + burst_estimate
+	var back_measure := SimMath.clamp01(1.0 - absf(back_dist - desired) / approach_ramp)
+	var back_edge := _edge_risk_axial(me, -burst_estimate, rules)
+	assessment.burst_scores[BURST_BACKWARD] = back_measure + assessment.withdrawal_urge - back_edge
+	## Clockwise / counterclockwise: lateral repositioning. Good when
+	## orbiting against a committed opponent or exploiting angles.
+	var angle_gain := assessment.opponent_commitment * profile.angle_weight
+	var cw_edge := _edge_risk_lateral(me, lateral_estimate, rules)
+	var ccw_edge := _edge_risk_lateral(me, -lateral_estimate, rules)
+	assessment.burst_scores[BURST_CLOCKWISE] = angle_gain * 0.8 - cw_edge
+	assessment.burst_scores[BURST_COUNTERCLOCKWISE] = angle_gain * 0.8 - ccw_edge
+	## Stamina cost penalty: motor-derived, same law for all directions (STAMINA-001).
+	if profile.stamina_cost_weight > 0.0:
+		var dt := SimulationTimebase.TICK_SECONDS
+		var ticks := float(rules.fighter.burst_ticks)
+		var ref := maxf(rules.combat.stamina_move_reference_work, SimMath.EPSILON)
+		var axial_work := rules.fighter.burst_force * rules.fighter.burst_speed_axial * dt
+		var lateral_work := rules.fighter.burst_force * rules.fighter.burst_speed_lateral * dt
+		var axial_cost := (axial_work * ticks / ref) * assessment.stamina_depletion * profile.stamina_cost_weight
+		var lateral_cost := (lateral_work * ticks / ref) * assessment.stamina_depletion * profile.stamina_cost_weight
+		assessment.burst_scores[BURST_FORWARD] -= axial_cost
+		assessment.burst_scores[BURST_BACKWARD] -= axial_cost
+		assessment.burst_scores[BURST_CLOCKWISE] -= lateral_cost
+		assessment.burst_scores[BURST_COUNTERCLOCKWISE] -= lateral_cost
+
+
+## Estimated edge risk if the fighter moved `delta` along the duel forward axis.
+static func _edge_risk_axial(me: FighterState, delta: float, rules: DuelRules) -> float:
+	var post_x := me.x + me.duel_forward_x * delta
+	var post_y := me.y + me.duel_forward_y * delta
+	var edge_dist := rules.arena_radius - SimMath.length(post_x, post_y)
+	return SimMath.clamp01(1.0 - edge_dist / CpuController.EDGE_MARGIN)
+
+
+## Estimated edge risk for a lateral step. `delta` positive = to the right.
+static func _edge_risk_lateral(me: FighterState, delta: float, rules: DuelRules) -> float:
+	var right_x := me.duel_forward_y
+	var right_y := -me.duel_forward_x
+	var post_x := me.x + right_x * delta
+	var post_y := me.y + right_y * delta
+	var edge_dist := rules.arena_radius - SimMath.length(post_x, post_y)
+	return SimMath.clamp01(1.0 - edge_dist / CpuController.EDGE_MARGIN)

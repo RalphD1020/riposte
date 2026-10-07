@@ -32,10 +32,6 @@ const CPU := "CPU · %s"
 const DUMMY := "DUMMY"
 const SCORE := "%d — %d"
 
-const ROTATE_TITLE := "Rotate your device"
-const ROTATE_BODY := "Rotate your device for the best duel experience."
-const CONTINUE_ANYWAY := "CONTINUE ANYWAY"
-
 const RESULT_ROUNDS := "Rounds played: %d"
 const RESULT_BEST := "Most damaging strike: %d"
 const RESULT_PARRIES := "Parries: %d"
@@ -60,6 +56,10 @@ const SETTING_REDUCED_FLASH := "Reduced flash"
 const SETTING_CHARGE_INDICATOR := "Show charge indicator"
 const SETTING_HIGH_CONTRAST := "High contrast weapons"
 const SETTING_SCREEN_SHAKE := "Screen shake"
+const SETTING_TRAIL := "Blade trail"
+const SETTING_SWEET_SPOT := "Sweet spot emphasis"
+const TRAIL_LEVELS: PackedStringArray = ["Off", "Subtle", "Full"]
+const SWEET_SPOT_LEVELS: PackedStringArray = ["Off", "Standard", "Strong"]
 const SETTING_CONTROL_OPACITY := "Touch control opacity"
 const SETTING_HAPTICS := "Haptics"
 const OPACITY_LEVELS: PackedStringArray = ["Low", "Medium", "High"]
@@ -71,6 +71,12 @@ const TUTORIAL_STEPS := {
 	TutorialTracker.Step.CHARGE: ["CHARGE", "Hold attack"],
 	TutorialTracker.Step.RELEASE: ["RELEASE", "Let go to swing"],
 	TutorialTracker.Step.BLADES: ["BLADES ARE PHYSICAL", "Let their sword hit yours"],
+	## Both of these name the thing to do and the thing to notice, and neither
+	## names a number. A player who is told the mechanism stops watching the
+	## fight; a player who is told where to hit learns the mechanism from the
+	## hits (UX §57).
+	TutorialTracker.Step.SWEET_SPOT: ["SWEET SPOT", "Stay clear of their swing, then cut with the middle of your blade"],
+	TutorialTracker.Step.MOMENTUM: ["MOMENTUM", "Cut them as they walk in, then again as they walk away"],
 	TutorialTracker.Step.COMPLETE: ["TRAINING COMPLETE", "Keep sparring, or press Esc for the menu"],
 }
 

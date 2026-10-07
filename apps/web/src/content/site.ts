@@ -30,7 +30,6 @@ export const SiteCopy = {
     "Move and attack. Momentum, blade contact, and timing decide every exchange. Duel the CPU at three difficulties or learn in Training.",
   playCta: "Play Riposte",
   play: "Play",
-  home: "Home",
   howToPlay: "How to Play",
   about: "About",
   primaryNav: "Primary",
@@ -38,17 +37,19 @@ export const SiteCopy = {
   community: "Community",
   discord: "Discord",
   patreon: "Patreon",
+  itch: "Also on itch.io",
   comingSoon: "Coming soon",
   opensInNewTab: "(opens in a new tab)",
-  playCheckingTitle: "Finding your duel",
-  playCheckingBody: "Checking where Riposte runs for this site.",
   playOpeningTitle: "Opening Riposte",
   playOpeningBody:
     "Taking you to the game. If nothing happens, use the button below.",
+  /** Said when the hop leaves this site, so arriving elsewhere is no surprise. */
+  playOpeningBodyItch:
+    "Taking you to the published build on itch.io. If nothing happens, use the button below.",
   playOpeningCta: "Open the game",
   playUnpublishedTitle: "Riposte is not published yet",
   playUnpublishedBody:
-    "The public game will live on itch.io. Until it is published, run it locally: Play on localhost opens the Godot Web export at http://127.0.0.1:8060/.",
+    "This deployment does not carry the game yet. Build it with pnpm game:export:web and stage it with pnpm game:stage:web, or play the published build on itch.io.",
   howToPlayLead: "Two verbs. That is the whole game.",
   controlsMove: "Move",
   controlsMoveHow: "WASD or arrow keys · Left thumb on touch screens",

@@ -8,11 +8,24 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/ux.md
 
-const WEB_GLOBAL := "window.riposteSafeAreaJson || ''"
+## The browser-side half of this contract is JavaScript in
+## `export_presets.cfg`'s head include, which no compiler checks against this
+## file. A renamed key there would not error — it would silently report zero
+## inset and put the HUD under a notch, so `APP-SHELL` asserts the preset
+## publishes exactly these names.
+const WEB_PROPERTY := "window.riposteSafeAreaJson"
+const WEB_GLOBAL := WEB_PROPERTY + " || ''"
+const KEY_LEFT := "left"
+const KEY_TOP := "top"
+const KEY_RIGHT := "right"
+const KEY_BOTTOM := "bottom"
+const KEY_WIDTH := "width"
+const KEY_HEIGHT := "height"
+const KEYS: PackedStringArray = [KEY_LEFT, KEY_TOP, KEY_RIGHT, KEY_BOTTOM, KEY_WIDTH, KEY_HEIGHT]
 
 
 static func insets(viewport_size: Vector2) -> Vector4:
-	if OS.has_feature("web"):
+	if OS.has_feature(Platform.FEATURE_WEB):
 		return from_web_json(str(JavaScriptBridge.eval(WEB_GLOBAL, true)), viewport_size)
 	return from_display(DisplayServer.get_display_safe_area(), DisplayServer.window_get_size(), viewport_size)
 
@@ -23,15 +36,15 @@ static func from_web_json(text: String, viewport_size: Vector2) -> Vector4:
 	if text == "" or json.parse(text) != OK or not (json.data is Dictionary):
 		return Vector4.ZERO
 	var data := json.data as Dictionary
-	var css_width := float(data.get("width", 0.0))
+	var css_width := float(data.get(KEY_WIDTH, 0.0))
 	if css_width <= 0.0:
 		return Vector4.ZERO
 	var scale := viewport_size.x / css_width
 	return Vector4(
-		float(data.get("left", 0.0)),
-		float(data.get("top", 0.0)),
-		float(data.get("right", 0.0)),
-		float(data.get("bottom", 0.0))
+		float(data.get(KEY_LEFT, 0.0)),
+		float(data.get(KEY_TOP, 0.0)),
+		float(data.get(KEY_RIGHT, 0.0)),
+		float(data.get(KEY_BOTTOM, 0.0))
 	) * scale
 
 

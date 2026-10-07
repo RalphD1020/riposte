@@ -1,57 +1,48 @@
 "use client";
 
 /**
- * Browser-side play admission (WEB-005) for `/play`. In server mode the
- * proxy has already redirected any configured destination, so this renders
- * the "not published" explanation; in static exports (no proxy) it makes the
- * same decision from `window.location.hostname` and replaces the location.
- * A visible link remains in case navigation is blocked.
+ * `/play`. One mechanism in both build modes: the surface is resolved at
+ * build time and this navigates to it.
+ *
+ * In the server build a staged export is already a rewrite, so this page is
+ * never reached for the `hosted` surface — it is the fallback that explains
+ * where the game is when this deployment does not carry one. In the static
+ * export there are no rewrites, so the same component performs the hop.
+ *
+ * There used to be a proxy doing this server-side and this doing it again in
+ * the browser, from the visitor's hostname. Two implementations of one
+ * decision, one of which could not run in the mode we actually ship. Now the
+ * decision is made once, at build time, by whether the artifact is there.
  *
  * Implements: spec/invariants.md#web-005
  *
- * @see ../proxy.ts
  * @see ../config/runtimeConfig.ts
  * @see ../../../../docs/concepts/web.md
  */
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
-import {
-  resolvePlayAdmission,
-  type Destination,
-  type PlayAdmission,
-} from "@/config/runtimeConfig";
+import { type PlayAdmission } from "@/config/runtimeConfig";
 import { SiteCopy, SitePath } from "@/content/site";
 
 export function replaceLocation(href: string): void {
   window.location.replace(href);
 }
 
-const subscribe = () => () => {};
-const readHostname = () => window.location.hostname;
-const noHostname = () => null;
-
-export function PlayView({
-  admission,
-}: {
-  readonly admission: PlayAdmission | null;
-}) {
-  if (admission === null) {
-    return (
-      <div className="page">
-        <h1 className="page__title">{SiteCopy.playCheckingTitle}</h1>
-        <p className="page__lede" role="status">
-          {SiteCopy.playCheckingBody}
-        </p>
-      </div>
-    );
-  }
+/**
+ * The resolved surface, rendered. `surface` and not the shape of the href:
+ * whether a hop leaves this site is the admission decision's own answer, and
+ * re-deriving it from a leading slash would be a second, quieter copy of it.
+ */
+export function PlayView({ admission }: { readonly admission: PlayAdmission }) {
   if (admission.destination.status === "configured") {
     return (
       <div className="page">
         <h1 className="page__title">{SiteCopy.playOpeningTitle}</h1>
         <p className="page__lede" role="status">
-          {SiteCopy.playOpeningBody}
+          {admission.surface === "itch"
+            ? SiteCopy.playOpeningBodyItch
+            : SiteCopy.playOpeningBody}
         </p>
         <a className="primary-button" href={admission.destination.href}>
           {SiteCopy.playOpeningCta}
@@ -71,21 +62,14 @@ export function PlayView({
 }
 
 export function PlayGateway({
-  localPlay,
-  publicPlay,
+  admission,
   navigate = replaceLocation,
 }: {
-  readonly localPlay: Destination;
-  readonly publicPlay: Destination;
+  readonly admission: PlayAdmission;
   readonly navigate?: (href: string) => void;
 }) {
-  const hostname = useSyncExternalStore(subscribe, readHostname, noHostname);
-  const admission =
-    hostname === null
-      ? null
-      : resolvePlayAdmission(hostname, { localPlay, publicPlay });
   const target =
-    admission?.destination.status === "configured"
+    admission.destination.status === "configured"
       ? admission.destination.href
       : null;
 

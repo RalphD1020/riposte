@@ -11,6 +11,9 @@ extends RefCounted
 
 const STREAM_CPU_SLOT_0 := 1
 const STREAM_CPU_SLOT_1 := 2
+## Side assignment gets its own stream so adding or removing a draw here can
+## never shift what the CPUs roll, and vice versa.
+const STREAM_SIDES := 3
 const _SEED_MASK := 0x7fffffff
 const _STREAM_PRIME := 1000003
 

@@ -12,6 +12,11 @@ var screen_shake: bool = true
 var show_charge_indicator: bool = false
 var high_contrast_weapons: bool = false
 var haptics: bool = true
+## Blade ribbon prominence, and sweet-region emphasis (`Off` 0 / `Standard` 1 /
+## `Strong` above 1). Both scale how loudly the cue is drawn; neither widens the
+## actual sweet region, changes damage, or changes timing (UX §54).
+var trail_strength: float = 1.0
+var sweet_spot_cue: float = 1.0
 ## Touch layout biases framing upward so thumbs do not cover the duel (UX §35).
 var touch_layout: bool = false
 
