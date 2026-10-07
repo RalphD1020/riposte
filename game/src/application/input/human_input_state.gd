@@ -67,10 +67,25 @@ func cancel_all() -> void:
 	set_touch_axis(0.0, 0.0, false)
 
 
+## Round-boundary input flush. Clears all attack edges, held state, and
+## pending intent so no stale input crosses a phase transition. Unlike
+## cancel_all(), this does not emit a cancel edge — the round boundary is a
+## structural break, not a gameplay interruption.
+func begin_input_epoch() -> void:
+	_held_sources.clear()
+	_pressed = false
+	_released = false
+	_canceled = false
+	_key_x = 0.0
+	_key_y = 0.0
+	set_touch_axis(0.0, 0.0, false)
+
+
 func consume(tick: int) -> PlayerCommand:
 	var x := _touch_x if _touch_active else _key_x
 	var y := _touch_y if _touch_active else _key_y
-	var command := PlayerCommand.create(tick, x, y, _pressed, _released, _canceled)
+	var dash := Input.is_action_pressed(InputActions.DASH_MODIFIER)
+	var command := PlayerCommand.create(tick, x, y, _pressed, _released, _canceled, dash)
 	_pressed = false
 	_released = false
 	_canceled = false

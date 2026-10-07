@@ -35,3 +35,7 @@ const BODY_PUSH := &"body_push"
 const CONTACT_SATURATED := &"contact_saturated"
 ## Authoritative state violated an invariant; the match is a no-contest.
 const SIMULATION_FAULT := &"simulation_fault"
+## A fighter's center crossed the arena edge.
+const RING_OUT := &"ring_out"
+## Winner followed over the edge during POST_ROUND_FREE (presentation only).
+const POST_ROUND_FALL := &"post_round_fall"

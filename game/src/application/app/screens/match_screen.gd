@@ -171,7 +171,10 @@ func _notification(what: int) -> void:
 
 
 func _advance_tick() -> void:
+	var phase_before := session.state.phase
 	var events := session.step()
+	if session.state.phase != phase_before:
+		_on_phase_transition(phase_before, session.state.phase)
 	var snapshot := SnapshotProjector.project(session.state, session.config.rules)
 	presenter.push(snapshot, events)
 	hud.update(snapshot)
@@ -183,6 +186,13 @@ func _advance_tick() -> void:
 		human.input.cancel_all()
 		touch.set_enabled(false)
 		app.finish_match(session)
+
+
+## Flush stale input at every round-boundary phase transition so no buffered
+## attack, held state, or tap history leaks across rounds (INPUT-002).
+func _on_phase_transition(_from: MatchPhase.Id, _to: MatchPhase.Id) -> void:
+	human.input.begin_input_epoch()
+	touch.reset()
 
 
 ## Stopped by the user or by the rotate prompt. Resuming drops the backlog

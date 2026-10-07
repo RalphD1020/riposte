@@ -44,6 +44,12 @@ static func resolve(
 	var strikes: Array[StrikeResult] = []
 	for attacker in 2:
 		if report.body[attacker]:
+			## A blade in a bind is physically present but geometrically
+			## constrained between the fighters — the consequence is suppressed
+			## while the bind holds. Detection stays truthful; only the result
+			## is gated (COMBAT-007).
+			if state.fighter(attacker).weapon.phase == CombatPhase.Id.BIND:
+				continue
 			var strike := DamageModel.evaluate(
 				state.fighter(attacker),
 				state.opponent_of(attacker),

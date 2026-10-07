@@ -410,21 +410,27 @@ func test_weapon_body_lifecycle_no_repeat_damage_inside() -> void:
 	runner.skip_intro()
 	var state := runner.state
 	## Position fighters close enough that a swing will hit, with attacker
-	## already in a swinging phase.
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-80.0), 50.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
+	## already in a swinging phase. Speed must be within capacity (< 40 r/s)
+	## and the start angle close enough that the blade crosses the body once
+	## before the swing reverses.
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-20.0), 39.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
 	ContactFixture.arm(state.fighter(1), _rules.weapon.tip_radius * 0.9, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
 	var initial_health := state.fighter(1).health
 	var idle := PlayerCommand.idle(state.tick)
-	var total_hits := 0
+	var attacker_hits := 0
 	var first_hit_tick := -1
 	for tick in 15:
 		var events := runner.simulation.step(state, idle, idle)
 		var hits := DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)
-		total_hits += hits.size()
-		if hits.size() > 0 and first_hit_tick < 0:
-			first_hit_tick = state.tick
+		for hit in hits:
+			if hit.actor == 0:
+				attacker_hits += 1
+				if first_hit_tick < 0:
+					first_hit_tick = state.tick
 	assert_true(first_hit_tick >= 0, "precondition: the swing connected")
 	assert_true(state.fighter(1).health < initial_health, "damage was dealt")
-	## The key invariant: only ONE hit from a single swing passage through
-	## the body, even though the blade was inside for multiple ticks.
-	assert_eq(total_hits, 1, "lifecycle: exactly one body hit per entry (COMBAT-007)")
+	## The key invariant: only ONE hit per attacker from a single swing
+	## passage through the body, even though the blade was inside for
+	## multiple ticks. The opponent's neutral blade may also produce a
+	## separate contact (COMBAT-010); that is a distinct lifecycle.
+	assert_eq(attacker_hits, 1, "lifecycle: exactly one body hit per entry (COMBAT-007)")

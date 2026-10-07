@@ -217,7 +217,7 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void
 		utilities[Move.BAIT] = profile.bait_weight * (1.0 - pressure / profile.pressure_weight)
 	_move = _best_move(utilities)
 	_orbit_sign = seen.opp_swing_dir
-	_consider_burst(utilities[_move], striking, assessment)
+	_consider_burst(utilities[_move], striking, assessment, me)
 	_attack = Attack.NONE
 	if _holding or not ready:
 		return
@@ -262,11 +262,21 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void
 ## gesture for it. Approach and retreat trigger axial dashes (forward/back);
 ## orbit triggers a lateral dash (side-step) when the profile allows it.
 ## Bait never dashes — baiting holds spacing, dashing spends it.
-func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessment) -> void:
+## Near the arena edge, suppress dashes that would carry the fighter outward
+## (ring-out awareness).
+func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessment, me: FighterState) -> void:
 	if profile.burst_weight <= 0.0 or _burst_cursor < BURST_SCRIPT.size() or striking:
 		return
 	if utility < BURST_UTILITY_MIN:
 		return
+	## Suppress bursts near the arena edge. The normal steering pull keeps the
+	## CPU from walking off, but a scripted dash gesture bypasses it. Retreats
+	## away from the center when already near the edge are the main risk.
+	var edge_radius := SimMath.length(me.x, me.y)
+	var edge_zone := _rules.arena_radius - EDGE_MARGIN
+	if edge_radius > edge_zone:
+		if _move == Move.RETREAT:
+			return
 	## Axial burst: approach or retreat.
 	if _move == Move.APPROACH or _move == Move.RETREAT:
 		var sign_for_move := 1.0 if _move == Move.APPROACH else -1.0

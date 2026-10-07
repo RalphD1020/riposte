@@ -109,3 +109,9 @@ const SCORE_1 := "score_1"
 
 ## Simulation fault: the StateInvariants id that failed.
 const INVARIANT := "invariant"
+
+## Ring-out: position and velocity at the moment the center crossed the edge.
+const POSITION_X := "position_x"
+const POSITION_Y := "position_y"
+const VELOCITY_X := "velocity_x"
+const VELOCITY_Y := "velocity_y"

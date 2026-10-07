@@ -21,6 +21,12 @@ static func new_state(rules: DuelRules, seed_value: int) -> MatchState:
 		state.fighters[slot].slot = slot
 		state.fighters[slot].side = DuelSide.Id.LIGHT_SOUTH if slot == light_slot else DuelSide.Id.DARK_NORTH
 	reset_round(state, rules)
+	## Spawn positions must be inside the arena. Validated at content time, not
+	## corrected at runtime — a spawn outside the boundary is authoring error.
+	for fighter in state.fighters:
+		var distance := SimMath.length(fighter.x, fighter.y)
+		if distance >= rules.arena_radius:
+			return null
 	return state
 
 
@@ -55,6 +61,7 @@ static func reset_fighter(fighter: FighterState, rules: DuelRules) -> void:
 	fighter.stability = 1.0
 	fighter.stagger_left = 0
 	fighter.lethal_fraction = FighterState.ALIVE
+	fighter.is_falling = false
 	fighter.weapon.reset(-rules.weapon.guard_angle)
 	fighter.gesture.reset()
 	fighter.clear_attack_input()

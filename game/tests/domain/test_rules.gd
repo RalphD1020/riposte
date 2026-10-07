@@ -133,3 +133,8 @@ func test_stamina_enters_the_state_hash() -> void:
 	state.fighter(0).stamina -= 1.0
 	var changed := StateHasher.hash_state(state)
 	assert_ne(baseline, changed, "a stamina change is reflected in the state hash")
+
+
+func test_current_rules_version() -> void:
+	var rules := StandardDuelRules.create()
+	assert_eq(rules.version, 17, "rules version tracks gameplay-affecting changes")

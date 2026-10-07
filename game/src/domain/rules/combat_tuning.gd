@@ -157,6 +157,8 @@ var capability_floor: float = 0.0
 
 
 func is_valid() -> bool:
+	if not _all_finite():
+		return false
 	return (
 		exposure_max >= exposure_min
 		and exposure_min > 0.0
@@ -174,7 +176,9 @@ func is_valid() -> bool:
 		and reference_strike_mass > 0.0
 		and reference_impulse > 0.0
 		and reference_severity > 0.0
+		and blade_inertia_coupling_floor > 0.0
 		and blade_strong_speed > blade_solid_speed
+		and parry_margin_seconds > 0.0
 		and substep_travel > 0.0
 		and max_substeps > 0
 		and max_contacts_per_tick > 0
@@ -217,3 +221,39 @@ func is_valid() -> bool:
 
 func damage_for(quality: float) -> float:
 	return SimMath.piecewise(damage_qualities, damage_values, quality) * damage_scale
+
+
+func _all_finite() -> bool:
+	return (
+		is_finite(exposure_base) and is_finite(exposure_commit)
+		and is_finite(exposure_balance) and is_finite(exposure_flank)
+		and is_finite(exposure_charging) and is_finite(exposure_overswing)
+		and is_finite(exposure_recovery) and is_finite(exposure_stagger)
+		and is_finite(exposure_min) and is_finite(exposure_max)
+		and is_finite(max_physical_quality) and is_finite(damage_scale)
+		and is_finite(critical_quality) and is_finite(critical_blade_min)
+		and is_finite(critical_blade_max) and is_finite(critical_alignment)
+		and is_finite(critical_exposure)
+		and is_finite(plant_speed_weight) and is_finite(plant_accel_weight)
+		and is_finite(plant_turn_weight) and is_finite(coupling_coherence_share)
+		and is_finite(coupling_floor) and is_finite(body_contribution_mass)
+		and is_finite(separation_epsilon) and is_finite(resist_plant_floor)
+		and is_finite(reference_strike_mass) and is_finite(reference_impulse)
+		and is_finite(reference_severity) and is_finite(blade_inertia_coupling_floor)
+		and is_finite(blade_inertia_commit_bonus) and is_finite(blade_solid_speed)
+		and is_finite(blade_strong_speed) and is_finite(bind_break_distance)
+		and is_finite(parry_margin_seconds) and is_finite(substep_travel)
+		and is_finite(stamina_health_share) and is_finite(stamina_shock_rate)
+		and is_finite(stamina_exertion_rate) and is_finite(stamina_recovery_rate)
+		and is_finite(stamina_recovery_effort_ceiling)
+		and is_finite(stamina_move_reference_work) and is_finite(stamina_turn_reference_work)
+		and is_finite(stamina_weapon_reference_work)
+		and is_finite(stamina_drive_weight) and is_finite(stamina_brake_weight)
+		and is_finite(stamina_hold_weight) and is_finite(body_restitution)
+		and is_finite(body_friction) and is_finite(point_strike_alignment)
+		and is_finite(point_strike_incidence) and is_finite(point_strike_severity)
+		and is_finite(graze_quality) and is_finite(thrust_burst_alignment)
+		and is_finite(poke_lethal_quality) and is_finite(body_push_feel_scale)
+		and is_finite(capability_injury_max) and is_finite(capability_fatigue_max)
+		and is_finite(capability_floor)
+	)

@@ -54,6 +54,9 @@ const BURST_HEADING_DEGENERATE := &"burst_heading_degenerate"
 const DEATH_TIME_MISMATCH := &"death_time_mismatch"
 const DEATH_TIME_RANGE := &"death_time_range"
 const CONTACT_PAIR_STUCK := &"contact_pair_stuck"
+const BODY_SPEED_IMPOSSIBLE := &"body_speed_impossible"
+const WEAPON_SPEED_IMPOSSIBLE := &"weapon_speed_impossible"
+const ARENA_ESCAPE := &"arena_escape"
 
 
 ## First violated invariant, or OK. Order is fixed so a fault is reproducible.
@@ -75,6 +78,13 @@ static func check(state: MatchState, rules: DuelRules) -> StringName:
 		var violation := check_fighter(fighter, rules)
 		if violation != OK:
 			return violation
+	## Arena escape: a living, non-falling fighter must be inside the arena.
+	## Falling fighters are beyond the edge by design (RING-OUT).
+	for fighter in state.fighters:
+		if fighter.is_alive() and not fighter.is_falling:
+			var distance := SimMath.length(fighter.x, fighter.y)
+			if distance > rules.arena_radius + BOUND_SLACK:
+				return ARENA_ESCAPE
 	return check_contact(state, rules)
 
 
@@ -134,6 +144,10 @@ static func check_fighter(fighter: FighterState, rules: DuelRules) -> StringName
 	var gesture_violation := check_gesture(fighter.gesture, rules.fighter)
 	if gesture_violation != OK:
 		return gesture_violation
+	if not SimulationGuardrails.validate_capacity(fighter, rules):
+		if fighter.speed() > maxf(rules.fighter.max_speed, maxf(rules.fighter.burst_speed_axial, rules.fighter.burst_speed_lateral)) * SimulationGuardrails.CAPACITY_SAFETY_FACTOR:
+			return BODY_SPEED_IMPOSSIBLE
+		return WEAPON_SPEED_IMPOSSIBLE
 	return check_weapon(fighter.weapon, rules.weapon)
 
 

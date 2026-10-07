@@ -360,7 +360,7 @@ func test_effort_written_to_scratch() -> void:
 
 
 func test_tick_order_version_bumped() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 7, "stamina drain changes the tick order")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 8, "stamina drain changes the tick order")
 
 
 # -- Phase 3.1: FighterTickScratch motor exertion -------------------------
@@ -584,7 +584,3 @@ func test_replay_determinism_with_stamina_drain() -> void:
 	assert_true(runner.is_sound(), runner.violation_summary())
 	var result := ReplayVerifier.verify(runner.record, _rules)
 	assert_eq(result, ReplayVerifier.VERIFIED, "replay matches with stamina drain active")
-
-
-func test_rules_version_bumped_for_stamina_drain() -> void:
-	assert_eq(_rules.version, 15, "body friction changes gameplay → version 15")

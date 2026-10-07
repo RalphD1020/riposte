@@ -9,6 +9,7 @@ extends RefCounted
 enum Id {
 	ROUND_INTRO,
 	ROUND_ACTIVE,
+	POST_ROUND_FREE,
 	ROUND_RESULT,
 	MATCH_ENDED,
 }
@@ -30,3 +31,4 @@ const REASON_SCORE := &"score"
 const REASON_ROUND_LIMIT := &"round_limit"
 ## Authoritative state failed an invariant; the match is void, not a result.
 const REASON_NO_CONTEST := &"no_contest"
+const REASON_RING_OUT := &"ring_out"

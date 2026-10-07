@@ -94,16 +94,15 @@ func test_staggered_and_dead_fighters_move_poorly() -> void:
 	assert_eq(DuelFixture.steady_speed(dead, 0.0, 1.0, _rules.fighter, 10), 0.0, "the dead do not walk")
 
 
-func test_arena_boundary_is_hard() -> void:
+func test_arena_edge_is_open() -> void:
 	var fighter := _fighter()
-	var limit := _rules.arena_radius - _rules.fighter.body_radius
-	DuelFixture.place(fighter, limit + 0.5, 0.0, 0.0)
+	DuelFixture.place(fighter, _rules.arena_radius - 0.01, 0.0, 0.0)
 	fighter.vx = 3.0
-	fighter.vy = 1.0
-	ArenaConstraints.confine(fighter, limit)
-	assert_near(SimMath.length(fighter.x, fighter.y), limit, 1e-9, "pulled back onto the boundary")
-	assert_eq(fighter.vx, 0.0, "outward velocity removed")
-	assert_eq(fighter.vy, 1.0, "tangential velocity kept")
+	var finish_x := fighter.x + fighter.vx / 60.0
+	var crossing := ArenaConstraints.detect_edge_crossing(
+		fighter.x, fighter.y, finish_x, fighter.y, _rules.arena_radius
+	)
+	assert_true(crossing > 0.0, "a fighter moving outward near the edge crosses it")
 
 
 func test_bodies_never_overlap() -> void:
@@ -129,21 +128,17 @@ func test_coincident_bodies_separate_deterministically() -> void:
 	assert_eq(a.y, 1.0, "no vertical drift")
 
 
-## The wall cannot move. Splitting the push evenly and then pulling the pinned
-## fighter back inside would silently undo half of it, so a pair crowded into
-## the boundary would stay overlapped — which is exactly where duel-relative
-## footwork drives them, since both players push straight at each other.
-func test_bodies_crowded_against_the_wall_still_separate() -> void:
-	var limit := _limit()
+## Body separation works near the edge without confinement. With an open arena,
+## overlapping bodies push apart normally; there is no wall to complicate the
+## mass-weighted correction.
+func test_bodies_near_edge_still_separate() -> void:
 	var a := _fighter()
 	var b := _fighter()
 	b.slot = 1
-	DuelFixture.place(a, limit, 0.0, 0.0)
-	DuelFixture.place(b, limit - 0.05, 0.0, PI)
+	DuelFixture.place(a, 6.0, 0.0, 0.0)
+	DuelFixture.place(b, 6.05, 0.0, PI)
 	ArenaConstraints.resolve(a, b, _rules)
-	assert_true(SimMath.length(a.x, a.y) <= limit + 1e-9, "the pinned fighter stays inside the arena")
-	assert_true(SimMath.length(b.x, b.y) <= limit + 1e-9, "and so does the other")
-	assert_true(DuelGeometry.distance(a, b) >= 2.0 * _rules.fighter.body_radius - 1e-9, "yet they are fully apart")
+	assert_true(DuelGeometry.distance(a, b) >= 2.0 * _rules.fighter.body_radius - 1e-9, "bodies are fully apart")
 
 
 func test_violent_reversal_costs_stability() -> void:

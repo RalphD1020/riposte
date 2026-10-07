@@ -21,8 +21,10 @@ func _init() -> void:
 func test_overlapping_bodies_detected_as_body_push() -> void:
 	var state := DuelFixture.state(_rules)
 	var radius := _rules.fighter.body_radius
-	var a := ContactFixture.pose(0.0, 0.0, 0.0, 0.0)
-	var b := ContactFixture.pose(radius * 1.5, 0.0, PI, 0.0)
+	## Weapons angled perpendicular so neutral blades do not overlap bodies
+	## (COMBAT-010: neutral blades can now produce body contacts).
+	var a := ContactFixture.pose(0.0, 0.0, 0.0, deg_to_rad(90.0))
+	var b := ContactFixture.pose(radius * 1.5, 0.0, PI, deg_to_rad(90.0))
 	var start := ContactFixture.poses(a, b)
 	var pair := ContactPairState.new()
 	pair.set_phase(ContactPairState.Phase.CONTACTING)
@@ -307,9 +309,10 @@ func test_body_push_detected_during_fast_approach() -> void:
 	var state := DuelFixture.state(_rules)
 	var radius := _rules.fighter.body_radius
 	var far := radius * 3.0
-	var a := ContactFixture.pose(0.0, 0.0, 0.0, 0.0)
-	var b := ContactFixture.pose(far, 0.0, PI, 0.0)
-	var a_close := ContactFixture.pose(far * 0.5, 0.0, 0.0, 0.0)
+	## Weapons angled perpendicular so neutral blades do not overlap bodies.
+	var a := ContactFixture.pose(0.0, 0.0, 0.0, deg_to_rad(90.0))
+	var b := ContactFixture.pose(far, 0.0, PI, deg_to_rad(90.0))
+	var a_close := ContactFixture.pose(far * 0.5, 0.0, 0.0, deg_to_rad(90.0))
 	var start := ContactFixture.poses(a, b)
 	var finish := ContactFixture.poses(a_close, b)
 	var pair := ContactPairState.new()
@@ -324,8 +327,4 @@ func test_body_push_detected_during_fast_approach() -> void:
 
 
 func test_tick_order_version_bumped_for_body_push() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 7, "body push in contact loop bumps tick order")
-
-
-func test_rules_version_bumped_for_body_push() -> void:
-	assert_eq(_rules.version, 15, "body friction changes gameplay → version 15")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 8, "body push in contact loop bumps tick order")

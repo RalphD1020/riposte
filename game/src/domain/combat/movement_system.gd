@@ -24,13 +24,13 @@ extends RefCounted
 ## If `scratch` is provided, writes motor exertion (F·v work + utilization).
 
 static func step(
-	fighter: FighterState, opponent: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, capability: float = 1.0, scratch: FighterTickScratch = null
+	fighter: FighterState, opponent: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, capability: float = 1.0, scratch: FighterTickScratch = null, dash_modifier: bool = false
 ) -> MovementGestureState.BurstKind:
 	var dt := SimulationTimebase.TICK_SECONDS
 	var forward := DuelGeometry.duel_basis(fighter, opponent, fighter.duel_forward_x, fighter.duel_forward_y)
 	fighter.duel_forward_x = forward[0]
 	fighter.duel_forward_y = forward[1]
-	var launched := _recognize(fighter, intent_x, intent_y, tick, definition)
+	var launched := _recognize(fighter, intent_x, intent_y, tick, definition, dash_modifier)
 	var world := DuelGeometry.to_world(intent_x, intent_y, forward[0], forward[1])
 	var ix := world[0]
 	var iy := world[1]
@@ -126,15 +126,30 @@ static func _record_movement_exertion(scratch: FighterTickScratch, definition: F
 	scratch.movement_utilization = SimMath.clamp01(accel_magnitude * dt / raw_motor) if raw_motor > SimMath.EPSILON else 0.0
 
 
-## Read the command stream for a double tap and arm the burst it earns.
+## Read the command stream for a double tap or dash modifier and arm the burst.
 ##
 ## A burst already running is never re-armed: the heading is frozen at
 ## activation so a forward dash cannot bend after an opponent who circles away
 ## mid-dash.
 static func _recognize(
-	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition
+	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, dash_modifier: bool = false
 ) -> MovementGestureState.BurstKind:
 	var gesture := fighter.gesture
+	## Dash modifier (accessibility): Shift+direction produces the same burst
+	## as a double-tap. Same force, stamina, startup, duration, physics — no
+	## gameplay advantage. Requires a clear directional intent and no burst
+	## already in progress.
+	if dash_modifier and not gesture.is_bursting():
+		var modifier_kind := _dash_modifier_direction(intent_x, intent_y, definition)
+		if modifier_kind != MovementGestureState.BurstKind.NONE:
+			gesture.clear_pending()
+			var dash_heading := DirectionalTapRecognizer.heading(fighter, modifier_kind)
+			gesture.mode = MovementGestureState.Mode.BURST
+			gesture.burst_kind = modifier_kind
+			gesture.burst_ticks_remaining = definition.burst_ticks
+			gesture.burst_dir_x = dash_heading[0]
+			gesture.burst_dir_y = dash_heading[1]
+			return modifier_kind
 	var launched := DirectionalTapRecognizer.observe(gesture, intent_x, intent_y, tick, definition)
 	if launched == MovementGestureState.BurstKind.NONE or gesture.is_bursting():
 		return MovementGestureState.BurstKind.NONE
@@ -183,3 +198,14 @@ static func coast(fighter: FighterState, definition: FighterDefinition) -> void:
 	fighter.y += fighter.vy * dt
 	fighter.turn_rate = SimMath.approach(fighter.turn_rate, 0.0, definition.turn_accel() * dt)
 	fighter.facing = SimMath.wrap_angle(fighter.facing + fighter.turn_rate * dt)
+
+
+## Map held directional intent to a burst kind when the dash modifier is held.
+## Uses the same sector thresholds as the tap recognizer (COMBAT §25.2).
+static func _dash_modifier_direction(intent_x: float, intent_y: float, definition: FighterDefinition) -> MovementGestureState.BurstKind:
+	var magnitude := SimMath.length(intent_x, intent_y)
+	if magnitude < definition.burst_enter_deflection:
+		return MovementGestureState.BurstKind.NONE
+	if absf(intent_y) >= absf(intent_x):
+		return MovementGestureState.BurstKind.FORWARD_DASH if intent_y > 0.0 else MovementGestureState.BurstKind.BACK_DASH
+	return MovementGestureState.BurstKind.RIGHT_STEP if intent_x > 0.0 else MovementGestureState.BurstKind.LEFT_STEP

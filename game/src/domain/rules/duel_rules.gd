@@ -17,7 +17,7 @@ var fighter: FighterDefinition
 var weapon: WeaponDefinition
 var combat: CombatTuning
 
-## Arena: circular, hard boundary, no ring-outs.
+## Arena: circular, open edge (ring-out on crossing).
 var arena_id: StringName = &""
 var arena_radius: float = 0.0
 var spawn_offset: float = 0.0
@@ -28,6 +28,8 @@ var max_rounds: int = 0
 var intro_ticks: int = 0
 var result_ticks: int = 0
 var round_time_limit_ticks: int = 0
+## How long the winner controls the stage after a round ends (POST_ROUND_FREE).
+var post_round_free_ticks: int = 0
 
 
 func is_valid() -> bool:
@@ -43,4 +45,5 @@ func is_valid() -> bool:
 		and arena_radius > spawn_offset + fighter.body_radius
 		and spawn_offset > fighter.body_radius
 		and round_time_limit_ticks > 0
+		and post_round_free_ticks >= 0
 	)

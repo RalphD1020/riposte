@@ -14,13 +14,13 @@ func _runner(rules: DuelRules = null) -> SimRunner:
 	return SimRunner.create(rules if rules != null else DuelFixture.rules(), 7)
 
 
-## Kill `loser` (or both with -1) and wait out the result period.
+## Kill `loser` (or both with -1) and wait out the post-round and result periods.
 func _decide_round(runner: SimRunner, loser: int) -> void:
 	runner.skip_intro()
 	for slot in 2:
 		if loser == -1 or slot == loser:
 			DuelFixture.kill(runner.state.fighter(slot))
-	runner.idle(1 + runner.simulation.rules.result_ticks)
+	runner.idle(1 + runner.simulation.rules.post_round_free_ticks + runner.simulation.rules.result_ticks)
 
 
 func test_intro_lasts_its_ticks_then_the_round_starts() -> void:
@@ -95,7 +95,7 @@ func test_a_trade_goes_to_whoever_fell_second() -> void:
 		for slot in 2:
 			DuelFixture.kill(runner.state.fighter(slot))
 		runner.state.fighter(1 - fell_first).lethal_fraction = 0.5
-		runner.idle(1 + runner.simulation.rules.result_ticks)
+		runner.idle(1 + runner.simulation.rules.post_round_free_ticks + runner.simulation.rules.result_ticks)
 		var ended := runner.first(DuelEventTypes.ROUND_ENDED)
 		assert_eq(int(ended.number(DuelEventKeys.WINNER)), 1 - fell_first, "the blade that landed first takes the round")
 		assert_eq(ended.text(DuelEventKeys.REASON), String(MatchPhase.REASON_TRADE_FIRST_CONTACT), "as a trade, not a draw")

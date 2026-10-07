@@ -69,3 +69,16 @@ static func of_type(events: Array[DuelEvent], type: StringName) -> Array[DuelEve
 		if event.type == type:
 			matches.append(event)
 	return matches
+
+
+## Point the fighter's weapon perpendicular to the line toward the opponent so
+## its blade geometry does not overlap the opponent's body. Use instead of
+## setting the weapon to BIND solely to suppress its interference in a test.
+static func weapon_clear_of(fighter: FighterState, opponent_x: float, opponent_y: float) -> void:
+	var dx := opponent_x - fighter.x
+	var dy := opponent_y - fighter.y
+	var bearing := SimMath.arctan2(dy, dx)
+	var local_toward := SimMath.wrap_angle(bearing - fighter.facing)
+	fighter.weapon.angle = SimMath.wrap_angle(local_toward + PI * 0.5)
+	if absf(fighter.weapon.angle) > deg_to_rad(135.0):
+		fighter.weapon.angle = SimMath.wrap_angle(local_toward - PI * 0.5)

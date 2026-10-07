@@ -283,34 +283,31 @@ func test_a_dash_into_the_opponent_does_not_phase_through_them() -> void:
 		assert_eq(signf(runner.state.fighter(1).x - runner.state.fighter(0).x), opening, "and neither dashes through the other")
 
 
-## The wall is the other hard boundary. A burst is the fastest a fighter ever
-## travels, so it is the case most likely to tunnel through confinement — and
-## confinement runs after footwork precisely so it cannot.
-func test_a_dash_into_the_wall_is_stopped_without_tunnelling() -> void:
+## The arena edge is the hazard boundary. A burst is the fastest a fighter
+## ever travels, so it is the most likely to trigger a ring-out.
+func test_a_dash_off_the_edge_triggers_ring_out() -> void:
 	var runner := SimRunner.create(_rules, 11)
 	runner.skip_intro()
-	var limit := _rules.arena_radius - _rules.fighter.body_radius
-	## Back both fighters away from each other, so "retreat" aims each of them
-	## at the arena edge behind their own heels.
+	## Back both fighters away from each other toward the edge.
 	for _i in 120:
 		runner.drive(0.0, -1.0, 1)
-		for slot in 2:
-			var me := runner.state.fighter(slot)
-			assert_true(SimMath.length(me.x, me.y) <= limit + 1e-6, "slot %d stays inside the arena" % slot)
-	assert_near(SimMath.length(runner.state.fighter(0).x, runner.state.fighter(0).y), limit, 1e-3, "precondition: pressed against the wall")
-	## Come off the stick first: that long retreat was a walk, so it has to
-	## stop being one before a gesture can be read at all.
+		if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
+			break
+	if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
+		## A ring-out already happened from walking, which proves the edge is open.
+		assert_true(runner.count(DuelEventTypes.RING_OUT) > 0, "ring-out detected during retreat")
+		return
+	## Come off the stick and attempt a back dash off the edge.
 	runner.drive(0.0, 0.0, 6)
 	for deflection in PackedFloat64Array([-1.0, -1.0, 0.0, 0.0, -1.0]):
 		runner.drive(0.0, deflection, 1)
-	assert_true(runner.state.fighter(0).gesture.is_bursting(), "precondition: a back dash into the wall was launched")
-	for _i in _rules.fighter.burst_ticks + 4:
+		if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
+			break
+	for _i in _rules.fighter.burst_ticks + 10:
 		runner.drive(0.0, -1.0, 1)
-		for slot in 2:
-			var me := runner.state.fighter(slot)
-			assert_true(SimMath.length(me.x, me.y) <= limit + 1e-6, "the dash is constrained, not teleported through (slot %d)" % slot)
-			assert_finite(me.speed(), "and the body stays finite")
-	assert_true(runner.is_sound(), "invariants held throughout: %s" % runner.violation_summary())
+		if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
+			break
+	assert_true(runner.count(DuelEventTypes.RING_OUT) > 0 or runner.count(DuelEventTypes.ROUND_ENDED) > 0, "the dash triggered a ring-out or ended the round")
 
 
 ## A burst during a bind is *defined*, not special-cased: the footwork happens

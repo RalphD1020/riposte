@@ -52,9 +52,9 @@ var tap_threshold_ticks: int = 0
 ## very short deliberately: a long buffer fires an attack the player has
 ## already mentally abandoned, which reads as the game acting on its own.
 var buffer_ticks: int = 0
-## Three ticks is 50 ms — enough to forgive a press that beat the recovery
+## Four ticks is ~67 ms — enough to forgive a press that beat the recovery
 ## window by a frame or two, short enough that it never surprises anyone.
-const BUFFER_TICKS_LIMIT := 3
+const BUFFER_TICKS_LIMIT := 4
 
 ## Motor (COMBAT §41). The fighter authors *torques*; angular accelerations
 ## are derived through `α = τ / I`, so a heavier or more tip-weighted weapon

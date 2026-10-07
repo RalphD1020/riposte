@@ -17,6 +17,7 @@ const AXIS_MAX := 1000
 const FLAG_PRESSED := 1
 const FLAG_RELEASED := 2
 const FLAG_CANCEL := 4
+const FLAG_DASH := 8
 const PACKED_STRIDE := 4
 
 var tick: int = 0
@@ -25,6 +26,9 @@ var move_y: int = 0
 var attack_pressed: bool = false
 var attack_released: bool = false
 var attack_cancel: bool = false
+## Accessibility: Shift+direction produces the same burst as double-tap.
+## The simulation consumes this identically to the gesture recognizer output.
+var dash_modifier: bool = false
 
 
 ## Builds a command from an analog move vector; magnitude is clamped to 1.
@@ -34,7 +38,8 @@ static func create(
 	y: float,
 	pressed: bool = false,
 	released: bool = false,
-	cancel: bool = false
+	cancel: bool = false,
+	dash: bool = false
 ) -> PlayerCommand:
 	var command := PlayerCommand.new()
 	command.tick = tick_value
@@ -49,6 +54,7 @@ static func create(
 	command.attack_pressed = pressed
 	command.attack_released = released
 	command.attack_cancel = cancel
+	command.dash_modifier = dash
 	return command
 
 
@@ -65,6 +71,7 @@ func sanitized() -> PlayerCommand:
 	command.attack_pressed = attack_pressed
 	command.attack_released = attack_released
 	command.attack_cancel = attack_cancel
+	command.dash_modifier = dash_modifier
 	return command
 
 
@@ -77,7 +84,7 @@ func axis_y() -> float:
 
 
 func is_idle() -> bool:
-	return move_x == 0 and move_y == 0 and not attack_pressed and not attack_released and not attack_cancel
+	return move_x == 0 and move_y == 0 and not attack_pressed and not attack_released and not attack_cancel and not dash_modifier
 
 
 func flags() -> int:
@@ -88,6 +95,8 @@ func flags() -> int:
 		bits |= FLAG_RELEASED
 	if attack_cancel:
 		bits |= FLAG_CANCEL
+	if dash_modifier:
+		bits |= FLAG_DASH
 	return bits
 
 
@@ -110,4 +119,5 @@ static func read_from(packed: PackedInt32Array, index: int) -> PlayerCommand:
 	command.attack_pressed = (bits & FLAG_PRESSED) != 0
 	command.attack_released = (bits & FLAG_RELEASED) != 0
 	command.attack_cancel = (bits & FLAG_CANCEL) != 0
+	command.dash_modifier = (bits & FLAG_DASH) != 0
 	return command

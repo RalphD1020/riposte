@@ -271,7 +271,7 @@ func test_generated_streams_keep_the_duel_physical() -> void:
 			var me := runner.state.fighter(slot)
 			assert_finite(me.speed(), "seed %d slot %d has a finite speed" % [seed_value, slot])
 			assert_true(me.speed() <= _rules.fighter.burst_speed_axial + 1e-6, "and never exceeds the burst ceiling")
-			assert_true(SimMath.length(me.x, me.y) <= limit + 1e-6, "and stayed inside the arena")
+			assert_true(SimMath.length(me.x, me.y) <= limit + 1e-6 or me.is_falling or not me.is_alive(), "and stayed inside the arena or fell/died")
 		assert_true(
 			DuelGeometry.distance(runner.state.fighter(0), runner.state.fighter(1)) >= touching - 1e-6,
 			"seed %d: and the bodies never merged" % seed_value

@@ -1,37 +1,49 @@
 class_name ArenaConstraints
 extends RefCounted
 
-## Hard circular arena boundary (no ring-outs) and deterministic body
-## separation (COMBAT §61). Fighters never share space; blades never block
-## bodies. Separation is mass-aware: a heavier fighter absorbs less of the
-## push and less of the closing velocity (PHYS-005).
+## Open circular arena with deterministic body separation (COMBAT §61). The
+## arena has no hard wall — crossing the edge triggers a ring-out.
+## Fighters never share space; blades never block bodies. Separation is
+## mass-aware: a heavier fighter absorbs less of the push and less of the
+## closing velocity (PHYS-005).
 ##
 ## See also: /docs/concepts/combat.md
 
 const SEPARATION_PASSES := 2
 
 
+## Resolve body separation for two non-falling, alive fighters. No confinement
+## — the arena edge is open and crossing it triggers a ring-out elsewhere.
 static func resolve(a: FighterState, b: FighterState, rules: DuelRules) -> void:
-	var limit := rules.arena_radius - rules.fighter.body_radius
+	if a.is_falling or b.is_falling:
+		return
 	var mass := rules.fighter.mass
 	for _pass in SEPARATION_PASSES:
-		separate(a, b, rules.fighter.body_radius, limit, mass, mass)
-		confine(a, limit)
-		confine(b, limit)
+		separate(a, b, rules.fighter.body_radius, rules.arena_radius, mass, mass)
 
 
-static func confine(fighter: FighterState, limit: float) -> void:
-	var distance := SimMath.length(fighter.x, fighter.y)
-	if distance <= limit or distance <= SimMath.EPSILON:
-		return
-	var nx := fighter.x / distance
-	var ny := fighter.y / distance
-	fighter.x = nx * limit
-	fighter.y = ny * limit
-	var outward := fighter.vx * nx + fighter.vy * ny
-	if outward > 0.0:
-		fighter.vx -= outward * nx
-		fighter.vy -= outward * ny
+## Swept point-circle edge crossing. Given a center that linearly interpolates
+## from (sx, sy) to (fx, fy), returns the smallest fraction t ∈ (0, 1] where
+## |P(t)| = radius, or -1.0 if the center never exits. Solves the quadratic
+## |P_start + t × ΔP|² = R².
+static func detect_edge_crossing(sx: float, sy: float, fx: float, fy: float, radius: float) -> float:
+	var dx := fx - sx
+	var dy := fy - sy
+	var a := dx * dx + dy * dy
+	if a < SimMath.EPSILON:
+		return -1.0
+	var b := 2.0 * (sx * dx + sy * dy)
+	var c := sx * sx + sy * sy - radius * radius
+	if c >= 0.0:
+		return -1.0
+	var disc := b * b - 4.0 * a * c
+	if disc < 0.0:
+		return -1.0
+	var sqrt_disc := sqrt(disc)
+	var t := (-b + sqrt_disc) / (2.0 * a)
+	if t > 0.0 and t <= 1.0:
+		return t
+	return -1.0
 
 
 ## Push two overlapping bodies apart along the line between them.

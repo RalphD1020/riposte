@@ -16,7 +16,7 @@ extends RefCounted
 static func create() -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 15
+	rules.version = 17
 	rules.fighter = FighterCatalog.of(ContentIds.FIGHTER_DUELIST)
 	rules.weapon = WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD)
 	rules.combat = combat_tuning()
@@ -28,6 +28,7 @@ static func create() -> DuelRules:
 	rules.intro_ticks = 72
 	rules.result_ticks = 96
 	rules.round_time_limit_ticks = 60 * SimulationTimebase.TICK_RATE
+	rules.post_round_free_ticks = 150
 	return rules
 
 

@@ -50,6 +50,10 @@ var lethal_fraction: float = ALIVE
 var weapon: WeaponState = WeaponState.new()
 ## Where this fighter is inside a double-tap footwork gesture (MOVE-002).
 var gesture: MovementGestureState = MovementGestureState.new()
+## True once the fighter's center crosses the arena edge. Authoritative,
+## hashed, and reset per round. Falling fighters are removed from collision
+## and invariant-exempt for position bounds.
+var is_falling: bool = false
 
 ## Sentinel for "has not been killed". Negative so any real time of impact,
 ## including exactly 0.0, compares as earlier.

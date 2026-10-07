@@ -75,6 +75,7 @@ static func hash_state(state: MatchState) -> String:
 			fighter.press_tick,
 			fighter.buffered_press_tick,
 			int(fighter.buffered_release),
+			int(fighter.is_falling),
 			weapon.phase,
 			weapon.phase_ticks,
 			int(weapon.swing_hit),

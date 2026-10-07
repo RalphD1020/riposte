@@ -216,7 +216,7 @@ func test_finished_match_emits_no_further_faults() -> void:
 
 
 func test_tick_order_version_is_pinned() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 7, "the canonical tick order is version 7; bump this deliberately")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 8, "the canonical tick order is version 8; bump this deliberately")
 
 
 func test_input_edges_resolve_before_the_motor() -> void:
@@ -235,20 +235,18 @@ func test_input_edges_resolve_before_the_motor() -> void:
 	assert_eq(StateInvariants.check(runner.state, rules), StateInvariants.OK, "a same-tick tap leaves a sound state")
 
 
-func test_arena_confinement_runs_after_footwork() -> void:
+func test_arena_edge_is_open_and_crossing_triggers_ring_out() -> void:
 	var rules := DuelFixture.rules()
 	var runner := SimRunner.create(rules, 5)
 	runner.skip_intro()
-	var limit := rules.arena_radius - rules.fighter.body_radius
-	var worst := 0.0
+	var ring_outs := 0
 	for _i in PUSH_TICKS:
-		runner.simulation.step(
+		var events := runner.simulation.step(
 			runner.state,
 			PlayerCommand.create(runner.state.tick, -1.0, 0.0),
 			PlayerCommand.create(runner.state.tick, 1.0, 0.0)
 		)
-		for slot in 2:
-			var fighter := runner.state.fighter(slot)
-			worst = maxf(worst, SimMath.length(fighter.x, fighter.y))
-	assert_true(worst > limit * 0.9, "both fighters were actually driven into the boundary")
-	assert_true(worst <= limit + StateInvariants.BOUND_SLACK, "step 9 confines bodies after step 7 moves them, so no tick ends outside the arena")
+		ring_outs += DuelFixture.of_type(events, DuelEventTypes.RING_OUT).size()
+		if runner.state.is_finished():
+			break
+	assert_true(ring_outs > 0, "driving fighters apart eventually crosses the edge")

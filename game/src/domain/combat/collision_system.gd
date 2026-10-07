@@ -52,7 +52,7 @@ func detect(
 	var blade_touch := weapon.blade_radius * 2.0
 	var epsilon := rules.combat.separation_epsilon
 	var body_touch := rules.fighter.body_radius + weapon.blade_radius
-	var can_strike: Array[bool] = [_can_strike(state.fighter(0)), _can_strike(state.fighter(1))]
+	var can_strike: Array[bool] = [_can_contact_body(state.fighter(0)), _can_contact_body(state.fighter(1))]
 	var body_touch_body := rules.fighter.body_radius * 2.0
 	var steps := substep_count(start, finish, rules)
 	for k in range(1, steps + 1):
@@ -76,8 +76,16 @@ func detect(
 			return
 
 
-static func _can_strike(fighter: FighterState) -> bool:
-	return CombatPhase.is_striking(fighter.weapon.phase)
+## Whether this fighter's blade participates in weapon→body contact detection
+## (COMBAT-010, PHYS-007). A point strike is a contact classification, never
+## an attack state: a stationary sword on an advancing fighter is a valid
+## source. Only DEAD and FALLING exclude detection — the blade is inert.
+##
+## BIND contacts are detected geometrically and suppressed at the consequence
+## layer (ContactResolver), not here. Combat state may change the consequence
+## of contact but must not make real geometry cease to exist.
+static func _can_contact_body(fighter: FighterState) -> bool:
+	return fighter.weapon.phase != CombatPhase.Id.DEAD and not fighter.is_falling
 
 
 ## Normalized-lerp blade direction: per-tick rotation is small, and the result
