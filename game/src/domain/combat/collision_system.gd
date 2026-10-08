@@ -34,7 +34,8 @@ static func substep_count(start: Array[FighterPose], finish: Array[FighterPose],
 ## Fill `report` with the earliest contacts in the sub-interval between `start`
 ## and `finish`, advancing the blade pair's lifecycle as the sweep passes
 ## through it. Weapon-body lifecycles gate re-entry so a penetrating sword
-## does not multi-hit (COMBAT-007, PHYS-008).
+## does not multi-hit (COMBAT-007, PHYS-008). The body-body lifecycle
+## (PHYS-009) distinguishes new impacts from persistent contacts.
 ##
 ## `report.fraction` is relative to this sub-interval, so a chronological
 ## caller sweeping the remainder of a tick gets the earliest contact *in that
@@ -68,9 +69,13 @@ func detect(
 			for attacker in 2:
 				if can_strike[attacker] and _body_hit_with_lifecycle(attacker, weapon, body_touch, epsilon, state.weapon_body_contacts[attacker], report):
 					report.body[attacker] = true
+				elif state.weapon_body_contacts[attacker].phase == WeaponBodyContact.Phase.CONSTRAINING:
+					if _body_gap(attacker, weapon) <= body_touch:
+						report.sword_body_constraining[attacker] = true
 		if not report.blade and not report.body[0] and not report.body[1]:
 			if _body_push(body_touch_body, report):
 				report.body_push = true
+				report.body_push_persistent = state.body_contact.is_persistent_contact()
 		if report.any():
 			report.fraction = s
 			return

@@ -236,7 +236,8 @@ func _build_ui(config: MatchConfig) -> void:
 	hud = DuelHud.create(
 		HudCopy.sided(AppCopy.YOU, mine),
 		HudCopy.sided(AppCopy.opponent_label(config), DuelSide.other(mine)),
-		config.human_slot
+		config.human_slot,
+		mine
 	)
 	hud.pause_pressed.connect(pause)
 	add_child(hud)

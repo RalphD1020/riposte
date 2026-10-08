@@ -57,6 +57,7 @@ const CONTACT_PAIR_STUCK := &"contact_pair_stuck"
 const BODY_SPEED_IMPOSSIBLE := &"body_speed_impossible"
 const WEAPON_SPEED_IMPOSSIBLE := &"weapon_speed_impossible"
 const ARENA_ESCAPE := &"arena_escape"
+const BODY_CONTACT_MISMATCH := &"body_contact_mismatch"
 
 
 ## First violated invariant, or OK. Order is fixed so a fault is reproducible.
@@ -85,7 +86,27 @@ static func check(state: MatchState, rules: DuelRules) -> StringName:
 			var distance := SimMath.length(fighter.x, fighter.y)
 			if distance > rules.platform_radius + BOUND_SLACK:
 				return ARENA_ESCAPE
+	var body_contact_violation := check_body_contact(state)
+	if body_contact_violation != OK:
+		return body_contact_violation
 	return check_contact(state, rules)
+
+
+## Body-body lifecycle: ticks_in_contact must be zero when SEPARATED and
+## non-negative when CONTACTING.
+static func check_body_contact(state: MatchState) -> StringName:
+	var bc := state.body_contact
+	if bc.phase == BodyContactState.Phase.SEPARATED and bc.ticks_in_contact != 0:
+		return BODY_CONTACT_MISMATCH
+	if bc.ticks_in_contact < 0:
+		return BODY_CONTACT_MISMATCH
+	if not is_finite(bc.last_constraint_impulse):
+		return BODY_CONTACT_MISMATCH
+	if not is_finite(bc.last_constraint_normal_x):
+		return BODY_CONTACT_MISMATCH
+	if not is_finite(bc.last_constraint_normal_y):
+		return BODY_CONTACT_MISMATCH
+	return OK
 
 
 ## The contact lifecycle has to stay escapable. A pair parked in `BOUND` past
@@ -166,6 +187,10 @@ static func check_gesture(gesture: MovementGestureState, definition: FighterDefi
 		return BURST_MODE_MISMATCH
 	if gesture.is_bursting() and absf(SimMath.length(gesture.burst_dir_x, gesture.burst_dir_y) - 1.0) > BOUND_SLACK:
 		return BURST_HEADING_DEGENERATE
+	if gesture.recovery_ticks_remaining < 0:
+		return COUNTER_NEGATIVE
+	if gesture.is_recovering() != (gesture.recovery_ticks_remaining > 0):
+		return BURST_MODE_MISMATCH
 	return OK
 
 

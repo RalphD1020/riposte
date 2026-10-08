@@ -115,3 +115,4 @@ static func _semantics(fighter: FighterDefinition) -> void:
 	fighter.burst_ticks = 10
 	fighter.burst_speed_axial = 8.4
 	fighter.burst_speed_lateral = 6.6
+	fighter.dash_recovery_ticks = 6

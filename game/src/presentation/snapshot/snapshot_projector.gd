@@ -70,6 +70,7 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	row.capability = CapabilityModel.resolve_weapon(fighter.health, rules.fighter.max_health, fighter.stamina, row.stamina_max, rules.combat)
 	row.condition = FighterCondition.classify(fighter.health, rules.fighter.max_health)
 	row.body_radius = rules.fighter.body_radius
+	row.is_falling = fighter.is_falling
 	row.hilt_radius = rules.weapon.hilt_radius
 	row.tip_radius = rules.weapon.tip_radius
 	row.threat_time = InitiativeModel.time_to_threat(fighter, opponent, rules)

@@ -31,6 +31,11 @@ var edge_clearance: float = 0.0
 var outward_radial_speed: float = 0.0
 var stopping_margin: float = 0.0
 var voluntary_ring_out_risk: bool = false
+## Push-pressure awareness (CPU-007).
+var body_contact_active: bool = false
+var push_pressure: float = 0.0
+var being_displaced: bool = false
+var time_to_support_loss: int = 2147483647
 
 
 const MOVE_COUNT := 5
@@ -59,4 +64,8 @@ static func create(
 	trace.edge_clearance = assessment.edge_clearance
 	trace.outward_radial_speed = assessment.outward_radial_speed
 	trace.stopping_margin = assessment.stopping_margin
+	trace.body_contact_active = assessment.body_contact_active
+	trace.push_pressure = assessment.push_pressure
+	trace.being_displaced = assessment.being_displaced
+	trace.time_to_support_loss = assessment.time_to_support_loss
 	return trace

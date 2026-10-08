@@ -138,7 +138,7 @@ func command_for(state: MatchState, slot: int) -> PlayerCommand:
 	_perceive(seen, me, state.tick)
 	if state.tick >= _next_decision_tick:
 		last_perceived_tick = seen.tick
-		_decide(seen, me, state.tick)
+		_decide(seen, me, state.tick, state.body_contact)
 		_next_decision_tick = state.tick + profile.decision_ticks + _rng.next_int(0, profile.decision_jitter)
 	return _execute(state.tick, me)
 
@@ -174,10 +174,10 @@ func _perceive(seen: CpuObservation, me: FighterState, tick: int) -> void:
 	_sight_distance = SimMath.length(_sight_x - me.x, _sight_y - me.y)
 
 
-func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void:
+func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_contact: BodyContactState = null) -> void:
 	var reach := _reach()
 	var perceived := _sight_distance + _rng.next_range(-profile.range_error, profile.range_error)
-	var assessment := TacticalAssessment.evaluate(seen, me, perceived, reach, _rules, profile)
+	var assessment := TacticalAssessment.evaluate(seen, me, perceived, reach, _rules, profile, body_contact)
 	var opp_charging := seen.opp_phase == CombatPhase.Id.CHARGING
 	var threatened := (seen.opponent_swinging() or (opp_charging and seen.opp_charge > THREAT_CHARGE)) and perceived < reach + THREAT_RANGE
 	var open := seen.opponent_open()
@@ -218,6 +218,14 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int) -> void
 		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], profile.angle_weight * maxf(seen.opp_commitment, ORBIT_MIN_COMMITMENT))
 	if (seen.opp_phase == CombatPhase.Id.NEUTRAL or opp_charging) and profile.pressure_weight > 0.0:
 		utilities[Move.BAIT] = profile.bait_weight * (1.0 - pressure / profile.pressure_weight)
+	## Push-pressure survival (CPU-007). When being displaced toward the edge
+	## by a solved constraint impulse, boost retreat/orbit utility. Only acts
+	## in the outer rim where ring-out is a real threat; center-arena contact
+	## is handled by existing spacing and initiative logic.
+	if assessment.being_displaced and assessment.edge_clearance < _rules.platform_radius * 0.3:
+		var push_urgency := SimMath.clamp01(1.0 - float(assessment.time_to_support_loss) / 120.0)
+		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], push_urgency * 0.4)
+		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], push_urgency * 0.3)
 	_move = _best_move(utilities)
 	_move = _safe_move(utilities, me)
 	_orbit_sign = seen.opp_swing_dir

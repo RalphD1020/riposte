@@ -24,6 +24,9 @@ var blade_contact := ContactPairState.new()
 ## weapon_body_contacts[i] tracks whether attacker i's blade is currently
 ## inside the opponent's body volume.
 var weapon_body_contacts: Array[WeaponBodyContact] = [WeaponBodyContact.new(), WeaponBodyContact.new()]
+## Lifecycle of the body-body pair (PHYS-009). Distinguishes a new-contact
+## impact (restitution) from persistent contact (nonpenetration constraint).
+var body_contact := BodyContactState.new()
 
 
 func fighter(slot: int) -> FighterState:

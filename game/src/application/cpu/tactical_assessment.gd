@@ -47,6 +47,16 @@ var opponent_edge_clearance: float = 0.0
 ## Positional edge advantage: opponent_pressure - own_pressure. Positive =
 ## opponent is closer to the cliff.
 var edge_position_advantage: float = 0.0
+## Body contact push awareness (CPU-007). Derived from the solved constraint
+## impulse, not from hidden opponent motor intent.
+var body_contact_active: bool = false
+## Push pressure = J_constraint / dt, signed so positive = toward own edge.
+var push_pressure: float = 0.0
+## True when push pressure toward own edge exceeds a threshold.
+var being_displaced: bool = false
+## Estimated ticks until pushed off the platform at the current displacement
+## rate. INT32_MAX when not being displaced.
+var time_to_support_loss: int = 2147483647
 
 
 static func evaluate(
@@ -56,6 +66,7 @@ static func evaluate(
 	reach: float,
 	rules: DuelRules,
 	profile: CpuProfile,
+	body_contact: BodyContactState = null,
 ) -> TacticalAssessment:
 	var assessment := TacticalAssessment.new()
 	var desired := profile.tap_range if WeaponSystem.can_start_attack(me, rules.weapon) else profile.engage_range
@@ -68,6 +79,7 @@ static func evaluate(
 	_assess_arena(assessment, seen, me, rules)
 	_assess_withdrawal(assessment, me)
 	_assess_stamina(assessment, me, rules)
+	_assess_push(assessment, me, rules, body_contact)
 	_evaluate_bursts(assessment, seen, me, perceived_distance, reach, desired, rules, profile)
 	return assessment
 
@@ -135,6 +147,41 @@ static func _assess_stamina(assessment: TacticalAssessment, me: FighterState, ru
 		assessment.stamina_depletion = 1.0
 		return
 	assessment.stamina_depletion = SimMath.clamp01(1.0 - me.stamina / max_stamina)
+
+
+## Push-pressure awareness (CPU-007). Reads the solved constraint impulse from
+## the body contact state — observable physics, not hidden opponent intent.
+## Positive push_pressure means the CPU is being pushed toward its own edge.
+static func _assess_push(assessment: TacticalAssessment, me: FighterState, rules: DuelRules, body_contact: BodyContactState) -> void:
+	if body_contact == null or body_contact.phase != BodyContactState.Phase.CONTACTING:
+		return
+	assessment.body_contact_active = true
+	var dt := SimulationTimebase.TICK_SECONDS
+	if dt <= SimMath.EPSILON:
+		return
+	## The constraint normal points from fighter 0 toward fighter 1. Fighter 0
+	## receives impulse in the −n direction, fighter 1 in the +n direction.
+	var push_sign := -1.0 if me.slot == 0 else 1.0
+	var push_dir_x := push_sign * body_contact.last_constraint_normal_x
+	var push_dir_y := push_sign * body_contact.last_constraint_normal_y
+	var force := body_contact.last_constraint_impulse / dt
+	## Project the push direction onto the arena radial (from center to CPU).
+	var my_r := SimMath.length(me.x, me.y)
+	if my_r < SimMath.EPSILON:
+		return
+	var radial_x := me.x / my_r
+	var radial_y := me.y / my_r
+	var push_radial := (push_dir_x * radial_x + push_dir_y * radial_y) * force
+	assessment.push_pressure = push_radial
+	## Being displaced: pushed outward with significant force.
+	var displacement_threshold := rules.fighter.mass * 2.0
+	if push_radial > displacement_threshold:
+		assessment.being_displaced = true
+		## Time to support loss: edge_clearance / displacement_rate.
+		var displacement_rate := push_radial / rules.fighter.mass * dt
+		if displacement_rate > SimMath.EPSILON:
+			var ticks := int(assessment.edge_clearance / displacement_rate)
+			assessment.time_to_support_loss = clampi(ticks, 0, 2147483647)
 
 
 ## Score each burst direction: measure improvement, tactical gain, and edge

@@ -174,9 +174,9 @@ func test_only_live_strikes_cut() -> void:
 	_collision.detect(sweeping, near_start, near_finish, _rules, _engaged(), report)
 	assert_true(report.body[0], "first entry registers as a hit")
 	report.clear()
-	## The lifecycle is now ENTERED → INSIDE after tick upkeep. Second detect
-	## with the blade still overlapping must NOT re-damage.
-	sweeping.weapon_body_contacts[0].phase = WeaponBodyContact.Phase.INSIDE
+	## The lifecycle is now past ENTERED → CONSTRAINING after resolution.
+	## Second detect with the blade still overlapping must NOT re-damage.
+	sweeping.weapon_body_contacts[0].phase = WeaponBodyContact.Phase.CONSTRAINING
 	_collision.detect(sweeping, near_start, near_finish, _rules, _engaged(), report)
 	assert_false(report.body[0], "continuously overlapping blade does not re-hit")
 

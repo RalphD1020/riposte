@@ -349,3 +349,106 @@ func test_a_replay_with_dashes_reproduces_the_duel_exactly() -> void:
 	assert_true(bursts[0] > 0, "precondition: the script actually produced dashes")
 	assert_eq(bursts[1], bursts[0], "the same commands produce the same number of dashes")
 	assert_eq(hashes[1], hashes[0], "and the same duel, down to the hash")
+
+
+## --- Committed forward dash (MOVE-002) ----------------------------------------
+
+
+func test_forward_dash_zero_steering() -> void:
+	var state := _scene()
+	_double_tap(state, 0.0, 1.0)
+	var gesture := state.fighter(0).gesture
+	assert_true(gesture.is_bursting(), "precondition: burst active")
+	var heading_x := gesture.burst_dir_x
+	var heading_y := gesture.burst_dir_y
+	## Apply perpendicular stick input during burst.
+	for tick in range(5, 10):
+		_tick(state, tick, 1.0, 0.0)
+	## Heading should not change.
+	assert_near(gesture.burst_dir_x, heading_x, 1e-9, "heading x unchanged despite perpendicular input")
+	assert_near(gesture.burst_dir_y, heading_y, 1e-9, "heading y unchanged despite perpendicular input")
+
+
+func test_forward_dash_velocity_is_target_not_additive() -> void:
+	var state := _scene()
+	_double_tap(state, 0.0, 1.0)
+	## After a few ticks of burst, fighter should be heading along burst direction,
+	## not have intent-additive velocity.
+	for tick in range(5, 9):
+		_tick(state, tick, 1.0, 0.0)
+	var fighter := state.fighter(0)
+	var gesture := fighter.gesture
+	## The velocity should be mostly along the burst heading, not significantly
+	## perpendicular, because steering authority is zero during forward dash.
+	var along := fighter.vx * gesture.burst_dir_x + fighter.vy * gesture.burst_dir_y
+	assert_true(along > 0.0, "velocity has positive component along burst heading")
+
+
+func test_back_dash_keeps_additive_model() -> void:
+	var state := _scene()
+	## Double-tap backward.
+	_tick(state, 0, 0.0, -1.0)
+	_tick(state, 1, 0.0, -1.0)
+	_tick(state, 2, 0.0, 0.0)
+	_tick(state, 3, 0.0, 0.0)
+	var launched := _tick(state, 4, 0.0, -1.0)
+	assert_eq(launched, MovementGestureState.BurstKind.BACK_DASH, "precondition: back dash launched")
+	## Back dash uses additive model — intent IS added.
+	var gesture := state.fighter(0).gesture
+	assert_true(gesture.is_bursting(), "burst active")
+
+
+func test_forward_dash_ends_into_recovery() -> void:
+	var state := _scene()
+	_double_tap(state, 0.0, 1.0)
+	var gesture := state.fighter(0).gesture
+	assert_true(gesture.is_bursting(), "precondition: burst started")
+	## Run through remaining burst ticks. The recognition tick (tick 4) already
+	## decremented once, so burst_ticks - 1 more ticks exhaust the burst.
+	for tick in range(5, 4 + _rules.fighter.burst_ticks):
+		_tick(state, tick, 0.0, 1.0)
+	assert_true(gesture.is_recovering(), "forward dash ends into RECOVERY")
+	assert_eq(gesture.recovery_ticks_remaining, _rules.fighter.dash_recovery_ticks, "recovery starts with full count")
+
+
+func test_back_dash_does_not_enter_recovery() -> void:
+	var state := _scene()
+	_tick(state, 0, 0.0, -1.0)
+	_tick(state, 1, 0.0, -1.0)
+	_tick(state, 2, 0.0, 0.0)
+	_tick(state, 3, 0.0, 0.0)
+	_tick(state, 4, 0.0, -1.0)
+	var gesture := state.fighter(0).gesture
+	assert_true(gesture.is_bursting(), "precondition: back dash active")
+	for tick in range(5, 5 + _rules.fighter.burst_ticks):
+		_tick(state, tick, 0.0, -1.0)
+	assert_false(gesture.is_recovering(), "back dash does not enter recovery")
+	assert_eq(gesture.mode, MovementGestureState.Mode.NORMAL, "back dash returns to NORMAL")
+
+
+func test_recovery_progress_linear() -> void:
+	var gesture := MovementGestureState.new()
+	gesture.mode = MovementGestureState.Mode.RECOVERY
+	gesture.recovery_ticks_total = 6
+	gesture.recovery_ticks_remaining = 6
+	assert_near(gesture.recovery_progress(), 0.0, 1e-6, "start of recovery = 0")
+	gesture.recovery_ticks_remaining = 3
+	assert_near(gesture.recovery_progress(), 0.5, 1e-6, "midpoint of recovery = 0.5")
+	gesture.recovery_ticks_remaining = 0
+	assert_near(gesture.recovery_progress(), 1.0, 1e-6, "end of recovery = 1.0")
+
+
+func test_recovery_ends_after_ticks() -> void:
+	var state := _scene()
+	_double_tap(state, 0.0, 1.0)
+	var gesture := state.fighter(0).gesture
+	## Run through remaining burst (recognition tick already consumed one).
+	for tick in range(5, 4 + _rules.fighter.burst_ticks):
+		_tick(state, tick, 0.0, 0.0)
+	assert_true(gesture.is_recovering(), "precondition: in recovery")
+	## Run through recovery.
+	var tick_start := 4 + _rules.fighter.burst_ticks
+	for tick in range(tick_start, tick_start + _rules.fighter.dash_recovery_ticks):
+		_tick(state, tick, 0.0, 0.0)
+	assert_eq(gesture.mode, MovementGestureState.Mode.NORMAL, "recovery ends, returns to NORMAL")
+	assert_eq(gesture.recovery_ticks_remaining, 0, "recovery counter at 0")

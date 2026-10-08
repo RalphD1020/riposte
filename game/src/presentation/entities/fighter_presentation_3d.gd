@@ -27,6 +27,8 @@ const FLASH_SECONDS := 0.12
 const FLASH_ENERGY := 1.6
 const DEATH_SECONDS := 0.45
 const DEATH_TILT := 1.35
+const FALL_SPEED := 8.0
+const FALL_TILT := 0.4
 const STAGGER_WOBBLE := 0.09
 const STAGGER_WOBBLE_RATE := 30.0
 const CHARGE_CROUCH := 0.06
@@ -38,6 +40,7 @@ const MOVE_SPEED := 0.6
 const TELEPORT_DISTANCE := 1.0
 
 var slot: int = 0
+var side: DuelSide.Id = DuelSide.Id.LIGHT_SOUTH
 var _fighter_kit: PresentationKit
 var _weapon_kit: PresentationKit
 var _hilt: float = 0.0
@@ -54,6 +57,8 @@ var _animation: AnimationPlayer
 var _flash: float = 0.0
 var _flash_scale: float = 1.0
 var _death: float = 0.0
+var _fall_offset: float = 0.0
+var _is_falling: bool = false
 var _time: float = 0.0
 var _shown_charge: float = -1.0
 var _semantic: StringName = &""
@@ -63,6 +68,7 @@ var _posed: bool = false
 
 static func create(
 	fighter_slot: int,
+	fighter_side: DuelSide.Id,
 	fighter_kit: PresentationKit,
 	weapon_kit: PresentationKit,
 	body_radius: float,
@@ -72,6 +78,7 @@ static func create(
 	var proxy := FighterPresentation3D.new()
 	proxy.name = "Fighter%d" % fighter_slot
 	proxy.slot = fighter_slot
+	proxy.side = fighter_side
 	proxy._fighter_kit = fighter_kit
 	proxy._weapon_kit = weapon_kit
 	proxy._hilt = hilt_radius
@@ -81,24 +88,29 @@ static func create(
 
 
 func body_color() -> Color:
-	return RiposteTheme.PLAYER_BODY if slot == 0 else RiposteTheme.OPPONENT_BODY
+	return RiposteTheme.body_for(side)
 
 
 func outline_color() -> Color:
-	return RiposteTheme.PLAYER_OUTLINE if slot == 0 else RiposteTheme.OPPONENT_OUTLINE
+	return RiposteTheme.outline_for(side)
 
 
 func blade_color() -> Color:
-	return RiposteTheme.PLAYER_BLADE if slot == 0 else RiposteTheme.OPPONENT_BLADE
+	return RiposteTheme.blade_for(side)
 
 
 ## Pose for this frame. `facing` and `weapon_angle` are gameplay radians.
-func apply_pose(world: Vector3, facing: float, weapon_angle: float, charge: float, phase: CombatPhase.Id, alive: bool, delta: float) -> void:
+func apply_pose(world: Vector3, facing: float, weapon_angle: float, charge: float, phase: CombatPhase.Id, alive: bool, falling: bool, delta: float) -> void:
 	_time += delta
 	var step := world.distance_to(position) if _posed else 0.0
 	_ground_speed = step / delta if delta > 0.0 and step < TELEPORT_DISTANCE else 0.0
 	_posed = true
-	position = world
+	_is_falling = falling
+	if _is_falling:
+		_fall_offset += FALL_SPEED * delta
+	else:
+		_fall_offset = 0.0
+	position = world - Vector3(0.0, _fall_offset, 0.0)
 	rotation.y = ArenaTransform.yaw(facing)
 	_sword_pivot.rotation.y = weapon_angle
 	_flash = maxf(_flash - delta, 0.0)
@@ -131,6 +143,14 @@ func set_charge_indicator(visible_now: bool) -> void:
 func set_high_contrast(enabled: bool) -> void:
 	_blade_core.albedo_color = RiposteTheme.BLADE_HIGH_CONTRAST_CORE if enabled else blade_color()
 	_blade_outline.scale = HIGH_CONTRAST_OUTLINE if enabled else Vector3.ONE
+
+
+func is_falling() -> bool:
+	return _is_falling
+
+
+func fall_offset() -> float:
+	return _fall_offset
 
 
 func current_semantic() -> StringName:
@@ -251,8 +271,9 @@ func _animate(charge: float, phase: CombatPhase.Id, alive: bool) -> void:
 			_animation.play(clip)
 		return
 	var tilt := DEATH_TILT * _death
+	var fall_tilt := FALL_TILT * clampf(_fall_offset, 0.0, 1.0) if _is_falling else 0.0
 	var wobble := sin(_time * STAGGER_WOBBLE_RATE) * STAGGER_WOBBLE if semantic == PresentationKit.ANIM_STAGGER else 0.0
-	_visual_root.rotation = Vector3(tilt, 0.0, wobble)
+	_visual_root.rotation = Vector3(tilt + fall_tilt, 0.0, wobble)
 	_visual_root.scale = Vector3(1.0, 1.0 - CHARGE_CROUCH * charge, 1.0)
 
 

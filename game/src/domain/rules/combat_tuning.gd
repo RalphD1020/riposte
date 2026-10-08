@@ -125,6 +125,19 @@ var body_restitution: float = 0.0
 ## prevents a glancing bump from halting all lateral motion.
 var body_friction: float = 0.0
 
+## Gap threshold beyond which a CONTACTING body pair transitions back to
+## SEPARATED (PHYS-009). Bodies must genuinely part before contact can
+## re-arm. Reuses the same hysteresis philosophy as blade separation.
+var body_contact_separation_epsilon: float = 0.0
+
+## Sword-body bilateral contact (PHYS-010). Very low restitution — this is
+## sword-into-human-body, not steel-on-steel. Highly inelastic.
+var sword_body_restitution: float = 0.0
+## Fraction of the full rigid blocking impulse applied on lethal point entry
+## before releasing the nonpenetration constraint. The blade transfers this
+## much momentum bilaterally, then continues through.
+var penetration_resistance_fraction: float = 0.0
+
 ## Point-strike classification (COMBAT-010, COMBAT-011). A body contact
 ## becomes a point strike when the tip region makes contact along a
 ## sufficiently axial, well-incided trajectory with enough physical severity.
@@ -206,6 +219,11 @@ func is_valid() -> bool:
 		and body_restitution <= 1.0
 		and body_friction >= 0.0
 		and body_friction <= 1.0
+		and body_contact_separation_epsilon > 0.0
+		and sword_body_restitution >= 0.0
+		and sword_body_restitution <= 1.0
+		and penetration_resistance_fraction >= 0.0
+		and penetration_resistance_fraction <= 1.0
 		and point_strike_alignment >= 0.0
 		and point_strike_alignment <= 1.0
 		and point_strike_incidence >= 0.0
@@ -249,8 +267,10 @@ func _all_finite() -> bool:
 		and is_finite(stamina_move_reference_work) and is_finite(stamina_turn_reference_work)
 		and is_finite(stamina_weapon_reference_work)
 		and is_finite(stamina_drive_weight) and is_finite(stamina_brake_weight)
-		and is_finite(stamina_hold_weight) and is_finite(body_restitution)
-		and is_finite(body_friction) and is_finite(point_strike_alignment)
+		and is_finite(stamina_hold_weight) 		and is_finite(body_restitution)
+		and is_finite(body_friction) and is_finite(body_contact_separation_epsilon)
+		and is_finite(sword_body_restitution) and is_finite(penetration_resistance_fraction)
+		and is_finite(point_strike_alignment)
 		and is_finite(point_strike_incidence) and is_finite(point_strike_severity)
 		and is_finite(graze_quality) and is_finite(thrust_burst_alignment)
 		and is_finite(poke_lethal_quality) and is_finite(body_push_feel_scale)

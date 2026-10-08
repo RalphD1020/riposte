@@ -97,10 +97,10 @@ func test_theme_builds_visible_focus_for_every_control() -> void:
 
 func test_components_style_through_theme_variations() -> void:
 	var theme := RiposteTheme.build()
-	for variation: StringName in [&"SectionLabel", &"CaptionLabel", &"FieldLabel", &"HudTitleLabel", &"HudAccentLabel", &"HudCaptionLabel", &"PageColumns", &"PageStack", &"SheetMargin", &"HudRow", &"HudStack", &"PlayerHealthBar", &"OpponentHealthBar"]:
+	for variation: StringName in [&"SectionLabel", &"CaptionLabel", &"FieldLabel", &"HudTitleLabel", &"HudAccentLabel", &"HudCaptionLabel", &"PageColumns", &"PageStack", &"SheetMargin", &"HudRow", &"HudStack", &"LightHealthBar", &"DarkHealthBar"]:
 		assert_true(theme.is_type_variation(variation, theme.get_type_variation_base(variation)), "%s is a theme variation" % variation)
 	assert_eq(theme.get_constant("separation", "VBoxContainer"), int(RiposteTheme.STACK_GAP), "columns breathe at the stack gap")
 	assert_eq(theme.get_constant("separation", "HudStack"), int(RiposteTheme.HUD_STACK_GAP), "HUD plates stay compact")
 	assert_eq(theme.get_color("font_color", "HudAccentLabel"), RiposteTheme.ACCENT_ON_DARK, "accent text uses the tested accent color")
-	assert_true(theme.get_stylebox("fill", "OpponentHealthBar") != theme.get_stylebox("fill", "PlayerHealthBar"), "each side has its own fill")
+	assert_true(theme.get_stylebox("fill", "DarkHealthBar") != theme.get_stylebox("fill", "LightHealthBar"), "each side has its own fill")
 	assert_true(theme.has_icon("grabber", "HSlider") and theme.has_icon("checked", "CheckButton"), "slider knob and switches are drawn, high-contrast icons")

@@ -16,7 +16,7 @@ extends RefCounted
 static func create() -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 18
+	rules.version = 19
 	rules.fighter = FighterCatalog.of(ContentIds.FIGHTER_DUELIST)
 	rules.weapon = WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD)
 	rules.combat = combat_tuning()
@@ -146,6 +146,15 @@ static func combat_tuning() -> CombatTuning:
 	## sheds some lateral speed but cannot halt a side-step. 0.3 keeps the
 	## effect visible without making every bump a wall.
 	combat.body_friction = 0.3
+	## Body-body contact lifecycle (PHYS-009). Gap threshold for transitioning
+	## from CONTACTING back to SEPARATED. Bodies must visibly part.
+	combat.body_contact_separation_epsilon = 0.01
+	## Sword-body bilateral contact (PHYS-010). Very low restitution — this is
+	## sword-into-human-body, not steel-on-steel. Highly inelastic.
+	combat.sword_body_restitution = 0.02
+	## Fraction of the full rigid blocking impulse applied on lethal point entry
+	## before releasing the nonpenetration constraint (PHYS-010).
+	combat.penetration_resistance_fraction = 0.25
 	## Point-strike classification (COMBAT-010). Thresholds are deliberately
 	## permissive for pokes (walking into a point is common) and strict for
 	## the burst-alignment needed to make one a thrust.

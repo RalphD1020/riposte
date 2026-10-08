@@ -20,8 +20,16 @@ var body_x: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
 var body_y: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
 ## Two fighter bodies overlapped — a shoulder check or bump.
 var body_push: bool = false
+## True when this is a persistent contact (CONTACTING with ticks_in_contact > 0)
+## rather than a new impact. The resolver uses zero restitution for persistent
+## contacts and authored restitution for new impacts.
+var body_push_persistent: bool = false
 var body_push_nx: float = 0.0
 var body_push_ny: float = 0.0
+## Sword-body nonpenetration: attacker[i]'s blade is in CONSTRAINING phase
+## inside the defender's body. The resolver enforces a zero-restitution
+## velocity constraint to prevent the blade from advancing through.
+var sword_body_constraining: Array[bool] = [false, false]
 
 
 func clear() -> void:
@@ -30,7 +38,10 @@ func clear() -> void:
 	body[0] = false
 	body[1] = false
 	body_push = false
+	body_push_persistent = false
+	sword_body_constraining[0] = false
+	sword_body_constraining[1] = false
 
 
 func any() -> bool:
-	return blade or body[0] or body[1] or body_push
+	return blade or body[0] or body[1] or body_push or sword_body_constraining[0] or sword_body_constraining[1]

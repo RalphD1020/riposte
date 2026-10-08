@@ -98,16 +98,19 @@ const WORLD_KEY_ROTATION_DEGREES := Vector3(-58.0, -32.0, 0.0)
 const SHADOW := Color(0.08, 0.09, 0.1, 0.38)
 
 ## Combatant styles (UX §13): hue + outline + HUD side + label, never color alone.
-const PLAYER_BODY := Color("f2eee6")
-const PLAYER_OUTLINE := STEEL_900
-const PLAYER_BLADE := Color("f6ead0")
-const OPPONENT_BODY := Color("2e2a30")
-const OPPONENT_OUTLINE := MAUVE_300
-const OPPONENT_BLADE := Color("e6ecf2")
+## Colors follow the arena side (LIGHT_SOUTH / DARK_NORTH) so the character's
+## visual identity matches the HUD label. "Light" is always the lighter body;
+## "Dark" is always the darker one.
+const LIGHT_BODY := Color("f2eee6")
+const LIGHT_OUTLINE := STEEL_900
+const LIGHT_BLADE := Color("f6ead0")
+const DARK_BODY := Color("2e2a30")
+const DARK_OUTLINE := MAUVE_300
+const DARK_BLADE := Color("e6ecf2")
 const BLADE_OUTLINE := Color("15181a")
 const BLADE_HIGH_CONTRAST_CORE := Color("ffffff")
 ## Combat-critical world reads; each must meet 3:1 against the floor (UX §44).
-const WORLD_READS: Array[Color] = [PLAYER_BODY, OPPONENT_BODY, PLAYER_BLADE, OPPONENT_BLADE, BLADE_OUTLINE]
+const WORLD_READS: Array[Color] = [LIGHT_BODY, DARK_BODY, LIGHT_BLADE, DARK_BLADE, BLADE_OUTLINE]
 
 ## Feedback (UX §19–§22). Reduced Flash scales intensity down.
 const SPARK := Color("ffe7a8")
@@ -116,10 +119,27 @@ const CRITICAL := Color("ffffff")
 const CHARGE_RING := Color("f6ead0")
 const REDUCED_FLASH_SCALE := 0.45
 
-## HUD health fills.
-const HEALTH_PLAYER := PLAYER_BODY
-const HEALTH_OPPONENT := MAUVE_300
+## HUD health fills — keyed to DuelSide, not player/opponent slot.
+const HEALTH_LIGHT := LIGHT_BODY
+const HEALTH_DARK := MAUVE_300
 const HEALTH_TRACK := Color("2a2e30")
+
+
+## Combatant colors for a given side.
+static func body_for(side: DuelSide.Id) -> Color:
+	return LIGHT_BODY if side == DuelSide.Id.LIGHT_SOUTH else DARK_BODY
+
+
+static func outline_for(side: DuelSide.Id) -> Color:
+	return LIGHT_OUTLINE if side == DuelSide.Id.LIGHT_SOUTH else DARK_OUTLINE
+
+
+static func blade_for(side: DuelSide.Id) -> Color:
+	return LIGHT_BLADE if side == DuelSide.Id.LIGHT_SOUTH else DARK_BLADE
+
+
+static func health_for(side: DuelSide.Id) -> Color:
+	return HEALTH_LIGHT if side == DuelSide.Id.LIGHT_SOUTH else HEALTH_DARK
 
 static var _display_font: FontVariation
 
@@ -242,11 +262,11 @@ static func _style_inputs(theme: Theme) -> void:
 	theme.set_color("font_focus_color", "CheckButton", TEXT_ON_LIGHT)
 	theme.set_color("font_hover_pressed_color", "CheckButton", TEXT_ON_LIGHT)
 	theme.set_stylebox("background", "ProgressBar", _box(HEALTH_TRACK, HEALTH_TRACK, 0, 2))
-	theme.set_stylebox("fill", "ProgressBar", _box(HEALTH_PLAYER, HEALTH_PLAYER, 0, 2))
-	theme.set_type_variation("PlayerHealthBar", "ProgressBar")
-	theme.set_stylebox("fill", "PlayerHealthBar", _box(HEALTH_PLAYER, HEALTH_PLAYER, 0, 2))
-	theme.set_type_variation("OpponentHealthBar", "ProgressBar")
-	theme.set_stylebox("fill", "OpponentHealthBar", _box(HEALTH_OPPONENT, HEALTH_OPPONENT, 0, 2))
+	theme.set_stylebox("fill", "ProgressBar", _box(HEALTH_LIGHT, HEALTH_LIGHT, 0, 2))
+	theme.set_type_variation("LightHealthBar", "ProgressBar")
+	theme.set_stylebox("fill", "LightHealthBar", _box(HEALTH_LIGHT, HEALTH_LIGHT, 0, 2))
+	theme.set_type_variation("DarkHealthBar", "ProgressBar")
+	theme.set_stylebox("fill", "DarkHealthBar", _box(HEALTH_DARK, HEALTH_DARK, 0, 2))
 
 
 ## Visible focus (UX §42): a 3 px ring offset by a 3 px gap so it reads

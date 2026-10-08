@@ -36,6 +36,7 @@ static func reset_round(state: MatchState, rules: DuelRules) -> void:
 	state.blade_contact.reset()
 	for wbc in state.weapon_body_contacts:
 		wbc.reset()
+	state.body_contact.reset()
 	state.round_ticks = 0
 	state.round_winner = MatchPhase.NO_WINNER
 	state.end_reason = &""

@@ -71,7 +71,13 @@ func test_replay_controllers_reproduce_the_session() -> void:
 func test_summary_reflects_the_match() -> void:
 	var session := _finished_cpu_session(2)
 	var summary := session.summary(0)
-	var expected := MatchSummary.VICTORY if session.state.match_winner == 0 else MatchSummary.DEFEAT
+	var expected: StringName
+	if session.state.match_winner == 0:
+		expected = MatchSummary.VICTORY
+	elif session.state.match_winner == 1:
+		expected = MatchSummary.DEFEAT
+	else:
+		expected = MatchSummary.DRAW
 	assert_eq(summary.outcome, expected, "outcome from the match winner")
 	var hits := 0
 	for event in session.events:

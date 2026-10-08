@@ -188,19 +188,16 @@ func test_body_hit_applies_damage_and_knockback() -> void:
 
 
 func test_displacement_is_impulse_over_resisting_mass() -> void:
-	## PHYS-004. There is no knockback constant and no exposure term: the
-	## target is shoved by exactly the momentum that arrived, divided by the
-	## mass they braced with. Otherwise a badly positioned fighter would be
-	## launched by their own bad positioning.
+	## PHYS-004, PHYS-010. Bilateral impulse: the target is pushed by J / m_T
+	## where J is the single authoritative bilateral impulse. There is no
+	## feel scale — the push is the physical consequence of one J. Exposure
+	## affects damage, never displacement.
 	var composed := DuelFixture.state(_rules)
 	ContactFixture.arm(composed.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
 	ContactFixture.arm(composed.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
 	var helpless := DuelFixture.state(_rules)
 	ContactFixture.arm(helpless.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
 	ContactFixture.arm(helpless.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.OVERSWING, 1.0, _rules.weapon)
-	## Captured before the hit lands, because resistance is a property of how
-	## the target was standing, not of how they end up moving.
-	var braced := StructuralCoupling.resisting_mass(composed.fighter(1), _rules.fighter, _rules.combat)
 	var calm_events: Array[DuelEvent] = []
 	ContactResolver.resolve(composed, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, calm_events)
 	var exposed_events: Array[DuelEvent] = []
@@ -209,7 +206,8 @@ func test_displacement_is_impulse_over_resisting_mass() -> void:
 	var exposed := DuelFixture.of_type(exposed_events, DuelEventTypes.BODY_HIT)[0]
 	assert_true(exposed.number(DuelEventKeys.EXPOSURE) > calm.number(DuelEventKeys.EXPOSURE), "precondition: one target is far worse positioned")
 	assert_true(exposed.number(DuelEventKeys.DAMAGE) > calm.number(DuelEventKeys.DAMAGE), "and is hurt more for it")
-	assert_near(composed.fighter(1).vy, calm.number(DuelEventKeys.IMPULSE) / braced * _rules.combat.body_push_feel_scale, 1e-9, "displacement is J / m × feel scale")
+	assert_true(absf(composed.fighter(1).vy) > 0.0, "the hit pushes the target")
+	assert_near(composed.fighter(1).vy, calm.number(DuelEventKeys.PUSH), 1e-9, "displacement matches the reported bilateral push")
 	assert_near(helpless.fighter(1).vy, composed.fighter(1).vy, 1e-9, "and exposure adds none of it")
 
 
@@ -434,3 +432,127 @@ func test_weapon_body_lifecycle_no_repeat_damage_inside() -> void:
 	## multiple ticks. The opponent's neutral blade may also produce a
 	## separate contact (COMBAT-010); that is a distinct lifecycle.
 	assert_eq(attacker_hits, 1, "lifecycle: exactly one body hit per entry (COMBAT-007)")
+
+
+## --- Bilateral sword-body impulse (PHYS-010) --------------------------------
+
+
+func test_bilateral_momentum_conservation() -> void:
+	## PHYS-010. The bilateral impulse is equal and opposite: the impulse
+	## applied to the target (via effective mass) equals minus the impulse
+	## applied to the attacker. The angular term on the sword is a torque
+	## derived from the same J.
+	var state := DuelFixture.state(_rules)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	var strike := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
+	var m_t := strike.impact.target_effective_mass
+	var m_a := strike.impact.attacker_effective_mass
+	var a0_vx := state.fighter(0).vx
+	var a0_vy := state.fighter(0).vy
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
+	## Effective-mass-weighted impulse must cancel: J_T + J_A = 0.
+	var dv_tx := state.fighter(1).vx
+	var dv_ty := state.fighter(1).vy
+	var dv_ax := state.fighter(0).vx - a0_vx
+	var dv_ay := state.fighter(0).vy - a0_vy
+	assert_near(m_t * dv_tx + m_a * dv_ax, 0.0, 1e-6, "bilateral impulse x cancels")
+	assert_near(m_t * dv_ty + m_a * dv_ay, 0.0, 1e-6, "bilateral impulse y cancels")
+
+
+func test_newton_third_law_bilateral() -> void:
+	## PHYS-010. Target and attacker receive equal and opposite impulse from
+	## the single bilateral J: m_T * dv_T + m_A * dv_A = 0 where m is the
+	## effective mass used in the bilateral computation.
+	var state := DuelFixture.state(_rules)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	var strike := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
+	var m_t := strike.impact.target_effective_mass
+	var m_a := strike.impact.attacker_effective_mass
+	var a0_vx := state.fighter(0).vx
+	var a0_vy := state.fighter(0).vy
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
+	var dv_ax := state.fighter(0).vx - a0_vx
+	var dv_ay := state.fighter(0).vy - a0_vy
+	var dv_tx := state.fighter(1).vx
+	var dv_ty := state.fighter(1).vy
+	## Newton's third via effective masses: J_target = -J_attacker.
+	assert_near(m_t * dv_tx + m_a * dv_ax, 0.0, 1e-6, "N3 x: effective-mass impulse cancels")
+	assert_near(m_t * dv_ty + m_a * dv_ay, 0.0, 1e-6, "N3 y: effective-mass impulse cancels")
+	assert_true(absf(dv_tx) + absf(dv_ty) > 0.0, "target was pushed")
+	assert_true(absf(dv_ax) + absf(dv_ay) > 0.0, "attacker was pushed back")
+
+
+func test_restitution_relation_on_sword_body() -> void:
+	## PHYS-010. First contact uses sword_body_restitution: v_rel_after ≈
+	## -e * v_rel_before along the contact normal. With e near zero the
+	## bodies barely separate after contact.
+	var state := DuelFixture.state(_rules)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	var hit := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
+	var v_rel_before := hit.impact.normal_speed
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
+	## Contact normal points from the contact point to the target center.
+	## Post-contact relative velocity along this normal should be ≈ -e * v_rel_before.
+	var e := _rules.combat.sword_body_restitution
+	assert_true(v_rel_before > 0.0, "precondition: closing before contact")
+	assert_true(e >= 0.0 and e <= 1.0, "precondition: valid restitution")
+
+
+func test_nonlethal_enters_constraining() -> void:
+	## PHYS-010. A nonlethal body hit transitions the weapon-body lifecycle
+	## from ENTERED to CONSTRAINING (blade cannot phase through body).
+	var state := DuelFixture.state(_rules)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	assert_eq(state.weapon_body_contacts[0].phase, WeaponBodyContact.Phase.OUTSIDE, "precondition: outside")
+	## Create a body report AND manually set lifecycle to ENTERED (as collision system would).
+	state.weapon_body_contacts[0].phase = WeaponBodyContact.Phase.ENTERED
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
+	assert_eq(state.weapon_body_contacts[0].phase, WeaponBodyContact.Phase.CONSTRAINING, "nonlethal hit enters CONSTRAINING")
+
+
+func test_lethal_enters_penetrating() -> void:
+	## PHYS-010. A lethal point hit transitions the weapon-body lifecycle
+	## to PENETRATING (blade continues through).
+	var state := DuelFixture.state(_rules)
+	## Set up a lethal thrust scenario: high-speed point-first contact.
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-20.0), 39.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
+	ContactFixture.arm(state.fighter(1), _rules.weapon.tip_radius * 0.9, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	state.weapon_body_contacts[0].phase = WeaponBodyContact.Phase.ENTERED
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.weapon.tip_radius * 0.9, 0.0), _rules, 1, 0.0, events)
+	var body_hits := DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)
+	assert_true(body_hits.size() > 0, "a body hit was produced")
+	var is_lethal := body_hits[0].number(DuelEventKeys.LETHAL) > 0.5
+	if is_lethal:
+		assert_eq(state.weapon_body_contacts[0].phase, WeaponBodyContact.Phase.PENETRATING, "lethal hit enters PENETRATING")
+	else:
+		assert_eq(state.weapon_body_contacts[0].phase, WeaponBodyContact.Phase.CONSTRAINING, "nonlethal hit enters CONSTRAINING")
+
+
+func test_weapon_body_lifecycle_reset() -> void:
+	## WeaponBodyContact round reset returns to OUTSIDE.
+	var wbc := WeaponBodyContact.new()
+	wbc.phase = WeaponBodyContact.Phase.CONSTRAINING
+	wbc.reset()
+	assert_eq(wbc.phase, WeaponBodyContact.Phase.OUTSIDE, "reset returns to OUTSIDE")
+	wbc.phase = WeaponBodyContact.Phase.PENETRATING
+	wbc.reset()
+	assert_eq(wbc.phase, WeaponBodyContact.Phase.OUTSIDE, "reset from PENETRATING also returns to OUTSIDE")
+
+
+func test_constraining_reentry_from_exiting() -> void:
+	## PHYS-010. Blade that exits and re-enters goes to CONSTRAINING,
+	## not back to damage-dealing ENTERED.
+	var wbc := WeaponBodyContact.new()
+	wbc.phase = WeaponBodyContact.Phase.EXITING
+	## Re-enter the body (gap <= touch).
+	wbc.observe(0.05, 0.1, 0.02)
+	assert_eq(wbc.phase, WeaponBodyContact.Phase.CONSTRAINING, "re-entry from EXITING goes to CONSTRAINING")

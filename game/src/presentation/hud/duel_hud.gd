@@ -14,6 +14,7 @@ signal pause_pressed
 const LOW_TIME_TICKS := 600
 
 var human_slot: int = 0
+var _human_side: DuelSide.Id = DuelSide.Id.LIGHT_SOUTH
 var _labels: PackedStringArray = PackedStringArray(["", ""])
 var _frame: MarginContainer
 var _bars: Array[ProgressBar] = []
@@ -37,9 +38,10 @@ var _shown_banner: String = ""
 var _shown_clock: String = ""
 
 
-static func create(player_label: String, opponent_label: String, slot: int) -> DuelHud:
+static func create(player_label: String, opponent_label: String, slot: int, human_side: DuelSide.Id) -> DuelHud:
 	var hud := DuelHud.new()
 	hud.human_slot = slot
+	hud._human_side = human_side
 	hud._labels = PackedStringArray([player_label, opponent_label])
 	hud._build()
 	return hud
@@ -136,6 +138,15 @@ func _slot_on(side: int) -> int:
 	return human_slot if side == 0 else 1 - human_slot
 
 
+func _side_of(display_side: int) -> DuelSide.Id:
+	return _human_side if display_side == 0 else DuelSide.other(_human_side)
+
+
+func _health_variation(display_side: int) -> StringName:
+	var duel_side := _side_of(display_side)
+	return &"LightHealthBar" if duel_side == DuelSide.Id.LIGHT_SOUTH else &"DarkHealthBar"
+
+
 func _build() -> void:
 	name = "DuelHud"
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -207,7 +218,7 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	if side == 0:
 		heading.add_child(wins)
 	var bar := ProgressBar.new()
-	bar.theme_type_variation = &"OpponentHealthBar" if side == 1 else &"PlayerHealthBar"
+	bar.theme_type_variation = _health_variation(side)
 	bar.show_percentage = false
 	bar.min_value = 0.0
 	bar.max_value = 100.0

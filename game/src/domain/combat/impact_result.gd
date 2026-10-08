@@ -58,6 +58,18 @@ var axial_speed: float = 0.0
 var thrust_alignment: float = 0.0
 var incidence_quality: float = 0.0
 
+## Bilateral impulse (PHYS-010). Inverse effective mass scalar k accounts for
+## both body masses and (for non-stab) the weapon's angular inertia at the
+## contact lever arm. The bilateral J is a base (zero-restitution) impulse
+## that fully prevents interpenetration. The contact resolver scales by
+## (1 + e) for first-contact restitution.
+var inverse_effective_mass: float = 0.0
+## Lever arm cross product: r × n, where r is pivot→contact and n is the
+## contact normal. Stored for the resolver to derive angular reaction.
+var lever_cross: float = 0.0
+## Base bilateral impulse (zero restitution): v_rel_n / k.
+var bilateral_impulse: float = 0.0
+
 
 ## Impulse as a fraction of a reference solid impact, for consumers that need
 ## a bounded signal (feedback channels, damage curves, telemetry).

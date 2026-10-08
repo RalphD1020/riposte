@@ -107,6 +107,10 @@ var burst_ticks: int = 0
 ## stronger than a lateral slide-step, because the whole body drives them.
 var burst_speed_axial: float = 0.0
 var burst_speed_lateral: float = 0.0
+## Recovery window after a forward dash ends (hit or miss). Authority
+## recovers progressively over this window. Authored tuning, not physics
+## truth; requires manual playtest (MOVE-002).
+var dash_recovery_ticks: int = 0
 
 
 func is_valid() -> bool:
@@ -138,6 +142,7 @@ func is_valid() -> bool:
 		and burst_speed_axial > max_speed
 		and burst_speed_lateral > 0.0
 		and burst_speed_lateral < burst_speed_axial
+		and dash_recovery_ticks > 0
 	)
 
 

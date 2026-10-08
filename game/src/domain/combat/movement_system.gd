@@ -54,26 +54,36 @@ static func step(
 	var accel := 0.0
 	var gesture := fighter.gesture
 	if gesture.is_bursting():
-		## A burst is an extra drive along the heading it committed to, not a
-		## rail. The heading never bends — a forward dash must not curve after
-		## an opponent who circles away — but the fighter keeps their feet, so
-		## they can lean out of a dash while it carries them.
-		##
-		## This matters beyond feel. A burst that replaced intent outright
-		## would punish whoever changes their mind most often, which made a
-		## faster-reacting CPU measurably *worse* than a slower one. Reacting
-		## faster must never cost you anything.
 		var burst_speed := definition.burst_speed(gesture.burst_kind) * CommitmentModel.translation_multiplier(fighter, definition)
-		target_vx += gesture.burst_dir_x * burst_speed
-		target_vy += gesture.burst_dir_y * burst_speed
-		var asking := SimMath.length(target_vx, target_vy)
-		if asking > burst_speed:
-			target_vx *= burst_speed / asking
-			target_vy *= burst_speed / asking
+		if gesture.burst_kind == MovementGestureState.BurstKind.FORWARD_DASH:
+			## Committed ballistic motion (MOVE-002). The burst velocity IS
+			## the target — intent is not added. Zero steering authority: the
+			## heading is world-space frozen at activation and cannot be altered.
+			## Velocity is reached through finite burst_force acceleration,
+			## never instantaneously assigned.
+			target_vx = gesture.burst_dir_x * burst_speed
+			target_vy = gesture.burst_dir_y * burst_speed
+		else:
+			## Back dash and lateral steps keep the additive model: the burst
+			## heading supplements the fighter's own footwork intent.
+			target_vx += gesture.burst_dir_x * burst_speed
+			target_vy += gesture.burst_dir_y * burst_speed
+			var asking := SimMath.length(target_vx, target_vy)
+			if asking > burst_speed:
+				target_vx *= burst_speed / asking
+				target_vy *= burst_speed / asking
 		accel = definition.burst_accel() * capability
 		gesture.burst_ticks_remaining -= 1
 		if gesture.burst_ticks_remaining <= 0:
-			gesture.end_burst()
+			gesture.end_burst_into_recovery(definition.dash_recovery_ticks)
+	elif gesture.is_recovering():
+		## Recovery mode (MOVE-002): no burst speed. Normal locomotion
+		## resumes but authority recovers progressively over the recovery
+		## window. No special penalty — a miss naturally leaves the fighter
+		## more exposed because nothing interrupted the committed motion.
+		gesture.recovery_ticks_remaining -= 1
+		if gesture.recovery_ticks_remaining <= 0:
+			gesture._end_recovery()
 	var delta_vx := target_vx - fighter.vx
 	var delta_vy := target_vy - fighter.vy
 	var delta := SimMath.length(delta_vx, delta_vy)
@@ -139,7 +149,7 @@ static func _recognize(
 	## as a double-tap. Same force, stamina, startup, duration, physics — no
 	## gameplay advantage. Requires a clear directional intent and no burst
 	## already in progress.
-	if dash_modifier and not gesture.is_bursting():
+	if dash_modifier and not gesture.is_bursting() and not gesture.is_recovering():
 		var modifier_kind := _dash_modifier_direction(intent_x, intent_y, definition)
 		if modifier_kind != MovementGestureState.BurstKind.NONE:
 			gesture.clear_pending()
@@ -151,7 +161,7 @@ static func _recognize(
 			gesture.burst_dir_y = dash_heading[1]
 			return modifier_kind
 	var launched := DirectionalTapRecognizer.observe(gesture, intent_x, intent_y, tick, definition)
-	if launched == MovementGestureState.BurstKind.NONE or gesture.is_bursting():
+	if launched == MovementGestureState.BurstKind.NONE or gesture.is_bursting() or gesture.is_recovering():
 		return MovementGestureState.BurstKind.NONE
 	var heading := DirectionalTapRecognizer.heading(fighter, launched)
 	gesture.mode = MovementGestureState.Mode.BURST

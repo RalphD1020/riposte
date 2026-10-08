@@ -85,4 +85,23 @@ static func resolve(attacker: FighterState, target: FighterState, point_x: float
 	## The impact normal points toward the target center, so `â · n̂` is
 	## positive when the blade aims into the body (head-on).
 	impact.incidence_quality = maxf(0.0, blade_x * impact.normal_x + blade_y * impact.normal_y)
+
+	## Bilateral impulse (PHYS-010). The inverse effective mass scalar k
+	## includes both body masses and the weapon's angular inertia at the
+	## contact lever arm. For stabbing contacts, the angular term is excluded
+	## because the blade penetrates cleanly. The is_stabbing flag is set later
+	## by DamageModel, so we compute the full k here; the resolver adjusts if
+	## the contact is classified as stabbing.
+	impact.lever_cross = rx * impact.normal_y - ry * impact.normal_x
+	var weapon_moi := weapon.moment_of_inertia()
+	var inv_k := 0.0
+	if impact.target_effective_mass > SimMath.EPSILON:
+		inv_k += 1.0 / impact.target_effective_mass
+	if impact.attacker_effective_mass > SimMath.EPSILON:
+		inv_k += 1.0 / impact.attacker_effective_mass
+	if weapon_moi > SimMath.EPSILON:
+		inv_k += impact.lever_cross * impact.lever_cross / weapon_moi
+	impact.inverse_effective_mass = inv_k
+	if inv_k > SimMath.EPSILON:
+		impact.bilateral_impulse = impact.normal_speed / inv_k
 	return impact

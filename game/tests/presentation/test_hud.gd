@@ -59,7 +59,7 @@ func test_banner_walks_round_ready_duel_then_names_the_outcome() -> void:
 
 
 func test_hud_shows_health_pips_round_and_low_time_from_the_humans_side() -> void:
-	var hud := DuelHud.create("YOU", "CPU · Medium", 1)
+	var hud := DuelHud.create("YOU", "CPU · Medium", 1, DuelSide.Id.LIGHT_SOUTH)
 	_root().add_child(hud)
 	var state := _state()
 	state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
@@ -84,7 +84,7 @@ func test_hud_shows_health_pips_round_and_low_time_from_the_humans_side() -> voi
 
 
 func test_hud_shows_stamina_bar_and_condition() -> void:
-	var hud := DuelHud.create("YOU", "CPU · Medium", 0)
+	var hud := DuelHud.create("YOU", "CPU · Medium", 0, DuelSide.Id.LIGHT_SOUTH)
 	_root().add_child(hud)
 	var state := _state()
 	state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
@@ -104,7 +104,7 @@ func test_hud_shows_stamina_bar_and_condition() -> void:
 func test_plates_name_the_side_as_well_as_the_fighter() -> void:
 	var state := _state()
 	var mine := state.fighter(1).side
-	var hud := DuelHud.create(HudCopy.sided("YOU", mine), HudCopy.sided("CPU · Medium", DuelSide.other(mine)), 1)
+	var hud := DuelHud.create(HudCopy.sided("YOU", mine), HudCopy.sided("CPU · Medium", DuelSide.other(mine)), 1, mine)
 	_root().add_child(hud)
 	hud.update(_project(state))
 	var label := hud.pips(0).accessibility_name
@@ -115,7 +115,7 @@ func test_plates_name_the_side_as_well_as_the_fighter() -> void:
 
 
 func test_prompt_shows_and_hides() -> void:
-	var hud := DuelHud.create("YOU", "DUMMY", 0)
+	var hud := DuelHud.create("YOU", "DUMMY", 0, DuelSide.Id.LIGHT_SOUTH)
 	_root().add_child(hud)
 	hud.show_prompt("QUICK CUT", "Tap attack")
 	assert_eq(hud.prompt_title(), "QUICK CUT", "prompt visible")
@@ -125,7 +125,7 @@ func test_prompt_shows_and_hides() -> void:
 
 
 func test_pause_button_is_touch_sized_named_and_never_takes_keyboard_focus() -> void:
-	var hud := DuelHud.create("YOU", "CPU · Hard", 0)
+	var hud := DuelHud.create("YOU", "CPU · Hard", 0, DuelSide.Id.LIGHT_SOUTH)
 	_root().add_child(hud)
 	var pause := hud.pause_button()
 	var presses: Array[int] = []

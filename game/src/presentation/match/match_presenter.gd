@@ -132,7 +132,7 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 	add_child(_arena)
 	for slot in 2:
 		var row := first.fighter(slot)
-		var proxy := FighterPresentation3D.create(slot, _kits.fighter, _kits.weapon, row.body_radius, row.hilt_radius, row.tip_radius)
+		var proxy := FighterPresentation3D.create(slot, row.side, _kits.fighter, _kits.weapon, row.body_radius, row.hilt_radius, row.tip_radius)
 		proxy.set_charge_indicator(_options.show_charge_indicator)
 		proxy.set_high_contrast(_options.high_contrast_weapons)
 		add_child(proxy)
@@ -159,7 +159,7 @@ func _pose(slot: int, weight: float, delta: float) -> Vector3:
 	var to := _current.fighter(slot)
 	var world := ArenaTransform.to_world(lerpf(from.x, to.x, weight), lerpf(from.y, to.y, weight))
 	var proxy := _fighters[slot]
-	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to.charge, to.phase, to.is_alive(), delta)
+	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to.charge, to.phase, to.is_alive(), to.is_falling, delta)
 	var blade := proxy.blade_points()
 	_trails[slot].add_sample(blade[0], blade[1], to.swing_potential, to.blade_speed, _kits.weapon.trail_min_speed)
 	_trails[slot].advance(delta)

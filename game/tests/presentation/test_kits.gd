@@ -62,11 +62,11 @@ func test_a_scene_kit_replaces_the_primitive_and_takes_combatant_color() -> void
 	kit.scene = packed
 	kit.color_targets = PackedStringArray(["Torso"])
 	var weapon := DuelKits.resolve(RiposteKits.build_catalog(), StandardDuelRules.create()).weapon
-	var proxy := FighterPresentation3D.create(1, kit, weapon, 0.27, 0.25, 1.22)
+	var proxy := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, kit, weapon, 0.27, 0.25, 1.22)
 	var torso := proxy.find_child("Torso", true, false) as MeshInstance3D
 	assert_true(torso != null, "authored model instanced")
 	assert_true(proxy.find_child("Body", true, false) == null, "primitive body not built")
-	assert_eq((torso.material_override as StandardMaterial3D).albedo_color, RiposteTheme.OPPONENT_BODY, "declared target colored for its combatant")
+	assert_eq((torso.material_override as StandardMaterial3D).albedo_color, RiposteTheme.DARK_BODY, "declared target colored for its combatant")
 	proxy.free()
 
 

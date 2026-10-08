@@ -41,6 +41,7 @@ static func resolve(
 	if report.body_push:
 		_resolve_body_push(state, report, rules, tick, toi, events)
 		return
+	var has_constraining := report.sword_body_constraining[0] or report.sword_body_constraining[1]
 	var strikes: Array[StrikeResult] = []
 	for attacker in 2:
 		if report.body[attacker]:
@@ -62,6 +63,10 @@ static func resolve(
 	for strike in strikes:
 		var target_scratch: FighterTickScratch = scratches[strike.target] if scratches.size() > strike.target else null
 		_apply_strike(state, strike, rules, tick, events, target_scratch)
+	if has_constraining:
+		for attacker in 2:
+			if report.sword_body_constraining[attacker]:
+				_enforce_sword_body_nonpenetration(state, attacker, rules)
 
 
 ## Advance an active bind; release, disengage, or decide it.
@@ -167,10 +172,13 @@ static func effective_inertia(fighter: FighterState, strike_x: float, strike_y: 
 	)
 
 
-## Resolve a body-body collision with an inverse-mass impulse (PHYS-005).
-## A heavier fighter absorbs less velocity; restitution is low so bodies
-## don't bounce. Tangential Coulomb friction sheds some sliding speed,
-## bounded so a glancing bump cannot halt lateral motion entirely.
+## Resolve a body-body contact (PHYS-005, PHYS-009). First contact applies
+## restitution-based impulse. Persistent contact applies a zero-restitution
+## nonpenetration constraint — the motors have already produced velocity, and
+## the constraint only cancels inward relative normal velocity. This prevents
+## double-counting motor force.
+##
+## Contact normal is derived from live geometry (current positions), not frozen.
 static func _resolve_body_push(
 	state: MatchState,
 	report: ContactReport,
@@ -181,8 +189,15 @@ static func _resolve_body_push(
 ) -> void:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
-	var nx := report.body_push_nx
-	var ny := report.body_push_ny
+	## Derive contact normal from current body positions (live geometry).
+	var dx := b.x - a.x
+	var dy := b.y - a.y
+	var dist := SimMath.length(dx, dy)
+	var nx := dx / dist if dist > SimMath.EPSILON else report.body_push_nx
+	var ny := dy / dist if dist > SimMath.EPSILON else report.body_push_ny
+	## Store fallback normal for numerically coincident centers.
+	state.body_contact.prev_normal_x = nx
+	state.body_contact.prev_normal_y = ny
 	var closing := (a.vx - b.vx) * nx + (a.vy - b.vy) * ny
 	if closing <= 0.0:
 		return
@@ -191,7 +206,13 @@ static func _resolve_body_push(
 	var inv_total := 1.0 / mass_a + 1.0 / mass_b
 	if inv_total <= SimMath.EPSILON:
 		return
-	var impulse := (1.0 + rules.combat.body_restitution) * closing / inv_total
+	## New contact: authored restitution. Persistent: zero restitution (constraint only).
+	var restitution := rules.combat.body_restitution if not report.body_push_persistent else 0.0
+	var impulse := (1.0 + restitution) * closing / inv_total
+	## Expose the solved impulse for CPU observation (CPU-007).
+	state.body_contact.last_constraint_impulse = impulse
+	state.body_contact.last_constraint_normal_x = nx
+	state.body_contact.last_constraint_normal_y = ny
 	a.vx -= (impulse / mass_a) * nx
 	a.vy -= (impulse / mass_a) * ny
 	b.vx += (impulse / mass_b) * nx
@@ -225,6 +246,80 @@ static func _resolve_body_push(
 		DuelEventKeys.TANGENTIAL_IMPULSE: friction_impulse,
 		DuelEventKeys.TOI: toi,
 	}))
+	## Burst termination on body impact (MOVE-002). A forward dash that
+	## collides with a body terminates the burst motor. The impact impulse
+	## was computed from actual closing velocity (including burst speed),
+	## creating a heavy shove. The fighter enters recovery.
+	if not report.body_push_persistent:
+		for slot in 2:
+			var fighter := state.fighter(slot)
+			if fighter.gesture.is_bursting() and fighter.gesture.burst_kind == MovementGestureState.BurstKind.FORWARD_DASH:
+				fighter.gesture.end_burst_into_recovery(rules.fighter.dash_recovery_ticks)
+
+
+## Persistent sword-body nonpenetration (PHYS-010). Zero-restitution velocity
+## constraint on the blade-to-body normal: if the blade is closing on the body
+## center, apply the minimum impulse to bring relative normal velocity to zero.
+## Same philosophy as persistent body-body contact — motors have already
+## produced velocity; the constraint only prevents interpenetration.
+static func _enforce_sword_body_nonpenetration(state: MatchState, attacker_slot: int, rules: DuelRules) -> void:
+	var attacker := state.fighter(attacker_slot)
+	var target := state.opponent_of(attacker_slot)
+	var weapon := rules.weapon
+	## Blade contact point: closest point on the blade segment to the target center.
+	var blade_angle := DuelGeometry.blade_angle(attacker)
+	var ux := SimMath.cosine(blade_angle)
+	var uy := SimMath.sine(blade_angle)
+	var hx := attacker.x + ux * weapon.hilt_radius
+	var hy := attacker.y + uy * weapon.hilt_radius
+	var tx := attacker.x + ux * weapon.tip_radius
+	var ty := attacker.y + uy * weapon.tip_radius
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, target.x, target.y)
+	var px := SimMath.mix(hx, tx, t)
+	var py := SimMath.mix(hy, ty, t)
+	## Contact normal: from contact point toward the target center.
+	var dx := target.x - px
+	var dy := target.y - py
+	var dist := SimMath.length(dx, dy)
+	if dist < SimMath.EPSILON:
+		return
+	var nx := dx / dist
+	var ny := dy / dist
+	## Relative velocity at the contact point: blade velocity minus target velocity.
+	var rx := px - attacker.x
+	var ry := py - attacker.y
+	var omega := attacker.turn_rate + attacker.weapon.speed
+	var rel_vx := attacker.vx - omega * ry - target.vx
+	var rel_vy := attacker.vy + omega * rx - target.vy
+	var closing := rel_vx * nx + rel_vy * ny
+	if closing <= 0.0:
+		return
+	## Inverse effective mass k = 1/m_T + 1/m_A + (r×n)²/I_A.
+	var weapon_moi := weapon.moment_of_inertia()
+	var mass_a := rules.fighter.mass
+	var mass_t := StructuralCoupling.resisting_mass(target, rules.fighter, rules.combat)
+	var lever_cross := rx * ny - ry * nx
+	var inv_k := 0.0
+	if mass_t > SimMath.EPSILON:
+		inv_k += 1.0 / mass_t
+	if mass_a > SimMath.EPSILON:
+		inv_k += 1.0 / mass_a
+	if weapon_moi > SimMath.EPSILON:
+		inv_k += lever_cross * lever_cross / weapon_moi
+	if inv_k < SimMath.EPSILON:
+		return
+	## Zero-restitution constraint: J = closing / k.
+	var j := closing / inv_k
+	if mass_t > SimMath.EPSILON:
+		var dv_t := j / mass_t
+		target.vx += nx * dv_t
+		target.vy += ny * dv_t
+	if mass_a > SimMath.EPSILON:
+		var dv_a := j / mass_a
+		attacker.vx -= nx * dv_a
+		attacker.vy -= ny * dv_a
+	if weapon_moi > SimMath.EPSILON:
+		attacker.weapon.speed -= j * lever_cross / weapon_moi
 
 
 static func _resolve_blades(
@@ -356,11 +451,13 @@ static func _start_bind(state: MatchState, rules: DuelRules, tick: int, events: 
 ## actually causes it (PHYS-004): severity injures, impulse displaces and
 ## unbalances, and exposure modifies only how badly the target copes.
 ##
-## PHYS-008: Conditional weapon/body coupling. For non-stabbing contacts, the
-## target receives pushback AND the blade receives an opposite reactive angular
-## impulse from the contact lever arm and weapon inertia. For stabbing-angle
-## contacts (point-first entry), the target receives pushback but the blade
-## receives no reactive impulse — it penetrates cleanly.
+## PHYS-010: Bilateral sword-body impulse. One authoritative J computed from
+## proper inverse effective mass k = 1/m_T + 1/m_A + (r×n)²/I_A. Target
+## linear, attacker linear, and sword angular reactions are all derived from
+## that single J. For stabbing contacts the angular term is excluded and no
+## blade reaction is applied; the impulse still transfers bilaterally between
+## bodies. Lethal contacts apply a reduced fraction of the blocking impulse
+## before releasing the nonpenetration constraint.
 static func _apply_strike(state: MatchState, strike: StrikeResult, rules: DuelRules, tick: int, events: Array[DuelEvent], target_scratch: FighterTickScratch = null) -> void:
 	var impact := strike.impact
 	var attacker := state.fighter(strike.attacker)
@@ -369,29 +466,41 @@ static func _apply_strike(state: MatchState, strike: StrikeResult, rules: DuelRu
 	var shock := StaminaModel.damage_shock(strike.damage, rules.combat)
 	if target_scratch != null:
 		target_scratch.contact_shock += shock
-	## Target pushback: physical impulse × game-feel scale (PHYS-008). The
-	## extra feel scale is never reflected back into blade reaction.
-	var push := impact.target_delta_v() * rules.combat.body_push_feel_scale
-	target.vx += impact.normal_x * push
-	target.vy += impact.normal_y * push
-	## Blade reaction (PHYS-008): for non-stabbing contacts, compute an
-	## opposite reactive angular impulse on the weapon using the weapon's
-	## effective mass at the contact point (I/r²) and the target's effective
-	## mass. A well-braced fighter keeps the blade driving through; only the
-	## weapon's mass-share of the collision decelerates the swing.
-	if not strike.is_stabbing:
-		var rx := impact.point_x - attacker.x
-		var ry := impact.point_y - attacker.y
-		var r_sq := rx * rx + ry * ry
-		if r_sq > SimMath.EPSILON:
-			var weapon_moi := rules.weapon.moment_of_inertia()
-			var weapon_eff := weapon_moi / r_sq
-			var target_eff := impact.target_effective_mass
-			if target_eff > SimMath.EPSILON:
-				var reduced := weapon_eff * target_eff / (weapon_eff + target_eff)
-				var lever_cross := ry * impact.normal_x - rx * impact.normal_y
-				var j_reaction := reduced * impact.normal_speed
-				attacker.weapon.speed += j_reaction * lever_cross / weapon_moi
+	## Bilateral impulse (PHYS-010). Recompute k for the actual classification:
+	## stabbing excludes the angular term because the blade penetrates cleanly.
+	var weapon_moi := rules.weapon.moment_of_inertia()
+	var inv_k := 0.0
+	if impact.target_effective_mass > SimMath.EPSILON:
+		inv_k += 1.0 / impact.target_effective_mass
+	if impact.attacker_effective_mass > SimMath.EPSILON:
+		inv_k += 1.0 / impact.attacker_effective_mass
+	if not strike.is_stabbing and weapon_moi > SimMath.EPSILON:
+		inv_k += impact.lever_cross * impact.lever_cross / weapon_moi
+	var restitution := rules.combat.sword_body_restitution
+	var bilateral_j := 0.0
+	if inv_k > SimMath.EPSILON:
+		bilateral_j = (1.0 + restitution) * impact.normal_speed / inv_k
+	## Lethal contacts apply only a fraction of the full blocking impulse.
+	if strike.lethal:
+		bilateral_j *= rules.combat.penetration_resistance_fraction
+	## Target linear reaction: pushed away from the blade.
+	if impact.target_effective_mass > SimMath.EPSILON:
+		var dv_target := bilateral_j / impact.target_effective_mass
+		target.vx += impact.normal_x * dv_target
+		target.vy += impact.normal_y * dv_target
+	## Attacker linear reaction: pushed back by Newton's third law.
+	if impact.attacker_effective_mass > SimMath.EPSILON:
+		var dv_attacker := bilateral_j / impact.attacker_effective_mass
+		attacker.vx -= impact.normal_x * dv_attacker
+		attacker.vy -= impact.normal_y * dv_attacker
+	## Sword angular reaction (non-stab only): derived from the same J.
+	if not strike.is_stabbing and weapon_moi > SimMath.EPSILON:
+		attacker.weapon.speed -= bilateral_j * impact.lever_cross / weapon_moi
+	## Advance weapon-body lifecycle: nonlethal → CONSTRAINING, lethal → PENETRATING.
+	state.weapon_body_contacts[strike.attacker].advance_after_entry(strike.lethal)
+	var push := 0.0
+	if impact.target_effective_mass > SimMath.EPSILON:
+		push = bilateral_j / impact.target_effective_mass
 	var payload := strike.to_payload()
 	payload[DuelEventKeys.PUSH] = push
 	payload[DuelEventKeys.HEALTH] = target.health

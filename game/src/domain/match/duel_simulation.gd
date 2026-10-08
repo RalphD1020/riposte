@@ -126,6 +126,14 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 		CommitmentModel.tracking_multiplier(a, b, rules.fighter),
 		CommitmentModel.tracking_multiplier(b, a, rules.fighter),
 	])
+	## Committed forward dash: zero facing authority during drive, progressive
+	## during recovery (MOVE-002). Back dash/lateral steps are not affected.
+	for slot in 2:
+		var gesture := state.fighter(slot).gesture
+		if gesture.is_bursting() and gesture.burst_kind == MovementGestureState.BurstKind.FORWARD_DASH:
+			tracking[slot] = 0.0
+		elif gesture.is_recovering():
+			tracking[slot] *= gesture.recovery_progress()
 	var targets := PackedFloat64Array([b.x, b.y, a.x, a.y])
 	for slot in 2:
 		var fighter := state.fighter(slot)
@@ -187,9 +195,7 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 	_resolve_contacts(state, tick, events)
 	_stamina_step(state, rules)
 	state.blade_contact.tick()
-	for wbc in state.weapon_body_contacts:
-		if wbc.phase == WeaponBodyContact.Phase.ENTERED:
-			wbc.phase = WeaponBodyContact.Phase.INSIDE
+	state.body_contact.tick()
 	_check_round_end(state, events)
 
 
@@ -226,9 +232,11 @@ func _stamina_step(state: MatchState, duel_rules: DuelRules) -> void:
 func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -> void:
 	var elapsed := 0.0
 	var limit := rules.combat.max_contacts_per_tick
+	var had_body_push := false
 	for _resolved in limit:
 		_collision.detect(state, _start, _finish, rules, state.blade_contact, _report)
 		if not _report.any():
+			_update_body_contact_separation(state, had_body_push)
 			return
 		var toi := elapsed + (1.0 - elapsed) * _report.fraction
 		if not SimulationGuardrails.validate_toi_monotonicity(elapsed, toi):
@@ -238,6 +246,10 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 		_start[0].write(state.fighter(0))
 		_start[1].write(state.fighter(1))
 		ContactResolver.resolve(state, _report, rules, tick, toi, events, _scratch)
+		if _report.body_push:
+			had_body_push = true
+			if state.body_contact.phase == BodyContactState.Phase.SEPARATED:
+				state.body_contact.begin_contact()
 		_carry(state, 1.0 - toi)
 		## Post-impulse support-loss: contact resolution (body push, knockback)
 		## may have carried a fighter past the platform edge. Mark them falling
@@ -264,9 +276,23 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 	## the geometry is pathological, so the pair is held in contact — a
 	## tunnelled blade would be far worse than a missed impulse.
 	state.blade_contact.set_phase(ContactPairState.Phase.CONTACTING)
+	_update_body_contact_separation(state, had_body_push)
 	events.append(DuelEvent.create(DuelEventTypes.CONTACT_SATURATED, tick, DuelEvent.NONE, DuelEvent.NONE, {
 		DuelEventKeys.COUNT: limit,
 	}))
+
+
+## Check whether the body-body pair has separated after the contact loop.
+## If they were in contact but no body push was detected this tick, and the
+## gap now exceeds the epsilon, transition to SEPARATED. If they were
+## SEPARATED and a push happened, `begin_contact` was already called above.
+func _update_body_contact_separation(state: MatchState, had_body_push: bool) -> void:
+	if state.body_contact.phase == BodyContactState.Phase.CONTACTING and not had_body_push:
+		var a := state.fighter(0)
+		var b := state.fighter(1)
+		var gap := SimMath.length(b.x - a.x, b.y - a.y) - rules.fighter.body_radius * 2.0
+		if gap > rules.combat.body_contact_separation_epsilon:
+			state.body_contact.end_contact()
 
 
 ## Rewind both fighters to the pose at sub-interval fraction `s`. Velocities

@@ -23,8 +23,14 @@ static func hash_state(state: MatchState) -> String:
 		state.match_winner,
 		state.blade_contact.phase,
 		state.blade_contact.phase_ticks,
+		state.body_contact.phase,
+		state.body_contact.ticks_in_contact,
 	])
-	var floats := PackedFloat64Array()
+	var floats := PackedFloat64Array([
+		state.body_contact.last_constraint_impulse,
+		state.body_contact.last_constraint_normal_x,
+		state.body_contact.last_constraint_normal_y,
+	])
 	for fighter in state.fighters:
 		var weapon := fighter.weapon
 		floats.append_array(PackedFloat64Array([
@@ -71,6 +77,8 @@ static func hash_state(state: MatchState) -> String:
 			gesture.mode,
 			gesture.burst_kind,
 			gesture.burst_ticks_remaining,
+			gesture.recovery_ticks_remaining,
+			gesture.recovery_ticks_total,
 			int(fighter.attack_held),
 			fighter.press_tick,
 			fighter.buffered_press_tick,

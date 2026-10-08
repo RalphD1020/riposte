@@ -67,6 +67,7 @@ var capability: float = 1.0
 ## Coarse health band for HUD and CPU (FighterCondition).
 var condition: FighterCondition.Id = FighterCondition.Id.HEALTHY
 var body_radius: float = 0.0
+var is_falling: bool = false
 var hilt_radius: float = 0.0
 var tip_radius: float = 0.0
 var threat_time: float = 0.0
