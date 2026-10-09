@@ -14,14 +14,18 @@ extends RefCounted
 ## See also: /docs/concepts/content.md, /docs/concepts/combat.md
 
 
-static func of(id: StringName) -> WeaponDefinition:
+## The weapon as held at `grip_radius` — the wielder's
+## `FighterDefinition.grip_radius`. Reach is grip plus blade; the sword
+## contributes only its blade.
+static func of(id: StringName, grip_radius: float = PhysicalBaseline.GRIP_RADIUS_M) -> WeaponDefinition:
 	if id == ContentIds.WEAPON_BASTARD_SWORD:
-		return bastard_sword()
+		return bastard_sword_at(1.0, PhysicalBaseline.SWORD_MASS_KG, grip_radius)
 	## Fail closed, as with fighters: no substitute, no match.
 	return null
 
 
-## The baseline sword (COMBAT §3): 1.22 m overall, ~0.97 m of blade, 1.6 kg.
+## The baseline sword (COMBAT §3): 1.22 m overall, ~0.97 m of blade, 1.6 kg,
+## in the baseline duelist's hands.
 static func bastard_sword() -> WeaponDefinition:
 	return bastard_sword_at(1.0, PhysicalBaseline.SWORD_MASS_KG)
 
@@ -29,13 +33,13 @@ static func bastard_sword() -> WeaponDefinition:
 ## The same sword at an arbitrary length and mass. Both are required: a longer
 ## blade is not automatically a heavier one, and pretending otherwise is how
 ## scaled content stops being believable.
-static func bastard_sword_at(length_scale: float, mass: float) -> WeaponDefinition:
+static func bastard_sword_at(length_scale: float, mass: float, grip_radius: float = PhysicalBaseline.GRIP_RADIUS_M) -> WeaponDefinition:
 	var weapon := WeaponDefinition.new()
 	weapon.id = ContentIds.WEAPON_BASTARD_SWORD
-	## The pivot is the pommel, so `tip_radius` is the sword's overall length
-	## and the grip occupies everything inboard of the blade.
-	weapon.tip_radius = PhysicalBaseline.sword_length(length_scale)
-	weapon.hilt_radius = weapon.tip_radius - PhysicalBaseline.sword_blade(length_scale)
+	## The pivot is the pommel at the wielder's grip, so the blade starts at
+	## `grip_radius` and `tip_radius` is grip plus blade.
+	weapon.hilt_radius = grip_radius
+	weapon.tip_radius = grip_radius + PhysicalBaseline.sword_blade(length_scale)
 	weapon.blade_radius = 0.022 * length_scale
 	weapon.mass = mass
 	## `I = k·m·L²` (PHYS-006). A rod pivoting about its own end is 1/3; this

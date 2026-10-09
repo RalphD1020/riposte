@@ -19,6 +19,11 @@ var trail_strength: float = 1.0
 var sweet_spot_cue: float = 1.0
 ## Touch layout biases framing upward so thumbs do not cover the duel (UX §35).
 var touch_layout: bool = false
+## Show announcer lines as on-screen captions.
+var captions: bool = true
+## Particle count scale in [0, 1]. At 0 there are no particles and a hit is
+## still marked by flash, sound, and pacing.
+var particle_intensity: float = 1.0
 
 
 func camera_impulses_enabled() -> bool:

@@ -83,6 +83,14 @@ func _show_section(index: int) -> void:
 				settings.sfx_volume = value
 				_apply_live()
 			)
+			UiKit.slider_row(self, AppCopy.SETTING_VOICE, settings.voice_volume, func(value: float) -> void:
+				settings.voice_volume = value
+				_apply_live()
+			)
+			UiKit.toggle_row(self, AppCopy.SETTING_CAPTIONS, settings.captions, func(on: bool) -> void:
+				settings.captions = on
+				_app.save_settings()
+			)
 		Section.DISPLAY:
 			_first = UiKit.toggle_row(self, AppCopy.SETTING_FULLSCREEN, settings.fullscreen, func(on: bool) -> void:
 				_app.set_fullscreen(on)
@@ -98,6 +106,11 @@ func _show_section(index: int) -> void:
 		Section.GAMEPLAY:
 			_first = UiKit.toggle_row(self, AppCopy.SETTING_CHARGE_INDICATOR, settings.show_charge_indicator, func(on: bool) -> void:
 				settings.show_charge_indicator = on
+				_app.save_settings()
+			)
+			UiKit.toggle_row(self, AppCopy.SETTING_TRAINING_GEAR, settings.fighter_skin == String(RiposteKits.SKIN_DUELIST_TRAINING), func(on: bool) -> void:
+				settings.fighter_skin = String(RiposteKits.SKIN_DUELIST_TRAINING) if on else ""
+				settings.weapon_skin = String(RiposteKits.SKIN_BASTARD_SWORD_TRAINING) if on else ""
 				_app.save_settings()
 			)
 			UiKit.toggle_row(self, AppCopy.SETTING_HIGH_CONTRAST, settings.high_contrast_weapons, func(on: bool) -> void:

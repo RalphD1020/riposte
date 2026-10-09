@@ -11,6 +11,10 @@ extends RefCounted
 ## on a phone lands where it meant to, and it is what an arrow key moves by.
 const SLIDER_STEP := 0.05
 
+## The app's shared menu feel (pulse + UI sounds), attached to every button
+## this kit builds. Null in isolated tests; controls work without it.
+static var feedback: UiFeedback
+
 
 static func title(host: Container, text: String) -> Label:
 	var label := _label(host, text, &"TitleLabel")
@@ -50,6 +54,8 @@ static func button(host: Container, text: String, handler: Callable, variation: 
 	if handler.is_valid():
 		control.pressed.connect(handler)
 	host.add_child(control)
+	if feedback != null and is_instance_valid(feedback):
+		feedback.attach(control)
 	return control
 
 
@@ -83,6 +89,8 @@ static func segmented(host: Container, labels: PackedStringArray, selected: int,
 		RiposteTheme.style_button(option)
 		line.add_child(option)
 		buttons.append(option)
+		if feedback != null and is_instance_valid(feedback):
+			feedback.attach(option)
 	var marker := HudIcons.marker(RiposteTheme.TEXT_ON_DARK)
 	var refresh := func(chosen: int) -> void:
 		for index in buttons.size():

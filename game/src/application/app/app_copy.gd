@@ -50,6 +50,8 @@ const SETTINGS_SECTIONS: PackedStringArray = ["Audio", "Display", "Gameplay", "C
 const SETTING_MASTER := "Master volume"
 const SETTING_MUSIC := "Music volume"
 const SETTING_SFX := "Effects volume"
+const SETTING_VOICE := "Announcer volume"
+const SETTING_CAPTIONS := "Announcer captions"
 const SETTING_FULLSCREEN := "Fullscreen"
 const SETTING_REDUCED_MOTION := "Reduced motion"
 const SETTING_REDUCED_FLASH := "Reduced flash"
@@ -62,6 +64,7 @@ const TRAIL_LEVELS: PackedStringArray = ["Off", "Subtle", "Full"]
 const SWEET_SPOT_LEVELS: PackedStringArray = ["Off", "Standard", "Strong"]
 const SETTING_CONTROL_OPACITY := "Touch control opacity"
 const SETTING_HAPTICS := "Haptics"
+const SETTING_TRAINING_GEAR := "Training gear (cosmetic)"
 const OPACITY_LEVELS: PackedStringArray = ["Low", "Medium", "High"]
 const SETTINGS_NOT_SAVED := "Settings could not be saved on this device; they last for this visit."
 

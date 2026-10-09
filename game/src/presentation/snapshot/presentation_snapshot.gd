@@ -21,6 +21,9 @@ var time_left_ticks: int = 0
 ## How far out from the centre each side's home end sits, so the arena can
 ## mark its north-south axis where the fighters actually start (SIDE-001).
 var spawn_offset: float = 0.0
+## The rules' reference impulse (N·s), so presentation can read a body-push
+## impulse as a fraction of the reference strike instead of inventing a scale.
+var reference_impulse: float = 0.0
 var fighters: Array[PresentationFighter] = []
 ## Debug overlay (COMBAT §76).
 var distance: float = 0.0

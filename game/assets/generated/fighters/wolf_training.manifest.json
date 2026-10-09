@@ -1,0 +1,77 @@
+{
+  "asset_id": "fighter.wolf.training",
+  "kind": "fighter",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.3552,
+      -0.255,
+      -0.0
+    ],
+    "max": [
+      0.3603,
+      0.185,
+      1.77
+    ]
+  },
+  "bone_names": [
+    "Root",
+    "Hips",
+    "Spine",
+    "Chest",
+    "Neck",
+    "Head",
+    "Shoulder.L",
+    "UpperArm.L",
+    "Forearm.L",
+    "Hand.L",
+    "Shoulder.R",
+    "UpperArm.R",
+    "Forearm.R",
+    "Hand.R",
+    "UpperLeg.L",
+    "LowerLeg.L",
+    "Foot.L",
+    "UpperLeg.R",
+    "LowerLeg.R",
+    "Foot.R"
+  ],
+  "animation_names": [
+    "charge_support",
+    "dash_back",
+    "dash_forward",
+    "dash_left",
+    "dash_right",
+    "death",
+    "death_stab",
+    "flourish",
+    "hurt_heavy",
+    "hurt_light",
+    "idle",
+    "orbit_ccw",
+    "orbit_cw",
+    "overswing",
+    "recovery",
+    "run_through",
+    "stagger",
+    "swing_support",
+    "walk_backward",
+    "walk_forward"
+  ],
+  "attachment_names": [],
+  "material_slots": [
+    "fabric",
+    "hair",
+    "leather",
+    "metal",
+    "side_accent",
+    "skin"
+  ],
+  "triangle_count": 1268,
+  "color_targets": [
+    "SideAccentBracer.L",
+    "SideAccentBracer.R",
+    "SideAccentMark",
+    "SideAccentSash"
+  ]
+}

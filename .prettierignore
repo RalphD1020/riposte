@@ -19,6 +19,9 @@ game/**/*.res
 # Godot generated
 game/.godot/
 
+# Blender export output (tools/blender/export_assets.py writes these)
+game/assets/generated/
+
 # Third-party addons (not our source)
 game/addons/
 

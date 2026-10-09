@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UiThemeKit" format=3]
+
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/ui/back_01.mp3" id="1_eddvj"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/ui/confirm_01.mp3" id="2_nvy1c"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/ui/hover_01.mp3" id="3_3kcjk"]
+[ext_resource type="Script" path="res://src/presentation/kit/ui_theme_kit.gd" id="4_lks6x"]
+
+[resource]
+script = ExtResource("4_lks6x")
+theme_id = &"ui.standard"
+confirm = Array[AudioStream]([ExtResource("2_nvy1c")])
+back = Array[AudioStream]([ExtResource("1_eddvj")])
+hover = Array[AudioStream]([ExtResource("3_3kcjk")])

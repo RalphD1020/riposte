@@ -11,6 +11,7 @@ extends RefCounted
 ## See also: /docs/concepts/ux.md
 
 const PATH := "user://settings.cfg"
+const ID_MAX_LENGTH := 64
 const SILENT_DB := -80.0
 
 ## Stored file layout: [section] key.
@@ -22,6 +23,11 @@ const SECTION_MATCH := "match"
 const KEY_MASTER := "master"
 const KEY_MUSIC := "music"
 const KEY_SFX := "sfx"
+const KEY_VOICE := "voice"
+const KEY_CAPTIONS := "captions"
+const SECTION_LOOK := "look"
+const KEY_FIGHTER_SKIN := "fighter_skin"
+const KEY_WEAPON_SKIN := "weapon_skin"
 const KEY_FULLSCREEN := "fullscreen"
 const KEY_REDUCED_MOTION := "reduced_motion"
 const KEY_REDUCED_FLASH := "reduced_flash"
@@ -53,6 +59,12 @@ const SWEET_SPOT_LEVELS: PackedFloat64Array = [0.0, 1.0, 1.8]
 var master_volume: float = 1.0
 var music_volume: float = 0.7
 var sfx_volume: float = 1.0
+var voice_volume: float = 1.0
+## Announcer captions. On by default: the intro must read with sound off.
+var captions: bool = true
+## Cosmetic skin ids; empty is the base look. Unknown ids also resolve to it.
+var fighter_skin: String = ""
+var weapon_skin: String = ""
 var fullscreen: bool = false
 var reduced_motion: bool = false
 var reduced_flash: bool = false
@@ -83,6 +95,10 @@ func load_from(path: String = PATH) -> void:
 	master_volume = _volume(config.get_value(SECTION_AUDIO, KEY_MASTER, master_volume), master_volume)
 	music_volume = _volume(config.get_value(SECTION_AUDIO, KEY_MUSIC, music_volume), music_volume)
 	sfx_volume = _volume(config.get_value(SECTION_AUDIO, KEY_SFX, sfx_volume), sfx_volume)
+	voice_volume = _volume(config.get_value(SECTION_AUDIO, KEY_VOICE, voice_volume), voice_volume)
+	captions = _flag(config.get_value(SECTION_AUDIO, KEY_CAPTIONS, captions), captions)
+	fighter_skin = _id(config.get_value(SECTION_LOOK, KEY_FIGHTER_SKIN, fighter_skin))
+	weapon_skin = _id(config.get_value(SECTION_LOOK, KEY_WEAPON_SKIN, weapon_skin))
 	fullscreen = _flag(config.get_value(SECTION_DISPLAY, KEY_FULLSCREEN, fullscreen), fullscreen)
 	reduced_motion = _flag(config.get_value(SECTION_DISPLAY, KEY_REDUCED_MOTION, reduced_motion), reduced_motion)
 	reduced_flash = _flag(config.get_value(SECTION_DISPLAY, KEY_REDUCED_FLASH, reduced_flash), reduced_flash)
@@ -104,6 +120,10 @@ func save_to(path: String = PATH) -> bool:
 	config.set_value(SECTION_AUDIO, KEY_MASTER, master_volume)
 	config.set_value(SECTION_AUDIO, KEY_MUSIC, music_volume)
 	config.set_value(SECTION_AUDIO, KEY_SFX, sfx_volume)
+	config.set_value(SECTION_AUDIO, KEY_VOICE, voice_volume)
+	config.set_value(SECTION_AUDIO, KEY_CAPTIONS, captions)
+	config.set_value(SECTION_LOOK, KEY_FIGHTER_SKIN, fighter_skin)
+	config.set_value(SECTION_LOOK, KEY_WEAPON_SKIN, weapon_skin)
 	config.set_value(SECTION_DISPLAY, KEY_FULLSCREEN, fullscreen)
 	config.set_value(SECTION_DISPLAY, KEY_REDUCED_MOTION, reduced_motion)
 	config.set_value(SECTION_DISPLAY, KEY_REDUCED_FLASH, reduced_flash)
@@ -139,6 +159,7 @@ func apply_audio() -> void:
 	_apply_bus(AudioBuses.MASTER, master_volume)
 	_apply_bus(AudioBuses.MUSIC, music_volume)
 	_apply_bus(AudioBuses.SFX, sfx_volume)
+	_apply_bus(AudioBuses.VOICE, voice_volume)
 
 
 static func _apply_bus(bus: StringName, volume: float) -> void:
@@ -158,6 +179,14 @@ static func _volume(value: Variant, fallback: float) -> float:
 
 static func _flag(value: Variant, fallback: bool) -> bool:
 	return bool(value) if typeof(value) == TYPE_BOOL else fallback
+
+
+## A stored id is untrusted text: short, identifier-shaped, or nothing.
+static func _id(value: Variant) -> String:
+	if typeof(value) != TYPE_STRING:
+		return ""
+	var text := str(value)
+	return text if text.length() <= ID_MAX_LENGTH and text.replace(".", "_").is_valid_ascii_identifier() else ""
 
 
 static func _whole(value: Variant, fallback: int) -> int:

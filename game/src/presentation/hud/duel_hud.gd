@@ -1,11 +1,15 @@
 class_name DuelHud
 extends Control
 
-## In-match status (UX §23–§24): both health bars, round pips, the round
-## number and low-time clock, one banner, an optional coaching prompt, and
-## the pause button. The human is always on the left. A pure view of
-## PresentationSnapshot that writes a Label only when its value changes, so a
-## tick costs a few comparisons.
+## In-match status (UX §23–§24): two mirrored ornamental name plates with
+## restrained health and stamina rules, sword-point round pips, the round and
+## low-time clock in a centre plate, one slashing banner, announcer captions,
+## an optional coaching prompt, and the pause button. The human is always on
+## the left. Condition reads first from the fighter's body in the world; the
+## plate repeats it as a shape icon and a word, never as colour alone.
+##
+## A pure view of PresentationSnapshot that writes a Label only when its value
+## changes, so a tick costs a few comparisons.
 ##
 ## See also: /docs/concepts/ux.md
 
@@ -20,7 +24,17 @@ var _frame: MarginContainer
 var _bars: Array[ProgressBar] = []
 var _stamina_bars: Array[ProgressBar] = []
 var _condition_labels: Array[Label] = []
+var _condition_icons: Array[TextureRect] = []
 var _pips: Array[PipRow] = []
+var _caption_plate: PanelContainer
+var _caption: Label
+var _caption_left: float = 0.0
+var _banner_tween: Tween
+var _card: String = ""
+var _card_active: bool = false
+## Banner and menu motion honour Reduced Motion: the text still changes, it
+## simply does not slash in.
+var reduced_motion: bool = false
 var _round: Label
 var _clock: Label
 var _banner_plate: PanelContainer
@@ -71,6 +85,7 @@ func update(snapshot: PresentationSnapshot) -> void:
 		if cond_int != _shown_condition[side]:
 			_shown_condition[side] = cond_int
 			_condition_labels[side].text = FighterCondition.label(fighter.condition)
+			_condition_icons[side].texture = HudIcons.condition(fighter.condition)
 		var wins := snapshot.scores[_slot_on(side)]
 		if wins != _shown_wins[side]:
 			_shown_wins[side] = wins
@@ -85,11 +100,68 @@ func update(snapshot: PresentationSnapshot) -> void:
 		_shown_clock = remaining
 		_clock.text = remaining
 		_clock.visible = remaining != ""
-	var banner := HudCopy.banner(snapshot, human_slot)
+	var banner := _card if _card_active else HudCopy.banner(snapshot, human_slot)
 	if banner != _shown_banner:
 		_shown_banner = banner
 		_banner.text = banner
 		_banner_plate.visible = banner != ""
+		if banner != "":
+			_slash_in()
+
+
+## Slash in from the side, hold, snap out: a banner arrives with a short
+## horizontal strike and leaves instantly, never drifting.
+func _slash_in() -> void:
+	if _banner_tween != null:
+		_banner_tween.kill()
+	_banner_plate.modulate.a = 1.0
+	if reduced_motion or not is_inside_tree():
+		return
+	_banner_plate.modulate.a = 0.0
+	_banner_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+	_banner_tween.tween_property(_banner_plate, "modulate:a", 1.0, RiposteTheme.SNAP_SECONDS)
+	_banner_tween.tween_method(_banner_offset, -RiposteTheme.BANNER_SLASH_DISTANCE, 0.0, RiposteTheme.SNAP_SECONDS)
+
+
+## The centring container settles the plate at x = 0 relative to its slot,
+## so the slash is an offset from where the layout put it.
+func _banner_offset(offset: float) -> void:
+	_banner_plate.position.x = (_banner_plate.get_parent_area_size().x - _banner_plate.size.x) * 0.5 + offset
+
+
+## Intro cards borrow the banner plate. An empty card ends the intro and
+## hands the plate back to the snapshot's banner on the next update.
+func show_card(text: String) -> void:
+	_card_active = text != ""
+	_card = text
+	if _card_active and text != _shown_banner:
+		_shown_banner = text
+		_banner.text = text
+		_banner_plate.visible = true
+		_slash_in()
+	elif not _card_active:
+		_shown_banner = ""
+		_banner.text = ""
+		_banner_plate.visible = false
+
+
+## An announcer line as on-screen text, so the moment reads with sound off.
+func show_caption(text: String, seconds: float) -> void:
+	_caption.text = text
+	_caption_plate.visible = text != ""
+	_caption_left = seconds
+
+
+func caption_text() -> String:
+	return _caption.text if _caption_plate.visible else ""
+
+
+func _process(delta: float) -> void:
+	if _caption_left <= 0.0:
+		return
+	_caption_left -= delta
+	if _caption_left <= 0.0:
+		_caption_plate.visible = false
 
 
 func show_prompt(title: String, detail: String) -> void:
@@ -128,6 +200,10 @@ func stamina_bar(side: int) -> ProgressBar:
 
 func condition_label(side: int) -> Label:
 	return _condition_labels[side]
+
+
+func condition_icon(side: int) -> TextureRect:
+	return _condition_icons[side]
 
 
 func pips(side: int) -> PipRow:
@@ -188,17 +264,23 @@ func _build() -> void:
 	stage.mouse_filter = MOUSE_FILTER_IGNORE
 	stage.size_flags_vertical = SIZE_EXPAND_FILL
 	column.add_child(stage)
-	_banner_plate = _plate(stage)
+	_banner_plate = _plate(stage, &"BannerPlate")
 	_banner = Label.new()
 	_banner.theme_type_variation = &"BannerLabel"
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.accessibility_live = AccessibilityServer.LIVE_POLITE
 	_banner_plate.add_child(_banner)
 	_banner_plate.visible = false
+	_caption_plate = _plate(column, &"CaptionPlate")
+	_caption_plate.size_flags_horizontal = SIZE_SHRINK_CENTER
+	_caption = _hud_label(_caption_plate, "", &"AnnouncerCaption")
+	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_caption.accessibility_live = AccessibilityServer.LIVE_POLITE
+	_caption_plate.visible = false
 
 
 func _fighter_plate(row: HBoxContainer, side: int) -> void:
-	var plate := _plate(row)
+	var plate := _plate(row, &"HudPlateMirrored" if side == 1 else &"HudPlate")
 	plate.size_flags_horizontal = SIZE_EXPAND_FILL
 	var stack := _vbox(plate)
 	var heading := HBoxContainer.new()
@@ -211,12 +293,19 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	_pips.append(wins)
 	if side == 1:
 		heading.add_child(wins)
-	var name_label := _hud_label(heading, _labels[side])
+	var name_label := _hud_label(heading, _labels[side], &"HudNameLabel")
 	name_label.clip_text = true
 	name_label.size_flags_horizontal = SIZE_EXPAND_FILL
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if side == 1 else HORIZONTAL_ALIGNMENT_LEFT
 	if side == 0:
 		heading.add_child(wins)
+	var rule := TextureRect.new()
+	rule.texture = HudIcons.divider()
+	rule.flip_h = side == 1
+	rule.stretch_mode = TextureRect.STRETCH_KEEP
+	rule.size_flags_horizontal = SIZE_SHRINK_END if side == 1 else SIZE_SHRINK_BEGIN
+	rule.mouse_filter = MOUSE_FILTER_IGNORE
+	stack.add_child(rule)
 	var bar := ProgressBar.new()
 	bar.theme_type_variation = _health_variation(side)
 	bar.show_percentage = false
@@ -242,16 +331,25 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	sbar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
 	stack.add_child(sbar)
 	_stamina_bars.append(sbar)
+	var condition_row := HBoxContainer.new()
+	condition_row.mouse_filter = MOUSE_FILTER_IGNORE
+	condition_row.alignment = BoxContainer.ALIGNMENT_END if side == 1 else BoxContainer.ALIGNMENT_BEGIN
+	stack.add_child(condition_row)
+	var icon := TextureRect.new()
+	icon.texture = HudIcons.condition(FighterCondition.Id.HEALTHY)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	icon.mouse_filter = MOUSE_FILTER_IGNORE
+	_condition_icons.append(icon)
 	var cond := Label.new()
-	cond.theme_type_variation = &"HudConditionLabel"
+	cond.theme_type_variation = &"HudCaptionLabel"
 	cond.text = FighterCondition.label(FighterCondition.Id.HEALTHY)
-	cond.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if side == 1 else HORIZONTAL_ALIGNMENT_LEFT
-	stack.add_child(cond)
 	_condition_labels.append(cond)
+	for part: Control in ([cond, icon] if side == 1 else [icon, cond]):
+		condition_row.add_child(part)
 
 
 func _center_plate(row: HBoxContainer) -> void:
-	var plate := _plate(row)
+	var plate := _plate(row, &"HudCenterPlate")
 	var stack := _vbox(plate)
 	_round = _hud_label(stack, "")
 	_round.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -260,9 +358,9 @@ func _center_plate(row: HBoxContainer) -> void:
 	_clock.visible = false
 
 
-func _plate(host: Container) -> PanelContainer:
+func _plate(host: Container, variation: StringName = &"HudPlate") -> PanelContainer:
 	var plate := PanelContainer.new()
-	plate.theme_type_variation = &"HudPlate"
+	plate.theme_type_variation = variation
 	plate.mouse_filter = MOUSE_FILTER_IGNORE
 	host.add_child(plate)
 	return plate

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="AnnouncerKit" format=3]
+
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/duel_01.mp3" id="1_lsa76"]
+[ext_resource type="Script" path="res://src/presentation/kit/announcer_kit.gd" id="2_jqx4x"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/duel_sting_01.mp3" id="3_pp3nn"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/versus_01.mp3" id="4_b7vkr"]
+
+[resource]
+script = ExtResource("2_jqx4x")
+announcer_id = &"announcer.deep"
+versus = ExtResource("4_b7vkr")
+duel = ExtResource("1_lsa76")
+sting = ExtResource("3_pp3nn")

@@ -40,6 +40,7 @@ func is_valid() -> bool:
 		and combat != null
 		and fighter.is_valid()
 		and weapon.is_valid()
+		and weapon.hilt_radius == fighter.grip_radius
 		and combat.is_valid()
 		and rounds_to_win > 0
 		and max_rounds >= rounds_to_win * 2 - 1

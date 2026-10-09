@@ -54,6 +54,7 @@ Timing is deliberately absent from the physical groups. Size and mass must not r
 ## WeaponDefinition
 
 - **Geometry** — `hilt_radius`, `tip_radius`, `blade_radius`. The pivot is the pommel, so `tip_radius` is both the overall length and the effective rotational length. (A real `pivot_offset` is the natural future extension; at MVP it is zero.)
+- **Reach is the wielder's grip plus the blade.** `hilt_radius` is the holder's `FighterDefinition.grip_radius` (the baseline duelist's 0.25 m, `PhysicalBaseline.GRIP_RADIUS_M`), and `tip_radius` adds the weapon's blade. A rule set mounts its weapon at its fighter's grip (`WeaponCatalog.of(id, fighter.grip_radius)`) and `DuelRules.is_valid()` refuses one mounted for a different grip. A longer-armed fighter reaches further with the same sword; no mesh measurement ever decides it. For the baseline the numbers are bit-identical to before (rules version 20, golden replay hashes unchanged).
 - **Mass distribution** — `mass`, `inertia_coefficient`. Mass is measured; the coefficient is where balance lives.
 - **Motor** — torques, not accelerations. Speeds stay authored because they are the arm's limit, not the blade's.
 - **Contact and consequence** — restitution, bind, efficiency curve, impulse thresholds.

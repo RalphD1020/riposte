@@ -20,6 +20,7 @@ static func project(state: MatchState, rules: DuelRules) -> PresentationSnapshot
 	snapshot.end_reason = state.end_reason
 	snapshot.intro_ticks = rules.intro_ticks
 	snapshot.spawn_offset = rules.spawn_offset
+	snapshot.reference_impulse = rules.combat.reference_impulse
 	snapshot.time_left_ticks = maxi(rules.round_time_limit_ticks - state.round_ticks, 0)
 	var a := state.fighter(0)
 	var b := state.fighter(1)

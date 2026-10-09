@@ -18,6 +18,21 @@ func test_accumulates_whole_ticks_and_reports_alpha() -> void:
 	assert_near(driver.alpha(), 0.5, 1e-9, "half a tick pending")
 
 
+func test_slow_motion_feeds_ticks_slowly_then_resumes_without_loss() -> void:
+	var driver := FixedTickDriver.new()
+	driver.slow_motion(0.25, TICK * 8.0)
+	assert_true(driver.is_slowed(), "precondition: slowed")
+	var slowed := 0
+	for _i in 8:
+		slowed += driver.consume(TICK)
+	assert_between(slowed, 1, 2, "eight real frames at quarter speed feed about two ticks, not eight")
+	assert_false(driver.is_slowed(), "the window ends on wall-clock time")
+	assert_eq(driver.consume(TICK * 3.0), 3, "and real time feeds ticks normally again")
+	driver.slow_motion(0.25, 10.0)
+	driver.clear_backlog()
+	assert_false(driver.is_slowed(), "resuming from a pause drops slow motion with the backlog")
+
+
 func test_catch_up_is_capped_and_backlog_persists() -> void:
 	var driver := FixedTickDriver.new()
 	assert_eq(driver.consume(TICK * 10.0), FixedTickDriver.MAX_CATCH_UP_TICKS, "capped per frame")

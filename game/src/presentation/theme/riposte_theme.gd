@@ -75,27 +75,55 @@ const FONT_SMALL := 14
 const FONT_H2 := 28
 const FONT_H1 := 44
 const FONT_DISPLAY := 56
-const HEALTH_BAR_HEIGHT := 14.0
-const STAMINA_BAR_HEIGHT := 8.0
+## Restrained bars: condition is read primarily from the fighter's body.
+const HEALTH_BAR_HEIGHT := 8.0
+const STAMINA_BAR_HEIGHT := 4.0
+## Ornamental plates.
+const PLATE_RULE := 2
+const PLATE_SWEPT := 14
+const PLATE_SHARP := 2
+const PLATE_SHADOW := Color(0.0, 0.0, 0.0, 0.45)
+const PLATE_SHADOW_SIZE := 4
+const BANNER_RULE := 3
+const BANNER_SKEW := 0.22
+## Menu/HUD motion: fast snaps, never floats (UX: 60–100 ms).
+const SNAP_SECONDS := 0.08
+const PULSE_SCALE := 1.04
+const BANNER_SLASH_DISTANCE := 48.0
 
 ## --- Duel world (UX §7, §13, §18, §80) -------------------------------------
-const WORLD_BACKGROUND := Color("d7d9d6")
-## Floor luminance sits where both a light and a dark combatant clear 3:1.
-const WORLD_FLOOR := Color("7f857b")
-const WORLD_FLOOR_EDGE := Color("6a7067")
-const WORLD_RING := STEEL_900
+## A lit stone platform over a near-black void. The drama is in the void, the
+## warm key, the gold ring, and the rim light; the floor itself stays a warm
+## mid stone, because its luminance is where both a light and a dark combatant
+## clear 3:1 (WORLD_READS). A darker floor would trade the dark fighter's
+## readability for mood, and readability is not negotiable.
+const WORLD_BACKGROUND := Color("16161d")
+const WORLD_FLOOR := Color("8a7f6c")
+const WORLD_FLOOR_EDGE := Color("5e5648")
+## The platform's visible cliff face and the void it drops into.
+const WORLD_CLIFF := Color("3a352d")
+## Warning ring: an etched gold groove, emissive so it reads as a boundary
+## under any lighting.
+const WORLD_RING := Color("c4a050")
+const WORLD_RING_EMISSION := 0.6
 ## Home-end tints (SIDE-001). Deliberately close to the floor: cardinality is
 ## orientation, not decoration, and the floor must never compete with blade
 ## readability. Each end is also a different *shape*, so the two ends stay
 ## distinguishable without relying on colour.
-const WORLD_HOME_LIGHT := Color("949a8d")
-const WORLD_HOME_DARK := Color("646a60")
-const WORLD_AMBIENT := Color("eceeea")
-const WORLD_AMBIENT_ENERGY := 0.65
-const WORLD_KEY := Color("fffaf0")
-const WORLD_KEY_ENERGY := 1.1
+const WORLD_HOME_LIGHT := Color("a09379")
+const WORLD_HOME_DARK := Color("6e6556")
+const WORLD_AMBIENT := Color("d0d0e0")
+const WORLD_AMBIENT_ENERGY := 0.35
+const WORLD_KEY := Color("fff0d0")
+const WORLD_KEY_ENERGY := 1.3
 const WORLD_KEY_ROTATION_DEGREES := Vector3(-58.0, -32.0, 0.0)
-const SHADOW := Color(0.08, 0.09, 0.1, 0.38)
+## A faint cool rim from behind the fighters, so dark clothing keeps an edge.
+const WORLD_RIM := Color("b8c4ff")
+const WORLD_RIM_ENERGY := 0.35
+const WORLD_RIM_ROTATION_DEGREES := Vector3(-28.0, 150.0, 0.0)
+## Perimeter braziers: emission only, never fire particles.
+const WORLD_BRAZIER := Color("ff9a3c")
+const SHADOW := Color(0.04, 0.03, 0.02, 0.5)
 
 ## Combatant styles (UX §13): hue + outline + HUD side + label, never color alone.
 ## Colors follow the arena side (LIGHT_SOUTH / DARK_NORTH) so the character's
@@ -114,8 +142,17 @@ const WORLD_READS: Array[Color] = [LIGHT_BODY, DARK_BODY, LIGHT_BLADE, DARK_BLAD
 
 ## Feedback (UX §19–§22). Reduced Flash scales intensity down.
 const SPARK := Color("ffe7a8")
+## A clash's sparks heat towards this as intensity rises.
+const SPARK_HOT := Color("fff8e8")
 const BODY_IMPACT := Color("f4e2d8")
 const CRITICAL := Color("ffffff")
+const LETHAL_ACCENT := Color("fff0c0")
+## Pinned blades grind in a warmer, duller spark than a clash.
+const GRIND := Color("ffb35c")
+## Ornament: bronze/gold edging on HUD and menu plates. Decorative only — never
+## text and never the sole essential boundary (UX-001).
+const GOLD_ACCENT := Color("c4a050")
+const GOLD_SHADOW := Color("5a4a24")
 const CHARGE_RING := Color("f6ead0")
 const REDUCED_FLASH_SCALE := 0.45
 
@@ -140,6 +177,12 @@ static func blade_for(side: DuelSide.Id) -> Color:
 
 static func health_for(side: DuelSide.Id) -> Color:
 	return HEALTH_LIGHT if side == DuelSide.Id.LIGHT_SOUTH else HEALTH_DARK
+
+
+## Side accent pieces on an authored fighter (sash, bracer lining, shoulder
+## mark): the HUD's side pair, so the world and the plates agree.
+static func accent_for(side: DuelSide.Id) -> Color:
+	return health_for(side)
 
 static var _display_font: FontVariation
 
@@ -179,17 +222,19 @@ static func _style_buttons(theme: Theme) -> void:
 		theme.set_color(state, "Button", TEXT_ON_LIGHT)
 	theme.set_color("font_disabled_color", "Button", TEXT_ON_LIGHT)
 	theme.set_font_size("font_size", "Button", FONT_LABEL)
+	## Primary actions carry the gold edge. Their essential boundary is the
+	## charcoal fill against the light surface, so the gold is ornament only.
 	theme.set_type_variation("PrimaryButton", "Button")
-	theme.set_stylebox("normal", "PrimaryButton", _box(STEEL_900, STEEL_900, BORDER_WIDTH))
-	theme.set_stylebox("hover", "PrimaryButton", _box(Color("4c5256"), STEEL_900, BORDER_WIDTH))
-	theme.set_stylebox("pressed", "PrimaryButton", _box(Color("33383a"), STEEL_900, BORDER_WIDTH))
+	theme.set_stylebox("normal", "PrimaryButton", _box(STEEL_900, GOLD_ACCENT, BORDER_WIDTH))
+	theme.set_stylebox("hover", "PrimaryButton", _box(Color("4c5256"), GOLD_ACCENT, BORDER_WIDTH + 1))
+	theme.set_stylebox("pressed", "PrimaryButton", _box(Color("33383a"), GOLD_ACCENT, BORDER_WIDTH + 1))
 	theme.set_stylebox("focus", "PrimaryButton", focus_box(FOCUS_ON_LIGHT))
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		theme.set_color(state, "PrimaryButton", TEXT_ON_DARK)
 	theme.set_type_variation("HudButton", "Button")
-	theme.set_stylebox("normal", "HudButton", _box(STEEL_900, SAGE_LIGHT, BORDER_WIDTH))
-	theme.set_stylebox("hover", "HudButton", _box(Color("4c5256"), SAGE_LIGHT, BORDER_WIDTH))
-	theme.set_stylebox("pressed", "HudButton", _box(Color("33383a"), SAGE_LIGHT, BORDER_WIDTH))
+	theme.set_stylebox("normal", "HudButton", _box(STEEL_900, GOLD_ACCENT, BORDER_WIDTH))
+	theme.set_stylebox("hover", "HudButton", _box(Color("4c5256"), GOLD_ACCENT, BORDER_WIDTH))
+	theme.set_stylebox("pressed", "HudButton", _box(Color("33383a"), GOLD_ACCENT, BORDER_WIDTH))
 	theme.set_stylebox("focus", "HudButton", focus_box(FOCUS_ON_DARK))
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		theme.set_color(state, "HudButton", TEXT_ON_DARK)
@@ -197,10 +242,47 @@ static func _style_buttons(theme: Theme) -> void:
 
 static func _style_panels(theme: Theme) -> void:
 	theme.set_stylebox("panel", "PanelContainer", _box(SURFACE, STEEL_900, 0, 0))
+	## HUD plates: charcoal with gold edging and deliberately asymmetric
+	## corners — sharp toward the centre, swept toward the screen edge — so
+	## the two fighter plates mirror each other like a pair of pauldrons.
 	theme.set_type_variation("HudPlate", "PanelContainer")
-	theme.set_stylebox("panel", "HudPlate", _box(STEEL_900, STEEL_900, 0))
+	theme.set_stylebox("panel", "HudPlate", ornament_box(false))
+	theme.set_type_variation("HudPlateMirrored", "PanelContainer")
+	theme.set_stylebox("panel", "HudPlateMirrored", ornament_box(true))
+	theme.set_type_variation("HudCenterPlate", "PanelContainer")
+	var center := ornament_box(false)
+	center.set_corner_radius_all(PLATE_SHARP)
+	theme.set_stylebox("panel", "HudCenterPlate", center)
+	## Banners slash in on a skewed plate edged above and below.
+	theme.set_type_variation("BannerPlate", "PanelContainer")
+	var banner := _box(STEEL_900, GOLD_ACCENT, 0, 0)
+	banner.border_width_top = BANNER_RULE
+	banner.border_width_bottom = BANNER_RULE
+	banner.skew = Vector2(BANNER_SKEW, 0.0)
+	banner.content_margin_left = BOX_PAD_X * 3
+	banner.content_margin_right = BOX_PAD_X * 3
+	theme.set_stylebox("panel", "BannerPlate", banner)
+	theme.set_type_variation("CaptionPlate", "PanelContainer")
+	theme.set_stylebox("panel", "CaptionPlate", ornament_box(false))
 	theme.set_type_variation("Sheet", "PanelContainer")
 	theme.set_stylebox("panel", "Sheet", _box(SURFACE, STEEL_900, BORDER_WIDTH))
+
+
+## The ornamental plate. Gold is decoration: the plate's essential boundary
+## is its charcoal fill against the world, and every label on it is a proven
+## TEXT_PAIRS combination.
+static func ornament_box(mirrored: bool) -> StyleBoxFlat:
+	var box := _box(STEEL_900, GOLD_ACCENT, PLATE_RULE)
+	var swept := PLATE_SWEPT
+	var sharp := PLATE_SHARP
+	box.corner_radius_top_left = sharp if mirrored else swept
+	box.corner_radius_bottom_left = swept if mirrored else sharp
+	box.corner_radius_top_right = swept if mirrored else sharp
+	box.corner_radius_bottom_right = sharp if mirrored else swept
+	box.shadow_color = PLATE_SHADOW
+	box.shadow_size = PLATE_SHADOW_SIZE
+	box.shadow_offset = Vector2(2.0, 3.0)
+	return box
 
 
 static func _style_labels(theme: Theme) -> void:
@@ -214,6 +296,8 @@ static func _style_labels(theme: Theme) -> void:
 	_label_variation(theme, &"HudTitleLabel", &"HudLabel", FONT_LABEL, display_font())
 	_label_variation(theme, &"HudAccentLabel", &"HudLabel", FONT_LABEL, null, ACCENT_ON_DARK)
 	_label_variation(theme, &"HudCaptionLabel", &"HudLabel", FONT_SMALL)
+	_label_variation(theme, &"HudNameLabel", &"HudLabel", FONT_LABEL, display_font())
+	_label_variation(theme, &"AnnouncerCaption", &"HudLabel", FONT_H2, display_font())
 
 
 static func _label_variation(theme: Theme, variation: StringName, base: StringName, size: int, font: Font = null, color: Color = Color(0.0, 0.0, 0.0, 0.0)) -> void:

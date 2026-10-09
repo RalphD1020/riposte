@@ -12,6 +12,8 @@ var intensity: float = 1.0
 
 enum Kind {
 	HIT_FLASH,
+	## A hit flash whose flinch is the heavy one (criticals and lethal blows).
+	CRITICAL_FLASH,
 	HAPTIC_BLADE,
 	HAPTIC_BODY,
 	HAPTIC_CRITICAL,

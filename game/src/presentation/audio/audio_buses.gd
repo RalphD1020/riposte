@@ -11,3 +11,9 @@ extends RefCounted
 const MASTER := &"Master"
 const MUSIC := &"Music"
 const SFX := &"SFX"
+## Children of SFX: combat contacts and swings, and menu/HUD interaction.
+const COMBAT := &"Combat"
+const UI := &"UI"
+## Announcer and fighter vocalizations, with their own volume setting.
+const VOICE := &"Voice"
+const ALL: Array[StringName] = [MASTER, MUSIC, SFX, COMBAT, UI, VOICE]

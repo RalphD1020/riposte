@@ -1,0 +1,54 @@
+[gd_resource type="Resource" script_class="PresentationKit" format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/presentation_kit.gd" id="1_kit"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/wold_01.mp3" id="2_s8801"]
+[ext_resource type="PackedScene" path="res://assets/presentation/fighters/duelist/wolf_wrapper.tscn" id="2_scene"]
+[ext_resource type="Script" path="res://src/presentation/kit/fighter_intro_profile.gd" id="3_intro"]
+[ext_resource type="Resource" path="res://assets/presentation/colorways/wolf_alternate.tres" id="4_colorway"]
+[ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_death.tres" id="7_death"]
+[ext_resource type="Script" path="res://src/presentation/kit/fighter_voice_kit.gd" id="5_lf1ie"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/wolf_01.mp3" id="6_tugdl"]
+
+[sub_resource type="Resource" id="Resource_intro"]
+script = ExtResource("3_intro")
+display_name = "WOLF"
+spoken_name = "Wolf."
+spoken_override_first_slot = "Wold."
+spoken_override_first_slot_line = ExtResource("2_s8801")
+intro_clip = &"flourish"
+
+[sub_resource type="Resource" id="Resource_4j084"]
+script = ExtResource("5_lf1ie")
+voice_id = &"voice.announcer.deep"
+spoken_name = ExtResource("6_tugdl")
+
+[resource]
+script = ExtResource("1_kit")
+id = &"fighter.duelist"
+scene = ExtResource("2_scene")
+color_targets = PackedStringArray("SideAccentSash", "SideAccentMark", "SideAccentBracer_L", "SideAccentBracer_R")
+body_height = 1.78
+animation_clips = {
+&"CHARGE": &"charge_support",
+&"CRITICAL": &"hurt_heavy",
+&"DASH_BACK": &"dash_back",
+&"DASH_FORWARD": &"dash_forward",
+&"DASH_LEFT": &"dash_left",
+&"DASH_RIGHT": &"dash_right",
+&"DEATH": &"death",
+&"HURT": &"hurt_light",
+&"IDLE": &"idle",
+&"MOVE_BACKWARD": &"walk_backward",
+&"MOVE_FORWARD": &"walk_forward",
+&"ORBIT_LEFT": &"orbit_cw",
+&"ORBIT_RIGHT": &"orbit_ccw",
+&"OVERSWING": &"overswing",
+&"RECOVERY": &"recovery",
+&"STAGGER": &"stagger",
+&"SWING": &"swing_support"
+}
+vfx_cues = PackedStringArray()
+voice = SubResource("Resource_4j084")
+intro = SubResource("Resource_intro")
+colorway = ExtResource("4_colorway")
+death = ExtResource("7_death")

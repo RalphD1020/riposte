@@ -19,6 +19,10 @@ var id: StringName = &""
 ## both legitimate, and the physics is what makes them play differently.
 var height: float = 0.0
 var body_radius: float = 0.0
+## Distance from the swing pivot to the guard, where this fighter's hands
+## hold any weapon. Authored gameplay reach, never measured from a model:
+## `WeaponDefinition.hilt_radius` is this, and `tip_radius` adds the blade.
+var grip_radius: float = 0.0
 var max_health: float = 0.0
 ## Mass resists *everything*: acceleration, displacement under impulse,
 ## turning. It is never a damage multiplier — a heavy fighter does not hit
@@ -118,6 +122,7 @@ func is_valid() -> bool:
 		height > 0.0
 		and body_radius > 0.0
 		and body_radius < height
+		and grip_radius > 0.0
 		and max_health > 0.0
 		and mass > 0.0
 		and body_inertia_coefficient > 0.0

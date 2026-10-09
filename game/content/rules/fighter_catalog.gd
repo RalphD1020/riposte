@@ -51,6 +51,7 @@ static func duelist_at(size_scale: float) -> FighterDefinition:
 
 	fighter.height = PhysicalBaseline.fighter_height(size_scale)
 	fighter.body_radius = PhysicalBaseline.fighter_radius(size_scale)
+	fighter.grip_radius = PhysicalBaseline.fighter_grip(size_scale)
 	fighter.mass = PhysicalBaseline.volumetric_mass(PhysicalBaseline.FIGHTER_MASS_KG, size_scale)
 	## Solid cylinder about its own axis — a shape fact, so it does not scale.
 	## With the baseline mass and footprint `moment_of_inertia()` is

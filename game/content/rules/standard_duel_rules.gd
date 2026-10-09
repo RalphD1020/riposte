@@ -16,9 +16,9 @@ extends RefCounted
 static func create() -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 19
+	rules.version = 20
 	rules.fighter = FighterCatalog.of(ContentIds.FIGHTER_DUELIST)
-	rules.weapon = WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD)
+	rules.weapon = WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, rules.fighter.grip_radius)
 	rules.combat = combat_tuning()
 	rules.arena_id = ContentIds.ARENA_STANDARD
 	rules.platform_radius = 8.27

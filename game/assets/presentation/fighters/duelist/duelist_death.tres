@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="DeathPresentationProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/death_presentation_profile.gd" id="1_death"]
+
+[resource]
+script = ExtResource("1_death")
+style_clips = {
+&"stab_crumple": &"death_stab",
+&"stab_pitch": &"death_stab"
+}
+finisher_clip = &"run_through"

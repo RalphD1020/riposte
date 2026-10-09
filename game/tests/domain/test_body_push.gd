@@ -496,7 +496,7 @@ func test_body_contact_in_state_hash() -> void:
 
 
 func test_rules_version_bumped() -> void:
-	assert_eq(_rules.version, 19, "rules version 19 for body contact lifecycle")
+	assert_true(_rules.version >= 19, "the body contact lifecycle shipped in rules version 19 (now %d)" % _rules.version)
 
 
 ## --- Phase 5: Cross-system property/stress tests ----------------------------

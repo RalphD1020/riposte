@@ -16,6 +16,30 @@ func _init() -> void:
 	suite_name = "APP-SHELL"
 
 
+func test_menu_buttons_pulse_and_sound_through_one_shared_feel() -> void:
+	var feedback := UiFeedback.new()
+	var click := AudioStreamWAV.new()
+	feedback.kit = UiThemeKit.new()
+	feedback.kit.confirm = [click] as Array[AudioStream]
+	(Engine.get_main_loop() as SceneTree).root.add_child(feedback)
+	var host := VBoxContainer.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(host)
+	var previous := UiKit.feedback
+	UiKit.feedback = feedback
+	var button := UiKit.button(host, "PLAY", Callable())
+	UiKit.feedback = previous
+	assert_true(button.has_meta(&"ui_feedback"), "the kit attaches the shared feel to every button it builds")
+	feedback.attach(button)
+	assert_eq(button.pressed.get_connections().size(), 1, "attaching twice never doubles the sound")
+	button.pressed.emit()
+	assert_eq(feedback.last_sound, PresentationKit.CUE_UI_CONFIRM, "a press confirms")
+	button.mouse_entered.emit()
+	assert_eq(feedback.last_sound, PresentationKit.CUE_UI_HOVER, "a hover ticks")
+	assert_false(feedback.play(PresentationKit.CUE_UI_BACK), "a theme without back takes stays silent")
+	host.queue_free()
+	feedback.queue_free()
+
+
 func test_ui_units_never_shrink_below_css_pixels() -> void:
 	assert_eq(UiScale.factor_for(Vector2i(1280, 720), 1.0), 1.0, "desktop at base size")
 	assert_eq(UiScale.factor_for(Vector2i(2560, 1440), 2.0), 1.0, "retina desktop already 1 unit = 1 CSS px")

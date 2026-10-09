@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="WeaponSkinKit" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/weapon_skin_kit.gd" id="1_skin"]
+[ext_resource type="PackedScene" path="res://assets/presentation/skins/bastard_sword_training/bastard_sword_training_wrapper.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_skin")
+skin_id = &"skin.bastard_sword.training"
+base_kit_id = &"weapon.bastard_sword"
+scene = ExtResource("2_scene")

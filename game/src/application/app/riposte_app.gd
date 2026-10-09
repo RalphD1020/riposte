@@ -14,6 +14,7 @@ extends Node
 var settings: PlayerSettings = PlayerSettings.new()
 var telemetry: TelemetrySink = TelemetrySink.new()
 var kit_catalog: PresentationKitCatalog
+var ui_feedback: UiFeedback
 var router: ScreenRouter
 var camera_rig: DuelCameraRig
 var presentation_mount: Node3D
@@ -25,6 +26,9 @@ var settings_path: String = PlayerSettings.PATH
 var seed_override: int = 0
 var _ui_root: Control
 var _seeds: RandomNumberGenerator = RandomNumberGenerator.new()
+## A set is one Quick Play session: its first match is introduced, its
+## rematches and rounds never are.
+var _set_intro_due: bool = false
 
 
 func attach(mount: Node3D, rig: DuelCameraRig, ui_root: Control) -> void:
@@ -45,6 +49,11 @@ func _ready() -> void:
 	settings.apply_audio()
 	_apply_display_mode(false)
 	kit_catalog = RiposteKits.build_catalog(OS.is_debug_build())
+	ui_feedback = UiFeedback.new()
+	ui_feedback.kit = RiposteKits.ui_theme()
+	ui_feedback.reduced_motion = settings.reduced_motion
+	add_child(ui_feedback)
+	UiKit.feedback = ui_feedback
 	camera_rig.configure(RiposteKits.camera_profile())
 	_ui_root.theme = RiposteTheme.build()
 	_ui_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -68,7 +77,15 @@ func current_screen() -> Control:
 
 func start_quick_play() -> void:
 	telemetry.record_product(ProductEvents.QUICK_PLAY_CLICKED, {ProductEvents.PROP_DIFFICULTY: int(settings.difficulty)})
+	_set_intro_due = true
 	_start(MatchConfig.quick_play(settings.difficulty, _seeds.randi()))
+
+
+## True exactly once per set; asking clears it.
+func consume_set_intro() -> bool:
+	var due := _set_intro_due
+	_set_intro_due = false
+	return due
 
 
 func start_training() -> void:
@@ -78,6 +95,7 @@ func start_training() -> void:
 
 func rematch() -> void:
 	telemetry.record_product(ProductEvents.REMATCH_CLICKED)
+	_set_intro_due = false
 	if match_config == null:
 		start_quick_play()
 		return
@@ -138,7 +156,26 @@ func presentation_options() -> PresentationOptions:
 	options.sweet_spot_cue = settings.sweet_spot_value()
 	options.haptics = settings.haptics
 	options.touch_layout = touch_layout()
+	options.captions = settings.captions
+	options.particle_intensity = settings.particle_intensity
 	return options
+
+
+## Cosmetic choice per slot: the local player wears their chosen skin, the
+## opponent the base look. Never part of MatchConfig, so never part of rules.
+func fighter_skins() -> Array[StringName]:
+	return _skins_for(StringName(settings.fighter_skin))
+
+
+func weapon_skins() -> Array[StringName]:
+	return _skins_for(StringName(settings.weapon_skin))
+
+
+func _skins_for(choice: StringName) -> Array[StringName]:
+	var skins: Array[StringName] = [&"", &""]
+	if match_config != null:
+		skins[match_config.human_slot] = choice
+	return skins
 
 
 func touch_layout() -> bool:

@@ -26,7 +26,7 @@ class Mount:
 		root.queue_free()
 
 
-func _mount(options: PresentationOptions = PresentationOptions.new()) -> Mount:
+func _mount(options: PresentationOptions = PresentationOptions.new(), catalog: PresentationKitCatalog = null) -> Mount:
 	var mount := Mount.new()
 	mount.root = Node3D.new()
 	(Engine.get_main_loop() as SceneTree).root.add_child(mount.root)
@@ -34,7 +34,7 @@ func _mount(options: PresentationOptions = PresentationOptions.new()) -> Mount:
 	mount.root.add_child(mount.camera)
 	mount.camera.configure(RiposteKits.camera_profile())
 	mount.state = DuelSetup.new_state(_rules, 1)
-	var kits := DuelKits.resolve(RiposteKits.build_catalog(), _rules)
+	var kits := DuelKits.resolve(catalog if catalog != null else RiposteKits.build_catalog(), _rules)
 	mount.presenter = MatchPresenter.create(kits, options, mount.camera, _rules.platform_radius, _rules.edge_warning_inset, SnapshotProjector.project(mount.state, _rules))
 	mount.root.add_child(mount.presenter)
 	mount.presenter.hitstop_requested.connect(func(seconds: float) -> void: mount.hitstops.append(seconds))
@@ -447,7 +447,7 @@ func test_a_struck_fighter_stands_exactly_where_the_simulation_says() -> void:
 	mount.presenter.render(1.0, 1.0 / 60.0)
 	var expected := ArenaTransform.to_world(target.x, target.y)
 	assert_true(mount.presenter.fighter_proxy(1).position.is_equal_approx(expected), "no recoil overlay displaces the body")
-	assert_eq(mount.presenter.fighter_proxy(1).current_semantic(), PresentationKit.ANIM_HIT, "the flinch is animation only")
+	assert_eq(mount.presenter.fighter_proxy(1).current_semantic(), PresentationKit.ANIM_HURT, "the flinch is animation only")
 	mount.dispose()
 
 
@@ -468,22 +468,128 @@ func test_a_whiff_is_never_punctuated_like_a_hit() -> void:
 	mount.dispose()
 
 
-func test_proxy_semantics_follow_movement_hits_and_teleports() -> void:
+func test_proxy_semantics_follow_carried_velocity_and_hits() -> void:
 	var mount := _mount()
 	var none: Array[DuelEvent] = []
+	var walker := mount.state.fighter(0)
 	mount.presenter.render(1.0, 1.0 / 60.0)
 	assert_eq(mount.presenter.fighter_proxy(0).current_semantic(), PresentationKit.ANIM_IDLE, "standing still idles")
-	mount.state.fighter(0).x += 0.05
+	walker.facing = PI * 0.5
+	walker.vy = 3.0
 	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
 	mount.presenter.render(1.0, 1.0 / 60.0)
-	assert_eq(mount.presenter.fighter_proxy(0).current_semantic(), PresentationKit.ANIM_MOVE, "3 m/s of footwork plays the move clip")
+	assert_eq(mount.presenter.fighter_proxy(0).current_semantic(), PresentationKit.ANIM_MOVE_FORWARD, "3 m/s along the facing walks forward")
+	walker.vy = -3.0
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
+	mount.presenter.render(1.0, 1.0 / 60.0)
+	assert_eq(mount.presenter.fighter_proxy(0).current_semantic(), PresentationKit.ANIM_MOVE_BACKWARD, "against the facing retreats")
+	walker.vy = 0.0
+	walker.x += 5.0
 	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _body(20.0))
 	mount.presenter.render(1.0, 1.0 / 60.0)
-	assert_eq(mount.presenter.fighter_proxy(1).current_semantic(), PresentationKit.ANIM_HIT, "the struck fighter flinches")
-	mount.state.fighter(0).x += 5.0
+	assert_eq(mount.presenter.fighter_proxy(0).current_semantic(), PresentationKit.ANIM_IDLE, "a teleport with no velocity is not a walk")
+	assert_eq(mount.presenter.fighter_proxy(1).current_semantic(), PresentationKit.ANIM_HURT, "the struck fighter flinches")
+	mount.dispose()
+
+
+func test_selector_names_every_semantic_from_snapshot_facts() -> void:
+	var row := PresentationFighter.new()
+	row.health = 50.0
+	row.facing = 0.0
+	assert_eq(FighterAnimationSelector.select(row, false, false), PresentationKit.ANIM_IDLE, "still")
+	var seen := {PresentationKit.ANIM_IDLE: true}
+	for case: Array in [
+		[Vector2(2.0, 0.0), PresentationKit.ANIM_MOVE_FORWARD],
+		[Vector2(-2.0, 0.0), PresentationKit.ANIM_MOVE_BACKWARD],
+		[Vector2(0.0, -2.0), PresentationKit.ANIM_ORBIT_RIGHT],
+		[Vector2(0.0, 2.0), PresentationKit.ANIM_ORBIT_LEFT],
+	]:
+		var velocity: Vector2 = case[0]
+		row.vx = velocity.x
+		row.vy = velocity.y
+		assert_eq(FighterAnimationSelector.select(row, false, false), case[1], "facing +x, velocity %s" % velocity)
+		seen[case[1]] = true
+	row.vx = 0.0
+	row.vy = 0.0
+	for kind: Array in [
+		[MovementGestureState.BurstKind.FORWARD_DASH, PresentationKit.ANIM_DASH_FORWARD],
+		[MovementGestureState.BurstKind.BACK_DASH, PresentationKit.ANIM_DASH_BACK],
+		[MovementGestureState.BurstKind.LEFT_STEP, PresentationKit.ANIM_DASH_LEFT],
+		[MovementGestureState.BurstKind.RIGHT_STEP, PresentationKit.ANIM_DASH_RIGHT],
+	]:
+		row.burst = kind[0]
+		assert_eq(FighterAnimationSelector.select(row, false, false), kind[1], "burst %s" % kind[1])
+		seen[kind[1]] = true
+	row.burst = MovementGestureState.BurstKind.NONE
+	for phase: Array in [
+		[CombatPhase.Id.CHARGING, PresentationKit.ANIM_CHARGE],
+		[CombatPhase.Id.ACTIVE_THREAT, PresentationKit.ANIM_SWING],
+		[CombatPhase.Id.OVERSWING, PresentationKit.ANIM_OVERSWING],
+		[CombatPhase.Id.RECOVERY, PresentationKit.ANIM_RECOVERY],
+		[CombatPhase.Id.STAGGER, PresentationKit.ANIM_STAGGER],
+	]:
+		row.phase = phase[0]
+		assert_eq(FighterAnimationSelector.select(row, false, false), phase[1], "phase %s" % phase[1])
+		seen[phase[1]] = true
+	row.phase = CombatPhase.Id.CHARGING
+	row.burst = MovementGestureState.BurstKind.FORWARD_DASH
+	assert_eq(FighterAnimationSelector.select(row, false, false), PresentationKit.ANIM_DASH_FORWARD, "committed footwork outranks the weapon pose")
+	assert_eq(FighterAnimationSelector.select(row, true, false), PresentationKit.ANIM_HURT, "a fresh hurt outranks footwork")
+	assert_eq(FighterAnimationSelector.select(row, true, true), PresentationKit.ANIM_CRITICAL, "a critical outranks a hurt")
+	seen[PresentationKit.ANIM_HURT] = true
+	seen[PresentationKit.ANIM_CRITICAL] = true
+	row.phase = CombatPhase.Id.STAGGER
+	assert_eq(FighterAnimationSelector.select(row, true, true), PresentationKit.ANIM_STAGGER, "stagger outranks a flinch")
+	row.health = 0.0
+	assert_eq(FighterAnimationSelector.select(row, true, true), PresentationKit.ANIM_DEATH, "death outranks everything")
+	seen[PresentationKit.ANIM_DEATH] = true
+	for semantic in PresentationKit.ANIM_SEMANTICS:
+		assert_true(seen.has(semantic), "%s is reachable" % semantic)
+
+
+## The striker of a killing thrust holds the run-through: the lunge outranks
+## the weapon pose, footwork, and a flinch — but never death or a stagger.
+func test_a_killing_thrust_holds_the_striker_in_the_run_through() -> void:
+	var row := PresentationFighter.new()
+	row.health = 100.0
+	row.phase = CombatPhase.Id.RECOVERY
+	assert_eq(FighterAnimationSelector.select(row, false, false), PresentationKit.ANIM_RECOVERY, "precondition: without a kill the recovery shows")
+	assert_eq(FighterAnimationSelector.select(row, false, false, true), PresentationKit.ANIM_DASH_FORWARD, "a kill holds the lunge over the recovery")
+	assert_eq(FighterAnimationSelector.select(row, true, true, true), PresentationKit.ANIM_DASH_FORWARD, "and over a flinch")
+	row.phase = CombatPhase.Id.STAGGER
+	assert_eq(FighterAnimationSelector.select(row, false, false, true), PresentationKit.ANIM_STAGGER, "a stagger still wins")
+	row.health = 0.0
+	assert_eq(FighterAnimationSelector.select(row, false, false, true), PresentationKit.ANIM_DEATH, "and a striker who also died falls")
+
+
+## End to end: a killing blow puts the dead fighter's sword into the world as a
+## presentation body once the hand goes slack, the striker keeps theirs, the
+## body has a transform physics can use (the collapse squashes the fighter), and
+## the next round clears it and puts the sword back in hand.
+func test_a_killing_blow_drops_the_victims_sword_into_the_world() -> void:
+	var mount := _mount()
+	mount.state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
+	mount.state.fighter(1).health = 0.0
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _body(40.0))
+	mount.presenter.render(1.0, 0.0)
+	assert_true(mount.presenter.dropped_weapons().is_empty(), "the hand has not let go yet")
+	mount.presenter.render(1.0, WeaponDropRequest.DEATH_DELAY + 0.01)
+	var dropped := mount.presenter.dropped_weapons()
+	assert_eq(dropped.size(), 1, "then the dead fighter's sword is in the world")
+	assert_true(dropped[0].is_inside_tree(), "as a live presentation body")
+	assert_true(mount.presenter.fighter_proxy(1).is_weapon_dropped(), "out of the victim's hands")
+	assert_false(mount.presenter.fighter_proxy(0).is_weapon_dropped(), "while the striker keeps theirs")
+	var basis := dropped[0].global_transform.basis
+	assert_true(basis.is_equal_approx(basis.orthonormalized()), "with an unscaled transform a physics body can use")
+	mount.presenter.render(1.0, 1.0)
+	assert_eq(mount.presenter.dropped_weapons().size(), 1, "one sword per death, however long the beat lasts")
+	DuelSetup.reset_round(mount.state, _rules)
+	mount.state.set_phase(MatchPhase.Id.ROUND_INTRO)
+	var none: Array[DuelEvent] = []
 	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
-	mount.presenter.render(1.0, 1.0 / 60.0)
-	assert_eq(mount.presenter.fighter_proxy(0).current_semantic(), PresentationKit.ANIM_IDLE, "a teleport is not a walk")
+	mount.presenter.render(0.0, 1.0 / 60.0)
+	assert_true(mount.presenter.dropped_weapons().is_empty(), "the next round clears the floor")
+	assert_false(mount.presenter.fighter_proxy(1).is_weapon_dropped(), "and puts the sword back in hand")
 	mount.dispose()
 
 
@@ -491,8 +597,9 @@ func test_arena_ambience_loops_on_the_music_bus_until_teardown() -> void:
 	var mount := _mount()
 	var audio := mount.presenter.audio()
 	assert_true(audio.is_music_playing(), "the arena kit's music starts with the duel")
-	var stream := audio.music_stream() as AudioStreamWAV
-	assert_true(stream != null and stream.loop_mode == AudioStreamWAV.LOOP_FORWARD, "and loops")
+	var stream := audio.music_stream()
+	var loops := (stream is AudioStreamWAV and (stream as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD) or (stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop)
+	assert_true(loops, "and loops (authored or placeholder)")
 	mount.presenter.detach_and_dispose()
 	assert_false(audio.is_music_playing(), "teardown silences it")
 	mount.root.queue_free()
@@ -551,7 +658,7 @@ func test_combat_stays_legible_with_every_motion_cue_switched_off() -> void:
 	assert_true(mount.presenter.vfx().effect_count() > 0, "but the hit is still marked in the world")
 	assert_true(mount.presenter.audio().last_cue != &"", "and still heard")
 	assert_eq(mount.hitstops.size(), 1, "and still felt in the pacing")
-	assert_true(mount.presenter.vfx().effect_count() >= MatchPresenter.SPARK_COUNT_MIN, "with the full spark fan, which is where the hit came from")
+	assert_true(mount.presenter.vfx().effect_count() >= ImpactPresentationProfile.slash().spark_count_min, "with the full spark fan, which is where the hit came from")
 	assert_eq(SwingSemantics.SWEET_REGION_MIN, 0.55, "and the region itself is untouched by any of this")
 	mount.dispose()
 
@@ -613,4 +720,78 @@ func test_point_strikes_do_not_add_hitstop() -> void:
 	assert_eq(mount.hitstops.size(), 0, "a poke-only event does not freeze (the BODY_HIT handles it)")
 	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _thrust_event())
 	assert_eq(mount.hitstops.size(), 0, "a thrust-only event does not freeze either")
+	mount.dispose()
+
+
+## ───────────────────────── AUTHORED AUDIO ─────────────────────────
+
+
+## A weapon kit with three takes of each clash and a layered strong clash.
+func _varied_catalog() -> PresentationKitCatalog:
+	var catalog := RiposteKits.build_catalog()
+	var weapon := (catalog.resolve(ContentIds.WEAPON_BASTARD_SWORD, PresentationKit.PRIMITIVE_BLADE).duplicate() as PresentationKit)
+	weapon.audio_cues = weapon.audio_cues.duplicate()
+	var takes: Array = []
+	for i in 3:
+		var take := AudioStreamWAV.new()
+		take.resource_name = "take_%d" % i
+		takes.append(take)
+	weapon.audio_cues[PresentationKit.CUE_BLADE_STRONG] = takes
+	var tail := AudioStreamWAV.new()
+	tail.resource_name = "tail"
+	weapon.audio_cues[PresentationKit.CUE_METAL_TAIL] = tail
+	weapon.audio_layers = {PresentationKit.CUE_BLADE_STRONG: [PresentationKit.CUE_METAL_TAIL]}
+	catalog.register(weapon)
+	return catalog
+
+
+func _clash_history(catalog: PresentationKitCatalog) -> PackedStringArray:
+	var mount := _mount(PresentationOptions.new(), catalog)
+	for tick in 6:
+		var events := _blade(ContactResolver.CLASS_STRONG)
+		events[0].tick = 100 + tick
+		mount.presenter.push(SnapshotProjector.project(mount.state, _rules), events)
+	var names := PackedStringArray()
+	for stream in mount.presenter.audio().history:
+		names.append(stream.resource_name)
+	mount.dispose()
+	return names
+
+
+func test_variants_are_picked_deterministically_and_layers_play_with_their_cue() -> void:
+	var catalog := _varied_catalog()
+	var first := _clash_history(catalog)
+	var second := _clash_history(catalog)
+	assert_eq(first.size(), 12, "each clash plays its take and its tail (%s)" % ", ".join(first))
+	assert_eq(first, second, "the same events always pick the same takes, so a replay sounds identical")
+	var takes := {}
+	for name in first:
+		if name.begins_with("take_"):
+			takes[name] = true
+	assert_true(takes.size() > 1, "and the takes vary from clash to clash")
+	assert_eq(first.count("tail"), 6, "the layer follows every strong clash")
+
+
+func test_a_bind_grinds_for_as_long_as_the_snapshot_says_and_never_freezes() -> void:
+	var mount := _mount()
+	var audio := mount.presenter.audio()
+	mount.state.fighter(0).weapon.phase = CombatPhase.Id.BIND
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _events(DuelEventTypes.BIND_STARTED, 0, 1, {DuelEventKeys.X: 0.0, DuelEventKeys.Y: 0.0}))
+	assert_true(audio.is_bind_held(0), "the grind starts with the bind")
+	assert_eq(mount.hitstops.size(), 0, "and a bind never freezes the frame")
+	var none: Array[DuelEvent] = []
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
+	assert_true(audio.is_bind_held(0), "it holds while the blades stay pinned")
+	mount.state.fighter(0).weapon.phase = CombatPhase.Id.NEUTRAL
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
+	assert_false(audio.is_bind_held(0), "and lets go the tick they part")
+	mount.dispose()
+
+
+func test_every_announcer_line_is_captioned_even_when_silent() -> void:
+	var mount := _mount()
+	var captions: Array[String] = []
+	mount.presenter.audio().caption_requested.connect(func(text: String, _seconds: float) -> void: captions.append(text))
+	assert_false(mount.presenter.audio().play_voice(null, "VERSUS"), "precondition: no line to play")
+	assert_eq(captions, ["VERSUS"] as Array[String], "but the caption still shows")
 	mount.dispose()

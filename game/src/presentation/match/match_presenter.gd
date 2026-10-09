@@ -4,27 +4,25 @@ extends Node3D
 ## The transient 3D root and the one presentation coordinator for a match.
 ##
 ## Per simulation tick: `push(snapshot, events)` stores the new snapshot and
-## turns events into feedback (sparks, rings, sounds, hitstop, impulses,
-## haptics) using the cues and feel values declared by the kits. Per frame:
-## `render(alpha, delta)` interpolates between the last two snapshots with
-## the tick driver's alpha and poses the passive proxies. It never steps,
-## reads, or mutates the simulation; hitstop is a request to the clock owner.
-## Generic code here never names a content identity.
+## hands the events to `CombatFeedbackDirector`, then carries out the
+## `FeedbackFrame` it returns (sparks, rings, sounds, hitstop, impulses,
+## haptics). Per frame: `render(alpha, delta)` interpolates between the last
+## two snapshots with the tick driver's alpha and poses the passive proxies.
+## It never steps, reads, or mutates the simulation; hitstop and slow motion
+## are requests to the clock owner. Generic code here never names a content
+## identity.
 ##
-## Implements: /spec/invariants.md#pres-001
+## Implements: /spec/invariants.md#pres-001, /spec/invariants.md#pres-002
 ## See also: /docs/concepts/presentation.md
 
 signal hitstop_requested(seconds: float)
+signal slow_motion_requested(time_scale: float, seconds: float)
 
-## Feedback constants live on CombatFeedbackDirector (PRES-002).  Aliases here
-## keep call sites short while the presenter still owns inline dispatch.
-## Spark geometry lives here because the director reads ImpactPresentationProfile
-## instead; these four are only consumed by the presenter's own _on_blade_contact
-## and _on_body_hit while the wiring coexists.
-const SPARK_COUNT_MIN := 3
-const SPARK_COUNT_MAX := 12
-const SPARK_SPEED_MIN := 1.8
-const SPARK_SPEED_MAX := 4.5
+## While blades are bound, a couple of grind sparks every few ticks at the
+## point where they met.
+const GRIND_EVERY_TICKS := 4
+const GRIND_SPARKS := 2
+const GRIND_SPEED := 0.9
 
 var _kits: DuelKits
 var _options: PresentationOptions
@@ -40,6 +38,14 @@ var _previous: PresentationSnapshot
 var _current: PresentationSnapshot
 var _snap: bool = true
 var _disposed: bool = false
+var _bind_point := Vector3.ZERO
+var _last_frame: FeedbackFrame = FeedbackFrame.new()
+## Killing blows → the first backend that can carry them out. Primitive today;
+## a ragdoll backend goes ahead of it once the rig has a physical skeleton.
+var _deaths: DeathPresentationController
+## Swords waiting for the hands to let go, and the ones already tumbling.
+var _drops := WeaponDropController.new()
+var _dropped: Array[DroppedWeapon3D] = []
 
 
 static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> MatchPresenter:
@@ -67,8 +73,13 @@ func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
 			ribbon.clear_trail()
 		for slot in 2:
 			_audio.release_tension(slot)
-	for event in events:
-		_dispatch(event)
+		_audio.release_bind(0)
+		_deaths.reset()
+		_clear_drops()
+	var style := _kits.match_loadout.vfx_style if _kits.match_loadout != null else null
+	_last_frame = CombatFeedbackDirector.process(snapshot, events, _kits.weapon, _options.flash_scale(), _options.particle_intensity, style)
+	_apply(_last_frame)
+	_grind(snapshot, style)
 
 
 func render(alpha: float, delta: float) -> void:
@@ -79,6 +90,8 @@ func render(alpha: float, delta: float) -> void:
 	var second := _pose(1, weight, delta)
 	_vectors.update(_current)
 	_vfx.advance(delta)
+	for drop in _drops.advance(delta):
+		_launch_drop(drop)
 	if _camera != null:
 		_camera.frame(first, second, delta, _options, _snap)
 	_snap = false
@@ -86,6 +99,19 @@ func render(alpha: float, delta: float) -> void:
 
 func fighter_proxy(slot: int) -> FighterPresentation3D:
 	return _fighters[slot]
+
+
+## The once-per-set introduction, built over this presenter's world. The
+## screen decides whether a set is starting; the presenter only stages it.
+func create_intro(gameplay_camera: Camera3D) -> SetIntroDirector:
+	var proxies: Array[Node3D] = []
+	for proxy in _fighters:
+		proxies.append(proxy)
+	for ribbon in _trails:
+		proxies.append(ribbon)
+	var intro := SetIntroDirector.create(_kits, _current, _audio, proxies, gameplay_camera)
+	add_child(intro)
+	return intro
 
 
 func trail(slot: int) -> SwordTrail3D:
@@ -114,6 +140,15 @@ func current_snapshot() -> PresentationSnapshot:
 	return _current
 
 
+## The requests the last pushed tick produced, for tests and debug.
+func last_frame() -> FeedbackFrame:
+	return _last_frame
+
+
+func duel_kits() -> DuelKits:
+	return _kits
+
+
 ## Remove from the tree and free. Idempotent; safe during teardown.
 func detach_and_dispose() -> void:
 	if _disposed:
@@ -132,7 +167,7 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 	add_child(_arena)
 	for slot in 2:
 		var row := first.fighter(slot)
-		var proxy := FighterPresentation3D.create(slot, row.side, _kits.fighter, _kits.weapon, row.body_radius, row.hilt_radius, row.tip_radius)
+		var proxy := FighterPresentation3D.create(slot, row.side, _kits.combatant(slot), row.body_radius, row.hilt_radius, row.tip_radius)
 		proxy.set_charge_indicator(_options.show_charge_indicator)
 		proxy.set_high_contrast(_options.high_contrast_weapons)
 		add_child(proxy)
@@ -148,6 +183,8 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 	add_child(_vfx)
 	_audio = AudioDirector.new()
 	add_child(_audio)
+	var backends: Array[DeathPresentationBackend] = [PrimitiveDeathBackend.new(_fighters)]
+	_deaths = DeathPresentationController.new(backends)
 	_previous = first
 	_current = first
 
@@ -159,7 +196,7 @@ func _pose(slot: int, weight: float, delta: float) -> Vector3:
 	var to := _current.fighter(slot)
 	var world := ArenaTransform.to_world(lerpf(from.x, to.x, weight), lerpf(from.y, to.y, weight))
 	var proxy := _fighters[slot]
-	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to.charge, to.phase, to.is_alive(), to.is_falling, delta)
+	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to, delta)
 	var blade := proxy.blade_points()
 	_trails[slot].add_sample(blade[0], blade[1], to.swing_potential, to.blade_speed, _kits.weapon.trail_min_speed)
 	_trails[slot].advance(delta)
@@ -178,149 +215,113 @@ func _tension(slot: int, row: PresentationFighter, world: Vector3) -> void:
 		_audio.release_tension(slot)
 
 
-func _fighter_world(slot: int, height: float = 0.0) -> Vector3:
-	var fighter := _current.fighter(slot)
-	return ArenaTransform.to_world(fighter.x, fighter.y, height)
+## A bind lasts as long as the snapshot says the blades are pinned, so its
+## grind is held from the snapshot rather than timed from the event.
+func _grind(snapshot: PresentationSnapshot, style: VfxStyleKit) -> void:
+	var bound := snapshot.fighter(0).phase == CombatPhase.Id.BIND or snapshot.fighter(1).phase == CombatPhase.Id.BIND
+	if not bound:
+		_audio.release_bind(0)
+		return
+	if _options.particle_intensity > 0.0 and snapshot.tick % GRIND_EVERY_TICKS == 0:
+		var color := style.grind if style != null else RiposteTheme.SPARK
+		_vfx.sparks(_bind_point, Vector3.UP, color, GRIND_SPARKS, GRIND_SPEED, _options.flash_scale())
 
 
-## Contact audio stays categorical, because these are different *situations*,
-## but the class comes from the resolver rather than from a threshold this file
-## invents for itself.
-func _clash_cue(event: DuelEvent) -> StringName:
-	match StringName(event.text(DuelEventKeys.CONTACT_CLASS)):
-		ContactResolver.CLASS_STRONG:
-			return PresentationKit.CUE_BLADE_STRONG
-		ContactResolver.CLASS_SOLID:
-			return PresentationKit.CUE_BLADE_SOLID
-		_:
-			return PresentationKit.CUE_BLADE_LIGHT
+func _apply(frame: FeedbackFrame) -> void:
+	for request in frame.camera_requests:
+		_impulse(request.intensity / 100.0, request.direction)
+	for request in frame.hitstop_requests:
+		hitstop_requested.emit(request.duration)
+	for request in frame.slow_motion_requests:
+		slow_motion_requested.emit(request.time_scale, request.seconds)
+	for request in frame.audio_requests:
+		_play(request)
+	for request in frame.vfx_requests:
+		_draw(request)
+	for request in frame.fighter_requests:
+		_fighter_cue(request)
+	for request in frame.death_requests:
+		_deaths.present(request)
+	for request in frame.fall_requests:
+		_fighters[request.slot].begin_fall(request)
+	for request in frame.weapon_drop_requests:
+		_drops.request(request)
 
 
-func _contact_world(event: DuelEvent) -> Vector3:
-	return ArenaTransform.to_world(event.number(DuelEventKeys.X), event.number(DuelEventKeys.Y), _kits.weapon.blade_height)
+## The hands let go: the held look is hidden and a presentation body carries a
+## copy of it, starting from the pivot with the blade's spin plus the presented
+## body's own motion. Physics bodies need an unscaled transform, and a collapse
+## squashes the body, so the pivot's basis is orthonormalized.
+func _launch_drop(drop: WeaponDropRequest) -> void:
+	var proxy := _fighters[drop.slot]
+	var row := _current.fighter(drop.slot)
+	var at := proxy.sword_pivot().global_transform
+	var length := row.tip_radius - row.hilt_radius
+	var body := DroppedWeapon3D.create(proxy.detach_weapon(), drop.linear_velocity + proxy.root_velocity(), drop.angular_velocity, length, _kits.weapon.blade_width, row.hilt_radius + length * 0.5)
+	add_child(body)
+	body.global_transform = Transform3D(at.basis.orthonormalized(), at.origin)
+	_dropped.append(body)
 
 
-func _dispatch(event: DuelEvent) -> void:
-	var weapon := _kits.weapon
-	var flash := _options.flash_scale()
-	match event.type:
-		DuelEventTypes.ATTACK_RELEASED:
-			_on_release(event, weapon)
-		DuelEventTypes.BURST_STARTED:
-			_on_burst(event, flash)
-		DuelEventTypes.BLADE_CONTACT:
-			_on_blade_contact(event, weapon, flash)
-		DuelEventTypes.BIND_STARTED:
-			_on_bind(event, weapon)
-		DuelEventTypes.PARRY:
-			_vfx.ring(_contact_world(event), RiposteTheme.SPARK, CombatFeedbackDirector.PARRY_RING_SIZE, flash)
-		DuelEventTypes.BODY_HIT:
-			_on_body_hit(event, weapon, flash)
-		DuelEventTypes.BODY_POKE:
-			_on_point_strike(event, weapon, flash, PresentationKit.CUE_BODY_POKE)
-		DuelEventTypes.BODY_THRUST:
-			_on_point_strike(event, weapon, flash, PresentationKit.CUE_BODY_THRUST)
-		DuelEventTypes.CRITICAL_HIT:
-			## The sweet layer, over the body hit that is already playing. The
-			## hitstop and the impulse were sized by the strike itself; a
-			## critical adds recognition, not a second helping of force.
-			_audio.play(PresentationKit.CUE_CRITICAL, weapon, _contact_world(event), CombatFeedbackDirector.DEVASTATING_VOLUME_DB)
-			_haptics.pulse(Haptics.CRITICAL)
-		DuelEventTypes.ROUND_STARTED, DuelEventTypes.ROUND_ENDED:
-			_audio.play_flat(PresentationKit.CUE_ROUND, _kits.arena, CombatFeedbackDirector.ROUND_VOLUME_DB)
+func dropped_weapons() -> Array[DroppedWeapon3D]:
+	var live: Array[DroppedWeapon3D] = []
+	for body in _dropped:
+		if is_instance_valid(body):
+			live.append(body)
+	return live
 
 
-## Footwork writes on the floor, never in the air. Dust at the feet, kicked
-## opposite the heading the simulation froze, keeps a dash visually separate
-## from a swing — the two must never share a silhouette (UX §19).
-func _on_burst(event: DuelEvent, flash: float) -> void:
-	var heading := Vector3(event.number(DuelEventKeys.HEADING_X), 0.0, -event.number(DuelEventKeys.HEADING_Y))
-	_vfx.dust(_fighter_world(event.actor), heading, RiposteTheme.WORLD_FLOOR_EDGE, CombatFeedbackDirector.DUST_COUNT, CombatFeedbackDirector.DUST_SPEED, flash)
+func _clear_drops() -> void:
+	_drops.reset()
+	for body in _dropped:
+		if is_instance_valid(body):
+			body.queue_free()
+	_dropped.clear()
 
 
-## The swing whoosh is sized by the swing, not by how long a button was held.
-## `swing_potential` is already a bounded reading of the blade's real tip
-## speed — which carries the weapon's length and the motor's authority with it
-## — so a heavy sword and a fast one do not need separate samples.
-func _on_release(event: DuelEvent, weapon: PresentationKit) -> void:
-	var potential := _current.fighter(event.actor).swing_potential
-	_audio.play(
-		PresentationKit.CUE_SWING,
-		weapon,
-		_fighter_world(event.actor),
-		lerpf(CombatFeedbackDirector.SWING_VOLUME_DB_TAP, CombatFeedbackDirector.SWING_VOLUME_DB_FULL, potential),
-		lerpf(CombatFeedbackDirector.SWING_PITCH_TAP, CombatFeedbackDirector.SWING_PITCH_FULL, potential)
-	)
-
-
-## Blades sliding past each other, not a generic burst. The larger fan runs
-## along the direction the striking point was travelling and the smaller one
-## along the normal the blades met on — both carried from the resolver, so the
-## sparks cannot disagree with the contact that produced them.
-func _on_blade_contact(event: DuelEvent, weapon: PresentationKit, flash: float) -> void:
-	var world := _contact_world(event)
-	var intensity := event.number(DuelEventKeys.INTENSITY)
-	var count := lerpf(float(SPARK_COUNT_MIN), float(SPARK_COUNT_MAX), intensity)
-	var speed := lerpf(SPARK_SPEED_MIN, SPARK_SPEED_MAX, intensity)
-	var tangent := _direction(event, DuelEventKeys.STRIKE_X, DuelEventKeys.STRIKE_Y)
-	var normal := _direction(event, DuelEventKeys.NORMAL_X, DuelEventKeys.NORMAL_Y)
-	_vfx.sparks(world, tangent, RiposteTheme.SPARK, roundi(count * (1.0 - CombatFeedbackDirector.SPARK_NORMAL_SHARE)), speed, flash)
-	_vfx.sparks(world, normal, RiposteTheme.SPARK, roundi(count * CombatFeedbackDirector.SPARK_NORMAL_SHARE), speed, flash)
-	_audio.play(_clash_cue(event), weapon, world)
-	hitstop_requested.emit(weapon.hitstop_for_clash(intensity))
-	_impulse(CombatFeedbackDirector.IMPULSE_BLADE_MAX * intensity, normal)
-	_haptics.pulse(Haptics.BLADE)
-
-
-## Pinned blades are their own situation and get their own sound. No hitstop:
-## a bind is already a hard stop in the simulation, and freezing the frame on
-## top of it would read as a hitch rather than as pressure.
-func _on_bind(event: DuelEvent, weapon: PresentationKit) -> void:
-	_audio.play(PresentationKit.CUE_BIND, weapon, _contact_world(event))
-	_haptics.pulse(Haptics.BLADE)
-
-
-func _on_body_hit(event: DuelEvent, weapon: PresentationKit, flash: float) -> void:
-	var damage := event.number(DuelEventKeys.DAMAGE)
-	var quality := event.number(DuelEventKeys.QUALITY)
-	var devastating := event.text(DuelEventKeys.GRADE) == SwingSemantics.grade_label(SwingSemantics.Grade.DEVASTATING)
-	var world := _contact_world(event)
-	var normal := _direction(event, DuelEventKeys.NORMAL_X, DuelEventKeys.NORMAL_Y)
-	_fighters[event.target].flash_hit(flash)
-	## Recoil along the push the simulation applied, at the scale it applied
-	## it. Presentation may exaggerate a normalized value, but a displacement
-	## is a measured one: this streak must never throw the target further than
-	## the impulse actually did.
-	var reach := maxf(event.number(DuelEventKeys.PUSH) * CombatFeedbackDirector.RECOIL_SECONDS, CombatFeedbackDirector.RECOIL_MIN_LENGTH)
-	_vfx.streak(world, world + normal * reach, RiposteTheme.BODY_IMPACT, flash)
-	_vfx.sparks(world, _direction(event, DuelEventKeys.STRIKE_X, DuelEventKeys.STRIKE_Y), RiposteTheme.BODY_IMPACT, SPARK_COUNT_MIN, SPARK_SPEED_MIN, flash)
-	var loud := CombatFeedbackDirector.DEVASTATING_VOLUME_DB if devastating else 0.0
-	if damage >= CombatFeedbackDirector.DAMAGE_HEAVY:
-		_audio.play(PresentationKit.CUE_BODY_HEAVY, weapon, world, loud)
+func _play(request: AudioCueRequest) -> void:
+	var kit := _kits.arena if request.kit_source == AudioCueRequest.KitSource.ARENA else _kits.weapon
+	if request.hold:
+		_bind_point = request.world_position
+		_audio.hold_bind(0, kit, request.world_position, 1.0, request.key)
+	elif request.flat:
+		## A kit without a dedicated round-win sting uses its round sting.
+		if not _audio.play_flat(request.cue, kit, request.volume_db, request.key) and request.cue == PresentationKit.CUE_ROUND_WIN:
+			_audio.play_flat(PresentationKit.CUE_ROUND, kit, request.volume_db, request.key)
 	else:
-		_audio.play(PresentationKit.CUE_BODY_LIGHT, weapon, world, loud)
-	hitstop_requested.emit(weapon.hitstop_for_strike(quality, devastating))
-	var ceiling := CombatFeedbackDirector.IMPULSE_DEVASTATING_MAX if devastating else CombatFeedbackDirector.IMPULSE_BODY_MAX
-	_impulse(ceiling * clampf(quality / PresentationKit.QUALITY_FULL, 0.0, 1.0), normal)
-	_haptics.pulse(Haptics.BODY)
+		_audio.play(request.cue, kit, request.world_position, request.volume_db, request.pitch, request.key)
 
 
-## Point-first body contact (BODY_POKE / BODY_THRUST). These are companion
-## events that arrive alongside the BODY_HIT on the same tick — the hit
-## already did VFX, hitstop, and camera; a point strike adds only its own
-## audio cue so the player hears a distinct sound for the contact kind.
-func _on_point_strike(event: DuelEvent, weapon: PresentationKit, _flash: float, cue: StringName) -> void:
-	var world := _contact_world(event)
-	_audio.play(cue, weapon, world)
-	_haptics.pulse(Haptics.BODY)
+func _draw(request: VfxRequest) -> void:
+	match request.kind:
+		VfxRequest.Kind.SPARKS:
+			_vfx.sparks(request.world_position, request.direction, request.color, request.count, request.speed, request.flash_scale)
+		VfxRequest.Kind.RING:
+			_vfx.ring(request.world_position, request.color, request.size, request.flash_scale)
+		VfxRequest.Kind.STREAK:
+			_vfx.streak(request.world_position, request.direction, request.color, request.flash_scale)
+		VfxRequest.Kind.DUST:
+			_vfx.dust(request.world_position, request.direction, request.color, request.count, request.speed, request.flash_scale)
+		VfxRequest.Kind.AXIAL:
+			_vfx.axial(request.world_position, request.direction, request.color, request.count, request.speed, request.size, request.flash_scale)
+		VfxRequest.Kind.FLASH:
+			_vfx.lethal_flash(request.world_position, request.direction, request.color, request.size, request.count, request.flash_scale)
 
 
-## A carried lane-space direction as a world direction. Degenerate contacts
-## (a pivot exactly on the contact point) legitimately carry no direction, so
-## this stays total and hands back a zero vector rather than a guess.
-func _direction(event: DuelEvent, key_x: String, key_y: String) -> Vector3:
-	var direction := Vector3(event.number(key_x), 0.0, -event.number(key_y))
-	return direction.normalized() if direction.length_squared() > 0.0 else Vector3.ZERO
+func _fighter_cue(request: FighterCueRequest) -> void:
+	match request.kind:
+		FighterCueRequest.Kind.HIT_FLASH:
+			if request.slot >= 0:
+				_fighters[request.slot].flash_hit(request.intensity)
+		FighterCueRequest.Kind.CRITICAL_FLASH:
+			if request.slot >= 0:
+				_fighters[request.slot].flash_hit(request.intensity, true)
+		FighterCueRequest.Kind.HAPTIC_BLADE:
+			_haptics.pulse(Haptics.BLADE)
+		FighterCueRequest.Kind.HAPTIC_BODY:
+			_haptics.pulse(Haptics.BODY)
+		FighterCueRequest.Kind.HAPTIC_CRITICAL:
+			_haptics.pulse(Haptics.CRITICAL)
 
 
 func _impulse(strength: float, direction: Vector3 = Vector3.ZERO) -> void:

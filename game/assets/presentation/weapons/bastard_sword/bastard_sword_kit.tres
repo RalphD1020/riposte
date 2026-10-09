@@ -1,0 +1,85 @@
+[gd_resource type="Resource" script_class="PresentationKit" format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/presentation_kit.gd" id="1_kit"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/swing/swing_01.mp3" id="1_v5hti"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/swing/swing_02.mp3" id="2_s602d"]
+[ext_resource type="PackedScene" path="res://assets/presentation/weapons/bastard_sword/bastard_sword_wrapper.tscn" id="2_scene"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/swing/swing_03.mp3" id="3_a6uuk"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/swing/swing_04.mp3" id="4_a4lgq"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/charge/charge_01.mp3" id="5_7hsbj"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/charge/charge_02.mp3" id="6_yy7sa"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/sword/charge/charge_03.mp3" id="7_nd52f"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_light/clash_light_01.mp3" id="8_gcb2g"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_light/clash_light_02.mp3" id="9_sxsay"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_light/clash_light_03.mp3" id="10_ghxt6"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_light/clash_light_04.mp3" id="11_4xyr8"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_solid/clash_solid_01.mp3" id="12_iotli"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_solid/clash_solid_02.mp3" id="13_4lghj"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_solid/clash_solid_03.mp3" id="14_vnwy0"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_solid/clash_solid_04.mp3" id="15_6hf86"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_strong/clash_strong_01.mp3" id="16_rp4vr"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_strong/clash_strong_02.mp3" id="17_6n71p"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_strong/clash_strong_03.mp3" id="18_u2exh"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/clash_strong/clash_strong_04.mp3" id="19_rciwt"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/bind/bind_01.mp3" id="20_2677d"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/bind/bind_02.mp3" id="21_anmq6"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/blade/bind/bind_03.mp3" id="22_noe86"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_light/body_light_01.mp3" id="23_hqta0"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_light/body_light_02.mp3" id="24_l3hyn"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_light/body_light_03.mp3" id="25_1mhe3"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_light/body_light_04.mp3" id="26_uuvmp"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_heavy/body_heavy_01.mp3" id="27_p5gat"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_heavy/body_heavy_02.mp3" id="28_kaj44"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_heavy/body_heavy_03.mp3" id="29_q3lnu"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/hit_heavy/body_heavy_04.mp3" id="30_mp84u"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/poke/poke_01.mp3" id="31_jsjfv"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/poke/poke_02.mp3" id="32_jgpbl"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/poke/poke_03.mp3" id="33_6kip1"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/thrust/thrust_01.mp3" id="34_rdwst"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/thrust/thrust_02.mp3" id="35_850k6"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/body/thrust/thrust_03.mp3" id="36_14qtf"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/critical/critical_01.mp3" id="37_kx1wa"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/critical/critical_02.mp3" id="38_vpuc2"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/critical/critical_03.mp3" id="39_amlwf"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/dash/dash_01.mp3" id="40_vhfqq"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/dash/dash_02.mp3" id="41_t25jx"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/dash/dash_03.mp3" id="42_ybscp"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/fall/fall_01.mp3" id="43_565hn"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/fall/fall_02.mp3" id="44_blw6k"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/layer/impact_low_01.mp3" id="45_w5il3"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/layer/impact_low_02.mp3" id="46_ckoqy"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/layer/metal_tail_01.mp3" id="47_82utk"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/layer/metal_tail_02.mp3" id="48_pqb5y"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/layer/lethal_accent_01.mp3" id="49_pcaqt"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/layer/lethal_accent_02.mp3" id="50_cfpoh"]
+
+[resource]
+script = ExtResource("1_kit")
+id = &"weapon.bastard_sword"
+primitive = &"BLADE"
+scene = ExtResource("2_scene")
+color_targets = PackedStringArray()
+audio_cues = {
+&"blade.bind": Array[AudioStream]([ExtResource("20_2677d"), ExtResource("21_anmq6"), ExtResource("22_noe86")]),
+&"blade.light": Array[AudioStream]([ExtResource("8_gcb2g"), ExtResource("9_sxsay"), ExtResource("10_ghxt6"), ExtResource("11_4xyr8")]),
+&"blade.solid": Array[AudioStream]([ExtResource("12_iotli"), ExtResource("13_4lghj"), ExtResource("14_vnwy0"), ExtResource("15_6hf86")]),
+&"blade.strong": Array[AudioStream]([ExtResource("16_rp4vr"), ExtResource("17_6n71p"), ExtResource("18_u2exh"), ExtResource("19_rciwt")]),
+&"body.heavy": Array[AudioStream]([ExtResource("27_p5gat"), ExtResource("28_kaj44"), ExtResource("29_q3lnu"), ExtResource("30_mp84u")]),
+&"body.light": Array[AudioStream]([ExtResource("23_hqta0"), ExtResource("24_l3hyn"), ExtResource("25_1mhe3"), ExtResource("26_uuvmp")]),
+&"body.poke": Array[AudioStream]([ExtResource("31_jsjfv"), ExtResource("32_jgpbl"), ExtResource("33_6kip1")]),
+&"body.thrust": Array[AudioStream]([ExtResource("34_rdwst"), ExtResource("35_850k6"), ExtResource("36_14qtf")]),
+&"charge": Array[AudioStream]([ExtResource("5_7hsbj"), ExtResource("6_yy7sa"), ExtResource("7_nd52f")]),
+&"critical": Array[AudioStream]([ExtResource("37_kx1wa"), ExtResource("38_vpuc2"), ExtResource("39_amlwf")]),
+&"dash": Array[AudioStream]([ExtResource("40_vhfqq"), ExtResource("41_t25jx"), ExtResource("42_ybscp")]),
+&"fall": Array[AudioStream]([ExtResource("43_565hn"), ExtResource("44_blw6k")]),
+&"layer.impact_low": Array[AudioStream]([ExtResource("45_w5il3"), ExtResource("46_ckoqy")]),
+&"layer.lethal_accent": Array[AudioStream]([ExtResource("49_pcaqt"), ExtResource("50_cfpoh")]),
+&"layer.metal_tail": Array[AudioStream]([ExtResource("47_82utk"), ExtResource("48_pqb5y")]),
+&"swing": Array[AudioStream]([ExtResource("1_v5hti"), ExtResource("2_s602d"), ExtResource("3_a6uuk"), ExtResource("4_a4lgq")])
+}
+audio_layers = {
+&"blade.strong": [&"layer.metal_tail", &"layer.impact_low"],
+&"body.heavy": [&"layer.impact_low"],
+&"body.thrust": [&"layer.impact_low"]
+}
+vfx_cues = PackedStringArray("trail", "spark", "impact")

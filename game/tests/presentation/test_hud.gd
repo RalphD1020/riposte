@@ -96,6 +96,29 @@ func test_hud_shows_stamina_bar_and_condition() -> void:
 	hud.update(_project(state))
 	assert_true(hud.stamina_bar(0).value < _rules.fighter.base_stamina, "stamina bar drained")
 	assert_eq(hud.condition_label(0).text, "CRITICAL", "20% health is CRITICAL")
+	assert_true(hud.condition_icon(0).texture == HudIcons.condition(FighterCondition.Id.CRITICAL), "and the plate repeats it as a shape, not a colour")
+	assert_ne(HudIcons.condition(FighterCondition.Id.CRITICAL).get_image().get_data(), HudIcons.condition(FighterCondition.Id.HEALTHY).get_image().get_data(), "each condition draws a different shape")
+	hud.queue_free()
+
+
+func test_intro_cards_borrow_the_banner_and_captions_time_out() -> void:
+	var hud := DuelHud.create("YOU", "CPU · Medium", 0, DuelSide.Id.LIGHT_SOUTH)
+	hud.reduced_motion = true
+	_root().add_child(hud)
+	var state := _state()
+	hud.update(_project(state))
+	var round_banner := hud.banner_text()
+	assert_ne(round_banner, "", "precondition: the round intro has a banner")
+	hud.show_card("WOLF")
+	hud.update(_project(state))
+	assert_eq(hud.banner_text(), "WOLF", "a card overrides the snapshot's banner")
+	hud.show_card("")
+	hud.update(_project(state))
+	assert_eq(hud.banner_text(), round_banner, "and gives it back when the intro ends")
+	hud.show_caption("Wold.", 0.5)
+	assert_eq(hud.caption_text(), "Wold.", "captions show")
+	hud._process(0.6)
+	assert_eq(hud.caption_text(), "", "and clear on their own")
 	hud.queue_free()
 
 

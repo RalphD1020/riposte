@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/generated/weapons/bastard_sword_training.glb" id="1_sword"]
+
+[node name="BastardSwordTraining" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_sword")]

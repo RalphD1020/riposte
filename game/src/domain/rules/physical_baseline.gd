@@ -31,6 +31,11 @@ const FIGHTER_RADIUS_M := 0.27
 const SWORD_LENGTH_M := 1.22
 const SWORD_BLADE_M := 0.97
 const SWORD_MASS_KG := 1.60
+## Baseline grip: how far out from the swing pivot the duelist's hands put the
+## guard. It belongs to the fighter, not the sword: weapon reach is the
+## wielder's grip plus the weapon's blade, so a longer-armed fighter reaches
+## further with the same sword and no mesh measurement ever decides it.
+const GRIP_RADIUS_M := SWORD_LENGTH_M - SWORD_BLADE_M
 
 ## Baseline blade geometry. The canonical guards sit at plus or minus 45
 ## degrees, the blade may legitimately travel to plus or minus 135, and the
@@ -48,6 +53,10 @@ static func fighter_height(scale: float) -> float:
 
 static func fighter_radius(scale: float) -> float:
 	return FIGHTER_RADIUS_M * scale
+
+
+static func fighter_grip(scale: float) -> float:
+	return GRIP_RADIUS_M * scale
 
 
 static func sword_length(scale: float) -> float:

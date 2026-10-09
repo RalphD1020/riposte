@@ -13,6 +13,7 @@ pnpm dev:web           # Next.js only
 pnpm build             # Production build
 pnpm game:export:web   # Clean-room dist/game/web/ then --export-release Web
 pnpm game:stage:web    # Copy that export into apps/web/public/game/ for /play
+pnpm game:assets       # Blender sources → validated GLBs + manifests (BLENDER_BIN or `blender`; see assets.md)
 pnpm build:static      # Next.js static export (website hosts, not itch game)
 pnpm lint              # ESLint + game source scanners (not Godot import)
 pnpm typecheck         # tsc + GDScript load

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="PresentationKit" format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/presentation_kit.gd" id="1_kit"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/round_start_01.mp3" id="1_p88kq"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/round_win_01.mp3" id="2_2fgvd"]
+[ext_resource type="PackedScene" path="res://assets/presentation/arenas/standard/standard_arena_wrapper.tscn" id="2_scene"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/music/arena_ambience.mp3" id="3_8es4x"]
+
+[resource]
+script = ExtResource("1_kit")
+id = &"arena.standard"
+primitive = &"ARENA"
+scene = ExtResource("2_scene")
+color_targets = PackedStringArray()
+audio_cues = {
+&"music": Array[AudioStream]([ExtResource("3_8es4x")]),
+&"round": Array[AudioStream]([ExtResource("1_p88kq")]),
+&"round.win": Array[AudioStream]([ExtResource("2_2fgvd")])
+}
+vfx_cues = PackedStringArray()

@@ -139,6 +139,50 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	await _shutdown(booted)
 
 
+func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
+	var booted := await _boot_ready()
+	var app := booted.app
+	app.start_quick_play()
+	await await_frames(1)
+	var screen := _match(booted)
+	var captions: Array[String] = []
+	screen.presenter.audio().caption_requested.connect(func(text: String, _seconds: float) -> void: captions.append(text))
+	assert_true(screen.is_intro_playing(), "a new set opens with the introduction")
+	var opening_hash := StateHasher.hash_state(screen.session.state)
+	for _i in 8:
+		screen.advance_frame(FRAME)
+	assert_eq(screen.session.state.tick, 0, "no tick runs while the intro plays")
+	assert_eq(StateHasher.hash_state(screen.session.state), opening_hash, "and nothing authoritative changed")
+	assert_eq(screen.hud.banner_text(), "WOLF", "the first fighter's card is up")
+	assert_eq(screen.hud.caption_text(), "Wold.", "and the announcer's reading, as written in content, is captioned")
+	assert_false(screen.presenter.fighter_proxy(0).visible, "gameplay proxies step aside for the showcase")
+	var frames := _run_until(screen, func() -> bool: return not screen.is_intro_playing())
+	assert_true(frames * FRAME <= SetIntroDirector.BEAT_ENDS[-1] + FRAME * 2.0, "it lasts about %.1f s" % SetIntroDirector.BEAT_ENDS[-1])
+	assert_true(captions.has("Wolf.") and captions.has("DUEL!"), "the second fighter and the call are captioned too")
+	assert_true(screen.presenter.fighter_proxy(0).visible, "the duel's own proxies are back")
+	assert_true(app.camera_rig.camera().current, "and so is the gameplay camera")
+	_run_until(screen, func() -> bool: return screen.session.state.round_number >= 2 or screen.is_finished())
+	assert_false(screen.is_intro_playing(), "a new round is never introduced again")
+	assert_true(screen.session.state.tick > 0, "the duel ran once the intro ended")
+	_run_until(screen, screen.is_finished)
+	await await_frames(1)
+	assert_true(_press(app.current_screen(), "REMATCH"), "Rematch offered")
+	await await_frames(1)
+	var rematch := _match(booted)
+	assert_false(rematch.is_intro_playing(), "a rematch is the same set, so no intro")
+	rematch.quit_to_menu()
+	await await_frames(2)
+	app.start_quick_play()
+	await await_frames(1)
+	var fresh := _match(booted)
+	assert_true(fresh.is_intro_playing(), "a new Quick Play is a new set")
+	_push(_key(KEY_SPACE, true))
+	assert_false(fresh.is_intro_playing(), "Space skips it")
+	assert_false(fresh.human.input.is_attack_held(), "and the skip never becomes an attack")
+	_push(_key(KEY_SPACE, false))
+	await _shutdown(booted)
+
+
 func test_pause_cancels_a_held_attack_and_resume_never_catches_up() -> void:
 	var booted := await _boot_ready()
 	booted.app.start_quick_play()

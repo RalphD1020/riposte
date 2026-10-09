@@ -1,0 +1,36 @@
+{
+  "asset_id": "weapon.bastard_sword.training",
+  "kind": "weapon",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.144,
+      -1.22,
+      -0.03
+    ],
+    "max": [
+      0.144,
+      0.0285,
+      0.0243
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "GripDominant",
+    "GripOffhand",
+    "Tip",
+    "TrailEnd",
+    "TrailStart",
+    "WeaponRoot"
+  ],
+  "material_slots": [
+    "bronze_training",
+    "leather_training",
+    "metal",
+    "spine_iron_training",
+    "steel_training"
+  ],
+  "triangle_count": 206,
+  "color_targets": []
+}

@@ -67,6 +67,11 @@ apps/web/AGENTS.md
 tmp/
 *.tgz
 
+# Blender autosave/backups (sources are art-src/blender/*.blend)
+*.blend1
+*.blend@
+__pycache__/
+
 # Godot generated / import cache
 game/.godot/
 **/.godot/export_credentials.cfg

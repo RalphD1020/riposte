@@ -158,12 +158,31 @@ func test_a_weapon_must_state_its_mass() -> void:
 	## they stay wieldable, so a cubic rule would invent a crowbar: the
 	## catalog requires the mass to be stated alongside the length.
 	var long_sword := WeaponCatalog.bastard_sword_at(1.4, PhysicalBaseline.SWORD_MASS_KG * 1.15)
-	assert_near(long_sword.length(), PhysicalBaseline.SWORD_LENGTH_M * 1.4, 1e-9, "geometry came from the length scale")
-	assert_near(long_sword.blade_length(), PhysicalBaseline.SWORD_BLADE_M * 1.4, 1e-9, "blade included")
+	assert_near(long_sword.blade_length(), PhysicalBaseline.SWORD_BLADE_M * 1.4, 1e-9, "the blade came from the length scale")
+	assert_near(long_sword.length(), PhysicalBaseline.GRIP_RADIUS_M + PhysicalBaseline.SWORD_BLADE_M * 1.4, 1e-9, "held at the baseline grip, so reach is grip plus blade")
 	assert_near(long_sword.mass, PhysicalBaseline.SWORD_MASS_KG * 1.15, 1e-9, "and mass came from the author, not the length")
 	assert_true(long_sword.mass < PhysicalBaseline.volumetric_mass(PhysicalBaseline.SWORD_MASS_KG, 1.4), "a longer blade need not be a cubically heavier one")
 	assert_true(long_sword.moment_of_inertia() > WeaponCatalog.bastard_sword().moment_of_inertia() * 1.9, "yet reach is still expensive, because length is squared")
 	assert_true(long_sword.is_valid(), "and it is a legal weapon")
+
+
+func test_reach_is_the_wielders_grip_plus_the_blade() -> void:
+	## Grip belongs to the fighter: the same sword in longer arms reaches
+	## further, and nothing about the sword itself changed.
+	var base := FighterCatalog.duelist()
+	var long_arms := FighterCatalog.duelist_at(1.2)
+	assert_near(base.grip_radius, PhysicalBaseline.GRIP_RADIUS_M, 1e-12, "precondition: the duelist holds at the baseline grip")
+	assert_true(long_arms.grip_radius > base.grip_radius, "precondition: a bigger duelist has a longer grip")
+	var held := WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, base.grip_radius)
+	var held_long := WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, long_arms.grip_radius)
+	assert_eq(held.length(), PhysicalBaseline.SWORD_LENGTH_M, "the baseline duelist's reach is exactly the baseline sword length")
+	assert_near(held_long.blade_length(), held.blade_length(), 1e-12, "the blade is the same blade")
+	assert_near(held_long.length() - held.length(), long_arms.grip_radius - base.grip_radius, 1e-12, "only the grip added reach")
+	var rules := StandardDuelRules.create()
+	assert_eq(rules.weapon.hilt_radius, rules.fighter.grip_radius, "standard rules mount the sword at the duelist's grip")
+	assert_true(rules.is_valid(), "precondition: and validate")
+	rules.weapon = held_long
+	assert_false(rules.is_valid(), "a weapon mounted for a different grip is refused")
 
 
 # ── FIGHTER-SCALING ────────────────────────────────────────────────────────

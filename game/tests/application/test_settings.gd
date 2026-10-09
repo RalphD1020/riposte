@@ -114,6 +114,17 @@ func test_audio_buses_follow_volumes() -> void:
 	assert_true(sfx > 0 and music > 0, "default_bus_layout.tres defines Music and SFX before anything runs")
 	assert_eq(AudioServer.get_bus_send(sfx), AudioBuses.MASTER, "SFX sends to Master")
 	assert_eq(AudioServer.get_bus_send(music), AudioBuses.MASTER, "Music sends to Master")
+	for bus in AudioBuses.ALL:
+		assert_true(AudioServer.get_bus_index(bus) >= 0, "the layout defines %s" % bus)
+	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.COMBAT)), AudioBuses.SFX, "Combat is part of effects")
+	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.UI)), AudioBuses.SFX, "and so is UI")
+	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.VOICE)), AudioBuses.MASTER, "Voice has its own fader beside them")
+	var voiced := PlayerSettings.new()
+	voiced.voice_volume = 0.0
+	voiced.apply_audio()
+	assert_true(AudioServer.is_bus_mute(AudioServer.get_bus_index(AudioBuses.VOICE)), "announcer volume reaches the Voice bus")
+	voiced.voice_volume = 1.0
+	voiced.apply_audio()
 	var settings := PlayerSettings.new()
 	settings.sfx_volume = 0.0
 	settings.apply_audio()

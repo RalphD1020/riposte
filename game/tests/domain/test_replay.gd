@@ -55,6 +55,22 @@ func test_record_survives_json() -> void:
 	assert_true(ReplayRecord.from_dictionary({"format": 1, "commands_0": [1, 2, 3], "commands_1": []}) == null, "malformed streams rejected")
 
 
+## Pinned final hashes. Presentation work of any size must leave these alone;
+## only a deliberate rules change (with its `DuelRules.version` bump) may
+## re-record them.
+func test_golden_final_hashes_are_pinned() -> void:
+	var golden := {
+		3: "bc92ec69a843b4e7a974cc6d4e5381aab92975e6e64c4dd19f2d6384df6890c5",
+		5: "4d97fb2d664a6b4872d7fcd0fe88054353f25d67c806f1e317e74bc0c0f23680",
+		9: "39ed30e06aaf643d3f0b72abd17ade3d743afb8039b5bffdb1f7b6ae5e0ae48d",
+		17: "c7a48051ee32d13e48ed630b0682ce49a53923bb3cbfd04ade9e3843efc46a4c",
+	}
+	for seed_value: int in golden:
+		var runner := _played(seed_value)
+		assert_true(runner.count(DuelEventTypes.ATTACK_RELEASED) > 10, "precondition: seed %d fought" % seed_value)
+		assert_eq(runner.record.final_hash, str(golden[seed_value]), "seed %d final hash is unchanged" % seed_value)
+
+
 func test_hash_sees_the_smallest_change() -> void:
 	var state := DuelFixture.state(DuelFixture.rules())
 	var before := StateHasher.hash_state(state)

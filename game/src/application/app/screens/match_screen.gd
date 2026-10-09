@@ -23,6 +23,9 @@ var touch: TouchControls
 var pause_overlay: PauseOverlay
 var debug_overlay: DebugOverlay
 var tutorial: TutorialTracker
+## The once-per-set introduction, while it plays. The clock is stopped for
+## its whole length, so no tick runs and nothing authoritative can differ.
+var intro: SetIntroDirector
 var _user_paused: bool = false
 var _finished: bool = false
 var _touch_layout: bool = false
@@ -41,7 +44,9 @@ func _ready() -> void:
 	var kits: DuelKits = null
 	if config != null:
 		session = MatchComposer.compose(config, human, app.telemetry)
-		kits = DuelKits.resolve(app.kit_catalog, config.rules)
+		kits = DuelKits.resolve(app.kit_catalog, config.rules, app.fighter_skins(), app.weapon_skins())
+		if kits.is_complete():
+			kits.match_loadout = RiposteKits.match_loadout(kits.arena)
 	if session == null or not kits.is_complete():
 		push_error("MatchScreen: cannot compose the match (invalid rules or missing presentation kits)")
 		session = null
@@ -54,8 +59,17 @@ func _ready() -> void:
 	app.camera_rig.look_from(session.state.fighter(config.human_slot).side)
 	presenter = MatchPresenter.create(kits, options, app.camera_rig, config.rules.platform_radius, config.rules.edge_warning_inset, SnapshotProjector.project(session.state, config.rules))
 	presenter.hitstop_requested.connect(driver.hold)
+	presenter.slow_motion_requested.connect(driver.slow_motion)
 	app.presentation_mount.add_child(presenter)
 	_build_ui(config)
+	hud.reduced_motion = options.reduced_motion
+	if options.captions:
+		presenter.audio().caption_requested.connect(hud.show_caption)
+	if app.consume_set_intro():
+		intro = presenter.create_intro(app.camera_rig.camera())
+		intro.card_requested.connect(hud.show_card)
+		intro.finished.connect(_on_intro_finished)
+		_sync_clock()
 	if config.mode == MatchConfig.Mode.TRAINING:
 		tutorial = TutorialTracker.create(config.human_slot)
 		_show_tutorial_step()
@@ -85,6 +99,8 @@ func _process(delta: float) -> void:
 func advance_frame(delta: float) -> void:
 	if session == null or presenter == null:
 		return
+	if is_intro_playing() and not _user_paused:
+		intro.advance(delta)
 	if not driver.paused:
 		var keys := InputActions.move_vector()
 		human.input.set_key_axis(keys.x, keys.y)
@@ -104,6 +120,20 @@ func is_paused() -> bool:
 
 func is_finished() -> bool:
 	return _finished
+
+
+func is_intro_playing() -> bool:
+	return intro != null and is_instance_valid(intro) and not intro.is_done()
+
+
+func skip_intro() -> void:
+	if is_intro_playing():
+		intro.finish()
+
+
+func _on_intro_finished() -> void:
+	intro = null
+	_sync_clock()
 
 
 func pause() -> void:
@@ -138,6 +168,12 @@ func relayout() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if session == null:
+		return
+	var tapped := event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed
+	if is_intro_playing() and (tapped or event.is_action_pressed(InputActions.PAUSE) or event.is_action_pressed(InputActions.ATTACK)):
+		## Any deliberate press skips the intro; it never starts an attack.
+		get_viewport().set_input_as_handled()
+		skip_intro()
 		return
 	if event.is_action_pressed(InputActions.PAUSE):
 		get_viewport().set_input_as_handled()
@@ -198,7 +234,7 @@ func _on_phase_transition(_from: MatchPhase.Id, _to: MatchPhase.Id) -> void:
 ## Stopped by the user or by the rotate prompt. Resuming drops the backlog
 ## so a long pause never fast-forwards the duel.
 func _sync_clock() -> void:
-	var stopped := _user_paused
+	var stopped := _user_paused or is_intro_playing()
 	if stopped and not driver.paused:
 		human.input.cancel_all()
 	if driver.paused and not stopped:

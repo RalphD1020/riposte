@@ -14,11 +14,20 @@ var audio_requests: Array[AudioCueRequest] = []
 var vfx_requests: Array[VfxRequest] = []
 var fighter_requests: Array[FighterCueRequest] = []
 var weapon_requests: Array[WeaponCueRequest] = []
+var slow_motion_requests: Array[SlowMotionRequest] = []
+## Killing blows only: one per fighter the tick left not alive.
+var death_requests: Array[DeathPresentationRequest] = []
+## Ring-outs: one per fighter that crossed the edge this tick.
+var fall_requests: Array[FallPresentationRequest] = []
+## Swords leaving the hands: one per killing blow or ring-out this tick.
+var weapon_drop_requests: Array[WeaponDropRequest] = []
 
 
 func has_requests() -> bool:
 	return (
 		camera_requests.size() > 0 or hitstop_requests.size() > 0 or
 		audio_requests.size() > 0 or vfx_requests.size() > 0 or
-		fighter_requests.size() > 0 or weapon_requests.size() > 0
+		fighter_requests.size() > 0 or weapon_requests.size() > 0 or
+		slow_motion_requests.size() > 0 or death_requests.size() > 0 or
+		fall_requests.size() > 0 or weapon_drop_requests.size() > 0
 	)

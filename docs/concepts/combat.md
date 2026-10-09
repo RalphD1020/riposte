@@ -115,6 +115,10 @@ Calibration order matters, because it is the only order in which the numbers mea
 - **Phases** (`CombatPhase`): `NEUTRAL → CHARGING → LAUNCH → ACTIVE_EARLY/THREAT/LATE → OVERSWING → RECOVERY`, plus `BIND`, `STAGGER`, `DEAD`.
 - **Cancel**: a canceled input drops a charge into a short recovery, never an attack.
 
+**Recovery length is physical, and that is the skill.** The `RECOVERY` phase is not a fixed cooldown: it is derived from how the swing actually ended — overswing past the target angle (`recovery_overswing_ticks_per_rad`), how far the body was displaced (`recovery_displacement_ticks_per_speed`), facing error off the opponent (`recovery_facing_ticks_per_rad`), and how off-balance the stance is (`recovery_balance_ticks`), on top of `recovery_base_ticks` and under `recovery_max_ticks`. A measured cut that finishes square, balanced, and on-line recovers fastest; a wild haymaker that overswings and spins the body off its base is punished with a long, exposed finish. This is Riposte's depth analogue to a fighting-game tech like L-cancelling — but it has **no button and no cancel input**: the player earns the short recovery by committing to a well-balanced strike, so the reward is in the physics, not in a timing trick layered on top of it. Presentation reads `recovery_remaining01` to carry the finish pose; it never shortens the recovery.
+
+**Hitstop never freezes the player's intention.** During a hitstop hold the fixed-tick driver stops feeding ticks (wall-clock only, HITSTOP-001), but the application keeps polling held movement every display frame, so a direction or charge the player changes mid-freeze is already in effect when ticks resume — the motor acts on the current intention, not a stale one. Hitstop does not buffer an _attack_ into execution; it only lets the standing movement intention stay live, so the freeze reads as weight rather than as a dropped input.
+
 ## Charge is earned displacement (COMBAT-004)
 
 Charge is not a timer. It is the outward travel a hold actually generated, measured past a baseline of `max(guard_angle, |hold_start_angle|)`:

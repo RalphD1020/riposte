@@ -1,0 +1,36 @@
+{
+  "asset_id": "arena.standard",
+  "kind": "arena",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -10.6234,
+      -11.3611,
+      -3.7072
+    ],
+    "max": [
+      10.5132,
+      10.21,
+      3.8
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "ArenaRoot",
+    "SpawnNorth",
+    "SpawnSouth"
+  ],
+  "material_slots": [
+    "banner_cloth",
+    "ember",
+    "gold_trim",
+    "metal",
+    "stone_cliff",
+    "stone_edge",
+    "stone_floor",
+    "stone_pillar"
+  ],
+  "triangle_count": 2604,
+  "color_targets": []
+}

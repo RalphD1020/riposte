@@ -15,11 +15,15 @@ extends RefCounted
 ## See also: /docs/concepts/presentation.md
 
 const MAX_CATCH_UP_TICKS := 4
+## A slow-motion window this close to spent is spent (float crumbs).
+const SLOW_EPSILON := 1e-9
 
 var tick_seconds: float = SimulationTimebase.TICK_SECONDS
 var paused: bool = false
 var _accumulator: float = 0.0
 var _hold: float = 0.0
+var _slow_scale: float = 1.0
+var _slow_left: float = 0.0
 
 
 func consume(delta_seconds: float) -> int:
@@ -30,6 +34,14 @@ func consume(delta_seconds: float) -> int:
 		var used := minf(_hold, remaining)
 		_hold -= used
 		remaining -= used
+	if _slow_left > 0.0 and remaining > 0.0:
+		## Wall-clock seconds spent in slow motion feed ticks at the reduced
+		## rate; any part of this frame past the window feeds them normally.
+		var slowed := minf(_slow_left, remaining)
+		_slow_left -= slowed
+		if _slow_left < SLOW_EPSILON:
+			_slow_left = 0.0
+		remaining = slowed * _slow_scale + (remaining - slowed)
 	_accumulator += remaining
 	var steps := 0
 	while _accumulator >= tick_seconds and steps < MAX_CATCH_UP_TICKS:
@@ -47,6 +59,18 @@ func is_holding() -> bool:
 	return _hold > 0.0
 
 
+## Presentation slow motion: for `seconds` of wall-clock time, ticks are fed
+## at `time_scale` of real time. Like `hold`, it only changes *when* ticks run,
+## never what they compute (HITSTOP-001). A new request replaces the old.
+func slow_motion(time_scale: float, seconds: float) -> void:
+	_slow_scale = clampf(time_scale, 0.0, 1.0)
+	_slow_left = maxf(seconds, 0.0)
+
+
+func is_slowed() -> bool:
+	return _slow_left > 0.0
+
+
 func alpha() -> float:
 	return clampf(_accumulator / tick_seconds, 0.0, 1.0)
 
@@ -55,3 +79,4 @@ func alpha() -> float:
 func clear_backlog() -> void:
 	_accumulator = 0.0
 	_hold = 0.0
+	_slow_left = 0.0

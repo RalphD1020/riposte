@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="SkinColorwayProfile" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/skin_colorway_profile.gd" id="1_cw"]
+
+[sub_resource type="StandardMaterial3D" id="fabric_alt"]
+resource_name = "fabric_training_alt"
+albedo_color = Color(0.06, 0.04, 0.02, 1)
+roughness = 0.95
+
+[sub_resource type="StandardMaterial3D" id="leather_alt"]
+resource_name = "leather_training_alt"
+albedo_color = Color(0.26, 0.17, 0.09, 1)
+roughness = 0.72
+
+[resource]
+script = ExtResource("1_cw")
+colorway_id = &"colorway.duelist.training.alternate"
+alternate_materials = {
+&"fabric": SubResource("fabric_alt"),
+&"leather": SubResource("leather_alt")
+}

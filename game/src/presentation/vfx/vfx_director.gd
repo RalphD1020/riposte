@@ -37,6 +37,12 @@ const STREAK_LIFE := 0.16
 const STREAK_WIDTH := 0.05
 const STREAK_THICKNESS := 0.02
 const STREAK_MIN_LENGTH := 0.01
+## Point strikes spray in a narrow cone, fast, along the strike axis.
+const AXIAL_SPREAD := 0.22
+const AXIAL_SPEED_MIN := 0.75
+## The lethal ring outlives an ordinary one so it reads through hitstop.
+const LETHAL_RING_LIFE := 0.36
+const LETHAL_SPARK_SPEED := 5.5
 ## Effects draw over the world, after blades (which use priorities 0–1).
 const RENDER_PRIORITY := 2
 ## Godot rejects a zero scale basis; shrink to this instead.
@@ -117,6 +123,29 @@ func streak(from: Vector3, to: Vector3, color: Color, flash_scale: float) -> voi
 	mesh.size = Vector3(STREAK_WIDTH, STREAK_THICKNESS, length)
 	var effect := _spawn(mesh, _flat(color), (from + to) * 0.5, Vector3.ZERO, STREAK_LIFE, flash_scale, 0.0)
 	effect.node.basis = Basis.looking_at(to - from, Vector3.UP) * Basis.from_scale(Vector3.ONE * flash_scale)
+
+
+## A point strike's line: a narrow, fast spray along `axis` with a streak
+## drawn out to `length`, so a poke or thrust reads as a line rather than a
+## fan.
+func axial(world: Vector3, axis: Vector3, color: Color, count: int, speed: float, length: float, flash_scale: float) -> void:
+	last_cue = PresentationKit.VFX_IMPACT
+	var along := axis.normalized() if axis.length_squared() > MIN_SCALE else Vector3.FORWARD
+	var total := maxi(1, roundi(float(count) * flash_scale))
+	for _i in total:
+		var spread := along.rotated(Vector3.UP, _random.randf_range(-AXIAL_SPREAD, AXIAL_SPREAD))
+		_spawn(_spark_mesh, _billboard(color), world, spread * speed * _random.randf_range(AXIAL_SPEED_MIN, 1.0), SPARK_LIFE, 1.0, 0.0)
+	if length > STREAK_MIN_LENGTH:
+		streak(world, world + along * length, color, flash_scale)
+
+
+## The lethal accent: a bright ring that grows past the ordinary impact ring,
+## and hot sparks thrown along the blow.
+func lethal_flash(world: Vector3, direction: Vector3, color: Color, size: float, count: int, flash_scale: float) -> void:
+	last_cue = PresentationKit.VFX_IMPACT
+	_spawn(_ring_mesh, _flat(color), world, Vector3.ZERO, LETHAL_RING_LIFE, RING_START * size * flash_scale, RING_END * size * flash_scale)
+	if count > 0:
+		sparks(world, direction if direction.length_squared() > MIN_SCALE else Vector3.FORWARD, color, count, LETHAL_SPARK_SPEED, flash_scale)
 
 
 func advance(delta: float) -> void:

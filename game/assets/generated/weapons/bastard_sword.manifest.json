@@ -1,0 +1,37 @@
+{
+  "asset_id": "weapon.bastard_sword",
+  "kind": "weapon",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.144,
+      -1.22,
+      -0.03
+    ],
+    "max": [
+      0.144,
+      0.0285,
+      0.0243
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "GripDominant",
+    "GripOffhand",
+    "Tip",
+    "TrailEnd",
+    "TrailStart",
+    "WeaponRoot"
+  ],
+  "material_slots": [
+    "bronze",
+    "inlay",
+    "leather",
+    "metal",
+    "spine_iron",
+    "steel"
+  ],
+  "triangle_count": 206,
+  "color_targets": []
+}

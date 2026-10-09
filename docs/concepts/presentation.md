@@ -3,6 +3,7 @@
 > See also: [spec/invariants.md](../../spec/invariants.md) — PRES-001, PRES-KIT-001, HITSTOP-001, UX-001, COMBAT-009
 > See also: [docs/concepts/ux.md](./ux.md), [docs/concepts/simulation.md](./simulation.md), [docs/concepts/combat.md](./combat.md)
 > See also: [docs/reference/godot.md](../reference/godot.md) — the rig and animation contract for authored scenes
+> See also: [docs/reference/assets.md](../reference/assets.md) — the Blender and ElevenLabs asset pipeline
 > Source: `game/src/presentation/`, `game/content/presentation/`
 
 Presentation turns authoritative facts into pictures, sound, and feel. It never decides them (PRES-001).
@@ -102,25 +103,89 @@ Each combatant identity has a `CombatantPresentationKit` composing a `FighterPre
 
 To replace the primitive look of an identity (e.g. a Blender model):
 
-1. Import the `.glb` and wrap it in a scene (optional `AnimationPlayer` with clips).
+1. Import the `.glb` and wrap it in a scene (optional `AnimationPlayer` with clips). The pipeline is [docs/reference/assets.md](../reference/assets.md).
 2. Author a kit `.tres` at the identity's path in `RiposteKits.AUTHORED_KIT_PATHS` (`game/content/presentation/riposte_kits.gd`) with the scene, animation clips (semantic → clip), and audio cues filled in.
-3. Nothing else changes. Authored kits load first; the factory primitive kit fills any gap. Debug builds fail closed on a missing kit; release builds use a placeholder.
+3. Nothing else changes. Authored kits load first; the factory primitive kit fills any gap — a whole identity not yet authored, or any cue or intro an authored kit leaves out, so a half-authored identity is never silent. Debug builds fail closed on a missing kit; release builds use a placeholder.
 
 Generic presentation code never names an identity (lint bans it); kits are resolved once per match (`DuelKits.resolve`).
 
 The authoritative weapon angle drives the blade visual. Character animation visually supports the sword position, never the reverse. See [docs/architecture/presentation-feedback.md](../architecture/presentation-feedback.md) for the full architecture.
+
+### Composition layers: skins, voice, intro, match loadout
+
+Cosmetic and match-wide layers sit on top of the identity kits, and every one is optional — `null` means "the base kit's look":
+
+| Layer                              | Holds                                                                     | Resolved                                     |
+| ---------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
+| `FighterSkinKit` / `WeaponSkinKit` | a replacement scene, or node → mesh (`null` hides) and material overrides | per slot, by skin id, from the catalog       |
+| `FighterVoiceKit`                  | the announcer's reading of the name, effort and hurt takes                | on the fighter kit                           |
+| `FighterIntroProfile`              | card text, spoken line and caption, the flourish clip                     | on the fighter kit                           |
+| `MatchPresentationLoadout`         | arena kit, `AnnouncerKit`, `UiThemeKit`, `VfxStyleKit`                    | once per match (`RiposteKits.match_loadout`) |
+
+`CombatantPresentationKit.of(fighter, weapon, skin, blade_skin)` refuses a skin authored for a different base kit, and an unknown skin id is the base look. Skins are chosen _after_ the rules are fixed (only the local player's slot wears the chosen one) and nothing in them can reach a definition, so reach, mass, and the state hash cannot change with a skin (PRES-RIG proves it with the Training Gear skin).
+
+## Force-scaled feedback
+
+There are no light/medium/heavy buckets. Every channel of a body strike reads one continuous `CombatFeedbackDirector.response()` of the resolver's own quality — flat at the bottom so a graze is barely there, full at the top of an ordinary strike, still growing into the devastating range — so there is no step anywhere along the ladder (PRES-FEEDBACK sweeps it). Contact _kind_ picks the shape (a slash fans, a poke or thrust draws an axial line); it never picks the size. Light and heavy body audio crossfade by damage rather than switching at a threshold.
+
+A lethal blow adds the exceptional stack: the signature accent layer, a lethal flash, one longer freeze, and presentation-only slow motion (`SlowMotionRequest` → `FixedTickDriver.slow_motion`). Like hitstop, slow motion changes only _when_ ticks run, never what they compute (HITSTOP-001). A bind holds its grind and grind sparks for as long as the snapshot says the blades are pinned. `particle_intensity` 0 drops every particle while flash, streak, sound, and pacing still mark the hit.
+
+A **killing blow** produces a `DeathPresentationRequest` — who died, the contact family (a slash cuts down, a thrust runs through), the direction the blow travelled, how hard it landed, and a deterministic key. The lock is the kill, not the stab: the director emits it **only on the blow that leaves the target not alive** (read from the post-tick snapshot), so a non-lethal poke or shallow thrust lands its contact feel and nothing more.
+
+The request goes to a `DeathPresentationController`, which hands it — once per fighter per round — to the first **backend** that can carry it out. Today that is `PrimitiveDeathBackend`. On a killing **thrust** it also holds the striker in the run-through (the forward-burst lunge, held for the kill beat) — and because it is reached only from a death request, a thrust that does not kill can never lock the striker; a killing cut leaves the striker to follow through on their own swing. The victim's collapse is chosen from the kit's `DeathPresentationProfile`. An authored fighter maps styles to clips (`style_clips`), falling back to its generic `DEATH` clip and then to the procedural collapse; the Wolf falls backward onto his back for a cut (`death`) and folds over the blade, drops to his knees, and pitches forward face-down for a run-through (`death_stab`), while the striker holds the driven lunge (`finisher_clip` → `run_through`) rather than the dash, which steps back to guard on its own. On the primitive body the same styles are procedural: a cut drops it backward, a stab pitches it forward, folding styles sink it. A one-shot clip holds its last frame for as long as its state lasts — the proxy starts a clip when the clip changes, never because the last one ended — so a dead body stays down. A **ragdoll** is a future optional backend placed ahead of the primitive, not a replacement: it is added only once the rig's `Skeleton3D` has a generated, trimmed `PhysicalBoneSimulator3D` and web/mobile profiling shows it earns its cost — until then the controller falls through to the primitive. Whatever backend runs, it lives on a presentation-only collision layer, starts from the current rendered pose rather than bind pose, and never reports back, so it cannot change a hit, a ring-out, the winner, or the replay hash. Unit tests cover the request and the orchestration (one start per death, fall-through when a backend is unavailable) against a fake backend; actual ragdoll motion is a device-QA pass, never a unit assertion.
+
+A **ring-out** is not a death and is never an immediate ragdoll. The simulation ends the round the tick a fighter crosses the edge, so authority stops moving them at the lip; the director then emits a `FallPresentationRequest` carrying the exact exit position and the horizontal momentum carried over the edge, and the proxy's fall **owns the root trajectory** from there (`root_at`: exit momentum carried forward unchanged, presentation gravity drawing the body down). A fighter shoved hard flies out; one who stepped off drops near the edge — the fall reads the knockback that caused it rather than dropping straight down at the lip. A raw ragdoll started at the ledge could flop backward or snag and visually deny that knockback, so the root always follows this trajectory; a ragdoll may later own only the limbs.
+
+A fighter out of the round **drops their sword**: the dead hand goes slack as the collapse begins (`WeaponDropRequest.DEATH_DELAY`), and over the edge the hands let go a deterministic beat after the ledge (0.15–0.35 s from the event key). A survived hit never drops it. When the hands let go, the held look is hidden — the simulation-posed pivot itself never moves — and a `DroppedWeapon3D` rigid body carries a copy of it, launched with the blade's own spin from the authoritative blade angle and speed plus the presented body's motion at that instant (still for a collapse in place, the fall trajectory over the edge), so the exit momentum is never counted twice. The arm IK eases off the empty grip, and the next round clears the floor and puts the sword back in hand. Presentation physics uses its own layers (`PresentationPhysicsLayers`): the sword collides only with the presentation floor (the platform top at the rules' radius, on either arena path), so it lands inside the edge and falls past it, and nothing authoritative is touched — Riposte's combat uses no Godot physics at all. When and how the sword drops is unit-tested; its tumble is device QA.
+
+A **parry** is given a physical deflection read whose brightness is the beat margin (`DuelEventKeys.MARGIN`, how far ahead the defender became threatening): a decisive deflection flashes a tighter ring, throws a hotter spark fan, rings a crisper and higher clash cue, and snaps the camera harder than a bare-threshold one. Riposte has no parry button and no parry bonus, so this feedback **borrows none of a hit's weight** — no hitstop, no slow motion, no damage, no stun. It only tells the eye how cleanly the simulation's deflection landed.
+
+## Authored audio
+
+A cue may hold one stream or an array of takes. The take for an event is chosen from `CombatFeedbackDirector.variant_key` (tick, actor, target), so a replay hears the same takes in the same order. `audio_layers` name cues that sound with a primary from the same event (a strong clash is transient + metal tail + low impact). Buses: Master → Music, SFX (→ Combat, UI), Voice; announcer volume and captions are player settings. Every voiced line requests a caption, even when the line is missing or muted.
+
+## Set introduction
+
+The first match of a Quick Play set opens with `SetIntroDirector` (~2.6 s): the first fighter's close-up and card, a versus beat, the second fighter, then a cut back to the gameplay camera and the duel call. Rematches and new rounds are the same set and are never introduced. The clock is stopped for the whole intro, so the first authoritative tick is identical with or without it; any deliberate press skips it and never becomes an attack. The showcase figures are display-only (`FighterShowcasePresenter`): their swords perform an authored flourish, because no collision exists during the shot. What the announcer reads is content: Wolf, introduced first, is read "Wold." (`FighterIntroProfile.spoken_override_first_slot`).
+
+## HUD and world
+
+The HUD is ornament over information: mirrored charcoal plates with gold edging and asymmetric corners, sword-point diamond pips, restrained health and stamina rules, and condition repeated as a _shape_ icon plus a word — the body in the world carries it first. Banners slash in and snap out (Reduced Motion keeps the text and drops the slash). Gold is decorative only; every text pair stays a proven `TEXT_PAIRS` combination. Menu buttons get a fast scale pulse and UI sounds through `UiFeedback`.
+
+The duel space is a lit warm-stone platform over a near-black void, with a warm key, a faint cool rim, an emissive gold warning ring, and braziers on the perimeter. The floor stays a mid stone on purpose: its luminance is where both a light and a dark combatant clear 3:1 (`WORLD_READS`), and an authored fighter's dominant clothing is validated against the same floor at export.
+
+## Authored rigs follow the sword
+
+An authored fighter scene's root carries `SwordRig3D`. At build the proxy binds it to its `SwordPivot`; every frame it passes the authoritative angle. The skeleton's stack runs animation (feet, hips, spine, head), then `KineticChainModifier3D` (the body supports the sword as a chain — chest most, spine less, hips least, head counter-rotating to the opponent — with phase-dependent effort read from the combat phase and `GuardPoseField` band), then a two-setting `TwoBoneIK3D` that locks each palm to its grip marker with elbows poled laterally and forward of the chest. PRES-RIG sweeps the whole legal arc (±135°): palms stay on the grip, no elbow inverts, the blade stays exactly where the simulation put it, and a neutral-guard case proves the elbows project out of the torso silhouette. Over an authored blade the x-ray blade becomes a faint ghost, so the sword still reads through bodies; High Contrast Weapons restores the full core.
+
+### The guard is a continuous HEMA field, not one named pose
+
+The simulation has one blade swung freely, so it has no discrete left/right guard — only a relative angle. Presentation reads that angle as a point on a **continuous field** (`GuardPoseField`), running
+
+```
+LEFT_WIND_BACK — LEFT_READY — LONGPOINT — RIGHT_READY — RIGHT_WIND_BACK
+```
+
+so a point held forward reads as **Longpoint**, a drawn-in guard reads as a ready side guard, and a cut wound back off a shoulder reads as a loaded **Mittelhut**. Mittelhut is therefore one reading on the field (the wound-back end), not the name of every neutral posture. The field never decides anything — it only tells the body how to carry the blade the physics already placed (PRES-001). The thrust corridor around centre has **hysteresis**: a near-straight blade must swing clearly off-centre (past `THRUST_LEAVE`) before the body commits to a side, and must come clearly back inside (`THRUST_ENTER`) before it lets go of Longpoint. A side change always passes through Longpoint, so the body never snaps across centre and a blade wavering around 0° never flickers.
+
+The body supports the sword as a kinetic chain (chest most, spine less, hips least, head counter-rotating to stay on the opponent), but the follow is **phase-dependent effort**, not a permanent function of the angle (`KineticChainModifier3D.effort_scale`): quiet at a held point, more loaded off the shoulder, peaking through the swing (full commit), easing in `OVERSWING`, soft in `RECOVERY`, and gone when `DEAD`. The horizontal slash reads as a **Mittelhau** — a committed middle cut, arms progressively extending toward ~150–170°, never hyperextended — and because the sword is authoritative there is no canned `right → left` clip: the blade rotates, the chain carries the body through, and the follow-through becomes the next guard.
+
+**The gameplay blade is never pitched out of plane to sell a stance.** The authoritative sword stays in its plane; a high oblique "45° guard" is read from the _body_ — hilt height, shoulder line, wrist carriage, weight — not by tilting the blade the simulation placed (any blade elevation stays a shallow read, well under ~18°). A full 45°+ blade tilt is reserved for terminal presentation (intro, victory, death), where the simulation no longer owns the pose. The feet follow locomotion and a weight shift loads the cut; the body does **not** swap which foot leads every time the sword crosses sides, and Wolf keeps his right foot slightly forward as identity. A walking **poke** stays animation-free beyond the point-forward body support; a committed **thrust** gets the procedural lunge/body-support lean (the forward burst already carries it). The guard, cut, pose-field, and effort contracts live beside the rig in `SwordRig3D`, `GuardPoseField`, and `KineticChainModifier3D`.
 
 ## Components
 
 | Component                                                                                                 | Code                                                                         |
 | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Theme (palette, sizes, fonts, styleboxes, container defaults, type variations) — the game's `globals.css` | `game/src/presentation/theme/riposte_theme.gd`                               |
-| Audio buses (Master → Music, SFX), loaded by the engine before anything plays                             | `game/default_bus_layout.tres`, `game/src/presentation/audio/audio_buses.gd` |
+| Audio buses (Master → Music, SFX → Combat/UI, Voice), loaded by the engine before anything plays          | `game/default_bus_layout.tres`, `game/src/presentation/audio/audio_buses.gd` |
+| Set introduction and display-only showcase                                                                | `game/src/presentation/intro/`                                               |
+| Authored models, rigs, and audio takes                                                                    | `game/assets/`, `art-src/blender/` ([assets](../reference/assets.md))        |
 | Kits, catalog, per-match kit set                                                                          | `game/src/presentation/kit/`                                                 |
 | MVP-0 kits, camera profile, procedural audio                                                              | `game/content/presentation/`                                                 |
 | Snapshot + projector (the only read boundary)                                                             | `game/src/presentation/snapshot/`                                            |
 | Arena axes: world = (x, 0, −y), yaw = θ + π/2                                                             | `game/src/presentation/spatial/arena_transform.gd`                           |
 | Passive fighter proxy (primitive or authored; x-ray blade) and sword trail                                | `game/src/presentation/entities/`                                            |
+| Death presentation: request → controller → backend (primitive now, ragdoll later)                         | `game/src/presentation/death/`                                               |
 | Arena scaffold (floor to `platform_radius`, warning ring at `warning_ring_radius`, edge strip, lights)    | `game/src/presentation/world/arena_scaffold.gd`                              |
 | Duel camera (fixed orientation, smooth zoom, tiny impulses)                                               | `game/src/presentation/camera/`                                              |
 | VFX (capped), audio (pooled voices; SFX + Music buses), haptics                                           | `game/src/presentation/vfx/`, `audio/`, `feedback/`                          |
@@ -135,4 +200,4 @@ The authoritative weapon angle drives the blade visual. Character animation visu
 - Styling goes through `RiposteTheme`: components pick a `theme_type_variation` (`HudPlate`, `HudStack`, `HudRow`, `HudTitleLabel`, `HudAccentLabel`, `PlayerHealthBar`, …). The only per-node style is runtime safe-area margins (`RiposteTheme.apply_insets`).
 - Blades render without depth test so the sword is always readable (combat-critical information).
 - Icons are drawn shapes (`HudIcons`, `PipRow`), never glyphs the shipped font lacks.
-- Audio: kit cues on the SFX bus; the arena kit's `music` cue loops on the Music bus while a duel is mounted.
+- Audio: combat cues on the Combat bus, round stings on SFX, menu cues on UI, the announcer on Voice; the arena kit's `music` cue loops on the Music bus while a duel is mounted.
