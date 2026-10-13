@@ -2,7 +2,9 @@ class_name WeaponDropController
 extends RefCounted
 
 ## Holds each requested sword drop until its hands let go, then releases it —
-## once per fighter per round. Pure bookkeeping on wall-clock time: no nodes and
+## once per fighter per round. Pure bookkeeping on presentation-scaled time
+## (PRES-TIME-001), so a release waits out a hitstop and slows with a lethal
+## slow motion like the collapse it belongs to: no nodes and
 ## no physics, so when and how often a sword drops is fully testable, while the
 ## tumble itself stays a device-QA concern.
 ##
@@ -24,7 +26,7 @@ func request(drop: WeaponDropRequest) -> void:
 	_remaining[drop.slot] = drop.delay
 
 
-## Advance wall-clock time; returns the drops whose hands let go this frame.
+## Advance presentation-scaled time; returns the drops whose hands let go this frame.
 func advance(delta: float) -> Array[WeaponDropRequest]:
 	var due: Array[WeaponDropRequest] = []
 	for slot: int in _pending.keys():
@@ -36,6 +38,10 @@ func advance(delta: float) -> Array[WeaponDropRequest]:
 		_pending.erase(drop.slot)
 		_remaining.erase(drop.slot)
 	return due
+
+
+func is_pending(slot: int) -> bool:
+	return _pending.has(slot)
 
 
 func has_released(slot: int) -> bool:

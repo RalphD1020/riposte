@@ -20,6 +20,51 @@ func test_every_identity_has_a_kit() -> void:
 	assert_eq(kits.weapon.id, ContentIds.WEAPON_BASTARD_SWORD, "weapon kit bound by content id")
 
 
+const WOLF_GLB := "res://assets/generated/fighters/wolf.glb"
+## Hip travel below this is noise, not a semantic move (m).
+const HIP_EPSILON := 0.01
+
+
+## The hip offset from rest that `clip` keys at `fraction` of its length, in
+## the skeleton's space (Godot: +Y up, +Z the fighter's forward), read straight
+## from the exported track.
+static func _hip_offset(skel: Skeleton3D, anim: Animation, fraction: float) -> Vector3:
+	var hips := skel.find_bone("Hips")
+	var parent := skel.get_bone_parent(hips)
+	for track in anim.get_track_count():
+		if anim.track_get_type(track) == Animation.TYPE_POSITION_3D and String(anim.track_get_path(track)).ends_with(":Hips"):
+			var local := anim.position_track_interpolate(track, anim.length * fraction) - skel.get_bone_rest(hips).origin
+			return (skel.get_bone_global_rest(parent).basis if parent >= 0 else Basis.IDENTITY) * local
+	return Vector3.ZERO
+
+
+## Semantic anchors over the exported Wolf: every translated clip moves the
+## hips the way its name says. A hip offset keyed in the wrong frame swaps
+## "sink" with "step back" — the bug that once floated every dead Wolf a metre
+## off the floor — and this reads the GLB itself, so it catches that at once.
+func test_the_wolfs_hips_move_the_way_each_clip_means() -> void:
+	var model := (load(WOLF_GLB) as PackedScene).instantiate()
+	var player := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var skeletons := model.find_children("*", "Skeleton3D", true, false)
+	assert_true(player != null and not skeletons.is_empty(), "fixture: the Wolf exports a skeleton and its clips")
+	var skel := skeletons[0] as Skeleton3D
+	assert_true(skel.find_bone("Hips") >= 0, "fixture: with a Hips bone")
+	var idle := _hip_offset(skel, player.get_animation(&"idle"), 0.5)
+	assert_true(idle.y < -HIP_EPSILON, "idle: the guard sinks the hips (%.3f)" % idle.y)
+	assert_true(absf(idle.z) < HIP_EPSILON, "idle: and does not step them back (%.3f)" % idle.z)
+	var dash := _hip_offset(skel, player.get_animation(&"dash_forward"), 0.5)
+	assert_true(dash.z > HIP_EPSILON and dash.y < idle.y, "dash_forward: hips drive forward and lower (%s)" % dash)
+	var death := _hip_offset(skel, player.get_animation(&"death"), 1.0)
+	assert_true(death.y < -0.5, "death: the hips end near the floor (%.3f)" % death.y)
+	assert_true(death.z < -HIP_EPSILON, "death: falling backward, away from the cut (%.3f)" % death.z)
+	var stab := _hip_offset(skel, player.get_animation(&"death_stab"), 1.0)
+	assert_true(stab.y < -0.5, "death_stab: the hips end near the floor (%.3f)" % stab.y)
+	assert_true(stab.z > HIP_EPSILON, "death_stab: pitched forward over the blade (%.3f)" % stab.z)
+	var lunge := _hip_offset(skel, player.get_animation(&"run_through"), 0.5)
+	assert_true(lunge.z > HIP_EPSILON, "run_through: the striker's hips advance through the lunge (%.3f)" % lunge.z)
+	model.free()
+
+
 func test_development_fails_closed_and_release_degrades() -> void:
 	var development := RiposteKits.build_catalog(true)
 	assert_true(development.resolve(&"fighter.unknown", PresentationKit.PRIMITIVE_FIGHTER) == null, "development: missing kit is null")
@@ -66,7 +111,7 @@ func test_a_scene_kit_replaces_the_primitive_and_takes_combatant_color() -> void
 	kit.scene = packed
 	kit.color_targets = PackedStringArray(["Torso"])
 	var weapon := DuelKits.resolve(RiposteKits.build_catalog(), StandardDuelRules.create()).weapon
-	var proxy := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, CombatantPresentationKit.of(kit, weapon), 0.27, 0.25, 1.22)
+	var proxy := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, CombatantPresentationKit.of(kit, weapon), 0.27, StandardDuelRules.create().combatant(0))
 	var torso := proxy.find_child("Torso", true, false) as MeshInstance3D
 	assert_true(torso != null, "authored model instanced")
 	assert_true(proxy.find_child("Body", true, false) == null, "primitive body not built")
@@ -106,18 +151,18 @@ func test_skins_dress_the_base_body_and_never_touch_definitions() -> void:
 	catalog.register_fighter_skin(skin)
 	catalog.register_fighter_skin(stranger)
 	var rules := StandardDuelRules.create()
-	var reach_before := rules.weapon.tip_radius
+	var reach_before := rules.combatant(0).weapon.tip_radius
 	var kits := DuelKits.resolve(catalog, rules, [&"skin.test", &"skin.stranger"] as Array[StringName])
 	assert_true(kits.combatant(0).fighter_skin == skin, "slot 0 wears the chosen skin")
 	assert_true(kits.combatant(1).fighter_skin == null, "a skin for another body is refused, not forced on")
 	assert_true(DuelKits.resolve(catalog, rules, [&"skin.unknown"] as Array[StringName]).combatant(0).fighter_skin == null, "an unknown skin is the base look")
 	var weapon := kits.weapon
-	var proxy := FighterPresentation3D.create(0, DuelSide.Id.LIGHT_SOUTH, kits.combatant(0), 0.27, 0.25, 1.22)
+	var proxy := FighterPresentation3D.create(0, DuelSide.Id.LIGHT_SOUTH, kits.combatant(0), 0.27, rules.combatant(0))
 	assert_false((proxy.find_child("FurCollar", true, false) as MeshInstance3D).visible, "a null mesh override hides the piece")
 	assert_true((proxy.find_child("Hair", true, false) as MeshInstance3D).mesh == short_hair, "a mesh override swaps the piece")
 	var torso := proxy.find_child("Torso", true, false) as MeshInstance3D
 	assert_true(torso.get_surface_override_material(0) == training_fabric, "a material override follows the authored material name")
-	assert_eq(rules.weapon.tip_radius, reach_before, "dressing a fighter never changes reach")
+	assert_eq(rules.combatant(0).weapon.tip_radius, reach_before, "dressing a fighter never changes reach")
 	assert_true(rules.is_valid(), "and the rules are untouched")
 	assert_true(kits.combatant(1).weapon == weapon, "both combatants hold the same weapon kit")
 	proxy.free()
@@ -141,7 +186,7 @@ func test_wolf_versus_wolf_mirror_colours_only_the_dark_body() -> void:
 	assert_true(kits.combatant(0).colorway_overrides(DuelSide.Id.LIGHT_SOUTH).is_empty(), "Light Wolf keeps its own palette")
 	assert_false(kits.combatant(1).colorway_overrides(DuelSide.Id.DARK_NORTH).is_empty(), "Dark Wolf takes the alternate palette")
 	## The Dark body actually repaints the fabric, and SideAccent still wins.
-	var dark := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, kits.combatant(1), rules.fighter.body_radius, rules.fighter.grip_radius, rules.weapon.tip_radius)
+	var dark := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, kits.combatant(1), rules.combatant(0).fighter.push_radius, rules.combatant(0))
 	var torso := dark.find_child("TorsoCore", true, false) as MeshInstance3D
 	assert_true(torso != null and torso.get_surface_override_material(0) != null, "the alternate colorway repainted the dark Wolf's fabric")
 	var accent := dark.find_child("SideAccentSash", true, false) as MeshInstance3D

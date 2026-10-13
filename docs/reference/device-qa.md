@@ -18,7 +18,7 @@ Do not re-test these by hand. APP-E2E drives real `InputEventScreenTouch` and
 
 | Claim                                                      | Proof                                                                   |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
-| The stick is duel-relative, not a compass                  | `test_touch_moves_and_attacks_through_the_same_input_path`              |
+| The stick is heading-relative, not a compass               | `test_touch_moves_and_attacks_through_the_same_input_path`              |
 | Hold charges, release swings exactly once                  | same                                                                    |
 | An OS-canceled touch drops the attack and never swings     | same                                                                    |
 | Both thumbs act in the same frames, on independent indices | `test_both_thumbs_work_at_the_same_time`                                |

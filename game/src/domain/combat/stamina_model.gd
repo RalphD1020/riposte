@@ -4,6 +4,11 @@ extends RefCounted
 ## Pure static stamina arithmetic (STAMINA-001). Every function reads tuning
 ## and returns a plain float: no allocation, no side effects, no state.
 ##
+## DEPRECATED (rules 45, STAMINA-002). Stamina no longer scales anything a
+## fighter can do — damage alone drives physical capability (CONDITION-001).
+## It is still tracked, hashed and shown until the cleanup pass removes it;
+## nothing new may consume it, and it is not to grow into a resource game here.
+##
 ## The stamina ceiling is derived from health so injury is a cause and reduced
 ## ceiling is a consequence — the ceiling is never stored in FighterState.
 ## Exertion drains stamina during motor effort; recovery restores it at rest;

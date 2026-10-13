@@ -7,28 +7,62 @@ extends RefCounted
 ## point motion, so a contact band wider than one substep of travel cannot be
 ## tunneled. The earliest substep with any contact is reported.
 ##
-## Whether a touch is a *new* contact is the `ContactPairState` lifecycle's
+## Whether a touch is a *new* contact is the `SwordContactSet` lifecycle's
 ## decision, not a cooldown counter's: blades already touching must genuinely
-## separate before they can strike again. Godot physics never decides a hit
-## (SIM-001).
+## separate before they can strike again. The manifold also records where the
+## blades touch on every substep they do, new contact or not. Godot physics
+## never decides a hit (SIM-001).
 ##
 ## Implements: /spec/invariants.md#combat-002
 ## See also: /docs/concepts/combat.md
 
-const FRAME_STRIDE := 4
+const FRAME_STRIDE := 6
+## Frame slots: body centre, sword origin (from `WeaponKinematics`), blade
+## direction.
+const CENTER_X := 0
+const CENTER_Y := 1
+const PIVOT_X := 2
+const PIVOT_Y := 3
+const BLADE_UX := 4
+const BLADE_UY := 5
+## Cap counters; the owning simulation shares its own instance.
+var diagnostics := ContactDiagnostics.new()
+var _geometry := SwordContactGeometry.new()
+## Interpolated frame per fighter (see the slots above) × 2. Reused to keep the
+## substep loop allocation-free.
+var _frame := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0])
+var _blade := BladePose.new()
+## Each attacker's blade-to-body gap at the previous substep.
+var _previous_body := PackedFloat64Array([0.0, 0.0])
+## Each attacker's re-hold line for this sweep (centre distance).
+var _body_hold := PackedFloat64Array([0.0, 0.0])
+## Each attacker's blade-to-body touch distance: the target's hurt torso plus
+## the attacker's own blade.
+var _body_touch := PackedFloat64Array([0.0, 0.0])
 
-var _contact := SegmentContact.new()
-## Interpolated frame per fighter: [x, y, blade ux, blade uy] × 2. Reused to
-## keep the substep loop allocation-free.
-var _frame := PackedFloat64Array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0])
 
-
+## Substeps so no blade point travels more than `substep_travel`: body travel,
+## the tip's arc, and the carriage's own travel along the attack track
+## (WEAPON-PATH-003), which the curved track adds on top. Fixed caps, fixed
+## order — never "until converged".
 static func substep_count(start: Array[FighterPose], finish: Array[FighterPose], rules: DuelRules) -> int:
+	return clampi(substeps_wanted(start, finish, rules), 1, rules.combat.max_substeps)
+
+
+## Substeps the motion would need with no cap. Above `max_substeps` the sweep
+## is capped (bounded work) and the overflow is counted.
+static func substeps_wanted(start: Array[FighterPose], finish: Array[FighterPose], rules: DuelRules) -> int:
 	var travel := 0.0
 	for i in 2:
+		var spec := rules.combatant(i)
 		travel += SimMath.length(finish[i].x - start[i].x, finish[i].y - start[i].y)
-		travel += rules.weapon.tip_radius * absf(SimMath.wrap_angle(finish[i].blade_angle - start[i].blade_angle))
-	return clampi(ceili(travel / rules.combat.substep_travel), 1, rules.combat.max_substeps)
+		travel += spec.weapon.tip_radius * absf(SimMath.wrap_angle(finish[i].blade_angle - start[i].blade_angle))
+		if not spec.handling.attack_path.is_fixed():
+			travel += SimMath.length(
+				(finish[i].carriage_x - finish[i].x) - (start[i].carriage_x - start[i].x),
+				(finish[i].carriage_y - finish[i].y) - (start[i].carriage_y - start[i].y)
+			)
+	return ceili(travel / rules.combat.substep_travel)
 
 
 ## Fill `report` with the earliest contacts in the sub-interval between `start`
@@ -39,43 +73,83 @@ static func substep_count(start: Array[FighterPose], finish: Array[FighterPose],
 ##
 ## `report.fraction` is relative to this sub-interval, so a chronological
 ## caller sweeping the remainder of a tick gets the earliest contact *in that
-## remainder* rather than a stale whole-tick ordering.
+## remainder* rather than a stale whole-tick ordering. `holds` allows held
+## (persistent) contacts to be reported, `bodies` the body-body contact.
 func detect(
 	state: MatchState,
 	start: Array[FighterPose],
 	finish: Array[FighterPose],
 	rules: DuelRules,
-	pair: ContactPairState,
-	report: ContactReport
+	manifold: SwordContactSet,
+	report: ContactReport,
+	holds: bool = true,
+	bodies: bool = true
 ) -> void:
 	report.clear()
-	var weapon := rules.weapon
-	var blade_touch := weapon.blade_radius * 2.0
+	## Sword↔sword is measured as a surface gap over the swords' features
+	## (blade and guard, `SwordContactGeometry`): touching is a gap of zero.
+	var blade_touch := 0.0
 	var epsilon := rules.combat.separation_epsilon
-	var body_touch := rules.fighter.body_radius + weapon.blade_radius
+	for attacker in 2:
+		_body_touch[attacker] = rules.combatant(1 - attacker).fighter.hurt_radius + rules.combatant(attacker).weapon.blade_radius
 	var can_strike: Array[bool] = [_can_contact_body(state.fighter(0)), _can_contact_body(state.fighter(1))]
-	var body_touch_body := rules.fighter.body_radius * 2.0
-	var steps := substep_count(start, finish, rules)
+	var body_touch_body := rules.combatant(0).fighter.push_radius + rules.combatant(1).fighter.push_radius
+	var wanted := substeps_wanted(start, finish, rules)
+	if wanted > rules.combat.max_substeps:
+		diagnostics.ccd_cap_hits += 1
+	var steps := clampi(wanted, 1, rules.combat.max_substeps)
+	## Gaps at the start of the interval: a persisted pair is reported on the
+	## substep its overlap passes twice the contact slop — coming back into
+	## touch, or a held contact being driven deeper (RIGID-CONTACT-001). Held
+	## contacts rest at the slop itself, so the line is well clear of where they
+	## rest and rounding never decides whether one is re-held. A pair already
+	## past it was held before this motion was carried; reporting it again
+	## every substep would only spend the contact budget.
+	##
+	## The line is also never closer than one more slop below where this sweep
+	## starts. A pair re-held mid-tick rests at the line itself, so without
+	## that a fast-turning contact's second-order drift would re-hold it on
+	## every substep; "driven deeper" means deeper than it was held.
+	var slop := rules.combat.contact_slop
+	_interpolate(start, finish, 0.0, rules)
+	var previous_blade := _blade_distance(rules)
+	_previous_body[0] = _body_gap(0, rules.combatant(0).weapon)
+	_previous_body[1] = _body_gap(1, rules.combatant(1).weapon)
+	var blade_hold := minf(blade_touch - 2.0 * slop, previous_blade - slop)
+	_body_hold[0] = minf(_body_touch[0] - 2.0 * slop, _previous_body[0] - slop)
+	_body_hold[1] = minf(_body_touch[1] - 2.0 * slop, _previous_body[1] - slop)
 	for k in range(1, steps + 1):
 		var s := float(k) / float(steps)
-		_interpolate(start, finish, s)
-		if not pair.is_bound() and pair.observe(_blade_distance(weapon), blade_touch, epsilon):
+		_interpolate(start, finish, s, rules)
+		var blade_gap := _blade_distance(rules)
+		if blade_gap <= blade_touch:
+			_record_blade_points(manifold, blade_touch)
+		var blade_retouch := blade_gap <= blade_hold and previous_blade > blade_hold
+		previous_blade = blade_gap
+		if manifold.observe(blade_gap, blade_touch, epsilon):
 			report.blade = true
-			report.blade_ax = _contact.ax
-			report.blade_ay = _contact.ay
-			report.blade_bx = _contact.bx
-			report.blade_by = _contact.by
+			report.blade_ax = _geometry.ax
+			report.blade_ay = _geometry.ay
+			report.blade_bx = _geometry.bx
+			report.blade_by = _geometry.by
+		elif holds and blade_retouch and manifold.phase != SwordContactSet.Phase.SEPARATED:
+			report.persistent = true
 		if not report.blade:
 			for attacker in 2:
-				if can_strike[attacker] and _body_hit_with_lifecycle(attacker, weapon, body_touch, epsilon, state.weapon_body_contacts[attacker], report):
+				var lifecycle := state.weapon_body_contacts[attacker]
+				var weapon := rules.combatant(attacker).weapon
+				var gap := _body_gap(attacker, weapon)
+				var body_retouch := gap <= _body_hold[attacker] and _previous_body[attacker] > _body_hold[attacker]
+				_previous_body[attacker] = gap
+				if can_strike[attacker] and _body_hit_with_lifecycle(attacker, weapon, gap, _body_touch[attacker], epsilon, lifecycle, report):
 					report.body[attacker] = true
-				elif state.weapon_body_contacts[attacker].phase == WeaponBodyContact.Phase.CONSTRAINING:
-					if _body_gap(attacker, weapon) <= body_touch:
-						report.sword_body_constraining[attacker] = true
-		if not report.blade and not report.body[0] and not report.body[1]:
-			if _body_push(body_touch_body, report):
-				report.body_push = true
-				report.body_push_persistent = state.body_contact.is_persistent_contact()
+				elif holds and body_retouch and can_strike[attacker] and lifecycle.phase == WeaponBodyContact.Phase.CONSTRAINING:
+					report.persistent = true
+		var apart := _body_distance()
+		if bodies and not report.blade and not report.body[0] and not report.body[1] and apart < body_touch_body:
+			_body_push_normal(apart, report)
+			report.body_push = true
+			report.body_push_persistent = state.body_contact.is_persistent_contact()
 		if report.any():
 			report.fraction = s
 			return
@@ -85,18 +159,20 @@ func detect(
 ## (COMBAT-010, PHYS-007). A point strike is a contact classification, never
 ## an attack state: a stationary sword on an advancing fighter is a valid
 ## source. Only DEAD and FALLING exclude detection — the blade is inert.
-##
-## BIND contacts are detected geometrically and suppressed at the consequence
-## layer (ContactResolver), not here. Combat state may change the consequence
-## of contact but must not make real geometry cease to exist.
+## Combat state may change the consequence of contact but must not make real
+## geometry cease to exist.
 static func _can_contact_body(fighter: FighterState) -> bool:
 	return fighter.weapon.phase != CombatPhase.Id.DEAD and not fighter.is_falling
 
 
 ## Normalized-lerp blade direction: per-tick rotation is small, and the result
-## stays deterministic without trigonometry.
-func _interpolate(start: Array[FighterPose], finish: Array[FighterPose], s: float) -> void:
+## stays deterministic without trigonometry. The origin follows the body on a
+## fixed path; on a moving path it is resampled at the interpolated weapon
+## angle and heading, so a curved manifold is swept along its curve, not its
+## chord (WEAPON-PATH-001).
+func _interpolate(start: Array[FighterPose], finish: Array[FighterPose], s: float, rules: DuelRules) -> void:
 	for i in 2:
+		var spec := rules.combatant(i)
 		var from := start[i]
 		var to := finish[i]
 		var ux := SimMath.mix(from.ux, to.ux, s)
@@ -109,56 +185,84 @@ func _interpolate(start: Array[FighterPose], finish: Array[FighterPose], s: floa
 			ux = to.ux
 			uy = to.uy
 		var base := i * FRAME_STRIDE
-		_frame[base] = SimMath.mix(from.x, to.x, s)
-		_frame[base + 1] = SimMath.mix(from.y, to.y, s)
-		_frame[base + 2] = ux
-		_frame[base + 3] = uy
+		var cx := SimMath.mix(from.x, to.x, s)
+		var cy := SimMath.mix(from.y, to.y, s)
+		_frame[base + CENTER_X] = cx
+		_frame[base + CENTER_Y] = cy
+		if spec.handling.attack_path.is_fixed():
+			_frame[base + PIVOT_X] = cx
+			_frame[base + PIVOT_Y] = cy
+		else:
+			var facing := from.facing + SimMath.wrap_angle(to.facing - from.facing) * s
+			WeaponKinematics.pose_at(cx, cy, facing, SimMath.mix(from.weapon_angle, to.weapon_angle, s), spec, _blade)
+			_frame[base + PIVOT_X] = _blade.origin_x
+			_frame[base + PIVOT_Y] = _blade.origin_y
+		_frame[base + BLADE_UX] = ux
+		_frame[base + BLADE_UY] = uy
 
 
-func _blade_distance(weapon: WeaponDefinition) -> float:
-	var hilt := weapon.hilt_radius
-	var tip := weapon.tip_radius
-	SimMath.closest_segments(
-		_frame[0] + _frame[2] * hilt, _frame[1] + _frame[3] * hilt,
-		_frame[0] + _frame[2] * tip, _frame[1] + _frame[3] * tip,
-		_frame[4] + _frame[6] * hilt, _frame[5] + _frame[7] * hilt,
-		_frame[4] + _frame[6] * tip, _frame[5] + _frame[7] * tip,
-		_contact
+## A point `r` down fighter `slot`'s interpolated blade.
+func _blade_x(slot: int, r: float) -> float:
+	var base := slot * FRAME_STRIDE
+	return _frame[base + PIVOT_X] + _frame[base + BLADE_UX] * r
+
+
+func _blade_y(slot: int, r: float) -> float:
+	var base := slot * FRAME_STRIDE
+	return _frame[base + PIVOT_Y] + _frame[base + BLADE_UY] * r
+
+
+## Surface gap between the two interpolated swords' nearest features.
+func _blade_distance(rules: DuelRules) -> float:
+	return _geometry.measure(
+		_frame[CENTER_X], _frame[CENTER_Y],
+		_frame[PIVOT_X], _frame[PIVOT_Y], _frame[BLADE_UX], _frame[BLADE_UY],
+		_frame[FRAME_STRIDE + PIVOT_X], _frame[FRAME_STRIDE + PIVOT_Y], _frame[FRAME_STRIDE + BLADE_UX], _frame[FRAME_STRIDE + BLADE_UY],
+		rules.combatant(0).weapon, rules.combatant(1).weapon
 	)
-	return _contact.distance
 
 
-func _body_hit(attacker: int, weapon: WeaponDefinition, body_touch: float, report: ContactReport) -> bool:
-	var a := attacker * FRAME_STRIDE
-	var d := (1 - attacker) * FRAME_STRIDE
-	var hx := _frame[a] + _frame[a + 2] * weapon.hilt_radius
-	var hy := _frame[a + 1] + _frame[a + 3] * weapon.hilt_radius
-	var tx := _frame[a] + _frame[a + 2] * weapon.tip_radius
-	var ty := _frame[a + 1] + _frame[a + 3] * weapon.tip_radius
-	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, _frame[d], _frame[d + 1])
-	var px := SimMath.mix(hx, tx, t)
-	var py := SimMath.mix(hy, ty, t)
-	if SimMath.length(_frame[d] - px, _frame[d + 1] - py) > body_touch:
-		return false
-	report.body_x[attacker] = px
-	report.body_y[attacker] = py
-	return true
+## Every touching point of the swords (from the last `_blade_distance`) as this
+## tick's manifold, in the geometry's canonical order: where it lies, the
+## features, each blade fraction (guard → point; a guard or hilt contact reads
+## 0), its place on each feature and its own normal. A later substep of the
+## same tick replaces the record.
+func _record_blade_points(manifold: SwordContactSet, touch: float) -> void:
+	manifold.begin_substep()
+	var index := 0
+	for point in _geometry.count:
+		if _geometry.point_gap[point] > touch:
+			continue
+		manifold.record_point(
+			index,
+			_geometry.point_feature_a[point] as SwordContactSet.Feature,
+			_geometry.point_feature_b[point] as SwordContactSet.Feature,
+			(_geometry.point_ax[point] + _geometry.point_bx[point]) * 0.5,
+			(_geometry.point_ay[point] + _geometry.point_by[point]) * 0.5,
+			_geometry.point_fraction_a[point],
+			_geometry.point_fraction_b[point],
+			_geometry.point_nx[point],
+			_geometry.point_ny[point],
+			_geometry.point_local_a[point],
+			_geometry.point_local_b[point]
+		)
+		index += 1
+	diagnostics.observe_manifold(manifold)
+	diagnostics.meaningful_contacts_dropped += _geometry.dropped_within(touch)
 
 
 ## Body hit gated by the weapon-body entry lifecycle (COMBAT-007).
 ## Returns true only on a new entry (OUTSIDE → ENTERED). A sword that is
 ## already inside the body volume does not re-damage.
-func _body_hit_with_lifecycle(attacker: int, weapon: WeaponDefinition, body_touch: float, epsilon: float, lifecycle: WeaponBodyContact, report: ContactReport) -> bool:
-	var gap := _body_gap(attacker, weapon)
+func _body_hit_with_lifecycle(attacker: int, weapon: WeaponDefinition, gap: float, body_touch: float, epsilon: float, lifecycle: WeaponBodyContact, report: ContactReport) -> bool:
 	if not lifecycle.observe(gap, body_touch, epsilon):
 		return false
-	var a := attacker * FRAME_STRIDE
 	var d := (1 - attacker) * FRAME_STRIDE
-	var hx := _frame[a] + _frame[a + 2] * weapon.hilt_radius
-	var hy := _frame[a + 1] + _frame[a + 3] * weapon.hilt_radius
-	var tx := _frame[a] + _frame[a + 2] * weapon.tip_radius
-	var ty := _frame[a + 1] + _frame[a + 3] * weapon.tip_radius
-	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, _frame[d], _frame[d + 1])
+	var hx := _blade_x(attacker, weapon.hilt_radius)
+	var hy := _blade_y(attacker, weapon.hilt_radius)
+	var tx := _blade_x(attacker, weapon.tip_radius)
+	var ty := _blade_y(attacker, weapon.tip_radius)
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, _frame[d + CENTER_X], _frame[d + CENTER_Y])
 	report.body_x[attacker] = SimMath.mix(hx, tx, t)
 	report.body_y[attacker] = SimMath.mix(hy, ty, t)
 	return true
@@ -166,31 +270,29 @@ func _body_hit_with_lifecycle(attacker: int, weapon: WeaponDefinition, body_touc
 
 ## Distance from attacker's blade to the defender's body center.
 func _body_gap(attacker: int, weapon: WeaponDefinition) -> float:
-	var a := attacker * FRAME_STRIDE
 	var d := (1 - attacker) * FRAME_STRIDE
-	var hx := _frame[a] + _frame[a + 2] * weapon.hilt_radius
-	var hy := _frame[a + 1] + _frame[a + 3] * weapon.hilt_radius
-	var tx := _frame[a] + _frame[a + 2] * weapon.tip_radius
-	var ty := _frame[a + 1] + _frame[a + 3] * weapon.tip_radius
-	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, _frame[d], _frame[d + 1])
+	var hx := _blade_x(attacker, weapon.hilt_radius)
+	var hy := _blade_y(attacker, weapon.hilt_radius)
+	var tx := _blade_x(attacker, weapon.tip_radius)
+	var ty := _blade_y(attacker, weapon.tip_radius)
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, _frame[d + CENTER_X], _frame[d + CENTER_Y])
 	var px := SimMath.mix(hx, tx, t)
 	var py := SimMath.mix(hy, ty, t)
-	return SimMath.length(_frame[d] - px, _frame[d + 1] - py)
+	return SimMath.length(_frame[d + CENTER_X] - px, _frame[d + CENTER_Y] - py)
 
 
-## Two fighter bodies overlap at the current interpolated position. Returns
-## true when the gap is within the combined body radius, filling the report
-## normal from fighter 0 toward fighter 1.
-func _body_push(touch: float, report: ContactReport) -> bool:
-	var dx := _frame[FRAME_STRIDE] - _frame[0]
-	var dy := _frame[FRAME_STRIDE + 1] - _frame[1]
-	var dist := SimMath.length(dx, dy)
-	if dist >= touch:
-		return false
-	if dist > SimMath.EPSILON:
-		report.body_push_nx = dx / dist
-		report.body_push_ny = dy / dist
+## Centre distance between the two fighter bodies at the current
+## interpolated position.
+func _body_distance() -> float:
+	return SimMath.length(_frame[FRAME_STRIDE + CENTER_X] - _frame[CENTER_X], _frame[FRAME_STRIDE + CENTER_Y] - _frame[CENTER_Y])
+
+
+## The body-body contact normal from fighter 0 toward fighter 1 at the current
+## interpolated position, `distance` apart.
+func _body_push_normal(distance: float, report: ContactReport) -> void:
+	if distance > SimMath.EPSILON:
+		report.body_push_nx = (_frame[FRAME_STRIDE + CENTER_X] - _frame[CENTER_X]) / distance
+		report.body_push_ny = (_frame[FRAME_STRIDE + CENTER_Y] - _frame[CENTER_Y]) / distance
 	else:
 		report.body_push_nx = 1.0
 		report.body_push_ny = 0.0
-	return true

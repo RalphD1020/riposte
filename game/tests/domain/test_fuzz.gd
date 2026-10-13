@@ -99,7 +99,7 @@ func _generate(seed_value: int, stream_id: int) -> Stream:
 			4:
 				## The same shape but too slow to count.
 				_emit(stream, rng, sx, sy, rng.next_int(1, 3), held)
-				_emit(stream, rng, 0.0, 0.0, _rules.fighter.double_tap_window_ticks + rng.next_int(1, 6), held)
+				_emit(stream, rng, 0.0, 0.0, _rules.combatant(0).fighter.double_tap_window_ticks + rng.next_int(1, 6), held)
 				_emit(stream, rng, sx, sy, rng.next_int(1, 3), held)
 			5:
 				## A hold: long enough to be a walk rather than a tap.
@@ -109,7 +109,7 @@ func _generate(seed_value: int, stream_id: int) -> Stream:
 				## and a thumb hovering in the dead band, which must latch
 				## nothing at all.
 				_emit(stream, rng, rng.next_range(-1.0, 1.0), rng.next_range(-1.0, 1.0), rng.next_int(1, 6), held)
-				var hover := 0.5 * (_rules.fighter.burst_neutral_deflection + _rules.fighter.burst_enter_deflection)
+				var hover := 0.5 * (_rules.combatant(0).fighter.burst_neutral_deflection + _rules.combatant(0).fighter.burst_enter_deflection)
 				_emit(stream, rng, sx * hover, sy * hover, rng.next_int(1, 8), held)
 			_:
 				## A roll around the stick: continuous steering that crosses
@@ -153,13 +153,20 @@ func _play(seed_value: int, left: Stream, right: Stream) -> SimRunner:
 	return runner
 
 
-## Ticks on which `slot` started a burst, as the simulation reported them.
-func _burst_ticks(runner: SimRunner, slot: int) -> PackedInt32Array:
+## Ticks before `before` on which `slot` started a burst, as the simulation
+## reported them.
+func _burst_ticks(runner: SimRunner, slot: int, before: int = 1 << 30) -> PackedInt32Array:
 	var ticks := PackedInt32Array()
 	for event in DuelFixture.of_type(runner.events, DuelEventTypes.BURST_STARTED):
-		if event.actor == slot:
+		if event.actor == slot and event.tick < before:
 			ticks.append(event.tick)
 	return ticks
+
+
+## The tick the first round ended, or past the end of the run.
+func _first_round_end(runner: SimRunner) -> int:
+	var ended := DuelFixture.of_type(runner.events, DuelEventTypes.ROUND_ENDED)
+	return ended[0].tick if not ended.is_empty() else runner.state.tick + 1
 
 
 func _burst_kinds(runner: SimRunner, slot: int) -> PackedInt32Array:
@@ -175,7 +182,7 @@ func _burst_kinds(runner: SimRunner, slot: int) -> PackedInt32Array:
 ## is the hysteresis the recognizer relies on, so the oracle has to respect it
 ## too or it would claim gestures the player never made.
 func _asked_for(stream: Stream, index: int) -> MovementGestureState.BurstKind:
-	if index < 0 or stream.deflection(index) < _rules.fighter.burst_enter_deflection:
+	if index < 0 or stream.deflection(index) < _rules.combatant(0).fighter.burst_enter_deflection:
 		return MovementGestureState.BurstKind.NONE
 	var command := PlayerCommand.create(0, stream.x[index], stream.y[index])
 	var ax := command.axis_x()
@@ -204,7 +211,7 @@ func test_no_burst_is_manufactured_without_a_deliberate_gesture() -> void:
 			for tick in _burst_ticks(runner, slot):
 				var index := tick - first
 				assert_true(
-					stream.deflection(index) >= _rules.fighter.burst_enter_deflection,
+					stream.deflection(index) >= _rules.combatant(0).fighter.burst_enter_deflection,
 					"seed %d slot %d burst on tick %d came from a clear deflection" % [seed_value, slot, tick]
 				)
 				assert_true(
@@ -219,9 +226,9 @@ func test_no_burst_is_manufactured_without_a_deliberate_gesture() -> void:
 ## window ending at `index`. Read off the generated stream, independently of
 ## anything the recognizer remembers.
 func _rested_within_window(stream: Stream, index: int) -> bool:
-	var earliest := maxi(0, index - _rules.fighter.double_tap_window_ticks)
+	var earliest := maxi(0, index - _rules.combatant(0).fighter.double_tap_window_ticks)
 	for i in range(earliest, index):
-		if stream.deflection(i) <= _rules.fighter.burst_rest_deflection:
+		if stream.deflection(i) <= _rules.combatant(0).fighter.burst_rest_deflection:
 			return true
 	return false
 
@@ -244,7 +251,7 @@ func test_bursts_never_repeat_from_a_held_intent() -> void:
 				var tick := ticks[i]
 				if previous >= 0:
 					assert_true(
-						tick - previous >= _rules.fighter.burst_ticks,
+						tick - previous >= _rules.combatant(0).fighter.burst_ticks,
 						"seed %d slot %d: bursts cannot overlap (%d then %d)" % [seed_value, slot, previous, tick]
 					)
 				previous = tick
@@ -265,37 +272,388 @@ func test_generated_streams_keep_the_duel_physical() -> void:
 	for seed_value in PackedInt32Array([13, 17, 19]):
 		var runner := _play(seed_value, _generate(seed_value, 503), _generate(seed_value, 601))
 		assert_true(runner.is_sound(), "seed %d held every invariant: %s" % [seed_value, runner.violation_summary()])
-		var touching := 2.0 * _rules.fighter.body_radius
-		var limit := _rules.platform_radius - _rules.fighter.body_radius
+		var touching := 2.0 * _rules.combatant(0).fighter.push_radius
+		## The arena is open: a centre past the platform edge is a ring-out, so
+		## a living fighter still standing has its centre on the platform.
+		var limit := _rules.platform_radius
 		for slot in 2:
 			var me := runner.state.fighter(slot)
 			assert_finite(me.speed(), "seed %d slot %d has a finite speed" % [seed_value, slot])
-			assert_true(me.speed() <= _rules.fighter.burst_speed_axial + 1e-6, "and never exceeds the burst ceiling")
-			assert_true(SimMath.length(me.x, me.y) <= limit + 1e-6 or me.is_falling or not me.is_alive(), "and stayed inside the arena or fell/died")
+			assert_true(me.speed() <= _rules.combatant(0).fighter.burst_speed_axial + 1e-6, "and never exceeds the burst ceiling")
+			assert_true(SimMath.length(me.x, me.y) <= limit + 1e-6 or me.is_falling or not me.is_alive(), "and stayed on the platform or fell/died (%.3f m from centre)" % SimMath.length(me.x, me.y))
 		assert_true(
 			DuelGeometry.distance(runner.state.fighter(0), runner.state.fighter(1)) >= touching - 1e-6,
 			"seed %d: and the bodies never merged" % seed_value
 		)
 
 
-## Neither lateral direction may be cheaper than the other. Mirroring the
-## stream asks for the same gestures the other way round, so the gesture
-## machine has to answer identically — a bias here would make one orbit
-## direction mechanically better than the other.
-func test_neither_lateral_direction_is_favoured() -> void:
+## SIM symmetry. The whole opening is mirrored — positions, velocities,
+## headings, weapon angles and rates, the latched side, and the commands —
+## and that mirror has to hold for the stream. A between-round reset plants
+## every fighter on their right; the mirror of that authored rest is the left
+## side, so the mirror sim is re-seated there before the next round.
+func test_a_mirrored_opening_stays_mirrored() -> void:
 	for seed_value in PackedInt32Array([23, 29, 31]):
-		var stream := _generate(seed_value, 701)
-		var idle := Stream.new()
-		for _i in stream.size():
-			idle.x.append(0.0)
-			idle.y.append(0.0)
-			idle.pressed.append(0)
-			idle.released.append(0)
-		var straight := _play(seed_value, stream, idle)
-		var mirrored := _play(seed_value, stream.mirrored(), idle)
-		var original := _burst_ticks(straight, 0)
-		assert_true(original.size() > 0, "precondition: seed %d produced bursts" % seed_value)
-		assert_eq(_burst_ticks(mirrored, 0), original, "seed %d earns the same bursts mirrored" % seed_value)
+		var left := _generate(seed_value, 701)
+		var right := _generate(seed_value, 809)
+		var flipped_left := left.mirrored()
+		var flipped_right := right.mirrored()
+		var straight := SimRunner.create(_rules, seed_value)
+		var mirrored := SimRunner.create(_rules, seed_value)
+		for slot in 2:
+			mirrored.state.fighter(slot).weapon.reset(_rules.combatant(0).weapon.guard_angle)
+		straight.skip_intro()
+		mirrored.skip_intro()
+		_previous_gap = 0.0
+		_stream_max_gap = 0.0
+		if not _assert_mirror(straight, mirrored, seed_value):
+			break
+		var ticks := mini(left.size(), right.size())
+		for i in ticks:
+			if straight.state.is_finished():
+				assert_true(mirrored.state.is_finished(), "seed %d: the mirror finishes on the same tick" % seed_value)
+				break
+			var tick := straight.state.tick
+			assert_eq(mirrored.state.tick, tick, "seed %d: the mirror is on the same tick" % seed_value)
+			straight.push(left.at(i, tick), right.at(i, tick))
+			mirrored.push(flipped_left.at(i, tick), flipped_right.at(i, tick))
+			_reseat_mirrored_rest(mirrored.state)
+			if not _assert_mirror(straight, mirrored, seed_value):
+				break
+		assert_true(straight.is_sound() and mirrored.is_sound(), "seed %d held every invariant on both sides" % seed_value)
+		## Part two of the oracle (the long horizon): over the whole fixed run the
+		## largest and the final mirror error stay bounded. Not a consumable
+		## allowance — a steady bias that never steps would still be caught here.
+		assert_true(_stream_max_gap <= _MIRROR_CEILING, "seed %d: the largest mirror error over the run is bounded (%s)" % [seed_value, String.num_scientific(_stream_max_gap)])
+		assert_true(_previous_gap <= _MIRROR_CEILING, "seed %d: and so is the final one (%s)" % [seed_value, String.num_scientific(_previous_gap)])
+
+
+## The oracle tells a side from chaos: the same mirrored stream, with a
+## micro-radian nudge to one side's weapon angle on one tick — far below the
+## ceiling, and far above anything chaos grows in a tick — is caught on that
+## tick, while the untouched stream up to it passes.
+func test_the_mirror_oracle_catches_a_sudden_side() -> void:
+	var seed_value := 23
+	var left := _generate(seed_value, 701)
+	var right := _generate(seed_value, 809)
+	var flipped_left := left.mirrored()
+	var flipped_right := right.mirrored()
+	var straight := SimRunner.create(_rules, seed_value)
+	var mirrored := SimRunner.create(_rules, seed_value)
+	for slot in 2:
+		mirrored.state.fighter(slot).weapon.reset(_rules.combatant(0).weapon.guard_angle)
+	straight.skip_intro()
+	mirrored.skip_intro()
+	_previous_gap = 0.0
+	var nudge_at := 120
+	var clean := true
+	var caught := ""
+	for i in nudge_at + 1:
+		var tick := straight.state.tick
+		straight.push(left.at(i, tick), right.at(i, tick))
+		mirrored.push(flipped_left.at(i, tick), flipped_right.at(i, tick))
+		if i == nudge_at:
+			mirrored.state.fighter(0).weapon.angle += 1.0e-7
+			caught = _mirror_verdict(straight, mirrored)
+		elif _mirror_verdict(straight, mirrored) != "":
+			clean = false
+	assert_true(clean, "fixture: the untouched stream is the mirror up to the nudge")
+	assert_true(caught.contains("stepped"), "the nudge is caught as a side (%s)" % caught)
+
+
+## Reflection through π is the symmetry. It is not a second SHA-256: negating
+## +0 flips the sign bit, and `atan2` reduced on +x is not bit-identical to the
+## same angle reduced on −x. SimMath promises trig within 1e-9. A favored side
+## is a gap past that, on the whole stream, not a hash that stops at the first ulp.
+##
+## Mirror the physical result, not the solver's internal decomposition. The
+## hard oracle is everything that is physics: positions and velocities, θ / θ̇,
+## φ / φ̇, the contact geometry and its identity, and each contact's residual
+## normal velocity after the solve — by the growth oracle below (relative once
+## a quantity exceeds one). How a coupled, near-redundant two-row solve *splits* an impulse
+## between its rows is numerically sensitive even when the motion it produces
+## is identical, so the per-row `Jn` / `Jt` and the warm-start record are a
+## diagnostic: printed when they disagree by more than 1e-7 relative, never a
+## failure on their own. A real asymmetry moves the motion, and the motion is
+## asserted.
+##
+## Two kinds of gap, told apart by how they grow. SimMath's 1e-9 trig error is
+## the seed; a duel is chaotic, so through held multi-point contacts that seed
+## compounds a few times per tick (measured: 1e-13 → 2e-9 over ~70 ticks of a
+## four-row lock). A favoured side does not compound — it appears: the gap
+## steps from the ulp floor to its own size in one tick. So the oracle is
+## (1) no tick may grow the float gap more than `_MIRROR_STEP` times over the
+## larger of the last tick's gap and `_MIRROR_FLOOR`, and (2) the gap never
+## exceeds `_MIRROR_CEILING` (a micrometre on a metre, a microradian on a
+## radian — far below anything a player or a hit could tell apart). Every
+## discrete field — phases, counters, contact identity — must match exactly.
+const _MIRROR_FLOOR := 1.0e-12
+const _MIRROR_STEP := 1.0e3
+const _MIRROR_CEILING := 1.0e-6
+
+## The largest relative float gap the last `_mirror_diff` saw, and the
+## previous tick's on the stream being checked (reset per stream).
+var _gap: float = 0.0
+var _previous_gap: float = 0.0
+## The largest gap seen on the current stream (the long-horizon bound).
+var _stream_max_gap: float = 0.0
+
+
+func _assert_mirror(straight: SimRunner, mirrored: SimRunner, seed_value: int) -> bool:
+	var verdict := _mirror_verdict(straight, mirrored)
+	_stream_max_gap = maxf(_stream_max_gap, _gap)
+	if verdict != "":
+		assert_eq(verdict, "", "seed %d tick %d is the mirror of the opening" % [seed_value, straight.state.tick])
+		return false
+	_reflect(mirrored.state)
+	var rows := _impulse_diff(straight.state, mirrored.state)
+	_reflect(mirrored.state)
+	if not rows.is_empty():
+		print("      ~ FUZZ diagnostic, seed %d tick %d: row impulses split differently, motion mirrored\n%s" % [seed_value, straight.state.tick, rows])
+	return true
+
+
+## "" when `mirrored` is still `straight`'s reflection by the oracle above;
+## else what broke it. Advances the stream's gap history.
+func _mirror_verdict(straight: SimRunner, mirrored: SimRunner) -> String:
+	_reflect(mirrored.state)
+	_gap = 0.0
+	var mismatch := _mirror_diff(straight.state, mirrored.state)
+	_reflect(mirrored.state)
+	var allowed := maxf(_previous_gap, _MIRROR_FLOOR) * _MIRROR_STEP
+	var previous := _previous_gap
+	_previous_gap = _gap
+	if not mismatch.is_empty():
+		return mismatch
+	if _gap > allowed:
+		return "the gap stepped from %s to %s in one tick — a side, not chaos" % [String.num_scientific(previous), String.num_scientific(_gap)]
+	return ""
+
+
+func _mirror_diff(straight: MatchState, reflected: MatchState) -> String:
+	var lines: PackedStringArray = PackedStringArray()
+	_diff_int(lines, "phase", straight.phase, reflected.phase)
+	_diff_int(lines, "phase_ticks", straight.phase_ticks, reflected.phase_ticks)
+	_diff_int(lines, "blade_phase", straight.blade_contact.phase, reflected.blade_contact.phase)
+	_diff_int(lines, "blade_points", straight.blade_contact.point_count, reflected.blade_contact.point_count)
+	_diff_float(lines, "blade_nx", straight.blade_contact.normal_x, reflected.blade_contact.normal_x)
+	_diff_float(lines, "blade_ny", straight.blade_contact.normal_y, reflected.blade_contact.normal_y)
+	var points := mini(straight.blade_contact.point_count, reflected.blade_contact.point_count)
+	for point in points:
+		var s := straight.blade_contact
+		var r := reflected.blade_contact
+		_diff_float(lines, "blade_px%d" % point, s.point_x[point], r.point_x[point])
+		_diff_float(lines, "blade_py%d" % point, s.point_y[point], r.point_y[point])
+		_diff_float(lines, "blade_pnx%d" % point, s.point_nx[point], r.point_nx[point])
+		_diff_float(lines, "blade_pny%d" % point, s.point_ny[point], r.point_ny[point])
+		_diff_float(lines, "blade_la%d" % point, s.local_a[point], _mirror_local(r.feature_a[point], r.local_a[point]))
+		_diff_float(lines, "blade_lb%d" % point, s.local_b[point], _mirror_local(r.feature_b[point], r.local_b[point]))
+		_diff_int(lines, "blade_fa%d" % point, s.feature_a[point], r.feature_a[point])
+		_diff_int(lines, "blade_fb%d" % point, s.feature_b[point], r.feature_b[point])
+		_diff_int(lines, "blade_id%d" % point, s.contact_id[point], r.contact_id[point])
+		_diff_int(lines, "blade_age%d" % point, s.age[point], r.age[point])
+		_diff_float(lines, "blade_vn%d" % point, _residual(straight, point), _residual(reflected, point))
+	for row in SwordContactSet.CAPACITY:
+		_diff_int(lines, "hold_active%d" % row, straight.blade_contact.hold_active[row], reflected.blade_contact.hold_active[row])
+		_diff_int(lines, "hold_feature_a%d" % row, straight.blade_contact.hold_feature_a[row], reflected.blade_contact.hold_feature_a[row])
+		_diff_int(lines, "hold_feature_b%d" % row, straight.blade_contact.hold_feature_b[row], reflected.blade_contact.hold_feature_b[row])
+		var held := reflected.blade_contact
+		_diff_float(lines, "hold_la%d" % row, straight.blade_contact.hold_local_a[row], _mirror_local(held.hold_feature_a[row], held.hold_local_a[row]))
+		_diff_float(lines, "hold_lb%d" % row, straight.blade_contact.hold_local_b[row], _mirror_local(held.hold_feature_b[row], held.hold_local_b[row]))
+	for slot in 2:
+		_diff_int(lines, "body_hold%d" % slot, int(straight.weapon_body_contacts[slot].hold_active), int(reflected.weapon_body_contacts[slot].hold_active))
+	_diff_float(lines, "body_nx", straight.body_contact.last_constraint_normal_x, reflected.body_contact.last_constraint_normal_x)
+	_diff_float(lines, "body_ny", straight.body_contact.last_constraint_normal_y, reflected.body_contact.last_constraint_normal_y)
+	for slot in 2:
+		var a := straight.fighter(slot)
+		var b := reflected.fighter(slot)
+		var prefix := "s%d." % slot
+		_diff_float(lines, prefix + "x", a.x, b.x)
+		_diff_float(lines, prefix + "y", a.y, b.y)
+		_diff_float(lines, prefix + "vx", a.vx, b.vx)
+		_diff_float(lines, prefix + "vy", a.vy, b.vy)
+		_diff_float(lines, prefix + "ax", a.ax, b.ax)
+		_diff_float(lines, prefix + "ay", a.ay, b.ay)
+		_diff_float(lines, prefix + "facing", a.facing, b.facing)
+		_diff_float(lines, prefix + "turn", a.turn_rate, b.turn_rate)
+		_diff_float(lines, prefix + "health", a.health, b.health)
+		_diff_float(lines, prefix + "stability", a.stability, b.stability)
+		_diff_float(lines, prefix + "stamina", a.stamina, b.stamina)
+		_diff_float(lines, prefix + "lethal", a.lethal_fraction, b.lethal_fraction)
+		_diff_float(lines, prefix + "support", a.support_lost_fraction, b.support_lost_fraction)
+		_diff_float(lines, prefix + "fwd_x", a.duel_forward_x, b.duel_forward_x)
+		_diff_float(lines, prefix + "fwd_y", a.duel_forward_y, b.duel_forward_y)
+		_diff_float(lines, prefix + "burst_x", a.gesture.burst_dir_x, b.gesture.burst_dir_x)
+		_diff_float(lines, prefix + "burst_y", a.gesture.burst_dir_y, b.gesture.burst_dir_y)
+		_diff_float(lines, prefix + "theta", a.weapon.angle, b.weapon.angle)
+		_diff_float(lines, prefix + "omega", a.weapon.speed, b.weapon.speed)
+		_diff_float(lines, prefix + "charge", a.weapon.charge, b.weapon.charge)
+		_diff_float(lines, prefix + "hold", a.weapon.hold_start_angle, b.weapon.hold_start_angle)
+		_diff_float(lines, prefix + "windback", a.weapon.earned_windback, b.weapon.earned_windback)
+		_diff_float(lines, prefix + "side", a.weapon.stable_side, b.weapon.stable_side)
+		_diff_float(lines, prefix + "swing_dir", a.weapon.swing_dir, b.weapon.swing_dir)
+		_diff_float(lines, prefix + "ready", a.weapon.launch_readiness, b.weapon.launch_readiness)
+		_diff_float(lines, prefix + "swing_start", a.weapon.swing_start, b.weapon.swing_start)
+		_diff_float(lines, prefix + "swing_end", a.weapon.swing_end, b.weapon.swing_end)
+		_diff_float(lines, prefix + "swing_charge", a.weapon.swing_charge, b.weapon.swing_charge)
+		_diff_float(lines, prefix + "commit", a.weapon.commitment, b.weapon.commitment)
+		_diff_float(lines, prefix + "motor_torque", a.weapon.motor_torque, b.weapon.motor_torque)
+		_diff_float(lines, prefix + "rec_commit", a.weapon.recovery_commitment, b.weapon.recovery_commitment)
+		_diff_int(lines, prefix + "stagger", a.stagger_left, b.stagger_left)
+		_diff_int(lines, prefix + "sector", a.gesture.sector, b.gesture.sector)
+		_diff_int(lines, prefix + "sector_ticks", a.gesture.sector_ticks, b.gesture.sector_ticks)
+		_diff_int(lines, prefix + "last_dir", a.gesture.last_direction, b.gesture.last_direction)
+		_diff_int(lines, prefix + "tap", a.gesture.first_tap_tick, b.gesture.first_tap_tick)
+		_diff_int(lines, prefix + "await", int(a.gesture.awaiting_second_tap), int(b.gesture.awaiting_second_tap))
+		_diff_int(lines, prefix + "neutral", int(a.gesture.returned_to_neutral), int(b.gesture.returned_to_neutral))
+		_diff_int(lines, prefix + "held", int(a.attack_held), int(b.attack_held))
+		_diff_int(lines, prefix + "buf_rel", int(a.buffered_release), int(b.buffered_release))
+		_diff_int(lines, prefix + "falling", int(a.is_falling), int(b.is_falling))
+		_diff_int(lines, prefix + "fallen", int(a.fallen.active), int(b.fallen.active))
+		_diff_int(lines, prefix + "settle", a.fallen.settle_left, b.fallen.settle_left)
+		_diff_int(lines, prefix + "over_edge", int(a.fallen.over_edge), int(b.fallen.over_edge))
+		_diff_float(lines, prefix + "fallen_yaw", 0.0, SimMath.wrap_angle(a.fallen.yaw - b.fallen.yaw))
+		_diff_float(lines, prefix + "fallen_spin", a.fallen.spin, b.fallen.spin)
+		_diff_int(lines, prefix + "attack_contacted", int(a.weapon.attack_contacted), int(b.weapon.attack_contacted))
+		_diff_int(lines, prefix + "mode", a.gesture.mode, b.gesture.mode)
+		_diff_int(lines, prefix + "burst", a.gesture.burst_kind, b.gesture.burst_kind)
+		_diff_int(lines, prefix + "burst_left", a.gesture.burst_ticks_remaining, b.gesture.burst_ticks_remaining)
+		_diff_int(lines, prefix + "rec_left", a.gesture.recovery_ticks_remaining, b.gesture.recovery_ticks_remaining)
+		_diff_int(lines, prefix + "press", a.press_tick, b.press_tick)
+		_diff_int(lines, prefix + "buf_press", a.buffered_press_tick, b.buffered_press_tick)
+		_diff_int(lines, prefix + "wphase", a.weapon.phase, b.weapon.phase)
+		_diff_int(lines, prefix + "wphase_ticks", a.weapon.phase_ticks, b.weapon.phase_ticks)
+		_diff_int(lines, prefix + "rec_ticks", a.weapon.recovery_ticks, b.weapon.recovery_ticks)
+		_diff_int(lines, prefix + "rec_left_w", a.weapon.recovery_left, b.weapon.recovery_left)
+	return "\n".join(lines)
+
+
+## The diagnostic band for a solve's internal decomposition: solved impulses
+## are the output of a small linear solve, so the geometry's trig error reaches
+## them through its conditioning (a crossbar caught against blade and handle
+## beside a guard stop amplifies it a few hundred times).
+const _MIRROR_IMPULSE_REL := 1.0e-7
+
+
+## A feature coordinate as the mirror reads it: a crossbar runs from the
+## wielder's right quillon to the left, and the mirror swaps them (s → 1 − s);
+## along the blade or the handle nothing changes.
+static func _mirror_local(feature: int, value: float) -> float:
+	return 1.0 - value if feature == SwordContactSet.Feature.GUARD else value
+
+
+## A contact's residual normal velocity after the tick (m/s, from blade b toward
+## blade a; positive = still closing) — the physical outcome of its solve.
+func _residual(state: MatchState, point: int) -> float:
+	var a := state.fighter(0)
+	var b := state.fighter(1)
+	var contact := state.blade_contact
+	var pose_a := WeaponKinematics.pose_of(a, _rules.combatant(0), BladePose.new())
+	var pose_b := WeaponKinematics.pose_of(b, _rules.combatant(0), BladePose.new())
+	return SwordContactSolver.closing_speed(a, b, pose_a, pose_b, contact.point_x[point], contact.point_y[point], contact.point_nx[point], contact.point_ny[point])
+
+
+## The solver's row decomposition and warm-start record — diagnostic only.
+func _impulse_diff(straight: MatchState, reflected: MatchState) -> String:
+	var lines: PackedStringArray = PackedStringArray()
+	for point in mini(straight.blade_contact.point_count, reflected.blade_contact.point_count):
+		_diff_impulse(lines, "blade_jn%d" % point, straight.blade_contact.normal_impulse[point], reflected.blade_contact.normal_impulse[point])
+		_diff_impulse(lines, "blade_jt%d" % point, straight.blade_contact.tangent_impulse[point], reflected.blade_contact.tangent_impulse[point])
+	for row in SwordContactSet.CAPACITY:
+		_diff_impulse(lines, "hold_jn%d" % row, straight.blade_contact.hold_normal[row], reflected.blade_contact.hold_normal[row])
+		_diff_impulse(lines, "hold_jt%d" % row, straight.blade_contact.hold_tangent[row], reflected.blade_contact.hold_tangent[row])
+	for slot in 2:
+		var held := straight.weapon_body_contacts[slot]
+		var mirror := reflected.weapon_body_contacts[slot]
+		_diff_impulse(lines, "body_hold_jn%d" % slot, held.hold_normal, mirror.hold_normal)
+		_diff_impulse(lines, "body_hold_jt%d" % slot, held.hold_tangent, mirror.hold_tangent)
+	_diff_impulse(lines, "body_jn", straight.body_contact.last_constraint_impulse, reflected.body_contact.last_constraint_impulse)
+	return "\n".join(lines)
+
+
+func _diff_impulse(lines: PackedStringArray, name: String, left: float, right: float) -> void:
+	if left == right or absf(left - right) <= _MIRROR_IMPULSE_REL * maxf(1.0, maxf(absf(left), absf(right))):
+		return
+	lines.append("%s %s vs %s" % [name, str(left), str(right)])
+
+
+func _diff_float(lines: PackedStringArray, name: String, left: float, right: float) -> void:
+	if left == right:
+		return
+	var relative := absf(left - right) / maxf(1.0, maxf(absf(left), absf(right)))
+	_gap = maxf(_gap, relative)
+	if relative > _MIRROR_CEILING:
+		lines.append("%s %s vs %s" % [name, str(left), str(right)])
+
+
+func _diff_int(lines: PackedStringArray, name: String, left: int, right: int) -> void:
+	if left != right:
+		lines.append("%s %d vs %d" % [name, left, right])
+
+
+func _reseat_mirrored_rest(state: MatchState) -> void:
+	if state.phase != MatchPhase.Id.ROUND_INTRO or state.phase_ticks != 0:
+		return
+	for slot in 2:
+		state.fighter(slot).weapon.reset(_rules.combatant(0).weapon.guard_angle)
+
+
+func _reflect(state: MatchState) -> void:
+	var blade := state.blade_contact
+	blade.normal_x = -blade.normal_x
+	for point in blade.point_x.size():
+		blade.point_x[point] = -blade.point_x[point]
+	## The tangent (−n_y, n_x) reverses under reflection, so every signed
+	## tangent impulse does too.
+	for point in SwordContactSet.CAPACITY:
+		blade.tangent_impulse[point] = -blade.tangent_impulse[point]
+		blade.hold_tangent[point] = -blade.hold_tangent[point]
+		blade.point_nx[point] = -blade.point_nx[point]
+	for lifecycle in state.weapon_body_contacts:
+		lifecycle.tangent_impulse = -lifecycle.tangent_impulse
+		lifecycle.hold_tangent = -lifecycle.hold_tangent
+	state.body_contact.last_constraint_normal_x = -state.body_contact.last_constraint_normal_x
+	for slot in 2:
+		var fighter := state.fighter(slot)
+		fighter.x = -fighter.x
+		fighter.vx = -fighter.vx
+		fighter.ax = -fighter.ax
+		fighter.turn_rate = -fighter.turn_rate
+		fighter.facing = SimMath.wrap_angle(PI - fighter.facing)
+		fighter.duel_forward_x = -fighter.duel_forward_x
+		var weapon := fighter.weapon
+		weapon.angle = -weapon.angle
+		weapon.speed = -weapon.speed
+		weapon.motor_torque = -weapon.motor_torque
+		weapon.stable_side = -weapon.stable_side
+		weapon.swing_dir = -weapon.swing_dir
+		weapon.swing_start = -weapon.swing_start
+		weapon.swing_end = -weapon.swing_end
+		weapon.hold_start_angle = -weapon.hold_start_angle
+		var gesture := fighter.gesture
+		gesture.burst_dir_x = -gesture.burst_dir_x
+		gesture.sector = _swap_direction(gesture.sector) as MovementGestureState.Direction
+		gesture.last_direction = _swap_direction(gesture.last_direction) as MovementGestureState.Direction
+		gesture.burst_kind = _swap_burst(gesture.burst_kind) as MovementGestureState.BurstKind
+		if fighter.fallen.active:
+			fighter.fallen.yaw = SimMath.wrap_angle(PI - fighter.fallen.yaw)
+			fighter.fallen.spin = -fighter.fallen.spin
+
+
+func _swap_direction(direction: int) -> int:
+	if direction == MovementGestureState.Direction.RIGHT:
+		return MovementGestureState.Direction.LEFT
+	if direction == MovementGestureState.Direction.LEFT:
+		return MovementGestureState.Direction.RIGHT
+	return direction
+
+
+func _swap_burst(kind: int) -> int:
+	if kind == MovementGestureState.BurstKind.RIGHT_STEP:
+		return MovementGestureState.BurstKind.LEFT_STEP
+	if kind == MovementGestureState.BurstKind.LEFT_STEP:
+		return MovementGestureState.BurstKind.RIGHT_STEP
+	return kind
 
 
 ## MOVE-002 end to end: the gesture is a function of the command stream, so a
@@ -322,6 +680,40 @@ func test_a_generated_duel_reproduces_exactly() -> void:
 ## from outside the simulation and are not its fault. Impossible authoritative
 ## state is the opposite: it means the simulation itself is wrong, and there
 ## is no sound way to carry on from it (COMBAT-006).
+## A contact can whip a blade away faster than the motor could ever swing it
+## (a dash into the opponent's hilt). That is physics, not corruption: a blade
+## knocked to 2.5× the motor's limit is a legal state, stays inside the
+## physically valid bound, replays bit for bit, and the motor has it back
+## under its own limit within a second. A spin no contact could produce — or
+## a non-finite one — is still a fault.
+func test_a_violent_knock_away_is_legal_bounded_and_recovers() -> void:
+	var actuated := _rules.combatant(0).weapon.swing_speed_full
+	var bound := SimulationGuardrails.physical_weapon_speed_bound(_rules.combatant(0), _rules.combatant(1))
+	var knocked := actuated * 2.5
+	assert_true(knocked < bound, "fixture: 2.5× the motor's limit is a speed a contact can legally give (%.1f < %.1f rad/s)" % [knocked, bound])
+	var hashes: Array[String] = []
+	for _replay in 2:
+		var runner := SimRunner.create(_rules, 13)
+		runner.skip_intro()
+		runner.state.fighter(0).weapon.speed = knocked
+		var settled := -1
+		for i in 120:
+			runner.idle(1)
+			if settled < 0 and absf(runner.state.fighter(0).weapon.speed) <= actuated:
+				settled = i
+		assert_true(runner.is_sound(), "the knocked blade is a legal state: %s" % runner.violation_summary())
+		assert_true(settled >= 0 and settled <= 60, "the motor has it back under its own limit within a second (%d ticks)" % settled)
+		hashes.append(str(StateHasher.hash_state(runner.state)))
+	assert_eq(hashes[0], hashes[1], "and it replays bit for bit")
+	var broken := DuelFixture.state(_rules).fighter(0)
+	broken.weapon.speed = bound * SimulationGuardrails.CAPACITY_SAFETY_FACTOR * 1.01
+	assert_false(SimulationGuardrails.validate_capacity(broken, _rules), "a spin no contact could produce is corruption")
+	broken.weapon.speed = NAN
+	assert_eq(StateInvariants.check_fighter(broken, _rules), StateInvariants.WEAPON_NOT_FINITE, "and a non-finite one is named for what it is")
+	broken.weapon.speed = actuated
+	assert_true(SimulationGuardrails.validate_capacity(broken, _rules), "while a motor-speed blade is fine")
+
+
 func test_input_problems_are_absorbed_and_broken_state_is_not() -> void:
 	var runner := SimRunner.create(_rules, 43)
 	runner.skip_intro()
@@ -355,7 +747,7 @@ func test_input_problems_are_absorbed_and_broken_state_is_not() -> void:
 	var canceled := SimRunner.create(_rules, 43)
 	canceled.skip_intro()
 	canceled.push(PlayerCommand.create(canceled.state.tick, 0.0, 0.0, true), PlayerCommand.idle(canceled.state.tick))
-	canceled.idle(_rules.weapon.tap_threshold_ticks + 4)
+	canceled.idle(_rules.combatant(0).weapon.tap_threshold_ticks + 4)
 	assert_eq(canceled.state.fighter(0).weapon.phase, CombatPhase.Id.CHARGING, "precondition: a charge is under way")
 	canceled.push(PlayerCommand.create(canceled.state.tick, 0.0, 0.0, false, false, true), PlayerCommand.idle(canceled.state.tick))
 	assert_eq(canceled.count(DuelEventTypes.ATTACK_CANCELED), 1, "the charge is cancelled")

@@ -25,6 +25,7 @@ const KEY_MUSIC := "music"
 const KEY_SFX := "sfx"
 const KEY_VOICE := "voice"
 const KEY_CAPTIONS := "captions"
+const KEY_SOUND_CAPTIONS := "sound_captions"
 const SECTION_LOOK := "look"
 const KEY_FIGHTER_SKIN := "fighter_skin"
 const KEY_WEAPON_SKIN := "weapon_skin"
@@ -38,10 +39,14 @@ const KEY_TRAIL := "trail_strength"
 const KEY_SWEET_SPOT := "sweet_spot"
 const KEY_OPACITY := "opacity"
 const KEY_HAPTICS := "haptics"
+const KEY_CHARGE_TOGGLE := "charge_toggle"
 const KEY_DIFFICULTY := "difficulty"
 const KEY_FLASH_INTENSITY := "flash_intensity"
 const KEY_PARTICLE_INTENSITY := "particle_intensity"
 const KEY_COMBAT_READABILITY := "combat_readability"
+const KEY_CONTACT_HIGHLIGHT := "contact_highlight"
+## One key per remappable action (`KeyBindings`).
+const SECTION_BINDINGS := "bindings"
 
 enum ControlOpacity { LOW, MEDIUM, HIGH }
 enum TrailStrength { OFF, SUBTLE, FULL }
@@ -62,6 +67,8 @@ var sfx_volume: float = 1.0
 var voice_volume: float = 1.0
 ## Announcer captions. On by default: the intro must read with sound off.
 var captions: bool = true
+## Combat sounds as on-screen text (`SoundCaptions`). Off by default.
+var sound_captions: bool = false
 ## Cosmetic skin ids; empty is the base look. Unknown ids also resolve to it.
 var fighter_skin: String = ""
 var weapon_skin: String = ""
@@ -74,10 +81,16 @@ var screen_shake: float = 1.0
 var flash_intensity: float = 1.0
 var particle_intensity: float = 1.0
 var combat_readability: CombatReadability = CombatReadability.NORMAL
+## A ring where the swords touch (`ContactHighlight3D`). Off by default.
+var contact_highlight: bool = false
 var trail_strength: TrailStrength = TrailStrength.FULL
 var sweet_spot: SweetSpot = SweetSpot.STANDARD
 var control_opacity: ControlOpacity = ControlOpacity.MEDIUM
 var haptics: bool = true
+## Charge by pressing twice (begin, release) instead of holding: input only,
+## the same commands either way (COMBAT-READABILITY-001).
+var charge_toggle: bool = false
+var bindings := KeyBindings.new()
 var difficulty: MatchConfig.Difficulty = MatchConfig.Difficulty.MEDIUM
 var persistence_available: bool = true
 
@@ -97,11 +110,13 @@ func load_from(path: String = PATH) -> void:
 	sfx_volume = _volume(config.get_value(SECTION_AUDIO, KEY_SFX, sfx_volume), sfx_volume)
 	voice_volume = _volume(config.get_value(SECTION_AUDIO, KEY_VOICE, voice_volume), voice_volume)
 	captions = _flag(config.get_value(SECTION_AUDIO, KEY_CAPTIONS, captions), captions)
+	sound_captions = _flag(config.get_value(SECTION_AUDIO, KEY_SOUND_CAPTIONS, sound_captions), sound_captions)
 	fighter_skin = _id(config.get_value(SECTION_LOOK, KEY_FIGHTER_SKIN, fighter_skin))
 	weapon_skin = _id(config.get_value(SECTION_LOOK, KEY_WEAPON_SKIN, weapon_skin))
 	fullscreen = _flag(config.get_value(SECTION_DISPLAY, KEY_FULLSCREEN, fullscreen), fullscreen)
 	reduced_motion = _flag(config.get_value(SECTION_DISPLAY, KEY_REDUCED_MOTION, reduced_motion), reduced_motion)
 	reduced_flash = _flag(config.get_value(SECTION_DISPLAY, KEY_REDUCED_FLASH, reduced_flash), reduced_flash)
+	contact_highlight = _flag(config.get_value(SECTION_DISPLAY, KEY_CONTACT_HIGHLIGHT, contact_highlight), contact_highlight)
 	show_charge_indicator = _flag(config.get_value(SECTION_GAMEPLAY, KEY_CHARGE_INDICATOR, show_charge_indicator), show_charge_indicator)
 	high_contrast_weapons = _flag(config.get_value(SECTION_GAMEPLAY, KEY_HIGH_CONTRAST, high_contrast_weapons), high_contrast_weapons)
 	screen_shake = _shake(config.get_value(SECTION_GAMEPLAY, KEY_SCREEN_SHAKE, screen_shake))
@@ -112,6 +127,8 @@ func load_from(path: String = PATH) -> void:
 	sweet_spot = clampi(_whole(config.get_value(SECTION_GAMEPLAY, KEY_SWEET_SPOT, sweet_spot), sweet_spot), 0, SweetSpot.STRONG) as SweetSpot
 	control_opacity = clampi(_whole(config.get_value(SECTION_CONTROLS, KEY_OPACITY, control_opacity), control_opacity), 0, ControlOpacity.HIGH) as ControlOpacity
 	haptics = _flag(config.get_value(SECTION_CONTROLS, KEY_HAPTICS, haptics), haptics)
+	charge_toggle = _flag(config.get_value(SECTION_CONTROLS, KEY_CHARGE_TOGGLE, charge_toggle), charge_toggle)
+	bindings.load_from(config, SECTION_BINDINGS)
 	difficulty = clampi(_whole(config.get_value(SECTION_MATCH, KEY_DIFFICULTY, difficulty), difficulty), 0, MatchConfig.Difficulty.HARD) as MatchConfig.Difficulty
 
 
@@ -122,11 +139,13 @@ func save_to(path: String = PATH) -> bool:
 	config.set_value(SECTION_AUDIO, KEY_SFX, sfx_volume)
 	config.set_value(SECTION_AUDIO, KEY_VOICE, voice_volume)
 	config.set_value(SECTION_AUDIO, KEY_CAPTIONS, captions)
+	config.set_value(SECTION_AUDIO, KEY_SOUND_CAPTIONS, sound_captions)
 	config.set_value(SECTION_LOOK, KEY_FIGHTER_SKIN, fighter_skin)
 	config.set_value(SECTION_LOOK, KEY_WEAPON_SKIN, weapon_skin)
 	config.set_value(SECTION_DISPLAY, KEY_FULLSCREEN, fullscreen)
 	config.set_value(SECTION_DISPLAY, KEY_REDUCED_MOTION, reduced_motion)
 	config.set_value(SECTION_DISPLAY, KEY_REDUCED_FLASH, reduced_flash)
+	config.set_value(SECTION_DISPLAY, KEY_CONTACT_HIGHLIGHT, contact_highlight)
 	config.set_value(SECTION_GAMEPLAY, KEY_CHARGE_INDICATOR, show_charge_indicator)
 	config.set_value(SECTION_GAMEPLAY, KEY_HIGH_CONTRAST, high_contrast_weapons)
 	config.set_value(SECTION_GAMEPLAY, KEY_SCREEN_SHAKE, screen_shake)
@@ -137,6 +156,8 @@ func save_to(path: String = PATH) -> bool:
 	config.set_value(SECTION_GAMEPLAY, KEY_SWEET_SPOT, sweet_spot)
 	config.set_value(SECTION_CONTROLS, KEY_OPACITY, control_opacity)
 	config.set_value(SECTION_CONTROLS, KEY_HAPTICS, haptics)
+	config.set_value(SECTION_CONTROLS, KEY_CHARGE_TOGGLE, charge_toggle)
+	bindings.save_to(config, SECTION_BINDINGS)
 	config.set_value(SECTION_MATCH, KEY_DIFFICULTY, difficulty)
 	persistence_available = config.save(path) == OK
 	return persistence_available
@@ -152,6 +173,11 @@ func trail_value() -> float:
 
 func sweet_spot_value() -> float:
 	return SWEET_SPOT_LEVELS[sweet_spot]
+
+
+## Rebind the gameplay actions in the InputMap to the saved keys.
+func apply_bindings() -> void:
+	bindings.apply()
 
 
 ## Scale the layout's buses (default_bus_layout.tres) to the saved volumes.

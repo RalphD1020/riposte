@@ -26,13 +26,13 @@ func test_projector_copies_authoritative_facts() -> void:
 	assert_eq(row.x, 1.5, "x")
 	assert_eq(row.y, -0.5, "y")
 	assert_eq(row.health, 42.0, "health")
-	assert_eq(row.max_health, rules.fighter.max_health, "health scale")
+	assert_eq(row.max_health, rules.combatant(0).fighter.max_health, "health scale")
 	assert_eq(row.phase, CombatPhase.Id.CHARGING, "phase")
 	assert_eq(row.charge, 0.6, "charge")
 	assert_near(row.blade_angle, SimMath.wrap_angle(fighter.facing + 0.3), 1e-12, "absolute blade angle")
 	assert_eq(row.side, fighter.side, "side, so presentation can tell the ends apart")
 	assert_eq(snapshot.scores[0], 2, "score")
-	assert_eq(row.tip_radius, rules.weapon.tip_radius, "blade geometry")
+	assert_eq(row.tip_radius, rules.combatant(0).weapon.tip_radius, "blade geometry")
 	state.scores[0] = 3
 	assert_eq(snapshot.scores[0], 2, "the snapshot does not alias live state")
 
@@ -45,22 +45,24 @@ func test_the_snapshot_carries_the_swing_semantics() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)
 	var fighter := state.fighter(0)
-	ContactFixture.arm(fighter, 0.0, 0.0, 0.0, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.7, rules.weapon)
+	ContactFixture.arm(fighter, 0.0, 0.0, 0.0, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.7, rules.combatant(0).weapon)
 	fighter.weapon.launch_readiness = 0.9
 	var row := SnapshotProjector.project(state, rules).fighter(0)
-	assert_near(row.tip_speed, 12.0 * rules.weapon.tip_radius, 1e-9, "tip speed, not angular speed")
+	var tip_speed := SwingSemantics.tip_speed(fighter, rules.combatant(0))
+	assert_near(row.tip_speed, tip_speed, 1e-9, "the simulation's own tip-speed reading, never recomputed")
+	assert_true(row.tip_speed > 12.0, "tip speed, not angular speed")
 	assert_eq(row.launch_readiness, 0.9, "how well prepared the swing was at release")
 	assert_between(row.swing_progress, 0.0, 1.0, "how far through its arc the blade physically is")
 	assert_between(row.swing_potential, 0.0, 1.0, "and how dangerous this part of it is")
 	assert_true(row.swing_potential > 0.0, "a live swing at speed reads as a threat")
 	assert_between(row.exposure, 0.0, 1.0, "each fighter's own exposure, as a fraction")
 	assert_eq(row.stable_side, fighter.weapon.stable_side, "the side the blade is committed to")
-	assert_eq(row.guard_region, GuardRegion.of(fighter.weapon.angle, rules.weapon.guard_angle), "and where it sits relative to the guard")
+	assert_eq(row.guard_region, GuardRegion.of(fighter.weapon.angle, rules.combatant(0).weapon.guard_angle), "and where it sits relative to the guard")
 	assert_eq(row.burst, fighter.gesture.burst_kind, "plus any burst under way")
 	## Derived, never aliased: a later change to live state must not reach a
 	## snapshot that has already been handed to the renderer.
 	fighter.weapon.speed = 0.0
-	assert_near(row.tip_speed, 12.0 * rules.weapon.tip_radius, 1e-9, "the snapshot is a copy")
+	assert_near(row.tip_speed, tip_speed, 1e-9, "the snapshot is a copy")
 
 
 ## A blade that is not carrying a strike must read as no threat at all, or the
@@ -70,7 +72,7 @@ func test_a_charging_blade_reads_as_no_threat() -> void:
 	var state := DuelSetup.new_state(rules, 1)
 	var fighter := state.fighter(0)
 	fighter.weapon.set_phase(CombatPhase.Id.CHARGING)
-	fighter.weapon.speed = -rules.weapon.windup_speed
+	fighter.weapon.speed = -rules.combatant(0).weapon.windup_speed
 	fighter.weapon.charge = 0.5
 	var row := SnapshotProjector.project(state, rules).fighter(0)
 	assert_true(row.tip_speed > 0.0, "precondition: the blade really is moving")
@@ -97,20 +99,20 @@ func test_plane_maps_to_world_with_up_away_from_camera() -> void:
 		assert_true(front.is_equal_approx(ArenaTransform.direction(heading)), "model front follows heading %s°" % str(degrees))
 
 
-func test_projector_carries_stamina_and_condition() -> void:
+func test_projector_carries_condition_and_no_stamina() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)
 	var fighter := state.fighter(0)
-	fighter.stamina = rules.fighter.base_stamina * 0.5
-	fighter.health = rules.fighter.max_health * 0.4
+	fighter.health = rules.combatant(0).fighter.max_health * 0.4
 	var row := SnapshotProjector.project(state, rules).fighter(0)
-	assert_eq(row.stamina, fighter.stamina, "stamina projected")
-	var expected_max := StaminaModel.max_for_health(fighter.health, rules.fighter.max_health, rules.fighter.base_stamina, rules.combat)
-	assert_near(row.stamina_max, expected_max, 1e-12, "stamina ceiling derived from health")
-	assert_true(row.stamina_max < rules.fighter.base_stamina, "injury reduces the ceiling")
+	## STAMINA-002: a resource with no gameplay consumer is not presented.
+	assert_false("stamina" in row, "no stamina in the snapshot")
+	assert_false("stamina01" in row, "nor a normalized stamina reading")
 	assert_eq(row.condition, FighterCondition.Id.WOUNDED, "40% health is WOUNDED")
-	assert_true(row.capability < 1.0, "50% stamina + injury degrades capability")
-	assert_true(row.capability > 0.0, "but capability never reaches zero")
+	## CONDITION-001: the three scales are the domain's own, copied, at h = 0.4.
+	assert_near(row.force_scale, 0.70 + 0.30 * 0.4, 1e-12, "force scale projected from health alone")
+	assert_near(row.speed_scale, 0.85 + 0.15 * 0.4, 1e-12, "speed scale")
+	assert_near(row.tracking_scale, 0.80 + 0.20 * 0.4, 1e-12, "tracking scale")
 
 
 func test_full_health_projects_healthy_condition() -> void:
@@ -118,9 +120,9 @@ func test_full_health_projects_healthy_condition() -> void:
 	var state := DuelSetup.new_state(rules, 1)
 	var row := SnapshotProjector.project(state, rules).fighter(0)
 	assert_eq(row.condition, FighterCondition.Id.HEALTHY, "full health is HEALTHY")
-	assert_eq(row.stamina, rules.fighter.base_stamina, "full stamina at setup")
-	assert_eq(row.stamina_max, rules.fighter.base_stamina, "ceiling equals base at full health")
-	assert_eq(row.capability, 1.0, "no degradation at full resources")
+	assert_eq(row.force_scale, 1.0, "no degradation at full health")
+	assert_eq(row.speed_scale, 1.0, "none in speed")
+	assert_eq(row.tracking_scale, 1.0, "none in tracking")
 
 
 ## ──────────────────── COMBAT READABILITY STATE ─────────────────────────────
@@ -133,7 +135,6 @@ func test_readability_fields_are_bounded_and_pure() -> void:
 	var row := SnapshotProjector.project(state, rules).fighter(0)
 	assert_eq(StateHasher.hash_state(state), before, "projector does not mutate state")
 	assert_between(row.recovery_remaining01, 0.0, 1.0, "recovery_remaining01 bounded")
-	assert_between(row.stamina01, 0.0, 1.0, "stamina01 bounded")
 	assert_between(row.point_threat01, 0.0, 1.0, "point_threat01 bounded")
 	assert_between(row.movement_speed01, 0.0, 1.0, "movement_speed01 bounded")
 	assert_between(row.burst01, 0.0, 1.0, "burst01 bounded")
@@ -162,20 +163,10 @@ func test_readability_recovery_reads_phase() -> void:
 	assert_eq(overswing.recovery_remaining01, 1.0, "overswing reads maximum remaining")
 
 
-func test_readability_stamina_normalized() -> void:
-	var rules := StandardDuelRules.create()
-	var state := DuelSetup.new_state(rules, 1)
-	var row := SnapshotProjector.project(state, rules).fighter(0)
-	assert_near(row.stamina01, 1.0, 1e-9, "full stamina reads 1.0")
-	state.fighter(0).stamina = 0.0
-	var empty := SnapshotProjector.project(state, rules).fighter(0)
-	assert_eq(empty.stamina01, 0.0, "empty stamina reads 0.0")
-
-
 func test_readability_movement_speed() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)
-	state.fighter(0).vx = rules.fighter.max_speed
+	state.fighter(0).vx = rules.combatant(0).fighter.max_speed
 	state.fighter(0).vy = 0.0
 	var row := SnapshotProjector.project(state, rules).fighter(0)
 	assert_near(row.movement_speed01, 1.0, 1e-6, "max speed reads 1.0")

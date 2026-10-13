@@ -3,9 +3,17 @@ extends Node
 
 ## Pooled match audio. Spatial voices for blade and body contact play on the
 ## Combat bus, flat voices for round stings on SFX, menu/HUD cues on UI, the
-## announcer on Voice, and one music voice loops the arena ambience on Music.
-## Cues come from kits; a missing cue is silent. Doppler is off: the camera
-## moves, sounds should not wobble.
+## announcer on Voice, one music voice loops the arena ambience on Music, and
+## one sting voice (victory fanfare) plays on Music beside it. Cues come from
+## kits; a missing cue is silent and never holds anything up — a voiced line
+## still asks for its caption. Doppler is off: the camera moves, sounds should
+## not wobble.
+##
+## Loop families: the one-shot paths (`play`, `play_flat`, `play_ui`,
+## `play_voice`, `play_sting`) take streams that do not loop; a looping stream
+## belongs only to a held voice with an owner that releases it (`hold_tension`
+## / `release_tension`, `hold_bind` / `release_bind`) or to `play_music`.
+## `stop_all` silences every family.
 ##
 ## Variety without nondeterminism: a cue with several takes picks one from a
 ## key the caller derives from the event (tick, actor), so a replay hears the
@@ -38,6 +46,8 @@ const TENSION_PITCH_REST := 0.85
 const TENSION_PITCH_FULL := 1.35
 const TENSION_DB_REST := -24.0
 const TENSION_DB_FULL := -7.0
+## A held scrape at level 0 is this quiet (linear gain): kept, but inaudible.
+const SCRAPE_SILENT := 0.0001
 
 var last_cue: StringName = &""
 ## Every cue started, with the stream chosen, in order. Tests read it to prove
@@ -50,8 +60,11 @@ var _ui: Array[AudioStreamPlayer] = []
 ## frames and must not be stolen by the next blade clash.
 var _tension: Array[AudioStreamPlayer3D] = []
 var _bind: Array[AudioStreamPlayer3D] = []
+## The contact each held scrape belongs to.
+var _bind_key := PackedInt32Array([0, 0])
 var _voice: AudioStreamPlayer
 var _music: AudioStreamPlayer
+var _sting: AudioStreamPlayer
 var _next_spatial: int = 0
 var _next_flat: int = 0
 var _next_ui: int = 0
@@ -68,9 +81,14 @@ func _init() -> void:
 	for _i in 2:
 		_tension.append(_spatial_voice(AudioBuses.COMBAT))
 		_bind.append(_spatial_voice(AudioBuses.COMBAT))
+	## One line and one sting at a time: a second request replaces the first
+	## rather than layering over it.
 	_voice = _flat_voice(AudioBuses.VOICE)
+	_voice.max_polyphony = 1
 	_music = _flat_voice(AudioBuses.MUSIC)
 	_music.volume_db = MUSIC_VOLUME_DB
+	_sting = _flat_voice(AudioBuses.MUSIC)
+	_sting.max_polyphony = 1
 
 
 ## Loop the kit's ambience; a kit without music stays silent. Must be called
@@ -139,18 +157,30 @@ func play_voice(stream: AudioStream, caption: String) -> bool:
 	return true
 
 
-## A flat musical/metal stinger on SFX, alongside whatever is being said.
+## A musical sting (the victory fanfare) on its own Music voice, alongside
+## whatever is being said; never stolen by the SFX pool.
 func play_sting(stream: AudioStream) -> bool:
 	if stream == null:
 		return false
-	var voice := _flat[_next_flat]
-	_next_flat = (_next_flat + 1) % _flat.size()
-	_start(voice, stream, 0.0)
+	_start(_sting, stream, 0.0)
 	return true
 
 
 func is_voice_playing() -> bool:
 	return _voice.playing
+
+
+func is_sting_playing() -> bool:
+	return _sting.playing
+
+
+## True while any voice of any family is sounding (tests, teardown checks).
+func is_any_playing() -> bool:
+	for pool: Array in [_spatial, _flat, _ui, _tension, _bind]:
+		for player: Variant in pool:
+			if player.playing:
+				return true
+	return _voice.playing or _music.playing or _sting.playing
 
 
 ## Hold or update one fighter's wind-back tension. Idempotent per frame: the
@@ -186,14 +216,20 @@ func tension_pitch(slot: int) -> float:
 	return _tension[slot].pitch_scale
 
 
-## The sustained grind of pinned blades, held on its own voice per fighter
-## pair slot for as long as the bind lasts. `pressure` in [0, 1] rides gain.
-func hold_bind(slot: int, kit: PresentationKit, world: Vector3, pressure: float, key: int) -> bool:
+## The sustained scrape of held swords, on its own voice per pair slot for as
+## long as one contact lasts (`ContactScrape`). `level` in [0, 1] is its
+## loudness — silent at 0, so a blade pressed still keeps its take without a
+## sound. A different `key` (a new contact) starts a new take; the same key
+## never re-triggers.
+func hold_bind(slot: int, kit: PresentationKit, world: Vector3, level: float, key: int) -> bool:
 	if kit == null or not kit.has_audio(PresentationKit.CUE_BIND):
 		return false
 	var voice := _bind[slot]
 	voice.position = world
-	voice.volume_db = lerpf(TENSION_DB_REST, 0.0, clampf(pressure, 0.0, 1.0))
+	voice.volume_db = linear_to_db(maxf(clampf(level, 0.0, 1.0), SCRAPE_SILENT))
+	if voice.playing and _bind_key[slot] != key:
+		voice.stop()
+	_bind_key[slot] = key
 	if not voice.playing:
 		voice.stream = kit.stream_for(PresentationKit.CUE_BIND, key)
 		voice.play()
@@ -210,12 +246,22 @@ func is_bind_held(slot: int) -> bool:
 	return _bind[slot].playing
 
 
+## The held scrape's current loudness (dB) and the contact it belongs to.
+func bind_volume_db(slot: int) -> float:
+	return _bind[slot].volume_db
+
+
+func bind_key(slot: int) -> int:
+	return _bind_key[slot]
+
+
 func stop_all() -> void:
 	for pool: Array in [_spatial, _flat, _ui, _tension, _bind]:
 		for player: Variant in pool:
 			player.stop()
 	_voice.stop()
 	_music.stop()
+	_sting.stop()
 
 
 func _start_spatial(stream: AudioStream, world: Vector3, volume_db: float, pitch: float) -> void:

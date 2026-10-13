@@ -39,14 +39,22 @@ var swing_end: float = 0.0
 ## The charge this swing was launched with. Like `launch_readiness`, read once
 ## at release and never recomputed in flight.
 var swing_charge: float = 0.0
-var swing_hit: bool = false
-var swing_contact: bool = false
+## Whether the current attack has met the opponent with a solved, positive
+## impulse — a body hit, a blade clash, a guard or hilt interception, or a
+## held contact pressing on them (WHIFF-001). Reset at release. It exists
+## only so `ATTACK_WHIFFED` is emitted exactly once, and only for a miss;
+## nothing in the simulation's physics reads it.
+var attack_contacted: bool = false
 ## Commitment K ∈ [0, 1], recomputed every tick (COMBAT §20).
 var commitment: float = 0.0
+## The torque (N·m, + toward +θ) the weapon motor actually applied last tick:
+## its effort, read back from what it did to θ̇ through the coordinate's one
+## inertia. Directional commitment reads it as drive still being committed
+## (DIRECTIONAL-COMMIT-001); nothing drives the motor from it.
+var motor_torque: float = 0.0
 var recovery_ticks: int = 0
 var recovery_left: int = 0
 var recovery_commitment: float = 0.0
-var bind_left: int = 0
 
 
 func set_phase(next: CombatPhase.Id) -> void:
@@ -70,10 +78,9 @@ func reset(resting_angle: float) -> void:
 	swing_start = resting_angle
 	swing_end = resting_angle
 	swing_charge = 0.0
-	swing_hit = false
-	swing_contact = false
+	attack_contacted = false
 	commitment = 0.0
+	motor_torque = 0.0
 	recovery_ticks = 0
 	recovery_left = 0
 	recovery_commitment = 0.0
-	bind_left = 0

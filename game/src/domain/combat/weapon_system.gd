@@ -33,8 +33,6 @@ extends RefCounted
 const PROGRESS_EARLY := 0.15
 const PROGRESS_THREAT := 0.4
 const PROGRESS_LATE := 0.8
-## Bind holds the blades still quickly.
-const BIND_DAMPING_SCALE := 4.0
 
 
 static func can_start_attack(fighter: FighterState, weapon: WeaponDefinition) -> bool:
@@ -91,19 +89,24 @@ static func cancel(fighter: FighterState, rules: DuelRules, tick: int, events: A
 	var had_attack := fighter.press_tick >= 0 or fighter.buffered_press_tick >= 0 or weapon.phase == CombatPhase.Id.CHARGING
 	fighter.clear_attack_input()
 	if weapon.phase == CombatPhase.Id.CHARGING:
+		## The wound-back blade is arrested by the brake of the charge it carried.
+		weapon.swing_charge = weapon.charge
 		_clear_charge(weapon)
-		enter_recovery(weapon, rules.weapon.recovery_base_ticks)
+		enter_recovery(weapon, rules.combat.recovery_min_ticks)
 	if had_attack:
 		events.append(DuelEvent.create(DuelEventTypes.ATTACK_CANCELED, tick, fighter.slot))
 
 
 ## Advance the weapon one tick: buffered press, tap/charge threshold, motor,
-## guard limit, phase progression, and commitment. `capability` scales the
-## weapon torque (PHYS-003). If `scratch` is provided, writes motor exertion
-## (actual torque × angular velocity work + utilization) into it.
-static func step(fighter: FighterState, opponent: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent], capability: float = 1.0, scratch: FighterTickScratch = null) -> void:
+## guard limit, phase progression, and commitment. `condition` is the
+## fighter's frozen condition this tick (CONDITION-001): its force scale
+## reduces every weapon torque, its speed scale the swing and wind-back target
+## speeds; null is the healthy identity. The blade's speed is never rescaled
+## (PHYS-003). If `scratch` is provided, writes motor exertion (actual
+## torque × angular velocity work + utilization) into it.
+static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent], condition: ConditionState = null, scratch: FighterTickScratch = null) -> void:
 	var weapon := fighter.weapon
-	var definition := rules.weapon
+	var definition := rules.spec_of(fighter).weapon
 	weapon.phase_ticks += 1
 	_promote_buffer(fighter, rules, tick, events)
 	if (
@@ -115,11 +118,15 @@ static func step(fighter: FighterState, opponent: FighterState, rules: DuelRules
 		weapon.set_phase(CombatPhase.Id.CHARGING)
 		_clear_charge(weapon)
 		events.append(DuelEvent.create(DuelEventTypes.CHARGE_STARTED, tick, fighter.slot, DuelEvent.NONE, {DuelEventKeys.DIRECTION: weapon.swing_dir}))
-	_drive_motor(weapon, definition, rules.fighter.weapon_torque_scale * capability, scratch)
+	var spec := rules.spec_of(fighter)
+	var inertia := WeaponKinematics.motor_inertia(spec, weapon.angle, scratch.motor_pose if scratch != null else null)
+	var force_scale := condition.force_scale if condition != null else 1.0
+	var speed_scale := condition.speed_scale if condition != null else 1.0
+	_drive_motor(weapon, definition, spec.fighter.weapon_torque_scale * force_scale, speed_scale, inertia, scratch)
 	if weapon.phase == CombatPhase.Id.CHARGING:
-		_accrue_windback(weapon, definition)
+		_accrue_windback(weapon, definition, speed_scale)
 	update_stable_side(weapon, definition)
-	_advance_phase(fighter, opponent, rules, tick, events)
+	_advance_phase(fighter, rules, tick, events)
 	weapon.commitment = CommitmentModel.commitment(weapon, definition)
 
 
@@ -134,44 +141,39 @@ static func stagger(fighter: FighterState, ticks: int) -> void:
 ## Kill a fighter at tick fraction `lethal_fraction`. The time is taken rather
 ## than assumed, because a trade is decided by whose blade arrived first and
 ## both blows can land inside one tick (COMBAT §58).
-static func kill(fighter: FighterState, lethal_fraction: float) -> void:
+## The fighter becomes a body (`FallenBodyState`): thrown along `fall_direction`
+## (default: backward from their facing) and lying after `settle_ticks`.
+static func kill(fighter: FighterState, lethal_fraction: float, fall_direction: float = NAN, settle_ticks: int = 0) -> void:
 	fighter.clear_attack_input()
 	_clear_charge(fighter.weapon)
 	fighter.weapon.set_phase(CombatPhase.Id.DEAD)
 	fighter.stagger_left = 0
 	fighter.gesture.reset()
 	fighter.lethal_fraction = maxf(lethal_fraction, 0.0)
+	fighter.fallen.begin(fall_direction if is_finite(fall_direction) else fighter.facing + PI, settle_ticks)
 
 
-## End a swing early (deflection, bind loss, clean body hit) into recovery.
-## Recovery is computed from what actually happened (COMBAT §56–§57).
-static func begin_recovery(fighter: FighterState, opponent: FighterState, rules: DuelRules, displacement_speed: float) -> void:
-	var weapon := fighter.weapon
-	var definition := rules.weapon
-	var overswing := maxf(0.0, (weapon.angle - weapon.swing_end) * weapon.swing_dir)
-	var facing_error := absf(DuelGeometry.facing_error(fighter, opponent))
-	var ticks := (
-		float(definition.recovery_base_ticks)
-		+ definition.recovery_commit_ticks * weapon.commitment
-		+ definition.recovery_overswing_ticks_per_rad * overswing
-		+ definition.recovery_displacement_ticks_per_speed * displacement_speed
-		+ definition.recovery_facing_ticks_per_rad * facing_error
-		+ definition.recovery_balance_ticks * (1.0 - fighter.stability)
-	)
+## End a swing into recovery — a finished overswing, or a contact that
+## arrested the cut (RECOVERY-001). There is no recovery arithmetic: the floor
+## is universal and the rest is the blade's own momentum against its brake.
+static func begin_recovery(fighter: FighterState, rules: DuelRules) -> void:
+	enter_recovery(fighter.weapon, rules.combat.recovery_min_ticks)
+
+
+## Enter recovery with a floor of `min_ticks`. It ends when the floor has
+## passed **and** the blade is under `control_speed` (`_advance_phase`), the
+## same gate for a whiff, an arrested cut and a dropped charge. The commitment
+## the blade carried in decays with that same gate (`CommitmentModel`).
+static func enter_recovery(weapon: WeaponState, min_ticks: int) -> void:
 	weapon.recovery_commitment = weapon.commitment
-	enter_recovery(weapon, clampi(roundi(ticks), 1, definition.recovery_max_ticks))
-
-
-## Fixed-length recovery (canceled charge, lost bind).
-static func enter_recovery(weapon: WeaponState, ticks: int) -> void:
-	weapon.recovery_ticks = maxi(ticks, 1)
+	weapon.recovery_ticks = maxi(min_ticks, 1)
 	weapon.recovery_left = weapon.recovery_ticks
 	weapon.set_phase(CombatPhase.Id.RECOVERY)
 
 
 static func _on_press(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
 	fighter.attack_held = true
-	if can_start_attack(fighter, rules.weapon):
+	if can_start_attack(fighter, rules.spec_of(fighter).weapon):
 		_begin_press(fighter, tick, events)
 	else:
 		fighter.buffered_press_tick = tick
@@ -205,11 +207,11 @@ static func _begin_press(fighter: FighterState, tick: int, events: Array[DuelEve
 static func _promote_buffer(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
 	if fighter.buffered_press_tick < 0:
 		return
-	if tick - fighter.buffered_press_tick > rules.weapon.buffer_ticks:
+	if tick - fighter.buffered_press_tick > rules.spec_of(fighter).weapon.buffer_ticks:
 		fighter.buffered_press_tick = -1
 		fighter.buffered_release = false
 		return
-	if not can_start_attack(fighter, rules.weapon):
+	if not can_start_attack(fighter, rules.spec_of(fighter).weapon):
 		return
 	var released := fighter.buffered_release
 	_begin_press(fighter, tick, events)
@@ -221,15 +223,14 @@ static func _promote_buffer(fighter: FighterState, rules: DuelRules, tick: int, 
 
 static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick: int, events: Array[DuelEvent]) -> void:
 	var weapon := fighter.weapon
-	var definition := rules.weapon
+	var definition := rules.spec_of(fighter).weapon
 	weapon.swing_charge = charge
 	_clear_charge(weapon)
 	## Preparation is read once, from where the blade actually is at release.
 	weapon.launch_readiness = definition.readiness(weapon.angle)
 	weapon.swing_start = weapon.angle
 	weapon.swing_end = clampf(weapon.angle + weapon.swing_dir * definition.arc(charge), -definition.guard_limit, definition.guard_limit)
-	weapon.swing_hit = false
-	weapon.swing_contact = false
+	weapon.attack_contacted = false
 	weapon.set_phase(CombatPhase.Id.LAUNCH)
 	events.append(DuelEvent.create(DuelEventTypes.ATTACK_RELEASED, tick, fighter.slot, DuelEvent.NONE, {
 		DuelEventKeys.CHARGE: charge,
@@ -238,30 +239,41 @@ static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick
 	}))
 
 
-static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, drive: float, scratch: FighterTickScratch = null) -> void:
+static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, drive: float, speed_scale: float, inertia: float, scratch: FighterTickScratch = null) -> void:
 	var dt := SimulationTimebase.TICK_SECONDS
 	var old_speed := weapon.speed
 	var phase_accel := 0.0
+	## Every drive is a bounded torque (`α = τ / M_θ`, at most `α·dt` per
+	## tick) applied to whatever speed the last contact left: a met cut is
+	## re-driven at the motor's finite authority, never restored by assignment.
+	## `M_θ` is the coordinate's inertia at this pose, the one every contact
+	## uses (UNIFIED-MASS-001).
 	match weapon.phase:
 		CombatPhase.Id.CHARGING:
-			phase_accel = definition.windup_accel(drive)
-			weapon.speed = SimMath.approach(weapon.speed, -weapon.swing_dir * definition.windup_speed, phase_accel * dt)
+			phase_accel = definition.windup_accel(drive, inertia)
+			weapon.speed = SimMath.approach(weapon.speed, -weapon.swing_dir * definition.windup_speed * speed_scale, phase_accel * dt)
 		CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_EARLY, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.ACTIVE_LATE:
 			var charge := weapon.swing_charge
-			var ceiling := definition.achievable_swing_speed(charge, weapon.launch_readiness)
-			phase_accel = definition.swing_accel(charge, drive)
+			var ceiling := definition.achievable_swing_speed(charge, weapon.launch_readiness) * speed_scale
+			phase_accel = definition.swing_accel(charge, drive, inertia)
 			weapon.speed = SimMath.approach(weapon.speed, weapon.swing_dir * ceiling, phase_accel * dt)
 		CombatPhase.Id.OVERSWING:
-			phase_accel = definition.brake_accel(weapon.swing_charge, drive)
+			phase_accel = definition.brake_accel(weapon.swing_charge, drive, inertia)
 			weapon.speed = SimMath.approach(weapon.speed, 0.0, phase_accel * dt)
-		CombatPhase.Id.BIND:
-			phase_accel = definition.hold_accel(drive) * BIND_DAMPING_SCALE
+		CombatPhase.Id.RECOVERY:
+			## Actively arresting the blade is the attack's brake; holding it
+			## once it is back under control is the weak hold (RECOVERY-001).
+			if absf(weapon.speed) > definition.control_speed:
+				phase_accel = definition.brake_accel(weapon.swing_charge, drive, inertia)
+			else:
+				phase_accel = definition.hold_accel(drive, inertia)
 			weapon.speed = SimMath.approach(weapon.speed, 0.0, phase_accel * dt)
 		_:
-			phase_accel = definition.hold_accel(drive)
+			phase_accel = definition.hold_accel(drive, inertia)
 			weapon.speed = SimMath.approach(weapon.speed, 0.0, phase_accel * dt)
+	weapon.motor_torque = inertia * (weapon.speed - old_speed) / dt
 	if scratch != null:
-		_record_weapon_exertion(scratch, definition, old_speed, weapon.speed, phase_accel, dt)
+		_record_weapon_exertion(scratch, inertia, old_speed, weapon.speed, phase_accel, dt)
 	weapon.angle += weapon.speed * dt
 	if weapon.angle > definition.guard_limit:
 		weapon.angle = definition.guard_limit
@@ -295,9 +307,9 @@ static func _clear_charge(weapon: WeaponState) -> void:
 ##
 ## Credit saturates at the span that buys full charge, so `earned_windback` and
 ## `charge` always describe the same swing: arc = min_arc + earned wind-back.
-static func _accrue_windback(weapon: WeaponState, definition: WeaponDefinition) -> void:
+static func _accrue_windback(weapon: WeaponState, definition: WeaponDefinition, speed_scale: float) -> void:
 	var excursion := absf(weapon.angle) - definition.windback_baseline(weapon.hold_start_angle)
-	var motor_cap := weapon.earned_windback + definition.windup_speed * SimulationTimebase.TICK_SECONDS
+	var motor_cap := weapon.earned_windback + definition.windup_speed * speed_scale * SimulationTimebase.TICK_SECONDS
 	## `windup_speed` is the motor's own ceiling, so one tick of it is the most
 	## wind-back a tick can honestly represent.
 	var credited := maxf(weapon.earned_windback, minf(excursion, motor_cap))
@@ -305,7 +317,7 @@ static func _accrue_windback(weapon: WeaponState, definition: WeaponDefinition) 
 	weapon.charge = definition.earned_charge(weapon.earned_windback)
 
 
-static func _advance_phase(fighter: FighterState, opponent: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
+static func _advance_phase(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
 	var weapon := fighter.weapon
 	match weapon.phase:
 		CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_EARLY, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.ACTIVE_LATE:
@@ -316,14 +328,16 @@ static func _advance_phase(fighter: FighterState, opponent: FighterState, rules:
 			elif next > weapon.phase:
 				weapon.set_phase(next)
 		CombatPhase.Id.OVERSWING:
+			## The brake stops at exactly zero, so a free overswing ends at rest.
+			## A contact that reversed it keeps its rebound into recovery,
+			## where the hold motor settles it — never assigned away here.
 			if weapon.speed * weapon.swing_dir <= 0.0:
-				if not weapon.swing_contact:
+				if not weapon.attack_contacted:
 					events.append(DuelEvent.create(DuelEventTypes.ATTACK_WHIFFED, tick, fighter.slot, DuelEvent.NONE, {DuelEventKeys.CHARGE: weapon.swing_charge}))
-				weapon.speed = 0.0
-				begin_recovery(fighter, opponent, rules, 0.0)
+				begin_recovery(fighter, rules)
 		CombatPhase.Id.RECOVERY:
-			weapon.recovery_left -= 1
-			if weapon.recovery_left <= 0:
+			weapon.recovery_left = maxi(weapon.recovery_left - 1, 0)
+			if weapon.recovery_left == 0 and absf(weapon.speed) <= rules.spec_of(fighter).weapon.control_speed:
 				weapon.set_phase(CombatPhase.Id.NEUTRAL)
 		CombatPhase.Id.STAGGER:
 			fighter.stagger_left -= 1
@@ -354,8 +368,7 @@ static func _phase_for_progress(progress: float) -> CombatPhase.Id:
 ## Dynamic work = τ_applied × ω_mid × dt (positive part drives, negative brakes).
 ## Utilization = how much of the motor's capacity was demanded (isometric/static).
 ## Computed from the motor's own output — never reconstructed from Δv later.
-static func _record_weapon_exertion(scratch: FighterTickScratch, definition: WeaponDefinition, old_speed: float, new_speed: float, phase_accel: float, dt: float) -> void:
-	var inertia := definition.moment_of_inertia()
+static func _record_weapon_exertion(scratch: FighterTickScratch, inertia: float, old_speed: float, new_speed: float, phase_accel: float, dt: float) -> void:
 	var actual_alpha := (new_speed - old_speed) / dt
 	var applied_torque := inertia * actual_alpha
 	var mid_omega := (old_speed + new_speed) * 0.5

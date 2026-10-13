@@ -3,8 +3,8 @@ extends Resource
 
 ## A cosmetic variant of a weapon, layered over the base weapon kit. The
 ## blade's geometry, grip markers, and every physical quantity are the
-## weapon definition's; a skin changes only the look of what the
-## simulation-posed `SwordPivot` carries.
+## weapon definition's; a skin changes only the look of what the displayed
+## `SwordCarriage` carries.
 ##
 ## Implements: /spec/invariants.md#pres-kit-001
 ## See also: /docs/concepts/presentation.md

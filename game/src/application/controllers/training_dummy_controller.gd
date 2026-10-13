@@ -69,8 +69,8 @@ func command_for(state: MatchState, slot: int) -> PlayerCommand:
 func _spar(state: MatchState, slot: int) -> PlayerCommand:
 	_cooldown -= 1
 	var me := state.fighter(slot)
-	var reach := _rules.weapon.tip_radius + _rules.fighter.body_radius
-	if _cooldown <= 0 and DuelGeometry.distance(me, state.opponent_of(slot)) <= reach and WeaponSystem.can_start_attack(me, _rules.weapon):
+	var reach := WeaponKinematics.strike_reach(_rules.spec_of(me), _rules.spec_of(state.opponent_of(slot)))
+	if _cooldown <= 0 and DuelGeometry.distance(me, state.opponent_of(slot)) <= reach and WeaponSystem.can_start_attack(me, _rules.spec_of(me).weapon):
 		_cooldown = ATTACK_INTERVAL_TICKS
 		return PlayerCommand.create(state.tick, 0.0, 0.0, true, true)
 	return PlayerCommand.idle(state.tick)
@@ -82,7 +82,7 @@ func _spar(state: MatchState, slot: int) -> PlayerCommand:
 ## travelling backwards (PHYS-002).
 func _big_swing(state: MatchState, slot: int) -> PlayerCommand:
 	var step := _clock % SWING_PERIOD_TICKS
-	if step == 1 and WeaponSystem.can_start_attack(state.fighter(slot), _rules.weapon):
+	if step == 1 and WeaponSystem.can_start_attack(state.fighter(slot), _rules.combatant(slot).weapon):
 		return PlayerCommand.create(state.tick, 0.0, 0.0, true, false)
 	if step == WINDUP_TICKS:
 		return PlayerCommand.create(state.tick, 0.0, 0.0, false, true)

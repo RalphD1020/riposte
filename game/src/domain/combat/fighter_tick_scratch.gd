@@ -32,7 +32,7 @@ var turn_positive_work: float = 0.0
 var turn_braking_work: float = 0.0
 var turn_utilization: float = 0.0
 
-## Weapon motor (sword rotation about fighter pivot).
+## Weapon motor (sword rotation about fighter origin).
 var weapon_positive_work: float = 0.0
 var weapon_braking_work: float = 0.0
 var weapon_utilization: float = 0.0
@@ -46,6 +46,21 @@ var burst_active: bool = false
 ## chronological contact loop. Written by ContactResolver in Phase 4;
 ## zeroed here because contacts are part of the tick's accounting.
 var contact_shock: float = 0.0
+
+## Reused pose for sampling the weapon coordinate's inertia each tick (never
+## read across ticks, so nothing here needs resetting).
+var motor_pose := BladePose.new()
+
+## This fighter's condition for the tick (CONDITION-001), frozen once from
+## start-of-tick health by `DuelSimulation` before any motor runs. Every motor
+## reads it; nothing recomputes it mid-tick. Overwritten each tick.
+var condition := ConditionState.new()
+
+## The blade's angular speed (rad/s) at the start of the tick, before any
+## motor or contact. The arrest law reads it (RIGID-CONTACT-002): a cut held
+## under control that gained nothing over the tick is pinned. Overwritten
+## each tick by `DuelSimulation`.
+var weapon_start_speed: float = 0.0
 
 
 func reset() -> void:

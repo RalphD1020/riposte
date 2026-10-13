@@ -7,29 +7,51 @@ extends RefCounted
 ## the velocity already possessed (PHYS-003). Updates stability from how
 ## violently the body is changing motion.
 ##
-## Intent arrives in duel axes — `+y` closes on the opponent, `+x` orbits
-## right — and is rotated into world space here (COMBAT §25.1). A duel is
-## fought along the line between two people, so that is the axis the controls
-## have to mean; world-axis footwork would make the same key press advance,
-## retreat, or sidestep depending on where the pair happened to drift.
+## Intent arrives in the fighter's own combat frame (MOVEMENT-FRAME-001) —
+## `+y` along the CombatHeading φ, `+x` to its right — and is rotated into
+## world space here. φ is the centre of the weapon domain and the line the
+## fighter is committed to, so footwork and sword share one frame: the target
+## bearing τ only pulls φ round through the bounded heading motor, and a
+## committed fighter keeps driving down its own line while the heading catches
+## up. Footwork never homes on the opponent by itself.
 ##
 ## Implements: /spec/invariants.md#phys-003
 ## Implements: /spec/invariants.md#move-001
+## Implements: /spec/invariants.md#movement-frame-001
 ## See also: /docs/concepts/combat.md
 
 
 ## Advance one fighter's footwork. Returns the burst this tick launched, or
 ## `BurstKind.NONE`, so the caller can report it without this system knowing
-## about events. `capability` scales every motor force (PHYS-003).
-## If `scratch` is provided, writes motor exertion (F·v work + utilization).
+## about events. `condition` is the fighter's frozen condition this tick
+## (CONDITION-001): its force scale reduces every footwork force, its speed
+## scale every voluntary target speed; null is the healthy identity. Existing
+## velocity is never rescaled (PHYS-003). If `scratch` is provided, writes
+## motor exertion (F·v work + utilization).
+
+## Speeds this close (m/s) are one speed to the brake-or-drive choice: far
+## below anything a body or a camera could show, far above rounding.
+const SPEED_TIE := 1.0e-9
+
 
 static func step(
-	fighter: FighterState, opponent: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, capability: float = 1.0, scratch: FighterTickScratch = null, dash_modifier: bool = false
+	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, scratch: FighterTickScratch = null, dash_modifier: bool = false
+) -> MovementGestureState.BurstKind:
+	return step_in_frame(fighter, SimMath.cosine(fighter.facing), SimMath.sine(fighter.facing), intent_x, intent_y, tick, definition, condition, scratch, dash_modifier)
+
+
+## `step` with the frame given: the duel reads every fighter's heading at the
+## start of the tick, before any heading turns, so update order never decides
+## which way a body was asked to go (FRICTION-ORDER-001).
+static func step_in_frame(
+	fighter: FighterState, forward_x: float, forward_y: float, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, scratch: FighterTickScratch = null, dash_modifier: bool = false
 ) -> MovementGestureState.BurstKind:
 	var dt := SimulationTimebase.TICK_SECONDS
-	var forward := DuelGeometry.duel_basis(fighter, opponent, fighter.duel_forward_x, fighter.duel_forward_y)
-	fighter.duel_forward_x = forward[0]
-	fighter.duel_forward_y = forward[1]
+	var force_scale := condition.force_scale if condition != null else 1.0
+	var speed_scale := condition.speed_scale if condition != null else 1.0
+	var forward := PackedFloat64Array([forward_x, forward_y])
+	fighter.duel_forward_x = forward_x
+	fighter.duel_forward_y = forward_y
 	var launched := _recognize(fighter, intent_x, intent_y, tick, definition, dash_modifier)
 	var world := DuelGeometry.to_world(intent_x, intent_y, forward[0], forward[1])
 	var ix := world[0]
@@ -39,14 +61,7 @@ static func step(
 		ix /= magnitude
 		iy /= magnitude
 		magnitude = 1.0
-	var direction_multiplier := 1.0
-	if magnitude > 0.0:
-		var alignment := (ix * SimMath.cosine(fighter.facing) + iy * SimMath.sine(fighter.facing)) / magnitude
-		if alignment >= 0.0:
-			direction_multiplier = SimMath.mix(definition.speed_lateral, definition.speed_forward, alignment)
-		else:
-			direction_multiplier = SimMath.mix(definition.speed_lateral, definition.speed_backward, -alignment)
-	var top_speed := definition.max_speed * direction_multiplier * CommitmentModel.translation_multiplier(fighter, definition)
+	var top_speed := definition.max_speed * speed_scale * stride_multiplier(intent_x, intent_y, definition) * CommitmentModel.translation_multiplier(fighter, definition)
 	## The target is what the fighter is asking for; commitment is spent below,
 	## on how fast they are allowed to approach it (PHYS-003).
 	var target_vx := ix * top_speed
@@ -54,7 +69,7 @@ static func step(
 	var accel := 0.0
 	var gesture := fighter.gesture
 	if gesture.is_bursting():
-		var burst_speed := definition.burst_speed(gesture.burst_kind) * CommitmentModel.translation_multiplier(fighter, definition)
+		var burst_speed := definition.burst_speed(gesture.burst_kind) * speed_scale * CommitmentModel.translation_multiplier(fighter, definition)
 		if gesture.burst_kind == MovementGestureState.BurstKind.FORWARD_DASH:
 			## Committed ballistic motion (MOVE-002). The burst velocity IS
 			## the target — intent is not added. Zero steering authority: the
@@ -72,7 +87,7 @@ static func step(
 			if asking > burst_speed:
 				target_vx *= burst_speed / asking
 				target_vy *= burst_speed / asking
-		accel = definition.burst_accel() * capability
+		accel = definition.burst_accel() * force_scale
 		gesture.burst_ticks_remaining -= 1
 		if gesture.burst_ticks_remaining <= 0:
 			gesture.end_burst_into_recovery(definition.dash_recovery_ticks)
@@ -88,11 +103,18 @@ static func step(
 	var delta_vy := target_vy - fighter.vy
 	var delta := SimMath.length(delta_vx, delta_vy)
 	if accel <= 0.0:
+		## Braking is asking to go slower than one is going, or against the way
+		## one is going. Both are read to within `SPEED_TIE`: turning at full
+		## speed asks for the same speed, and a body at rest may carry a
+		## velocity residue of a few ulps, which the two sides of a mirror
+		## reach only to the last bit — neither is motion, so neither may
+		## coin-flip the choice between two forces.
+		var target_speed := SimMath.length(target_vx, target_vy)
 		var braking := (
-			target_vx * fighter.vx + target_vy * fighter.vy < 0.0
-			or SimMath.length(target_vx, target_vy) < fighter.speed()
+			target_vx * fighter.vx + target_vy * fighter.vy < -SPEED_TIE * target_speed
+			or target_speed < fighter.speed() - SPEED_TIE
 		)
-		accel = (definition.brake_accel() if braking else definition.move_accel()) * capability
+		accel = (definition.brake_accel() if braking else definition.move_accel()) * force_scale
 	## Commitment is spent on acceleration here too (PHYS-003): a burst during
 	## a committed swing is as sluggish as any other repositioning, so a dash
 	## is never a way out of a swing you already paid for.
@@ -110,17 +132,31 @@ static func step(
 	fighter.ax = (fighter.vx - old_vx) / dt
 	fighter.ay = (fighter.vy - old_vy) / dt
 	if scratch != null:
-		_record_movement_exertion(scratch, definition, old_vx, old_vy, fighter.vx, fighter.vy, fighter.ax, fighter.ay, accel, capability, dt)
+		_record_movement_exertion(scratch, definition, old_vx, old_vy, fighter.vx, fighter.vy, fighter.ax, fighter.ay, accel, force_scale, dt)
 		scratch.burst_active = fighter.gesture.is_bursting()
 	_update_stability(fighter, definition)
 	return launched
 
 
+## The stride's share of top speed for frame-local intent: forward fastest,
+## backward slowest, lateral between. It reads the intent's direction in the
+## combat frame and nothing else, so walking down the heading costs and earns
+## exactly what it did before the frame turned (NO-RUNNING-BONUS).
+static func stride_multiplier(intent_x: float, intent_y: float, definition: FighterDefinition) -> float:
+	var magnitude := SimMath.length(intent_x, intent_y)
+	if magnitude <= 0.0:
+		return 1.0
+	var alignment := intent_y / magnitude
+	if alignment >= 0.0:
+		return SimMath.mix(definition.speed_lateral, definition.speed_forward, alignment)
+	return SimMath.mix(definition.speed_lateral, definition.speed_backward, -alignment)
+
+
 ## Record the movement motor's actual physical exertion into the tick scratch.
 ## Dynamic work = F_applied · v_mid × dt. Utilization = how much of the raw
-## motor capacity (before capability scaling) was demanded. Computed from the
+## motor capacity (before condition scaling) was demanded. Computed from the
 ## motor's own output — never reconstructed from Δv by an external observer.
-static func _record_movement_exertion(scratch: FighterTickScratch, definition: FighterDefinition, old_vx: float, old_vy: float, new_vx: float, new_vy: float, ax: float, ay: float, accel: float, capability: float, dt: float) -> void:
+static func _record_movement_exertion(scratch: FighterTickScratch, definition: FighterDefinition, old_vx: float, old_vy: float, new_vx: float, new_vy: float, ax: float, ay: float, accel: float, force_scale: float, dt: float) -> void:
 	var accel_magnitude := SimMath.length(ax, ay)
 	if accel_magnitude < SimMath.EPSILON:
 		return
@@ -132,7 +168,7 @@ static func _record_movement_exertion(scratch: FighterTickScratch, definition: F
 	var power := applied_force * (force_dir_x * mid_vx + force_dir_y * mid_vy)
 	scratch.movement_positive_work += maxf(power * dt, 0.0)
 	scratch.movement_braking_work += maxf(-power * dt, 0.0)
-	var raw_motor := accel / capability * dt if capability > SimMath.EPSILON else 0.0
+	var raw_motor := accel / force_scale * dt if force_scale > SimMath.EPSILON else 0.0
 	scratch.movement_utilization = SimMath.clamp01(accel_magnitude * dt / raw_motor) if raw_motor > SimMath.EPSILON else 0.0
 
 

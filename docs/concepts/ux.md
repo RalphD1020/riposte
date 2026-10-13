@@ -20,10 +20,12 @@ Game tokens: `RiposteTheme`. Web tokens: `@theme` in `globals.css`. Both are con
 ## Screens
 
 ```text
-MAIN_MENU ─Quick Play─▶ MATCH ─▶ RESULTS ─Rematch─▶ MATCH
+MAIN_MENU ─Quick Play─▶ MATCH ─▶ RESULTS ─Rematch─▶ MATCH   (each Quick Play / Rematch is a new set: intro once)
+                          │ deciding round → ~0.8 s beat → RESULTS opens on the winner's showcase
+                          │ (cinematic ~3 s, any press skips; results interactive after) — draws get plain results
     │                     │ Esc / ‖ / focus loss → PAUSE (Resume · Settings · How to Play · Quit)
     ├─How to Play─▶ HOW_TO_PLAY ─Start Training─▶ MATCH (training + coaching prompts)
-    └─Settings─▶ SETTINGS (Audio · Display · Gameplay · Controls drill-down)
+    └─Settings─▶ SETTINGS (Audio · Display · Gameplay · Controls · Move keys · Action keys drill-down)
 ```
 
 | Concept                                                                 | Code                                                   |
@@ -57,7 +59,7 @@ Swing potential is read from the blade ribbon's thickness, the sweet region from
 - Targets ≥ 48 UI units; visible focus ring (3 px + 3 px gap); keyboard focus starts on the primary action (touch devices: on first navigation key, so no ring sits under a thumb).
 - Selection shown by fill **and** a drawn marker; pips are shapes; switches move the knob. Never color alone.
 - Live regions announce banners, coaching prompts, pause, and results; health bars expose "N of M".
-- Reduced Motion, Reduced Flash, Screen Shake, High Contrast Weapons, Charge Indicator, Trail Strength, Sweet-Spot Visualization, touch opacity, and Haptics are settings.
+- Reduced Motion, Reduced Flash, Screen Shake, High Contrast Weapons, Charge Indicator, Trail Strength, Sweet-Spot Visualization, touch opacity, Haptics, Sound Captions, the contact highlight (Show where blades touch), and key rebinding ([controls](./controls.md#rebinding)) are settings.
 - Accessibility changes how loudly information is drawn, never what it means. Strengthening the sweet-spot cue widens the drawn rib; it does not widen the sweet region, change damage, or change timing. Combat stays fully readable with screen shake off and the ribbon off.
 - Every shipped string renders in the shipped font (test: `game/tests/application/test_app_shell.gd`).
 

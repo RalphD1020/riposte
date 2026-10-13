@@ -87,6 +87,11 @@ pnpm lint              # ESLint + game source scanners (not Godot import)
 pnpm typecheck         # tsc + GDScript load
 pnpm test              # Vitest 100% + manifest check + Godot harness
 pnpm test:tooling      # Fail-fixture gate (not inside pnpm test)
+pnpm test:balance      # CPU balance smoke, non-held-out seeds (own process; verify runs it)
+pnpm test:balance:audit  # CPU tuning corpus report, 40 seeds (a reading, not a gate)
+pnpm test:balance:accept # CPU held-out ladder, run once after a tuning pass
+pnpm test:changed       # while implementing: suites owning what changed (seconds)
+pnpm test:focused contact  # after a slice: one area or named suites
 pnpm check             # import + lint + typecheck + format + docs/arch + tooling; writes .reports/check
 pnpm verify            # check then test then build
 pnpm test:fast

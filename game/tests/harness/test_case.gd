@@ -14,18 +14,30 @@ extends RefCounted
 const CASE_PREFIX := "test_"
 
 var suite_name: String = ""
+## Non-empty makes the suite a benchmark: it runs and reports on every run,
+## but failed *assertions* do not fail the run — the reason is printed beside
+## them. Harness failures (a zero-assertion case, leaked nodes) still fail.
+## For emergent-outcome grades whose rules are knowingly in transition, never
+## for laws.
+var benchmark_reason: String = ""
 var failures: PackedStringArray = PackedStringArray()
+## How many of `failures` are failed assertions (the rest are harness failures).
+var assertion_failure_count: int = 0
 var assertion_count: int = 0
 var case_count: int = 0
 var _current_case: String = ""
 
 
+## Each finished case prints one progress line, so the harness's no-output
+## guard measures progress per case, never per suite: a long suite that is
+## still working is never mistaken for a hang.
 func run() -> void:
 	for method in case_names():
 		_current_case = method
 		var before := assertion_count
 		await call(method)
 		case_count += 1
+		print("  · %s %s" % [suite_name, method])
 		if assertion_count == before:
 			failures.append("%s recorded zero assertions" % method)
 	_current_case = ""
@@ -108,6 +120,7 @@ func await_frames(count: int) -> void:
 
 
 func _fail(message: String) -> void:
+	assertion_failure_count += 1
 	if _current_case == "":
 		failures.append(message)
 	else:

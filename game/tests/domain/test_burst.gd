@@ -14,15 +14,15 @@ func _init() -> void:
 
 
 ## Canonical opening: the two fighters face each other across the arena, so
-## slot 0's duel forward axis points at slot 1. Which *world* direction that
-## is depends on the seeded side (SIDE-001), so these tests assert against the
-## fighter's own duel axis rather than a fixed world heading.
+## slot 0's heading points at slot 1. Which *world* direction that is depends
+## on the seeded side (SIDE-001), so these tests assert against the fighter's
+## own combat frame rather than a fixed world heading.
 func _scene() -> MatchState:
 	return DuelFixture.state(_rules)
 
 
 func _tick(state: MatchState, tick: int, x: float, y: float) -> MovementGestureState.BurstKind:
-	return MovementSystem.step(state.fighter(0), state.fighter(1), x, y, tick, _rules.fighter)
+	return MovementSystem.step(state.fighter(0), x, y, tick, _rules.combatant(0).fighter)
 
 
 ## Deflect, return through neutral, deflect again. Returns the burst earned.
@@ -40,12 +40,12 @@ func test_a_double_tap_forward_buys_a_dash() -> void:
 	assert_eq(launched, MovementGestureState.BurstKind.FORWARD_DASH, "two taps forward launch a forward dash")
 	var me := state.fighter(0)
 	assert_true(me.gesture.is_bursting(), "and the fighter is bursting")
-	assert_near(me.gesture.burst_dir_x, me.duel_forward_x, 1e-9, "straight along the duel axis, in world terms")
+	assert_near(me.gesture.burst_dir_x, me.duel_forward_x, 1e-9, "straight down the combat frame, in world terms")
 	assert_near(me.gesture.burst_dir_y, me.duel_forward_y, 1e-9, "with no lateral component")
-	for tick in range(5, 5 + _rules.fighter.burst_ticks):
+	for tick in range(5, 5 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(state, tick, 0.0, 1.0)
-	assert_true(me.speed() > _rules.fighter.max_speed, "a dash exceeds what walking can reach (%.2f)" % me.speed())
-	assert_true(me.speed() <= _rules.fighter.burst_speed_axial + 1e-9, "but is still bounded")
+	assert_true(me.speed() > _rules.combatant(0).fighter.max_speed, "a dash exceeds what walking can reach (%.2f)" % me.speed())
+	assert_true(me.speed() <= _rules.combatant(0).fighter.burst_speed_axial + 1e-9, "but is still bounded")
 
 
 ## A sidestep is a slide, not a lunge: only the dashes along the line between
@@ -55,11 +55,11 @@ func test_a_sidestep_is_weaker_than_a_dash() -> void:
 	_double_tap(dashing, 0.0, 1.0)
 	var stepping := _scene()
 	assert_eq(_double_tap(stepping, 1.0, 0.0), MovementGestureState.BurstKind.RIGHT_STEP, "two taps right launch a right step")
-	for tick in range(5, 5 + _rules.fighter.burst_ticks):
+	for tick in range(5, 5 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(dashing, tick, 0.0, 1.0)
 		_tick(stepping, tick, 1.0, 0.0)
 	assert_true(stepping.fighter(0).speed() < dashing.fighter(0).speed(), "the slide-step is the slower of the two")
-	assert_true(stepping.fighter(0).speed() > _rules.fighter.max_speed, "though still faster than walking")
+	assert_true(stepping.fighter(0).speed() > _rules.combatant(0).fighter.max_speed, "though still faster than walking")
 
 
 ## Spam control is physical: the intent has to come back through neutral
@@ -75,7 +75,7 @@ func test_holding_a_direction_never_dashes() -> void:
 ## letting go of it and pressing again must not count as a double tap.
 func test_a_held_direction_then_a_tap_is_not_a_double_tap() -> void:
 	var state := _scene()
-	var held := _rules.fighter.tap_window_ticks + 2
+	var held := _rules.combatant(0).fighter.tap_window_ticks + 2
 	for tick in held:
 		_tick(state, tick, 0.0, 1.0)
 	_tick(state, held, 0.0, 0.0)
@@ -88,7 +88,7 @@ func test_a_late_second_tap_is_too_late() -> void:
 	var state := _scene()
 	_tick(state, 0, 0.0, 1.0)
 	_tick(state, 1, 0.0, 0.0)
-	var late := _rules.fighter.double_tap_window_ticks + 1
+	var late := _rules.combatant(0).fighter.double_tap_window_ticks + 1
 	for tick in range(2, late):
 		_tick(state, tick, 0.0, 0.0)
 	assert_eq(_tick(state, late, 0.0, 1.0), MovementGestureState.BurstKind.NONE, "a tap outside the window earns nothing")
@@ -110,8 +110,8 @@ func test_alternating_directions_never_dash() -> void:
 ## sectors and manufacture gestures nobody made.
 func test_a_hovering_intent_manufactures_no_gestures() -> void:
 	var state := _scene()
-	var between := 0.5 * (_rules.fighter.burst_enter_deflection + _rules.fighter.burst_neutral_deflection)
-	assert_true(between > _rules.fighter.burst_neutral_deflection and between < _rules.fighter.burst_enter_deflection, "precondition: inside the dead band")
+	var between := 0.5 * (_rules.combatant(0).fighter.burst_enter_deflection + _rules.combatant(0).fighter.burst_neutral_deflection)
+	assert_true(between > _rules.combatant(0).fighter.burst_neutral_deflection and between < _rules.combatant(0).fighter.burst_enter_deflection, "precondition: inside the dead band")
 	for tick in 60:
 		var wobble := between if tick % 2 == 0 else -between
 		assert_eq(_tick(state, tick, wobble, between), MovementGestureState.BurstKind.NONE, "a hovering stick earns nothing (tick %d)" % tick)
@@ -127,18 +127,20 @@ func test_the_heading_is_frozen_at_activation() -> void:
 	var hx := me.gesture.burst_dir_x
 	var hy := me.gesture.burst_dir_y
 	assert_near(SimMath.length(hx, hy), 1.0, 1e-9, "precondition: committed to a real heading")
-	## Move the opponent broadside mid-dash. The duel axis follows them, so
-	## "forward" now means a quarter turn away — but the dash already chose.
+	## Move the opponent broadside mid-dash, a quarter turn off the committed
+	## heading — a homing dash would bend toward them.
 	DuelFixture.place(state.fighter(1), me.x - hy * 4.0, me.y + hx * 4.0, 0.0)
-	for tick in range(5, 3 + _rules.fighter.burst_ticks):
+	for tick in range(5, 3 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(state, tick, 0.0, 1.0)
 	assert_true(me.gesture.is_bursting(), "precondition: still mid-dash")
-	assert_true(me.duel_forward_x * -hy + me.duel_forward_y * hx > 0.9, "precondition: the duel axis did swing round to point at them")
+	var bx := state.fighter(1).x - me.x
+	var by := state.fighter(1).y - me.y
+	assert_true((bx * -hy + by * hx) / SimMath.length(bx, by) > 0.9, "precondition: the opponent now lies broadside of the heading")
 	assert_near(me.gesture.burst_dir_x, hx, 1e-9, "the heading does not follow the opponent")
 	assert_near(me.gesture.burst_dir_y, hy, 1e-9, "not on either axis")
 	var along := me.vx * hx + me.vy * hy
 	var across := me.vx * -hy + me.vy * hx
-	assert_true(along > _rules.fighter.max_speed, "and the body keeps going the way it committed")
+	assert_true(along > _rules.combatant(0).fighter.max_speed, "and the body keeps going the way it committed")
 	assert_true(absf(across) < absf(along), "rather than curving toward them")
 
 
@@ -166,9 +168,9 @@ func test_a_burst_during_a_committed_swing_is_just_as_sluggish() -> void:
 	var free := _scene()
 	_double_tap(free, 0.0, 1.0)
 	var committed := _scene()
-	DuelFixture.commit(committed.fighter(0), CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.weapon)
+	DuelFixture.commit(committed.fighter(0), CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.combatant(0).weapon)
 	assert_eq(_double_tap(committed, 0.0, 1.0), MovementGestureState.BurstKind.FORWARD_DASH, "the dash still happens")
-	for tick in range(5, 5 + _rules.fighter.burst_ticks):
+	for tick in range(5, 5 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(free, tick, 0.0, 1.0)
 		_tick(committed, tick, 0.0, 1.0)
 	assert_true(committed.fighter(0).speed() < free.fighter(0).speed() * 0.6, "but it barely moves them (%.2f vs %.2f)" % [committed.fighter(0).speed(), free.fighter(0).speed()])
@@ -176,10 +178,10 @@ func test_a_burst_during_a_committed_swing_is_just_as_sluggish() -> void:
 
 func test_a_dash_never_restores_facing_or_ends_a_swing() -> void:
 	var state := _scene()
-	DuelFixture.commit(state.fighter(0), CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.weapon)
+	DuelFixture.commit(state.fighter(0), CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.combatant(0).weapon)
 	var facing := state.fighter(0).facing
 	_double_tap(state, 0.0, -1.0)
-	for tick in range(5, 5 + _rules.fighter.burst_ticks):
+	for tick in range(5, 5 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(state, tick, 0.0, -1.0)
 	assert_eq(state.fighter(0).facing, facing, "footwork does not turn the body; tracking does")
 	assert_eq(state.fighter(0).weapon.phase, CombatPhase.Id.ACTIVE_THREAT, "and the swing is still owed")
@@ -193,11 +195,11 @@ func test_a_frozen_or_impossible_burst_is_rejected() -> void:
 	gesture.mode = MovementGestureState.Mode.BURST
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.BURST_MODE_MISMATCH, "BURST with nothing driving it is impossible")
 	gesture.burst_kind = MovementGestureState.BurstKind.FORWARD_DASH
-	gesture.burst_ticks_remaining = rules.fighter.burst_ticks
+	gesture.burst_ticks_remaining = rules.combatant(0).fighter.burst_ticks
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.BURST_HEADING_DEGENERATE, "a burst with no heading would scale or vanish")
 	gesture.burst_dir_x = 1.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "a complete burst is sound")
-	gesture.burst_ticks_remaining = rules.fighter.burst_ticks + 1
+	gesture.burst_ticks_remaining = rules.combatant(0).fighter.burst_ticks + 1
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.BURST_TOO_LONG, "a burst outlasting its bound is impossible")
 	gesture.burst_ticks_remaining = -1
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.COUNTER_NEGATIVE, "and a negative counter never happens")
@@ -220,7 +222,7 @@ func test_a_double_tap_reaches_the_simulation_through_plain_commands() -> void:
 	var gesture := runner.state.fighter(0).gesture
 	assert_eq(bursts[0].number(DuelEventKeys.HEADING_X), gesture.burst_dir_x, "carrying the heading it committed to")
 	assert_eq(bursts[0].number(DuelEventKeys.HEADING_Y), gesture.burst_dir_y, "on both axes")
-	runner.idle(_rules.fighter.burst_ticks + 4)
+	runner.idle(_rules.combatant(0).fighter.burst_ticks + 4)
 	assert_true(runner.is_sound(), "invariants held throughout: %s" % runner.violation_summary())
 	assert_eq(DuelFixture.of_type(runner.events, DuelEventTypes.BURST_STARTED).size(), 1, "and letting go earns no second one")
 
@@ -256,7 +258,7 @@ func test_an_interrupted_gesture_leaves_no_phantom_dash() -> void:
 	var state := _scene()
 	_tick(state, 0, 0.0, 1.0)
 	assert_true(state.fighter(0).gesture.awaiting_second_tap, "precondition: a first tap is pending")
-	var stale := _rules.fighter.double_tap_window_ticks + 2
+	var stale := _rules.combatant(0).fighter.double_tap_window_ticks + 2
 	for tick in range(1, stale):
 		assert_eq(
 			_tick(state, tick, 0.0, 0.0),
@@ -272,15 +274,18 @@ func test_an_interrupted_gesture_leaves_no_phantom_dash() -> void:
 func test_a_dash_into_the_opponent_does_not_phase_through_them() -> void:
 	var runner := SimRunner.create(_rules, 5)
 	runner.skip_intro()
-	var touching := 2.0 * _rules.fighter.body_radius
-	var opening := signf(runner.state.fighter(1).x - runner.state.fighter(0).x)
+	var touching := 2.0 * _rules.combatant(0).fighter.push_radius
+	var separation := DuelFixture.separation(runner.state)
+	assert_true(separation.length() > touching, "fixture: the fighters open apart")
 	for deflection in PackedFloat64Array([1.0, 1.0, 0.0, 0.0, 1.0]):
 		runner.drive(0.0, deflection, 1)
 	for _i in 60:
 		runner.drive(0.0, 1.0, 1)
 		var gap := DuelGeometry.distance(runner.state.fighter(0), runner.state.fighter(1))
 		assert_true(gap >= touching - 1e-9, "bodies stay apart mid-dash (gap %.6f)" % gap)
-		assert_eq(signf(runner.state.fighter(1).x - runner.state.fighter(0).x), opening, "and neither dashes through the other")
+		var now := DuelFixture.separation(runner.state)
+		assert_true(now.dot(separation) > 0.0, "and neither dashes through the other (tick %d)" % runner.state.tick)
+		separation = now
 
 
 ## The arena edge is the hazard boundary. A burst is the fastest a fighter
@@ -303,31 +308,30 @@ func test_a_dash_off_the_edge_triggers_ring_out() -> void:
 		runner.drive(0.0, deflection, 1)
 		if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
 			break
-	for _i in _rules.fighter.burst_ticks + 10:
+	for _i in _rules.combatant(0).fighter.burst_ticks + 10:
 		runner.drive(0.0, -1.0, 1)
 		if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
 			break
 	assert_true(runner.count(DuelEventTypes.RING_OUT) > 0 or runner.count(DuelEventTypes.ROUND_ENDED) > 0, "the dash triggered a ring-out or ended the round")
 
 
-## A burst during a bind is *defined*, not special-cased: the footwork happens
-## and the blades stay locked. A dash that broke a bind would make the bind a
-## suggestion, and a dash silently swallowed would make the controls lie.
-func test_a_burst_during_a_bind_is_defined() -> void:
+## A burst while the blades are in contact is *defined*, not special-cased:
+## the footwork happens, and the contact is left to physics. Footwork never
+## edits the contact record — a dash that "broke" contact by fiat would be a
+## scripted bind by another name, and one silently swallowed would make the
+## controls lie (RIGID-CONTACT-002).
+func test_a_burst_during_blade_contact_is_footwork() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
-	for slot in 2:
-		state.fighter(slot).weapon.set_phase(CombatPhase.Id.BIND)
-		state.fighter(slot).weapon.bind_left = rules.weapon.bind_ticks
-	state.blade_contact.set_phase(ContactPairState.Phase.BOUND)
+	state.blade_contact.set_phase(SwordContactSet.Phase.CONTACTING)
+	assert_eq(state.blade_contact.phase, SwordContactSet.Phase.CONTACTING, "precondition: the blades are in contact")
 	var launched := MovementGestureState.BurstKind.NONE
 	var tick := 0
 	for deflection in PackedFloat64Array([0.0, 0.0, 0.0, 0.0, -1.0, -1.0, 0.0, 0.0, -1.0]):
-		launched = MovementSystem.step(state.fighter(0), state.fighter(1), 0.0, deflection, tick, rules.fighter)
+		launched = MovementSystem.step(state.fighter(0), 0.0, deflection, tick, rules.combatant(0).fighter)
 		tick += 1
-	assert_eq(launched, MovementGestureState.BurstKind.BACK_DASH, "footwork is still available in a bind")
-	assert_eq(state.fighter(0).weapon.phase, CombatPhase.Id.BIND, "but it does not break the bind")
-	assert_true(state.blade_contact.is_bound(), "the blades stay locked")
+	assert_eq(launched, MovementGestureState.BurstKind.BACK_DASH, "footwork is available while the blades touch")
+	assert_eq(state.blade_contact.phase, SwordContactSet.Phase.CONTACTING, "and footwork alone never edits the contact")
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "and the combination is a legal state")
 
 
@@ -343,7 +347,7 @@ func test_a_replay_with_dashes_reproduces_the_duel_exactly() -> void:
 		runner.skip_intro()
 		for deflection in scripted:
 			runner.drive(0.0, deflection, 1)
-		runner.idle(_rules.fighter.burst_ticks + 8)
+		runner.idle(_rules.combatant(0).fighter.burst_ticks + 8)
 		hashes.append(StateHasher.hash_state(runner.state))
 		bursts[attempt] = runner.count(DuelEventTypes.BURST_STARTED)
 	assert_true(bursts[0] > 0, "precondition: the script actually produced dashes")
@@ -405,10 +409,10 @@ func test_forward_dash_ends_into_recovery() -> void:
 	assert_true(gesture.is_bursting(), "precondition: burst started")
 	## Run through remaining burst ticks. The recognition tick (tick 4) already
 	## decremented once, so burst_ticks - 1 more ticks exhaust the burst.
-	for tick in range(5, 4 + _rules.fighter.burst_ticks):
+	for tick in range(5, 4 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(state, tick, 0.0, 1.0)
 	assert_true(gesture.is_recovering(), "forward dash ends into RECOVERY")
-	assert_eq(gesture.recovery_ticks_remaining, _rules.fighter.dash_recovery_ticks, "recovery starts with full count")
+	assert_eq(gesture.recovery_ticks_remaining, _rules.combatant(0).fighter.dash_recovery_ticks, "recovery starts with full count")
 
 
 func test_back_dash_does_not_enter_recovery() -> void:
@@ -420,7 +424,7 @@ func test_back_dash_does_not_enter_recovery() -> void:
 	_tick(state, 4, 0.0, -1.0)
 	var gesture := state.fighter(0).gesture
 	assert_true(gesture.is_bursting(), "precondition: back dash active")
-	for tick in range(5, 5 + _rules.fighter.burst_ticks):
+	for tick in range(5, 5 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(state, tick, 0.0, -1.0)
 	assert_false(gesture.is_recovering(), "back dash does not enter recovery")
 	assert_eq(gesture.mode, MovementGestureState.Mode.NORMAL, "back dash returns to NORMAL")
@@ -443,12 +447,12 @@ func test_recovery_ends_after_ticks() -> void:
 	_double_tap(state, 0.0, 1.0)
 	var gesture := state.fighter(0).gesture
 	## Run through remaining burst (recognition tick already consumed one).
-	for tick in range(5, 4 + _rules.fighter.burst_ticks):
+	for tick in range(5, 4 + _rules.combatant(0).fighter.burst_ticks):
 		_tick(state, tick, 0.0, 0.0)
 	assert_true(gesture.is_recovering(), "precondition: in recovery")
 	## Run through recovery.
-	var tick_start := 4 + _rules.fighter.burst_ticks
-	for tick in range(tick_start, tick_start + _rules.fighter.dash_recovery_ticks):
+	var tick_start := 4 + _rules.combatant(0).fighter.burst_ticks
+	for tick in range(tick_start, tick_start + _rules.combatant(0).fighter.dash_recovery_ticks):
 		_tick(state, tick, 0.0, 0.0)
 	assert_eq(gesture.mode, MovementGestureState.Mode.NORMAL, "recovery ends, returns to NORMAL")
 	assert_eq(gesture.recovery_ticks_remaining, 0, "recovery counter at 0")

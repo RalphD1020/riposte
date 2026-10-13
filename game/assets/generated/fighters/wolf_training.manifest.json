@@ -5,7 +5,7 @@
   "bounds": {
     "min": [
       -0.3552,
-      -0.255,
+      -0.275,
       -0.0
     ],
     "max": [
@@ -16,6 +16,7 @@
   },
   "bone_names": [
     "Root",
+    "SwordMount",
     "Hips",
     "Spine",
     "Chest",
@@ -52,9 +53,14 @@
     "orbit_cw",
     "overswing",
     "recovery",
+    "ring_fall_a",
+    "ring_fall_b",
+    "ring_fall_c",
     "run_through",
     "stagger",
     "swing_support",
+    "victory_combo",
+    "victory_idle",
     "walk_backward",
     "walk_forward"
   ],

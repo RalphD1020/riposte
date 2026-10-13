@@ -1,6 +1,6 @@
 extends SceneTree
 
-## Dev capture for the Mittelhut acceptance gate: one Wolf posed at a sweep of
+## Dev capture for the guard-carriage gate: one Wolf posed at a sweep of
 ## weapon angles, each saved to .reports/guard_<deg>.png, so the elbow
 ## silhouette can be judged from a close three-quarter view.
 ##

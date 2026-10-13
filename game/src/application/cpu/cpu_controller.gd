@@ -94,6 +94,14 @@ var profile: CpuProfile
 ## Tick of the observation the last decision used (proves perception delay).
 var last_perceived_tick: int = -1
 var _rules: DuelRules
+## The CPU's own combatant physics (its body, weapon and handling).
+var _spec: CombatantPhysicsSpec
+## This duel's strike reach, and the reference duel's (see `calibration_reach`).
+var _reach_m: float = 0.0
+var _calibration_m: float = 0.0
+## The longest any hold could still be earning charge (ticks), from the
+## weapon coordinate's peak inertia — a release valve, never physics.
+var _windback_limit_ticks: int = 0
 var _rng: SeededRng
 var _memory: Array[CpuObservation] = []
 var _next_decision_tick: int = 0
@@ -120,6 +128,12 @@ var traces: Array[CpuDecisionTrace] = []
 static func create(rules: DuelRules, cpu_profile: CpuProfile, match_seed: int, slot: int) -> CpuController:
 	var controller := CpuController.new()
 	controller._rules = rules
+	controller._spec = rules.combatant(slot)
+	## Its own sword against the opponent's torso: a longer weapon or a
+	## smaller target moves every preferred distance with it.
+	controller._reach_m = WeaponKinematics.strike_reach(controller._spec, rules.combatant(1 - slot))
+	controller._calibration_m = calibration_reach()
+	controller._windback_limit_ticks = controller._spec.weapon.windback_limit_ticks(controller._spec.fighter.weapon_torque_scale, WeaponKinematics.peak_motor_inertia(controller._spec))
 	controller.profile = cpu_profile
 	controller._rng = SeededRng.create(match_seed, SeededRng.cpu_stream(slot))
 	return controller
@@ -131,13 +145,14 @@ func command_for(state: MatchState, slot: int) -> PlayerCommand:
 		return PlayerCommand.idle(state.tick)
 	var me := state.fighter(slot)
 	_idle_ticks += 1
-	_memory.append(CpuObservation.observe(state, slot, _rules))
+	_memory.append(CpuObservation.record(state, slot, _rules))
 	if _memory.size() > MEMORY_TICKS:
 		_memory.remove_at(0)
 	var seen := _memory[maxi(0, _memory.size() - 1 - profile.reaction_ticks)]
 	_perceive(seen, me, state.tick)
 	if state.tick >= _next_decision_tick:
 		last_perceived_tick = seen.tick
+		seen.resolve(_rules)
 		_decide(seen, me, state.tick, state.body_contact)
 		_next_decision_tick = state.tick + profile.decision_ticks + _rng.next_int(0, profile.decision_jitter)
 	return _execute(state.tick, me)
@@ -157,8 +172,46 @@ func _forget() -> void:
 	traces.clear()
 
 
+## The strike reach the profiles' distances are authored at: the reference
+## loadout's own (the reference duelist with his sword against himself), so
+## for the reference fighter and sword a profile metre is a metre. A
+## calibration constant of the CPU's authoring, never a default fighter. Correcting the reference's geometry — the hurt
+## torso, the attack path — never silently rescales a profile; only a
+## different fighter or weapon does.
+static func calibration_reach() -> float:
+	var reference_spec := LoadoutCatalog.compile(ContentIds.FIGHTER_DUELIST, ContentIds.WEAPON_BASTARD_SWORD)
+	return WeaponKinematics.strike_reach(reference_spec, reference_spec)
+
+
 func _reach() -> float:
-	return _rules.weapon.tip_radius + _rules.fighter.body_radius
+	return _reach_m
+
+
+## A profile's preferred distance (authored in metres at `calibration_reach`)
+## at this duel's actual reach. Profile weights are calibrated against the
+## scale of what they measure (CPU-001): a longer sword or longer arms move
+## every preferred distance with the reach, so the same profile keeps the
+## same judgement.
+func _range(authored: float) -> float:
+	return authored * _reach_m / _calibration_m
+
+
+## How much closer the two bodies get before an approach decided now can be
+## stopped (m): the CPU's own speed toward the opponent (felt) and the
+## opponent's toward it (observed, delayed like every other reading) over one
+## decision period, plus the CPU's own braking distance.
+func _closing_lead(seen: CpuObservation, me: FighterState) -> float:
+	var dx := _sight_x - me.x
+	var dy := _sight_y - me.y
+	var distance := SimMath.length(dx, dy)
+	if distance <= SimMath.EPSILON:
+		return 0.0
+	var ux := dx / distance
+	var uy := dy / distance
+	var mine := maxf(me.vx * ux + me.vy * uy, 0.0)
+	var theirs := maxf(-(seen.opp_vx * ux + seen.opp_vy * uy), 0.0)
+	var horizon := float(profile.decision_ticks) * SimulationTimebase.TICK_SECONDS
+	return (mine + theirs) * horizon + mine * mine / (2.0 * _spec.fighter.brake_accel())
 
 
 static func _range_quality(distance: float, ideal: float, tolerance: float) -> float:
@@ -182,13 +235,19 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 	var threatened := (seen.opponent_swinging() or (opp_charging and seen.opp_charge > THREAT_CHARGE)) and perceived < reach + THREAT_RANGE
 	var open := seen.opponent_open()
 	var striking := CombatPhase.is_striking(me.weapon.phase)
-	var ready := WeaponSystem.can_start_attack(me, _rules.weapon)
+	var ready := WeaponSystem.can_start_attack(me, _spec.weapon)
 	var pressure := SimMath.clamp01(float(_idle_ticks) / float(PRESSURE_TICKS)) * profile.pressure_weight
-	var desired := profile.tap_range + READY_RANGE_LEAD if ready else profile.engage_range
+	var desired := _range(profile.tap_range) + READY_RANGE_LEAD if ready else _range(profile.engage_range)
+	## Measure is judged where the bodies will be once this approach can be
+	## stopped, not where they stand: both still close until the next decision,
+	## and the CPU's own stride takes its braking distance to stop. Judged on
+	## the distance alone, two approaching fighters overshoot into each other's
+	## hilts.
+	var arriving := perceived - _closing_lead(seen, me)
 	var utilities := PackedFloat64Array([HOLD_UTILITY, 0.0, 0.0, 0.0, 0.0])
-	utilities[Move.APPROACH] = (profile.aggression + pressure) * SimMath.clamp01((perceived - desired) / APPROACH_RAMP)
+	utilities[Move.APPROACH] = (profile.aggression + pressure) * SimMath.clamp01((arriving - desired) / APPROACH_RAMP)
 	if open:
-		utilities[Move.APPROACH] += profile.punish_weight * SimMath.clamp01((perceived - reach * PUNISH_REACH_SHARE) / PUNISH_RAMP)
+		utilities[Move.APPROACH] += profile.punish_weight * SimMath.clamp01((arriving - reach * PUNISH_REACH_SHARE) / PUNISH_RAMP)
 	## Tempo: exploit recovery/overswing windows.
 	if assessment.tempo_opportunity > 0.0:
 		utilities[Move.APPROACH] += profile.tempo_awareness * assessment.tempo_opportunity
@@ -204,7 +263,7 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 	if seen.opp_point_threat > 0.3 and perceived < reach + THREAT_RANGE and not striking:
 		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.point_threat_weight * seen.opp_point_threat)
 		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], profile.point_threat_weight * seen.opp_point_threat * 0.6)
-	if perceived < profile.tap_range - SMOTHERED_MARGIN and not striking:
+	if perceived < _range(profile.tap_range) - SMOTHERED_MARGIN and not striking:
 		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.spacing_weight)
 	var initiative := seen.opp_threat_time - seen.my_threat_time
 	if initiative < -INITIATIVE_MARGIN and perceived < reach + INITIATIVE_RANGE and not striking:
@@ -237,7 +296,7 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 	## Indes: interception when opponent is committed and own tap can arrive.
 	if assessment.indes_opportunity > 0.0 and perceived <= reach + THREAT_RANGE:
 		intercept = true
-	var tap_quality := _range_quality(perceived, profile.tap_range, TAP_TOLERANCE)
+	var tap_quality := _range_quality(perceived, _range(profile.tap_range), TAP_TOLERANCE)
 	var tap := 0.0
 	if tap_quality >= MIN_RANGE_QUALITY:
 		tap = tap_quality * (
@@ -248,13 +307,9 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 			+ (profile.intercept_weight if intercept else 0.0)
 			+ profile.tempo_awareness * assessment.tempo_opportunity
 		)
-	var charge := _range_quality(perceived, profile.charge_range, CHARGE_TOLERANCE) * (profile.charge_weight + pressure * CHARGE_PRESSURE_SHARE)
+	var charge := _range_quality(perceived, _range(profile.charge_range), CHARGE_TOLERANCE) * (profile.charge_weight + pressure * CHARGE_PRESSURE_SHARE)
 	charge *= OPEN_CHARGE_BOOST if open else 1.0
 	charge *= THREATENED_CHARGE_DAMP if threatened else 1.0
-	## Stamina-aware charge dampening: holding a charge is expensive motor
-	## work, so the CPU discounts charge utility by depletion × weight.
-	if profile.stamina_cost_weight > 0.0 and assessment.stamina_depletion > 0.0:
-		charge *= 1.0 - assessment.stamina_depletion * profile.stamina_cost_weight * 0.5
 	if tap >= charge and tap > profile.attack_threshold:
 		_attack = Attack.TAP
 	elif charge > profile.attack_threshold:
@@ -281,14 +336,14 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 		return
 	if utility < BURST_UTILITY_MIN:
 		return
-	var capability := _move_capability(me)
+	var condition := _condition(me)
 	## Axial burst: approach or retreat.
 	if _move == Move.APPROACH or _move == Move.RETREAT:
 		var sign_for_move := 1.0 if _move == Move.APPROACH else -1.0
 		if _rng.next_float() >= profile.burst_weight:
 			return
 		var kind := MovementGestureState.BurstKind.FORWARD_DASH if sign_for_move > 0.0 else MovementGestureState.BurstKind.BACK_DASH
-		var safety := EdgeSafetyEvaluator.evaluate_burst(me, kind, _rules, capability)
+		var safety := EdgeSafetyEvaluator.evaluate_burst(me, kind, _rules, condition)
 		if safety.crosses_platform:
 			return
 		_burst_sign = sign_for_move
@@ -307,11 +362,11 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 		var cw_kind := MovementGestureState.BurstKind.RIGHT_STEP
 		var ccw_kind := MovementGestureState.BurstKind.LEFT_STEP
 		var chosen_kind := cw_kind if best_lateral == TacticalAssessment.BURST_CLOCKWISE else ccw_kind
-		var safety := EdgeSafetyEvaluator.evaluate_burst(me, chosen_kind, _rules, capability)
+		var safety := EdgeSafetyEvaluator.evaluate_burst(me, chosen_kind, _rules, condition)
 		if safety.crosses_platform:
 			## Try the other lateral direction.
 			var alt_kind := ccw_kind if best_lateral == TacticalAssessment.BURST_CLOCKWISE else cw_kind
-			safety = EdgeSafetyEvaluator.evaluate_burst(me, alt_kind, _rules, capability)
+			safety = EdgeSafetyEvaluator.evaluate_burst(me, alt_kind, _rules, condition)
 			if safety.crosses_platform:
 				return
 			_burst_sign = -_orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else _orbit_sign
@@ -329,14 +384,10 @@ static func _best_move(utilities: PackedFloat64Array) -> Move:
 	return best as Move
 
 
-## Movement capability scalar for the current fighter state.
-func _move_capability(me: FighterState) -> float:
-	var stamina_max := StaminaModel.max_for_health(
-		me.health, _rules.fighter.max_health, _rules.fighter.base_stamina, _rules.combat
-	)
-	return CapabilityModel.resolve_movement(
-		me.health, _rules.fighter.max_health, me.stamina, stamina_max, _rules.combat
-	)
+## The CPU's own condition (CONDITION-001) — health is public, and its body
+## is its own to feel.
+func _condition(me: FighterState) -> ConditionState:
+	return ConditionModel.compute(me.health, _spec.fighter.max_health, _rules.combat, ConditionState.new())
 
 
 ## Steer vector (duel axes) for a given Move, used by the safety evaluator to
@@ -383,11 +434,11 @@ func _steer_for_move(move: Move, me: FighterState) -> PackedFloat64Array:
 func _safe_move(utilities: PackedFloat64Array, me: FighterState) -> Move:
 	var chosen := _best_move(utilities)
 	var radius := SimMath.length(me.x, me.y)
-	if radius < _rules.platform_radius - _rules.fighter.body_radius:
+	if radius < _rules.platform_radius - _spec.fighter.push_radius:
 		return chosen
-	var capability := _move_capability(me)
+	var condition := _condition(me)
 	var steer := _steer_for_move(chosen, me)
-	var safety := EdgeSafetyEvaluator.evaluate_walk(me, steer[0], steer[1], _rules, capability)
+	var safety := EdgeSafetyEvaluator.evaluate_walk(me, steer[0], steer[1], _rules, condition)
 	if not safety.crosses_platform:
 		return chosen
 	## The best move would cross the platform from near the edge. Try
@@ -403,7 +454,7 @@ func _safe_move(utilities: PackedFloat64Array, me: FighterState) -> Move:
 		if move == chosen:
 			continue
 		var alt_steer := _steer_for_move(move, me)
-		var alt_safety := EdgeSafetyEvaluator.evaluate_walk(me, alt_steer[0], alt_steer[1], _rules, capability)
+		var alt_safety := EdgeSafetyEvaluator.evaluate_walk(me, alt_steer[0], alt_steer[1], _rules, condition)
 		if not alt_safety.crosses_platform:
 			return move
 		if alt_safety.min_clearance > best_clearance:
@@ -426,11 +477,11 @@ func _execute(tick: int, me: FighterState) -> PlayerCommand:
 		var interrupted := not charging and weapon.phase != CombatPhase.Id.NEUTRAL
 		## A blade that is pinned or already at the guard limit stops earning
 		## charge, so a target it cannot reach would otherwise hold forever.
-		var held_too_long := _hold_ticks > _rules.weapon.tap_threshold_ticks + _rules.weapon.windback_limit_ticks(_rules.fighter.weapon_torque_scale) + HOLD_LIMIT_EXTRA_TICKS
+		var held_too_long := _hold_ticks > _spec.weapon.tap_threshold_ticks + _windback_limit_ticks + HOLD_LIMIT_EXTRA_TICKS
 		if interrupted or held_too_long or (charged and (in_reach or profile.release_any_range)):
 			released = true
 			_holding = false
-	elif _attack != Attack.NONE and WeaponSystem.can_start_attack(me, _rules.weapon):
+	elif _attack != Attack.NONE and WeaponSystem.can_start_attack(me, _spec.weapon):
 		pressed = true
 		_idle_ticks = 0
 		if _attack == Attack.TAP:

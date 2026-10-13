@@ -21,11 +21,11 @@ static func create(duel_rules: DuelRules) -> WeaponRig:
 	rig.rules = duel_rules
 	rig.fighter = FighterState.new()
 	rig.fighter.slot = 0
-	rig.fighter.health = duel_rules.fighter.max_health
-	rig.fighter.weapon.reset(-duel_rules.weapon.guard_angle)
+	rig.fighter.health = duel_rules.combatant(0).fighter.max_health
+	rig.fighter.weapon.reset(-duel_rules.combatant(0).weapon.guard_angle)
 	rig.opponent = FighterState.new()
 	rig.opponent.slot = 1
-	rig.opponent.health = duel_rules.fighter.max_health
+	rig.opponent.health = duel_rules.combatant(0).fighter.max_health
 	DuelFixture.place(rig.opponent, 10.0, 0.0, PI)
 	return rig
 
@@ -33,7 +33,7 @@ static func create(duel_rules: DuelRules) -> WeaponRig:
 func step(pressed: bool = false, released: bool = false, cancel: bool = false) -> void:
 	var command := PlayerCommand.create(tick, 0.0, 0.0, pressed, released, cancel)
 	WeaponSystem.apply_input(fighter, command, rules, tick, events)
-	WeaponSystem.step(fighter, opponent, rules, tick, events)
+	WeaponSystem.step(fighter, rules, tick, events)
 	phases.append(fighter.weapon.phase)
 	angles.append(fighter.weapon.angle)
 	tick += 1

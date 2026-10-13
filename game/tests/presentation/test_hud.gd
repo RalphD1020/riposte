@@ -27,16 +27,14 @@ func _root() -> Window:
 	return (Engine.get_main_loop() as SceneTree).root
 
 
-func test_banner_walks_round_ready_duel_then_names_the_outcome() -> void:
+## The round intro belongs to the round-start card (PRES-ROUND-START-001), so
+## the gameplay banner stays empty through it and only names outcomes.
+func test_banner_leaves_the_round_intro_to_the_card_then_names_the_outcome() -> void:
 	var state := _state()
-	var third := floori(float(_rules.intro_ticks) / 3.0)
-	assert_true(third >= 1, "fixture: intro long enough for three beats")
 	state.set_phase(MatchPhase.Id.ROUND_INTRO)
-	assert_eq(HudCopy.banner(_project(state), 0), "ROUND 1", "first beat names the round")
-	state.phase_ticks = third
-	assert_eq(HudCopy.banner(_project(state), 0), "READY", "second beat")
-	state.phase_ticks = 2 * third
-	assert_eq(HudCopy.banner(_project(state), 0), "DUEL", "third beat")
+	assert_eq(HudCopy.banner(_project(state), 0), "", "the round intro has no gameplay banner")
+	state.phase_ticks = _rules.intro_ticks - 1
+	assert_eq(HudCopy.banner(_project(state), 0), "", "at any point of it")
 	state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
 	assert_eq(HudCopy.banner(_project(state), 0), "", "no banner while fighting")
 	state.set_phase(MatchPhase.Id.ROUND_RESULT)
@@ -83,18 +81,19 @@ func test_hud_shows_health_pips_round_and_low_time_from_the_humans_side() -> voi
 	hud.queue_free()
 
 
-func test_hud_shows_stamina_bar_and_condition() -> void:
+## The player HUD shows health only (CONDITION-001, STAMINA-002): one bar per
+## fighter, and no meter for a resource nothing in the game consumes.
+func test_hud_shows_health_only_and_condition() -> void:
 	var hud := DuelHud.create("YOU", "CPU · Medium", 0, DuelSide.Id.LIGHT_SOUTH)
 	_root().add_child(hud)
 	var state := _state()
 	state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
 	hud.update(_project(state))
-	assert_eq(hud.stamina_bar(0).value, _rules.fighter.base_stamina, "full stamina at start")
+	assert_eq(hud.find_children("*", "ProgressBar", true, false).size(), 2, "exactly the two health bars")
 	assert_eq(hud.condition_label(0).text, "HEALTHY", "full health is HEALTHY")
-	state.fighter(0).stamina = _rules.fighter.base_stamina * 0.5
-	state.fighter(0).health = _rules.fighter.max_health * 0.2
+	state.fighter(0).health = _rules.combatant(0).fighter.max_health * 0.2
 	hud.update(_project(state))
-	assert_true(hud.stamina_bar(0).value < _rules.fighter.base_stamina, "stamina bar drained")
+	assert_eq(hud.health_bar(0).value, _rules.combatant(0).fighter.max_health * 0.2, "health bar follows health")
 	assert_eq(hud.condition_label(0).text, "CRITICAL", "20% health is CRITICAL")
 	assert_true(hud.condition_icon(0).texture == HudIcons.condition(FighterCondition.Id.CRITICAL), "and the plate repeats it as a shape, not a colour")
 	assert_ne(HudIcons.condition(FighterCondition.Id.CRITICAL).get_image().get_data(), HudIcons.condition(FighterCondition.Id.HEALTHY).get_image().get_data(), "each condition draws a different shape")
@@ -106,9 +105,11 @@ func test_intro_cards_borrow_the_banner_and_captions_time_out() -> void:
 	hud.reduced_motion = true
 	_root().add_child(hud)
 	var state := _state()
+	state.set_phase(MatchPhase.Id.ROUND_RESULT)
+	state.round_winner = 0
 	hud.update(_project(state))
 	var round_banner := hud.banner_text()
-	assert_ne(round_banner, "", "precondition: the round intro has a banner")
+	assert_ne(round_banner, "", "precondition: the round result has a banner")
 	hud.show_card("WOLF")
 	hud.update(_project(state))
 	assert_eq(hud.banner_text(), "WOLF", "a card overrides the snapshot's banner")
@@ -119,6 +120,24 @@ func test_intro_cards_borrow_the_banner_and_captions_time_out() -> void:
 	assert_eq(hud.caption_text(), "Wold.", "captions show")
 	hud._process(0.6)
 	assert_eq(hud.caption_text(), "", "and clear on their own")
+	hud.queue_free()
+
+
+## Sound captions have their own line: a clash never overwrites what the
+## announcer said, and each clears on its own clock.
+func test_sound_captions_sit_beside_the_announcer_and_time_out() -> void:
+	var hud := DuelHud.create("YOU", "CPU · Medium", 0, DuelSide.Id.LIGHT_SOUTH)
+	_root().add_child(hud)
+	assert_eq(hud.sound_caption_text(), "", "fixture: nothing captioned yet")
+	hud.show_caption("Round one.", 2.0)
+	hud.show_sound_caption(HudCopy.SOUND_SCRAPE, 0.5)
+	assert_eq(hud.sound_caption_text(), HudCopy.SOUND_SCRAPE, "a sound caption shows")
+	assert_eq(hud.caption_text(), "Round one.", "without replacing the announcer")
+	hud.show_sound_caption(HudCopy.sound_caption(PresentationKit.CUE_BLADE_STRONG), 0.5)
+	assert_eq(hud.sound_caption_text(), "[Heavy clash]", "the next sound replaces the last")
+	hud._process(0.6)
+	assert_eq(hud.sound_caption_text(), "", "and clears on its own")
+	assert_eq(hud.caption_text(), "Round one.", "while the announcer line keeps its own time")
 	hud.queue_free()
 
 

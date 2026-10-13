@@ -16,6 +16,9 @@ var record: ReplayRecord
 var events: Array[DuelEvent] = []
 var controllers: Array[FighterController] = []
 var telemetry: TelemetrySink
+## Wall-clock cost of the last authoritative step, in microseconds. A
+## performance reading only; the simulation never sees a clock.
+var last_step_usec: int = 0
 
 
 ## Returns null when the rules are invalid or controllers are missing.
@@ -40,7 +43,9 @@ func step() -> Array[DuelEvent]:
 	var command_0 := controllers[0].command_for(state, 0)
 	var command_1 := controllers[1].command_for(state, 1)
 	record.append(command_0, command_1)
+	var started := Time.get_ticks_usec()
 	var tick_events := simulation.step(state, command_0, command_1)
+	last_step_usec = Time.get_ticks_usec() - started
 	events.append_array(tick_events)
 	telemetry.record_duel_events(tick_events)
 	if state.is_finished():

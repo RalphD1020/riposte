@@ -66,6 +66,12 @@ func _press(root: Node, text: String) -> bool:
 	return true
 
 
+## The outcome title: on the victory card's sheet, or the plain results' lead.
+func _results_title(results: ResultsScreen) -> String:
+	var host: Container = results.victory_card().results_host() if results.is_victory() else results.lead
+	return (host.get_child(0) as Label).text
+
+
 func _match(booted: Booted) -> MatchScreen:
 	var screen := booted.app.current_screen() as MatchScreen
 	if screen != null:
@@ -115,8 +121,13 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	var winner := first_session.state.match_winner
 	var expected := "VICTORY" if winner == 0 else ("DEFEAT" if winner == 1 else "DRAW")
 	var results := app.current_screen() as ResultsScreen
-	assert_eq((results.lead.get_child(0) as Label).text, expected, "outcome from the human's side")
-	assert_eq(app.presentation_mount.get_child_count(), 0, "leaving the duel disposed its presenter")
+	for child in app.presentation_mount.get_children():
+		assert_false(child is MatchPresenter, "leaving the duel disposed its presenter")
+	assert_eq(results.is_victory(), winner == 0 or winner == 1, "a decided set opens on the winner's showcase")
+	if results.is_victory():
+		results.set_process(false)
+		results.skip_victory()
+	assert_eq(_results_title(results), expected, "outcome from the human's side")
 	assert_true(_press(results, "REMATCH"), "Rematch offered")
 	await await_frames(1)
 	var second := _match(booted)
@@ -139,15 +150,19 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	await _shutdown(booted)
 
 
+## A set is one match (PRES-INTRO-001): introduced once at its start, never at
+## a new round, and a Rematch is a new set.
 func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
 	var booted := await _boot_ready()
 	var app := booted.app
 	app.start_quick_play()
 	await await_frames(1)
 	var screen := _match(booted)
+	var first_set := app.current_set.set_id
 	var captions: Array[String] = []
 	screen.presenter.audio().caption_requested.connect(func(text: String, _seconds: float) -> void: captions.append(text))
 	assert_true(screen.is_intro_playing(), "a new set opens with the introduction")
+	assert_false(app.claim_set_intro(), "and the set's one introduction is spent")
 	var opening_hash := StateHasher.hash_state(screen.session.state)
 	for _i in 8:
 		screen.advance_frame(FRAME)
@@ -156,20 +171,45 @@ func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
 	assert_eq(screen.hud.banner_text(), "WOLF", "the first fighter's card is up")
 	assert_eq(screen.hud.caption_text(), "Wold.", "and the announcer's reading, as written in content, is captioned")
 	assert_false(screen.presenter.fighter_proxy(0).visible, "gameplay proxies step aside for the showcase")
+	assert_false(screen.hud.is_gameplay_chrome_visible(), "no plates, bars, or pips over the introduction (PRES-CHROME-001)")
+	var cues: Array[String] = []
+	screen.round_start.cue_announced.connect(func(cue: StringName, number: int) -> void: cues.append("%s %d" % [cue, number]))
 	var frames := _run_until(screen, func() -> bool: return not screen.is_intro_playing())
 	assert_true(frames * FRAME <= SetIntroDirector.BEAT_ENDS[-1] + FRAME * 2.0, "it lasts about %.1f s" % SetIntroDirector.BEAT_ENDS[-1])
-	assert_true(captions.has("Wolf.") and captions.has("DUEL!"), "the second fighter and the call are captioned too")
+	assert_true(captions.has("Wolf."), "the second fighter is captioned too")
 	assert_true(screen.presenter.fighter_proxy(0).visible, "the duel's own proxies are back")
 	assert_true(app.camera_rig.camera().current, "and so is the gameplay camera")
+	## Then the round's own beat (PRES-ROUND-START-001): MATCH 1 with input
+	## locked and no gameplay chrome, then FIGHT! on the tick it goes live.
+	assert_eq(screen.round_start.text(), "MATCH 1", "the round-start card names the match")
+	assert_eq(cues, ["match 1"] as Array[String], "and the announcer calls it once")
+	assert_true(captions.has("MATCH 1"), "captioned")
+	assert_eq(screen.session.state.phase, MatchPhase.Id.ROUND_INTRO, "fixture: the round is still being introduced")
+	assert_false(screen.hud.is_gameplay_chrome_visible(), "the gameplay HUD waits for FIGHT")
+	_run_until(screen, func() -> bool: return screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
+	assert_eq(screen.round_start.showing_cue(), RoundStartDirector.CUE_FIGHT, "FIGHT! lands on the tick the round goes live")
+	assert_eq(cues, ["match 1", "fight 0"] as Array[String], "called once")
+	assert_true(captions.has("FIGHT!"), "and captioned")
+	screen.advance_frame(FRAME)
+	assert_true(screen.hud.is_gameplay_chrome_visible(), "the gameplay HUD appears with it")
 	_run_until(screen, func() -> bool: return screen.session.state.round_number >= 2 or screen.is_finished())
 	assert_false(screen.is_intro_playing(), "a new round is never introduced again")
+	assert_false(screen.is_finished(), "fixture: a first-to-three set has a second round")
+	assert_eq(screen.round_start.text(), "MATCH 2", "but every round gets its card")
+	assert_true(cues.has("match 2"), "and its call")
+	assert_false(screen.hud.is_gameplay_chrome_visible(), "with the gameplay HUD down again until FIGHT")
 	assert_true(screen.session.state.tick > 0, "the duel ran once the intro ended")
 	_run_until(screen, screen.is_finished)
 	await await_frames(1)
-	assert_true(_press(app.current_screen(), "REMATCH"), "Rematch offered")
+	var results := app.current_screen() as ResultsScreen
+	results.set_process(false)
+	results.skip_victory()
+	assert_true(_press(results, "REMATCH"), "Rematch offered")
 	await await_frames(1)
 	var rematch := _match(booted)
-	assert_false(rematch.is_intro_playing(), "a rematch is the same set, so no intro")
+	assert_true(rematch.is_intro_playing(), "a rematch is a new set, so it is introduced again")
+	assert_ne(app.current_set.set_id, first_set, "with its own set id")
+	rematch.skip_intro()
 	rematch.quit_to_menu()
 	await await_frames(2)
 	app.start_quick_play()
@@ -261,6 +301,55 @@ func test_settings_drill_down_saves_and_escape_walks_back() -> void:
 	await _shutdown(booted)
 
 
+## Remapping through the real panel and real key events: choose a binding,
+## Esc stops waiting, a key answers, the game's action listens to it and the
+## file keeps it; a swap that would strand an action is refused and says why;
+## reset gives the authored keys back.
+func test_a_key_is_rebound_through_settings_and_the_game_hears_it() -> void:
+	var booted := await _boot_ready()
+	var app := booted.app
+	assert_true(_press(app.current_screen(), "SETTINGS"), "Settings on the menu")
+	await await_frames(1)
+	var screen := app.current_screen() as SettingsScreen
+	assert_true(_press(screen, "Action keys"), "the key pages are listed")
+	await await_frames(1)
+	var panel := screen.panel
+	var slot := panel.binding_button(InputActions.ATTACK, 1)
+	assert_true(slot != null and slot.text == AppCopy.binding_label(KEY_SPACE), "fixture: attack's second binding is Space")
+	slot.pressed.emit()
+	assert_true(panel.is_capturing(), "choosing it waits for a key")
+	assert_eq(slot.text, AppCopy.BINDING_PRESS, "and says so")
+	_push(_key(KEY_ESCAPE, true))
+	await await_frames(1)
+	assert_false(panel.is_capturing(), "Esc stops waiting")
+	assert_eq(panel.section(), SettingsPanel.Section.ACTION_KEYS, "without leaving the page")
+	assert_eq(app.settings.bindings.code(InputActions.ATTACK, 1), KEY_SPACE, "and changes nothing")
+	panel.binding_button(InputActions.ATTACK, 1).pressed.emit()
+	_push(_key(KEY_J, true))
+	_push(_key(KEY_J, false))
+	await await_frames(2)
+	assert_false(panel.is_capturing(), "a key answers")
+	assert_eq(app.settings.bindings.code(InputActions.ATTACK, 1), KEY_J, "attack is now on J")
+	assert_eq(panel.binding_button(InputActions.ATTACK, 1).text, AppCopy.binding_label(KEY_J), "and the page shows it")
+	var reloaded := PlayerSettings.new()
+	reloaded.load_from(SETTINGS_PATH)
+	assert_eq(reloaded.bindings.code(InputActions.ATTACK, 1), KEY_J, "it persisted")
+	assert_true(_key(KEY_J, true).is_action(InputActions.ATTACK, true), "the game's attack action listens to J")
+	assert_false(_key(KEY_SPACE, true).is_action(InputActions.ATTACK, true), "and no longer to Space")
+	panel.binding_button(InputActions.PAUSE, 1).pressed.emit()
+	_push(_key(KEY_SHIFT, true))
+	await await_frames(2)
+	assert_eq(app.settings.bindings.code(InputActions.DASH_MODIFIER, 0), KEY_SHIFT, "dash keeps its only key")
+	assert_eq(app.settings.bindings.code(InputActions.PAUSE, 1), 0, "pause did not take it")
+	assert_true(panel.status_text().contains(AppCopy.binding_action(InputActions.DASH_MODIFIER)), "and the page says which action needs it")
+	assert_true(_press(screen, AppCopy.BINDING_RESET), "reset on the page")
+	await await_frames(1)
+	assert_true(app.settings.bindings.is_default(), "reset gives the authored keys back")
+	assert_true(_key(KEY_SPACE, true).is_action(InputActions.ATTACK, true), "Space attacks again")
+	KeyBindings.new().apply()
+	await _shutdown(booted)
+
+
 func test_touch_moves_and_attacks_through_the_same_input_path() -> void:
 	var booted := await _boot_ready()
 	var screen := await _active_duel(booted)
@@ -299,7 +388,9 @@ func test_touch_moves_and_attacks_through_the_same_input_path() -> void:
 ## down at once. Independent `index` values are the whole mechanism.
 func test_both_thumbs_work_at_the_same_time() -> void:
 	var booted := await _boot_ready()
-	var screen := await _active_duel(booted)
+	## Against the training dummy, which only answers inside its reach: the
+	## thumbs are the subject, and a CPU closing in mid-gesture is not.
+	var screen := await _active_duel(booted, true)
 	var touch := screen.touch
 	var me := screen.session.state.fighter(0)
 	var stick := touch.move_zone().get_center()
@@ -442,8 +533,11 @@ func _boot_ready() -> Booted:
 
 
 ## Quick Play, stepped to the first fighting tick.
-func _active_duel(booted: Booted) -> MatchScreen:
-	booted.app.start_quick_play()
+func _active_duel(booted: Booted, training: bool = false) -> MatchScreen:
+	if training:
+		booted.app.start_training()
+	else:
+		booted.app.start_quick_play()
 	await await_frames(1)
 	var screen := _match(booted)
 	_run_until(screen, func() -> bool: return screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)

@@ -42,6 +42,50 @@ const STAB_STYLES: Array[StringName] = [STYLE_STAB_CRUMPLE, STYLE_STAB_PITCH]
 ## The clip the striker of a killing thrust holds for the run-through. Empty
 ## falls back to the dash-forward lunge (which returns to guard on its own).
 @export var finisher_clip: StringName = &""
+## Death style → `DeathStyleTiming`. A style with none uses
+## `default_weapon_release`.
+@export var style_timings: Dictionary = {}
+## When the dead hand lets go for a style with no authored timing
+## (presentation-scaled seconds from the killing blow).
+@export var default_weapon_release: float = DEFAULT_WEAPON_RELEASE
+## The shared timeline of a killing thrust (striker withdrawal, victim
+## collapse, the victim's release). Null uses the built-in beats. Every stab
+## style is timed by it, never by a per-style release.
+@export var stab_finisher: StabFinisherProfile
+## Authored flails for a ring-out, picked deterministically from the fall's
+## event key so a replay falls the same way. Empty: none authored.
+@export var ring_fall_clips: Array[StringName] = []
+
+## The built-in release beat: the hand goes slack as the collapse begins.
+const DEFAULT_WEAPON_RELEASE := 0.12
+
+
+## The whole death for a killing blow, resolved once: style, clip, timings.
+func resolve(family: Family, key: int) -> DeathStyleSpec:
+	var spec := DeathStyleSpec.new()
+	spec.style = style_for(family, key)
+	spec.clip = clip_for(spec.style)
+	var timing := style_timings.get(spec.style) as DeathStyleTiming
+	spec.weapon_release_time = timing.weapon_release_time if timing != null else default_weapon_release
+	spec.ragdoll_handoff_time = timing.ragdoll_handoff_time if timing != null else -1.0
+	if family == Family.STAB:
+		var finisher := stab_timeline()
+		spec.collapse_delay = finisher.victim_collapse_start
+		spec.weapon_release_time = finisher.victim_weapon_release
+		spec.finisher = finisher
+	return spec
+
+
+## The killing thrust's shared timeline: the authored one, or the built-in.
+func stab_timeline() -> StabFinisherProfile:
+	return stab_finisher if stab_finisher != null else StabFinisherProfile.new()
+
+
+## The ring-fall flail for a fall with event `key`, or empty.
+func ring_fall_clip(key: int) -> StringName:
+	if ring_fall_clips.is_empty():
+		return &""
+	return ring_fall_clips[absi(key) % ring_fall_clips.size()]
 
 
 ## The authored clip for a style, or empty when this profile has none.
@@ -58,6 +102,11 @@ static func family_of(contact_kind: String) -> Family:
 			return Family.STAB
 		_:
 			return Family.SLASH
+
+
+## The family a death style belongs to (a style outside the stab set is a cut).
+static func family_of_style(style: StringName) -> Family:
+	return Family.STAB if STAB_STYLES.has(style) else Family.SLASH
 
 
 ## The death style for a killing blow: deterministic from the family and the

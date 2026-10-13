@@ -69,7 +69,7 @@ func observe(state: MatchState, events: Array[DuelEvent]) -> bool:
 			return _advance_if(_released_with(events, func(charge: float) -> bool: return charge >= CHARGE_TARGET))
 		Step.BLADES:
 			for event in events:
-				if event.type == DuelEventTypes.BLADE_CONTACT or event.type == DuelEventTypes.BIND_STARTED:
+				if event.type == DuelEventTypes.BLADE_CONTACT:
 					return _advance_if(true)
 		Step.SWEET_SPOT:
 			## Where on the blade, and nothing else. Not the damage and not

@@ -61,6 +61,7 @@ class Effect:
 
 var last_cue: StringName = &""
 var _effects: Array[Effect] = []
+var _free: Array[Effect] = []
 var _random := RandomNumberGenerator.new()
 var _spark_mesh := QuadMesh.new()
 var _dust_mesh := QuadMesh.new()
@@ -153,7 +154,7 @@ func advance(delta: float) -> void:
 		var effect := _effects[i]
 		effect.life -= delta
 		if effect.life <= 0.0:
-			effect.node.queue_free()
+			_retire(effect)
 			_effects.remove_at(i)
 			continue
 		effect.node.position += effect.velocity * delta
@@ -163,7 +164,7 @@ func advance(delta: float) -> void:
 
 func clear_all() -> void:
 	for effect in _effects:
-		effect.node.queue_free()
+		_retire(effect)
 	_effects.clear()
 
 
@@ -171,19 +172,36 @@ func effect_count() -> int:
 	return _effects.size()
 
 
+## Nodes created so far (live + pooled). Bounded by MAX_EFFECTS: sustained
+## combat reuses them rather than allocating and freeing (mobile stutter).
+func pooled_node_count() -> int:
+	return _effects.size() + _free.size()
+
+
+## An expired effect's node is hidden and kept for the next spawn.
+func _retire(effect: Effect) -> void:
+	effect.node.visible = false
+	_free.append(effect)
+
+
 func _spawn(mesh: Mesh, material: Material, world: Vector3, velocity: Vector3, life: float, start_scale: float, end_scale: float) -> Effect:
 	if _effects.size() >= MAX_EFFECTS:
-		var oldest: Effect = _effects.pop_front()
-		oldest.node.queue_free()
-	var node := MeshInstance3D.new()
+		_retire(_effects.pop_front())
+	var effect: Effect
+	if not _free.is_empty():
+		effect = _free.pop_back()
+	else:
+		effect = Effect.new()
+		effect.node = MeshInstance3D.new()
+		effect.node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(effect.node)
+	var node := effect.node
 	node.mesh = mesh
 	node.material_override = material
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.basis = Basis.IDENTITY
 	node.position = world
 	node.scale = Vector3.ONE * maxf(start_scale, MIN_SCALE)
-	add_child(node)
-	var effect := Effect.new()
-	effect.node = node
+	node.visible = true
 	effect.velocity = velocity
 	effect.life = life
 	effect.max_life = life

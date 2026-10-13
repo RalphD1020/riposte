@@ -21,8 +21,6 @@ var kit_source: KitSource = KitSource.WEAPON
 ## Variant key derived from the event (tick, actor): the same event always
 ## picks the same take, so a replay sounds identical.
 var key: int = 0
-## Held cues (the bind grind) loop until the presenter releases them.
-var hold: bool = false
 ## Arena cues that are flat stingers rather than positioned sounds.
 var flat: bool = false
 

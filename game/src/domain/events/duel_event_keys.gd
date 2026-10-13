@@ -8,7 +8,7 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/simulation.md
 
-## Contact point on the arena plane (blade, body, parry, bind, kill).
+## Contact point on the arena plane (blade, body, parry, kill).
 const X := "x"
 const Y := "y"
 
@@ -17,7 +17,7 @@ const DIRECTION := "direction"
 const CHARGE := "charge"
 const ARC := "arc"
 
-## Blade contact (blade_collision, bind_started).
+## Blade contact (blade_contact).
 const CLOSING_SPEED := "closing_speed"
 ## Contact directions, carried so feedback is directional without presentation
 ## guessing at the geometry. `NORMAL` is the way the impulse pushes; `STRIKE`
@@ -33,6 +33,18 @@ const PUSH := "push"
 ## need a fraction rather than a class name.
 const INTENSITY := "intensity"
 const IMPULSE := "impulse"
+## Energy the contact dissipated (J, ContactMechanics): the size of what
+## actually happened, for feedback that must not read charge.
+const ENERGY := "energy"
+## Where on each blade a blade contact landed (0 guard, 1 tip).
+const FRACTION_0 := "fraction_0"
+const FRACTION_1 := "fraction_1"
+## Which feature of each sword the contact touched
+## (`SwordContactSet.Feature`: blade, guard or hilt).
+const FEATURE_0 := "feature_0"
+const FEATURE_1 := "feature_1"
+## How many manifold points a blade contact was solved on (1 or 2).
+const POINT_COUNT := "point_count"
 ## ContactResolver.CLASS_LIGHT / CLASS_SOLID / CLASS_STRONG.
 const CONTACT_CLASS := "class"
 const DEFLECTED_0 := "deflected_0"
@@ -40,7 +52,9 @@ const DEFLECTED_1 := "deflected_1"
 const DELTA_0 := "delta_0"
 const DELTA_1 := "delta_1"
 
-## Parry: how much sooner (s) the defender threatens.
+## Parry: the riposte advantage — how much sooner (s) the defender threatens
+## than the attacker in the state the interception left. A reading, never the
+## parry's definition; zero or negative is a parry that won no tempo.
 const MARGIN := "margin"
 
 ## Body strike (body_hit, critical_hit), from StrikeResult.
@@ -58,7 +72,8 @@ const CONTACT_QUALITY := "contact_quality"
 const EXPOSURE_FRACTION := "exposure_fraction"
 ## `SwingSemantics.Grade` as a label: what this hit *was*.
 const GRADE := "grade"
-## Structural coupling and the striking mass it produced (PHYS-002).
+## Structural coupling (PHYS-002) and the contact's effective mass `1/k` (kg,
+## IMPACT-PHYSICS-001): how heavy the strike was where it landed.
 const COUPLING := "coupling"
 const EFFECTIVE_MASS := "effective_mass"
 ## Kinetic severity in joules. Impulse rides on IMPULSE above (PHYS-004).
@@ -99,7 +114,7 @@ const BURST := "burst"
 const HEADING_X := "heading_x"
 const HEADING_Y := "heading_y"
 
-## Round and match flow (round_started, round_ended, match_ended, bind_ended).
+## Round and match flow (round_started, round_ended, match_ended).
 const ROUND := "round"
 const ROUNDS := "rounds"
 const WINNER := "winner"

@@ -33,10 +33,35 @@ enum Phase {
 }
 
 var phase: Phase = Phase.OUTSIDE
+## Physical normal impulse the persistent constraint applied this tick (N·s,
+## `RigidContactSolver` velocity stage only — never the position stage's
+## pseudo-impulse). A reading of this tick, not carried state.
+var normal_impulse: float = 0.0
+## The same for the Coulomb tangent impulse (N·s, signed along the row's
+## tangent). A reading of this tick.
+var tangent_impulse: float = 0.0
+## Warm start (RIGID-CONTACT-003): the held solve's physical impulses over the
+## last tick, carried into the next tick's first solve while the sword is still
+## held on this body. Carried state, hashed; the position stage never writes it.
+var hold_active: bool = false
+var hold_normal: float = 0.0
+var hold_tangent: float = 0.0
+## Residual sliding speed after that solve (m/s) — a presentation reading.
+var hold_slip: float = 0.0
 
 
 func reset() -> void:
 	phase = Phase.OUTSIDE
+	normal_impulse = 0.0
+	tangent_impulse = 0.0
+	clear_hold()
+
+
+func clear_hold() -> void:
+	hold_active = false
+	hold_normal = 0.0
+	hold_tangent = 0.0
+	hold_slip = 0.0
 
 
 ## Advance the lifecycle after the entry impulse has been resolved.

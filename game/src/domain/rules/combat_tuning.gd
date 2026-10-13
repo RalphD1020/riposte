@@ -1,24 +1,17 @@
 class_name CombatTuning
 extends RefCounted
 
-## Weapon-independent combat semantics: exposure, damage curve, criticals,
-## parry margin, and swept-collision resolution. Every value is authored in
+## Weapon-independent combat semantics: the exposure reading, damage curve, criticals,
+## recovery floor, condition floors, and swept-collision resolution. Every value is authored in
 ## content; defaults here are neutral.
 ##
 ## See also: /docs/concepts/combat.md
 ## Source: game/content/rules/standard_duel_rules.gd
 
-## Exposure (COMBAT §47): base + commitment + balance debt + flank + phase bonus.
-var exposure_base: float = 0.0
-var exposure_commit: float = 0.0
-var exposure_balance: float = 0.0
-var exposure_flank: float = 0.0
-var exposure_charging: float = 0.0
-var exposure_overswing: float = 0.0
-var exposure_recovery: float = 0.0
-var exposure_stagger: float = 0.0
-var exposure_min: float = 0.0
-var exposure_max: float = 0.0
+## Exposure is a reading, never a damage factor (v36, `ExposureModel`): how
+## far behind the opponent a fighter is in time-to-threat. A margin of this
+## many seconds reads as fully exposed (or fully safe the other way round).
+var exposure_window_seconds: float = 0.0
 
 ## Nonlinear damage curve (COMBAT §52). Quality → damage, clamped at the ends.
 ## Quality derives from *severity*, so the domain is quadratic in closing
@@ -31,12 +24,12 @@ var max_physical_quality: float = 0.0
 ## but non-lethal (training).
 var damage_scale: float = 0.0
 
-## Critical classification (COMBAT §53): convergence, never chance.
+## Critical classification (COMBAT §53): convergence of physical quality,
+## blade region and edge alignment — never chance, never exposure.
 var critical_quality: float = 0.0
 var critical_blade_min: float = 0.0
 var critical_blade_max: float = 0.0
 var critical_alignment: float = 0.0
-var critical_exposure: float = 0.0
 
 ## Structural coupling (COMBAT §36, PHYS-002). Plant quality erodes with
 ## speed, acceleration debt and body rotation; coupling blends it with how
@@ -47,10 +40,6 @@ var plant_accel_weight: float = 0.0
 var plant_turn_weight: float = 0.0
 var coupling_coherence_share: float = 0.0
 var coupling_floor: float = 0.0
-## Body mass that fully coupled structure puts behind a strike. Deliberately
-## far below the fighter's actual mass: a sword strike couples a fraction of
-## the body, never all of it.
-var body_contribution_mass: float = 0.0
 
 ## Bound on the chronological contact loop. Exhausting it is pathological
 ## geometry, not normal play, and is reported rather than ignored.
@@ -58,31 +47,45 @@ var max_contacts_per_tick: int = 0
 ## Hysteresis: touching parts must come this much further apart than the touch
 ## distance before they count as separated and can strike again.
 var separation_epsilon: float = 0.0
-## Hard escape bound on consecutive ticks a pair may spend bound.
-var bind_escape_ticks: int = 0
+## Persistent contact (RIGID-CONTACT-001): overlap a held contact may keep
+## (m) — invisible, millimetres — and the most one position correction may
+## move it out in a tick (m), so a deep overlap is worked out over ticks
+## rather than teleported.
+var contact_slop: float = 0.0
+var contact_max_correction: float = 0.0
+## Coulomb friction between a sword and what it touches (BLADE-FRICTION-001):
+## the tangent impulse at a contact never exceeds μ times its normal impulse.
+## One coefficient per material pair — blade on blade, blade on a living body,
+## and anything on a guard crossbar. They are gameplay calibration, not steel
+## tables, and they select no other behaviour: μ = 0 is the frictionless solve.
+var blade_friction: float = 0.0
+var blade_body_friction: float = 0.0
+var guard_friction: float = 0.0
 
-## Mass a fighter brings to resisting displacement is their own mass scaled
-## between this floor (mid-scramble) and 1 (fully planted).
-var resist_plant_floor: float = 0.0
-
-## Effective striking mass (COMBAT §51) is measured against this reference.
-var reference_strike_mass: float = 0.0
 ## A solid reference impact, for consumers that need impulse and severity as
-## bounded signals rather than raw kg·m/s and joules.
+## bounded signals rather than raw kg·m/s and joules. The injury calibration:
+## named physical constants authored in the rules content with explicit units
+## (`StandardDuelRules.REFERENCE_CUT_ENERGY_J` and friends), measured once on
+## the reference strike (`ContactMechanics.reference_impulse` is its witness on
+## the current mechanics), so changing the sword never renormalizes damage.
 var reference_impulse: float = 0.0
 var reference_severity: float = 0.0
+## The same for a point driven straight in (`ContactMechanics.reference_thrust_severity`).
+var reference_thrust_severity: float = 0.0
+## A strong clash's dissipated energy (`ContactMechanics.reference_clash_energy`).
+var reference_clash_energy: float = 0.0
 
-## Blade-on-blade (COMBAT §40): effective inertia = I × (floor + (1 - floor) × C_s) × (1 + bonus × K).
-var blade_inertia_coupling_floor: float = 0.0
-var blade_inertia_commit_bonus: float = 0.0
 ## Closing speed (m/s) that separates light / solid / strong blade contact.
 var blade_solid_speed: float = 0.0
 var blade_strong_speed: float = 0.0
-## A bind breaks once the blades drift this far beyond contact distance.
-var bind_break_distance: float = 0.0
 
-## Parry: defender threatens first by at least this margin after contact.
-var parry_margin_seconds: float = 0.0
+## Recovery (RECOVERY-001): the universal floor — every recovery, for every
+## attack and every weapon, lasts at least this many ticks (hand and control
+## re-acquisition, mirrored). Past it, recovery ends only when the blade is
+## physically back under control (`WeaponDefinition.control_speed`). No other
+## term: overswing, facing error, displacement and balance already cost real
+## time through the brake torque, the turn torque and movement authority.
+var recovery_min_ticks: int = 0
 
 ## Swept collision substeps: point travel per substep stays below this.
 var substep_travel: float = 0.0
@@ -154,27 +157,52 @@ var thrust_burst_alignment: float = 0.0
 ## curve; at or above it, the POKE is lethal. Unprotected THRUSTs ignore this
 ## threshold — they are always lethal.
 var poke_lethal_quality: float = 0.0
-## Game-feel target pushback scaling (PHYS-008). Multiplies the physical
-## impulse-derived target push for readability. The extra amplification is
-## never reflected back into the blade reaction.
-var body_push_feel_scale: float = 1.0
-
-## Capability tuning: injury and fatigue penalties with a combined floor.
-## `capability_injury_max` is the maximum penalty from injury alone (at zero
-## health). `capability_fatigue_max` is the maximum penalty from fatigue alone
-## (at zero stamina). `capability_floor` prevents the combined degradation
-## from disabling input — a fighter at the floor is weak but responsive.
-var capability_injury_max: float = 0.0
-var capability_fatigue_max: float = 0.0
-var capability_floor: float = 0.0
+## Condition (CONDITION-001): what damage leaves of a fighter's voluntary
+## force, speed and tracking at zero health. Each scale runs linearly from 1 at
+## full health down to its floor; the floors are in [0.5, 1] so the healthy
+## identity is exact in floating point and injury can never disable input.
+var condition_force_floor: float = 0.0
+var condition_speed_floor: float = 0.0
+var condition_tracking_floor: float = 0.0
+## Directional commitment (DIRECTIONAL-COMMIT-001, RESPONSIVE-COMMITMENT-001):
+## physical redirect debt — momentum plus the actuator effort still being
+## committed over `commit_lookahead_seconds`, against the healthy braking —
+## mapped smoothly as `t / (t + T)` against a reference time for the weapon
+## and the root. Forward root debt compounds the weapon's at
+## `commit_root_facing_weight`; retreat relieves it by at most
+## `commit_retreat_relief`. Full facing commitment leaves the heading
+## `commit_turn_torque_curve` of its turn torque and `commit_turn_speed_curve`
+## of its turn-rate cap; after injury the final share never drops below the
+## `*_floor` of healthy. Gameplay calibration, not forces.
+var commit_lookahead_seconds: float = 0.0
+var commit_weapon_reference_seconds: float = 0.0
+var commit_root_reference_seconds: float = 0.0
+var commit_root_facing_weight: float = 0.0
+var commit_retreat_relief: float = 0.0
+var commit_turn_torque_curve: float = 0.0
+var commit_turn_speed_curve: float = 0.0
+var commit_turn_torque_floor: float = 0.0
+var commit_turn_speed_floor: float = 0.0
+## A killed body (`FallenBodyState`, Phase 15). Collapse ticks before it lies,
+## per cause: a cut drops it at once, a run-through holds it on the blade
+## first. Lying, it slides against Coulomb ground friction
+## `fallen_ground_friction` (deceleration μ·g; the turning resistance is that
+## friction over a uniform rod, derived, never authored). The lying body's own
+## shape is the fighter's (`FighterDefinition.lying_half_length` /
+## `lying_radius`): a floor material is a rule, a body's length is not.
+var fallen_settle_ticks_cut: int = 0
+var fallen_settle_ticks_point: int = 0
+var fallen_ground_friction: float = 0.0
 
 
 func is_valid() -> bool:
 	if not _all_finite():
 		return false
 	return (
-		exposure_max >= exposure_min
-		and exposure_min > 0.0
+		exposure_window_seconds > 0.0
+		and fallen_settle_ticks_cut >= 0
+		and fallen_settle_ticks_point >= 0
+		and fallen_ground_friction > 0.0
 		and damage_qualities.size() == damage_values.size()
 		and not damage_qualities.is_empty()
 		and max_physical_quality > 0.0
@@ -183,20 +211,25 @@ func is_valid() -> bool:
 		and coupling_floor <= 1.0
 		and coupling_coherence_share >= 0.0
 		and coupling_coherence_share <= 1.0
-		and body_contribution_mass > 0.0
-		and resist_plant_floor > 0.0
-		and resist_plant_floor <= 1.0
-		and reference_strike_mass > 0.0
 		and reference_impulse > 0.0
 		and reference_severity > 0.0
-		and blade_inertia_coupling_floor > 0.0
+		and reference_thrust_severity > 0.0
+		and reference_clash_energy > 0.0
 		and blade_strong_speed > blade_solid_speed
-		and parry_margin_seconds > 0.0
+		and recovery_min_ticks > 0
 		and substep_travel > 0.0
 		and max_substeps > 0
 		and max_contacts_per_tick > 0
 		and separation_epsilon > 0.0
-		and bind_escape_ticks > 0
+		and contact_slop > 0.0
+		and contact_max_correction > contact_slop
+		and ArenaConstraints.BODY_CONTACT_REST_EPSILON < contact_slop
+		and blade_friction >= 0.0
+		and blade_body_friction >= 0.0
+		and blade_body_friction <= blade_friction
+		and guard_friction >= 0.0
+		and guard_friction <= 1.0
+		and blade_friction <= 1.0
 		and stamina_health_share >= 0.0
 		and stamina_health_share <= 1.0
 		and stamina_shock_rate >= 0.0
@@ -209,12 +242,25 @@ func is_valid() -> bool:
 		and stamina_drive_weight >= 0.0
 		and stamina_brake_weight >= 0.0
 		and stamina_hold_weight >= 0.0
-		and capability_injury_max >= 0.0
-		and capability_injury_max <= 1.0
-		and capability_fatigue_max >= 0.0
-		and capability_fatigue_max <= 1.0
-		and capability_floor > 0.0
-		and capability_floor <= 1.0
+		and condition_force_floor >= 0.5
+		and condition_force_floor <= 1.0
+		and condition_speed_floor >= 0.5
+		and condition_speed_floor <= 1.0
+		and condition_tracking_floor >= 0.5
+		and condition_tracking_floor <= 1.0
+		and commit_weapon_reference_seconds > 0.0
+		and commit_root_reference_seconds > 0.0
+		and commit_lookahead_seconds >= 0.0
+		and commit_root_facing_weight >= 0.0
+		and commit_root_facing_weight <= 1.0
+		and commit_retreat_relief >= 0.0
+		and commit_retreat_relief <= 1.0
+		and commit_turn_torque_floor > 0.0
+		and commit_turn_torque_curve >= commit_turn_torque_floor
+		and commit_turn_torque_curve <= 1.0
+		and commit_turn_speed_floor > 0.0
+		and commit_turn_speed_curve >= commit_turn_speed_floor
+		and commit_turn_speed_curve <= 1.0
 		and body_restitution >= 0.0
 		and body_restitution <= 1.0
 		and body_friction >= 0.0
@@ -233,7 +279,6 @@ func is_valid() -> bool:
 		and thrust_burst_alignment >= 0.0
 		and thrust_burst_alignment <= 1.0
 		and poke_lethal_quality > 0.0
-		and body_push_feel_scale > 0.0
 	)
 
 
@@ -243,24 +288,21 @@ func damage_for(quality: float) -> float:
 
 func _all_finite() -> bool:
 	return (
-		is_finite(exposure_base) and is_finite(exposure_commit)
-		and is_finite(exposure_balance) and is_finite(exposure_flank)
-		and is_finite(exposure_charging) and is_finite(exposure_overswing)
-		and is_finite(exposure_recovery) and is_finite(exposure_stagger)
-		and is_finite(exposure_min) and is_finite(exposure_max)
+		is_finite(exposure_window_seconds)
 		and is_finite(max_physical_quality) and is_finite(damage_scale)
 		and is_finite(critical_quality) and is_finite(critical_blade_min)
 		and is_finite(critical_blade_max) and is_finite(critical_alignment)
-		and is_finite(critical_exposure)
 		and is_finite(plant_speed_weight) and is_finite(plant_accel_weight)
 		and is_finite(plant_turn_weight) and is_finite(coupling_coherence_share)
-		and is_finite(coupling_floor) and is_finite(body_contribution_mass)
-		and is_finite(separation_epsilon) and is_finite(resist_plant_floor)
-		and is_finite(reference_strike_mass) and is_finite(reference_impulse)
-		and is_finite(reference_severity) and is_finite(blade_inertia_coupling_floor)
-		and is_finite(blade_inertia_commit_bonus) and is_finite(blade_solid_speed)
-		and is_finite(blade_strong_speed) and is_finite(bind_break_distance)
-		and is_finite(parry_margin_seconds) and is_finite(substep_travel)
+		and is_finite(coupling_floor)
+		and is_finite(separation_epsilon)
+		and is_finite(contact_slop) and is_finite(contact_max_correction)
+		and is_finite(blade_friction) and is_finite(blade_body_friction)
+		and is_finite(guard_friction)
+		and is_finite(reference_impulse) and is_finite(reference_thrust_severity)
+		and is_finite(reference_severity) and is_finite(blade_solid_speed)
+		and is_finite(blade_strong_speed)
+		and is_finite(substep_travel)
 		and is_finite(stamina_health_share) and is_finite(stamina_shock_rate)
 		and is_finite(stamina_exertion_rate) and is_finite(stamina_recovery_rate)
 		and is_finite(stamina_recovery_effort_ceiling)
@@ -273,7 +315,12 @@ func _all_finite() -> bool:
 		and is_finite(point_strike_alignment)
 		and is_finite(point_strike_incidence) and is_finite(point_strike_severity)
 		and is_finite(graze_quality) and is_finite(thrust_burst_alignment)
-		and is_finite(poke_lethal_quality) and is_finite(body_push_feel_scale)
-		and is_finite(capability_injury_max) and is_finite(capability_fatigue_max)
-		and is_finite(capability_floor)
+		and is_finite(poke_lethal_quality)
+		and is_finite(condition_force_floor) and is_finite(condition_speed_floor)
+		and is_finite(condition_tracking_floor)
+		and is_finite(commit_weapon_reference_seconds) and is_finite(commit_root_reference_seconds)
+		and is_finite(commit_lookahead_seconds) and is_finite(commit_root_facing_weight)
+		and is_finite(commit_retreat_relief)
+		and is_finite(commit_turn_torque_curve) and is_finite(commit_turn_speed_curve)
+		and is_finite(commit_turn_torque_floor) and is_finite(commit_turn_speed_floor)
 	)

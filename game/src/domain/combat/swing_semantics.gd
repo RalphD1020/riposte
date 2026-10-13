@@ -93,11 +93,18 @@ static func structure(launch_readiness: float, stability: float) -> float:
 	return SimMath.mix(STRUCTURE_FLOOR, 1.0, SimMath.clamp01(launch_readiness) * SimMath.clamp01(stability))
 
 
-## Linear speed of the blade tip, m/s. Body rotation and weapon rotation turn
-## the blade about the same pivot, so they add — the same sum `ImpactModel`
-## uses, which is why a fighter spinning into their own cut hits harder.
-static func tip_speed(fighter: FighterState, weapon: WeaponDefinition) -> float:
-	return absf(fighter.turn_rate + fighter.weapon.speed) * weapon.tip_radius
+## Linear speed of the blade tip relative to the fighter's own translation,
+## m/s. Body rotation and weapon rotation turn the blade about the same
+## centre, so they add — the same sum `ImpactModel` uses, which is why a
+## fighter spinning into their own cut hits harder — and a moving origin adds
+## its path's share (`WeaponKinematics`).
+static func tip_speed(fighter: FighterState, spec: CombatantPhysicsSpec) -> float:
+	var weapon := spec.weapon
+	if spec.handling.attack_path.is_fixed():
+		return absf(fighter.turn_rate + fighter.weapon.speed) * weapon.tip_radius
+	var pose := WeaponKinematics.pose_of(fighter, spec, BladePose.new())
+	WeaponKinematics.velocity_into(fighter, pose, pose.point_x(weapon.tip_radius), pose.point_y(weapon.tip_radius))
+	return SimMath.length(pose.vx - fighter.vx, pose.vy - fighter.vy)
 
 
 ## How far through its commanded arc a swing physically is, in [0, 1].
@@ -106,10 +113,7 @@ static func tip_speed(fighter: FighterState, weapon: WeaponDefinition) -> float:
 ## another sword has stopped progressing, and an animation clock would keep
 ## counting and tell the player their swing was further along than their blade.
 static func phase_progress(weapon: WeaponState) -> float:
-	var arc := (weapon.swing_end - weapon.swing_start) * weapon.swing_dir
-	if arc <= SimMath.EPSILON:
-		return 1.0
-	return SimMath.clamp01((weapon.angle - weapon.swing_start) * weapon.swing_dir / arc)
+	return CommitmentModel.travel(weapon)
 
 
 ## How well the contact geometry served the strike, in [0, 1]: the right part
@@ -120,48 +124,24 @@ static func contact_quality(blade_efficiency: float, edge_alignment: float, weap
 	return SimMath.clamp01(blade_efficiency) * SimMath.mix(weapon.edge_floor, 1.0, SimMath.clamp01(edge_alignment))
 
 
-## How much of an *opening* this exposure is, in [0, 1]. `exposure_fraction`
-## never reaches zero, because a perfectly composed duelist is still a target;
-## a consumer asking "is there an opening here, right now" wants only the part
-## above that floor. Zero for a composed opponent, one for a fully committed,
-## unbalanced, badly angled one.
-static func opening(exposure: float, tuning: CombatTuning) -> float:
-	var composed := exposure_fraction(tuning.exposure_base, tuning)
-	if composed >= 1.0:
+## How hard a sword clash was, in [0, 1]: the energy the solve took out of it
+## against a reference strong clash (`reference_clash_energy`), as an
+## amplitude (`√(E / E_ref)`). For two swords meeting square at their centres of
+## percussion that is exactly the closing speed over `blade_strong_speed`;
+## where the solve gave way differently — a crash at the hilts that the bodies
+## take, a flick off a free point — it reads as hard as it really was. A
+## bounded fraction rather than a class name, so feedback is one continuous
+## curve from a graze to a full deflection, never a louder label (COMBAT-009).
+static func clash_intensity(energy: float, tuning: CombatTuning) -> float:
+	if tuning.reference_clash_energy <= SimMath.EPSILON:
 		return 0.0
-	return SimMath.clamp01((exposure_fraction(exposure, tuning) - composed) / (1.0 - composed))
-
-
-## How hard a blade clash was, in [0, 1], against the closing speed that counts
-## as a strong deflection. A bounded fraction rather than a class name, so
-## feedback can be continuous: the ladder from a graze to a full deflection is
-## one curve, and an awful heavy clash cannot be made to feel stronger than a
-## perfect light one by picking a louder label (COMBAT-009).
-static func clash_intensity(closing_speed: float, tuning: CombatTuning) -> float:
-	if tuning.blade_strong_speed <= SimMath.EPSILON:
-		return 0.0
-	return SimMath.clamp01(closing_speed / tuning.blade_strong_speed)
+	return SimMath.clamp01(sqrt(maxf(energy, 0.0) / tuning.reference_clash_energy))
 
 
 ## True when contact landed in the part of the blade worth hitting with.
 ## Diagnostic: the resolver reads the continuous efficiency curve, never this.
 static func in_sweet_region(blade_fraction: float) -> bool:
 	return blade_fraction >= SWEET_REGION_MIN and blade_fraction <= SWEET_REGION_MAX
-
-
-## Target exposure as a bounded fraction in [0, 1] rather than the multiplier
-## the damage model applies.
-##
-## Presentation and telemetry want "how exposed, from none to completely";
-## damage wants a factor it can multiply. Deriving the fraction from the
-## multiplier keeps one authored range and guarantees the two readings can
-## never drift apart — which they would the moment exposure was tuned and only
-## one of them was updated.
-static func exposure_fraction(exposure: float, tuning: CombatTuning) -> float:
-	var span := tuning.exposure_max - tuning.exposure_min
-	if span <= SimMath.EPSILON:
-		return 0.0
-	return SimMath.clamp01((exposure - tuning.exposure_min) / span)
 
 
 ## Name a resolved strike by the quality it actually produced. SWEET is the one

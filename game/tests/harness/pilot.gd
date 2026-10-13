@@ -20,6 +20,7 @@ var _move_left: int = 0
 var _held: bool = false
 var _hold_left: int = 0
 var _tapped: bool = false
+var _tap_distance: float = 1.3
 
 
 static func idle() -> Pilot:
@@ -33,9 +34,11 @@ static func wander(seed_value: int, stream: int) -> Pilot:
 	return pilot
 
 
-static func approach_and_tap() -> Pilot:
+## Close to `tap_distance` (centre to centre, m), then tap once.
+static func approach_and_tap(tap_distance: float = 1.3) -> Pilot:
 	var pilot := Pilot.new()
 	pilot.kind = KIND_APPROACH_TAP
+	pilot._tap_distance = tap_distance
 	return pilot
 
 
@@ -79,7 +82,7 @@ func _approach_and_tap(state: MatchState, slot: int) -> PlayerCommand:
 		return PlayerCommand.idle(state.tick)
 	## Duel axes make this script point-symmetric by construction: "close the
 	## distance" is the same command for either slot (MOVE-001).
-	if DuelGeometry.distance(me, them) > 1.3:
+	if DuelGeometry.distance(me, them) > _tap_distance:
 		return PlayerCommand.create(state.tick, 0.0, 1.0)
 	_tapped = true
 	return PlayerCommand.create(state.tick, 0.0, 0.0, true, true)

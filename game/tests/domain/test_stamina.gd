@@ -1,7 +1,7 @@
 extends TestCase
 
-## STAMINA: StaminaModel arithmetic, CapabilityModel degradation, and
-## FighterCondition classification.
+## STAMINA: StaminaModel arithmetic (deprecated resource, STAMINA-002) and
+## FighterCondition classification. Physical capability is CONDITION's.
 ##
 ## Implements: /spec/invariants.md#combat-001
 ## See also: /docs/concepts/combat.md
@@ -97,116 +97,6 @@ func test_recovery_capped_by_headroom() -> void:
 	assert_between(result, 0.0, 0.001 + 1e-9, "recovery does not exceed headroom")
 
 
-# -- CapabilityModel.injury_penalty ------------------------------------
-
-func test_injury_penalty_zero_at_full_health() -> void:
-	var penalty := CapabilityModel.injury_penalty(100.0, 100.0, _tuning)
-	assert_near(penalty, 0.0, 1e-9, "no injury → no penalty")
-
-
-func test_injury_penalty_max_at_zero_health() -> void:
-	var penalty := CapabilityModel.injury_penalty(0.0, 100.0, _tuning)
-	assert_near(penalty, _tuning.capability_injury_max, 1e-9, "full injury → max penalty")
-
-
-func test_injury_penalty_monotonic() -> void:
-	var previous := CapabilityModel.injury_penalty(100.0, 100.0, _tuning)
-	for i in range(9, -1, -1):
-		var health := float(i) * 10.0
-		var current := CapabilityModel.injury_penalty(health, 100.0, _tuning)
-		assert_true(current >= previous, "injury penalty non-decreasing at health %s" % str(health))
-		previous = current
-
-
-# -- CapabilityModel.fatigue_penalty -----------------------------------
-
-func test_fatigue_penalty_zero_at_full_stamina() -> void:
-	var penalty := CapabilityModel.fatigue_penalty(100.0, 100.0, _tuning)
-	assert_near(penalty, 0.0, 1e-9, "no fatigue → no penalty")
-
-
-func test_fatigue_penalty_max_at_zero_stamina() -> void:
-	var penalty := CapabilityModel.fatigue_penalty(0.0, 100.0, _tuning)
-	assert_near(penalty, _tuning.capability_fatigue_max, 1e-9, "full fatigue → max penalty")
-
-
-func test_fatigue_penalty_quadratic() -> void:
-	var quarter := CapabilityModel.fatigue_penalty(75.0, 100.0, _tuning)
-	var half := CapabilityModel.fatigue_penalty(50.0, 100.0, _tuning)
-	assert_near(half, quarter * 4.0, 1e-9, "quadratic: double load → quadruple penalty")
-
-
-# -- CapabilityModel.resolve_* -----------------------------------------
-
-func test_capability_one_at_full_resources() -> void:
-	var cap := CapabilityModel.resolve_weapon(100.0, 100.0, 100.0, 100.0, _tuning)
-	assert_near(cap, 1.0, 1e-9, "full health + full stamina → cap 1.0")
-
-
-func test_capability_monotonic_in_health() -> void:
-	var previous := CapabilityModel.resolve_weapon(0.0, 100.0, 100.0, 100.0, _tuning)
-	for i in range(1, 11):
-		var health := float(i) * 10.0
-		var current := CapabilityModel.resolve_weapon(health, 100.0, 100.0, 100.0, _tuning)
-		assert_true(current >= previous, "capability non-decreasing at health %s" % str(health))
-		previous = current
-
-
-func test_capability_monotonic_in_stamina() -> void:
-	var previous := CapabilityModel.resolve_weapon(100.0, 100.0, 0.0, 100.0, _tuning)
-	for i in range(1, 11):
-		var stamina := float(i) * 10.0
-		var current := CapabilityModel.resolve_weapon(100.0, 100.0, stamina, 100.0, _tuning)
-		assert_true(current >= previous, "capability non-decreasing at stamina %s" % str(stamina))
-		previous = current
-
-
-func test_capability_additive_not_multiplicative() -> void:
-	## Additive: 1 - P_i - P_f. Multiplicative would be (1 - P_i) × (1 - P_f)
-	## = 1 - P_i - P_f + P_i × P_f. Without the cross-term, additive is more
-	## punishing at moderate loads — but the floor prevents death spiral.
-	var both := CapabilityModel.resolve_weapon(50.0, 100.0, 50.0, 100.0, _tuning)
-	assert_true(both > _tuning.capability_floor, "moderate degradation stays above floor")
-	assert_true(both > 0.5, "half-injured half-fatigued retains majority capability")
-	## Worst case hits exactly the floor, never zero
-	var worst := CapabilityModel.resolve_weapon(0.0, 100.0, 0.0, 100.0, _tuning)
-	assert_near(worst, _tuning.capability_floor, 1e-9, "worst case = floor, not zero")
-
-
-func test_capability_floor_holds() -> void:
-	var worst := CapabilityModel.resolve_weapon(0.0, 100.0, 0.0, 100.0, _tuning)
-	assert_near(worst, _tuning.capability_floor, 1e-9, "zero everything → exactly the floor")
-
-
-func test_four_channels_agree_at_full_resources() -> void:
-	var weapon := CapabilityModel.resolve_weapon(100.0, 100.0, 100.0, 100.0, _tuning)
-	var movement := CapabilityModel.resolve_movement(100.0, 100.0, 100.0, 100.0, _tuning)
-	var turn := CapabilityModel.resolve_turn(100.0, 100.0, 100.0, 100.0, _tuning)
-	var burst := CapabilityModel.resolve_burst(100.0, 100.0, 100.0, 100.0, _tuning)
-	assert_near(weapon, 1.0, 1e-9, "weapon channel full")
-	assert_near(movement, 1.0, 1e-9, "movement channel full")
-	assert_near(turn, 1.0, 1e-9, "turn channel full")
-	assert_near(burst, 1.0, 1e-9, "burst channel full")
-
-
-func test_four_channels_agree_at_worst_case() -> void:
-	var weapon := CapabilityModel.resolve_weapon(0.0, 100.0, 0.0, 100.0, _tuning)
-	var movement := CapabilityModel.resolve_movement(0.0, 100.0, 0.0, 100.0, _tuning)
-	var turn := CapabilityModel.resolve_turn(0.0, 100.0, 0.0, 100.0, _tuning)
-	var burst := CapabilityModel.resolve_burst(0.0, 100.0, 0.0, 100.0, _tuning)
-	assert_near(weapon, _tuning.capability_floor, 1e-9, "weapon floor")
-	assert_near(movement, _tuning.capability_floor, 1e-9, "movement floor")
-	assert_near(turn, _tuning.capability_floor, 1e-9, "turn floor")
-	assert_near(burst, _tuning.capability_floor, 1e-9, "burst floor")
-
-
-func test_each_resolve_returns_a_finite_float() -> void:
-	assert_finite(CapabilityModel.resolve_weapon(50.0, 100.0, 50.0, 100.0, _tuning), "weapon finite")
-	assert_finite(CapabilityModel.resolve_movement(50.0, 100.0, 50.0, 100.0, _tuning), "movement finite")
-	assert_finite(CapabilityModel.resolve_turn(50.0, 100.0, 50.0, 100.0, _tuning), "turn finite")
-	assert_finite(CapabilityModel.resolve_burst(50.0, 100.0, 50.0, 100.0, _tuning), "burst finite")
-
-
 # -- FighterCondition ---------------------------------------------------
 
 func test_condition_full_health_is_healthy() -> void:
@@ -252,66 +142,15 @@ func test_condition_labels() -> void:
 func test_tuning_validates_stamina_fields() -> void:
 	var rules := DuelFixture.rules()
 	assert_true(rules.combat.is_valid(), "standard tuning is valid")
-	rules.combat.capability_floor = 0.0
-	assert_false(rules.combat.is_valid(), "zero capability floor is invalid")
-	rules.combat.capability_floor = _tuning.capability_floor
 	rules.combat.stamina_health_share = -0.1
 	assert_false(rules.combat.is_valid(), "negative health share is invalid")
 	rules.combat.stamina_health_share = _tuning.stamina_health_share
-	rules.combat.capability_injury_max = 1.1
-	assert_false(rules.combat.is_valid(), "injury max > 1 is invalid")
+	assert_true(rules.combat.is_valid(), "and restoring it is valid again")
 
 
-# -- Phase 3: Capability wiring ----------------------------------------
+# -- Condition, not stamina, scales the motors (CONDITION-001, STAMINA-002) --
 
-func test_lower_capability_reduces_movement_acceleration() -> void:
-	var state := DuelFixture.state(_rules)
-	var state2 := DuelFixture.state(_rules)
-	var a := state.fighter(0)
-	var b := state2.fighter(0)
-	var opponent := state.fighter(1)
-	var opponent2 := state2.fighter(1)
-	MovementSystem.step(a, opponent, 0.0, 1.0, 0, _rules.fighter, 1.0)
-	var full_accel := a.acceleration()
-	MovementSystem.step(b, opponent2, 0.0, 1.0, 0, _rules.fighter, 0.5)
-	var half_accel := b.acceleration()
-	assert_true(full_accel > 0.0, "full capability produces acceleration")
-	assert_true(half_accel < full_accel, "half capability produces less acceleration")
-	assert_near(half_accel, full_accel * 0.5, full_accel * 0.01, "acceleration scales linearly with capability")
-
-
-func test_lower_capability_reduces_turn_acceleration() -> void:
-	var state := DuelFixture.state(_rules)
-	var fighter := state.fighter(0)
-	var definition := _rules.fighter
-	DuelFixture.place(fighter, 0.0, 0.0, -SimMath.HALF_PI)
-	FacingSystem.step(fighter, 0.0, 2.0, 1.0, definition, 1.0)
-	var full_rate := absf(fighter.turn_rate)
-	fighter.turn_rate = 0.0
-	fighter.facing = -SimMath.HALF_PI
-	FacingSystem.step(fighter, 0.0, 2.0, 1.0, definition, 0.5)
-	var half_rate := absf(fighter.turn_rate)
-	assert_true(full_rate > 0.0, "full capability turns the body")
-	assert_true(half_rate < full_rate, "half capability turns slower")
-
-
-func test_lower_capability_reduces_swing_speed() -> void:
-	var rig_full := WeaponRig.create(_rules)
-	var rig_half := WeaponRig.create(_rules)
-	rig_full.press()
-	rig_half.press()
-	for _i in _rules.weapon.tap_threshold_ticks + 2:
-		WeaponSystem.step(rig_full.fighter, rig_full.opponent, _rules, rig_full.tick, rig_full.events, 1.0)
-		rig_full.tick += 1
-		WeaponSystem.step(rig_half.fighter, rig_half.opponent, _rules, rig_half.tick, rig_half.events, 0.5)
-		rig_half.tick += 1
-	var full_speed := absf(rig_full.fighter.weapon.speed)
-	var half_speed := absf(rig_half.fighter.weapon.speed)
-	assert_true(full_speed > 0.0, "full capability drives the sword")
-	assert_true(half_speed < full_speed, "half capability drives slower")
-
-
-func test_capability_at_one_is_regression_safe() -> void:
+func test_a_healthy_duel_still_moves() -> void:
 	var sim := DuelSimulation.create(_rules)
 	var state := sim.new_match(42)
 	var idle := PlayerCommand.create(0, 0.0, 0.0, false, false, false)
@@ -322,45 +161,26 @@ func test_capability_at_one_is_regression_safe() -> void:
 	assert_true(StateInvariants.check(state, _rules) == StateInvariants.OK, "invariants hold (regression)")
 
 
-func test_speed_cap_unchanged_by_capability() -> void:
-	var definition := _rules.fighter
-	var state_full := DuelFixture.state(_rules)
-	var state_half := DuelFixture.state(_rules)
-	var full := state_full.fighter(0)
-	var half := state_half.fighter(0)
-	for tick in 240:
-		DuelFixture.spar(full, 0.0, 1.0, definition, tick)
-	var full_speed := full.speed()
-	for tick in 480:
-		var partner := FighterState.new()
-		partner.slot = 1
-		DuelFixture.place(partner, half.x + DuelFixture.PARTNER_MEASURE, half.y, half.facing + PI)
-		MovementSystem.step(half, partner, 0.0, 1.0, tick, definition, 0.5)
-	var half_speed := half.speed()
-	assert_true(full_speed > 3.0, "full capability reaches cruising speed")
-	assert_near(half_speed, full_speed, full_speed * 0.05, "terminal speed converges regardless of capability")
-
-
 func test_effort_written_to_scratch() -> void:
 	var state := DuelFixture.state(_rules)
 	var scratch := FighterTickScratch.new()
-	MovementSystem.step(state.fighter(0), state.fighter(1), 0.0, 1.0, 0, _rules.fighter, 1.0, scratch)
+	MovementSystem.step(state.fighter(0), 0.0, 1.0, 0, _rules.combatant(0).fighter, null, scratch)
 	assert_true(scratch.movement_utilization >= 0.0, "movement utilization non-negative")
 	assert_true(scratch.movement_utilization <= 1.0, "movement utilization at most 1")
 	assert_true(scratch.movement_positive_work >= 0.0, "movement positive work non-negative")
 	var turn_scratch := FighterTickScratch.new()
-	FacingSystem.step(state.fighter(0), 5.0, 0.0, 1.0, _rules.fighter, 1.0, turn_scratch)
+	FacingSystem.step(state.fighter(0), 5.0, 0.0, 1.0, _rules.combatant(0).fighter, null, turn_scratch)
 	assert_true(turn_scratch.turn_utilization >= 0.0, "turn utilization non-negative")
 	assert_true(turn_scratch.turn_utilization <= 1.0, "turn utilization at most 1")
 	var weapon_scratch := FighterTickScratch.new()
 	var idle_events: Array[DuelEvent] = []
-	WeaponSystem.step(state.fighter(0), state.fighter(1), _rules, 0, idle_events, 1.0, weapon_scratch)
+	WeaponSystem.step(state.fighter(0), _rules, 0, idle_events, null, weapon_scratch)
 	assert_true(weapon_scratch.weapon_utilization >= 0.0, "weapon utilization non-negative")
 	assert_true(weapon_scratch.weapon_utilization <= 1.0, "weapon utilization at most 1")
 
 
 func test_tick_order_version_bumped() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 9, "stamina drain changes the tick order")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 13, "the tick order is version 13: a spent re-hold budget carries the remainder without tunnelling")
 
 
 # -- Phase 3.1: FighterTickScratch motor exertion -------------------------
@@ -388,7 +208,7 @@ func test_weapon_swing_produces_positive_work() -> void:
 	var cumulative_positive := 0.0
 	for _i in 10:
 		scratch.reset()
-		WeaponSystem.step(rig.fighter, rig.opponent, _rules, rig.tick, rig.events, 1.0, scratch)
+		WeaponSystem.step(rig.fighter, _rules, rig.tick, rig.events, null, scratch)
 		rig.tick += 1
 		cumulative_positive += scratch.weapon_positive_work
 	assert_true(cumulative_positive > 0.0, "a driving swing deposits positive work across its arc")
@@ -398,7 +218,7 @@ func test_idle_weapon_produces_no_work() -> void:
 	var state := DuelFixture.state(_rules)
 	var scratch := FighterTickScratch.new()
 	var idle_events: Array[DuelEvent] = []
-	WeaponSystem.step(state.fighter(0), state.fighter(1), _rules, 0, idle_events, 1.0, scratch)
+	WeaponSystem.step(state.fighter(0), _rules, 0, idle_events, null, scratch)
 	assert_near(scratch.weapon_positive_work, 0.0, 1e-9, "an idle weapon produces no positive work")
 	assert_near(scratch.weapon_braking_work, 0.0, 1e-9, "an idle weapon produces no braking work")
 
@@ -406,7 +226,7 @@ func test_idle_weapon_produces_no_work() -> void:
 func test_movement_forward_produces_positive_work() -> void:
 	var state := DuelFixture.state(_rules)
 	var scratch := FighterTickScratch.new()
-	MovementSystem.step(state.fighter(0), state.fighter(1), 0.0, 1.0, 0, _rules.fighter, 1.0, scratch)
+	MovementSystem.step(state.fighter(0), 0.0, 1.0, 0, _rules.combatant(0).fighter, null, scratch)
 	assert_true(scratch.movement_positive_work > 0.0 or scratch.movement_utilization > 0.0, "forward movement exerts the motor")
 
 
@@ -465,7 +285,7 @@ func test_exertion_drains_stamina_during_movement() -> void:
 	var runner := SimRunner.create(_rules, 42)
 	runner.skip_intro()
 	var initial := runner.state.fighter(0).stamina
-	assert_near(initial, _rules.fighter.base_stamina, 1e-6, "stamina starts at base")
+	assert_near(initial, _rules.combatant(0).fighter.base_stamina, 1e-6, "stamina starts at base")
 	var forward := PlayerCommand.create(0, 0.0, 1.0)
 	var idle := PlayerCommand.idle(0)
 	for _i in 120:
@@ -513,7 +333,7 @@ func test_stamina_capped_at_max() -> void:
 	runner.skip_intro()
 	var fighter := runner.state.fighter(0)
 	fighter.health = 50.0
-	var stamina_max := StaminaModel.max_for_health(50.0, _rules.fighter.max_health, _rules.fighter.base_stamina, _tuning)
+	var stamina_max := StaminaModel.max_for_health(50.0, _rules.combatant(0).fighter.max_health, _rules.combatant(0).fighter.base_stamina, _tuning)
 	fighter.stamina = stamina_max
 	runner.idle(60)
 	assert_true(fighter.stamina <= stamina_max + StateInvariants.BOUND_SLACK, "stamina stays at or below max")

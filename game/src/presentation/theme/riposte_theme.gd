@@ -77,7 +77,6 @@ const FONT_H1 := 44
 const FONT_DISPLAY := 56
 ## Restrained bars: condition is read primarily from the fighter's body.
 const HEALTH_BAR_HEIGHT := 8.0
-const STAMINA_BAR_HEIGHT := 4.0
 ## Ornamental plates.
 const PLATE_RULE := 2
 const PLATE_SWEPT := 14
@@ -149,6 +148,13 @@ const CRITICAL := Color("ffffff")
 const LETHAL_ACCENT := Color("fff0c0")
 ## Pinned blades grind in a warmer, duller spark than a clash.
 const GRIND := Color("ffb35c")
+## Developer orientation overlay (F3) only, never gameplay chrome: the target
+## bearing τ, the combat heading φ, the bladed stance's heading, and the
+## authoritative sword.
+const DEBUG_TARGET_BEARING := Color("ff4d4d")
+const DEBUG_COMBAT_HEADING := Color("4d8dff")
+const DEBUG_STANCE := Color("5ce06a")
+const DEBUG_SWORD := Color("ffffff")
 ## Ornament: bronze/gold edging on HUD and menu plates. Decorative only — never
 ## text and never the sole essential boundary (UX-001).
 const GOLD_ACCENT := Color("c4a050")

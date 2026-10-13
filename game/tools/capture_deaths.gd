@@ -7,8 +7,9 @@ extends SceneTree
 ##
 ##   godot --path game --rendering-method gl_compatibility --resolution 900x900 -s res://tools/capture_deaths.gd
 
-## Wall-clock seconds to let each death play out (clips and grip fade run on
-## engine time; a windowed run is uncapped, so frames are not a clock).
+## Wall-clock seconds to let each death play out (clips and grip fade advance
+## by the delta handed to `apply_pose`; a windowed run is uncapped, so frames
+## are not a clock).
 const SETTLE_MSEC := 1500
 
 
@@ -35,7 +36,7 @@ func _init() -> void:
 		world.add_child(camera)
 		camera.make_current()
 		proxy.begin_death(family, 3)
-		proxy.detach_weapon().free()
+		proxy.detach_weapon()
 		row.health = 0.0
 		var start := Time.get_ticks_msec()
 		var last := start
@@ -78,7 +79,7 @@ func _capture_pair(rules: DuelRules, kits: DuelKits) -> void:
 	var right := Vector3(sin(dead.facing), 0.0, cos(dead.facing))
 	var striker_feet := feet + forward * 1.3
 	victim.begin_death(DeathPresentationProfile.Family.STAB, 3)
-	victim.detach_weapon().free()
+	victim.detach_weapon()
 	striker.begin_finisher()
 	dead.health = 0.0
 	var camera := Camera3D.new()

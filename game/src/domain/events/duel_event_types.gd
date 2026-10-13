@@ -17,8 +17,6 @@ const ATTACK_CANCELED := &"attack_canceled"
 const ATTACK_WHIFFED := &"attack_whiffed"
 const BLADE_CONTACT := &"blade_collision"
 const PARRY := &"parry"
-const BIND_STARTED := &"bind_started"
-const BIND_ENDED := &"bind_ended"
 const BODY_HIT := &"body_hit"
 const BODY_POKE := &"body_poke"
 const BODY_THRUST := &"body_thrust"
@@ -39,3 +37,6 @@ const SIMULATION_FAULT := &"simulation_fault"
 const RING_OUT := &"ring_out"
 ## Winner followed over the edge during POST_ROUND_FREE (presentation only).
 const POST_ROUND_FALL := &"post_round_fall"
+## A killed body was carried over the edge after its round was decided
+## (Phase 15). The result is untouched.
+const POST_ROUND_CORPSE_FALL := &"post_round_corpse_fall"

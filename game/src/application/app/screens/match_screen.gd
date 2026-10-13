@@ -26,9 +26,16 @@ var tutorial: TutorialTracker
 ## The once-per-set introduction, while it plays. The clock is stopped for
 ## its whole length, so no tick runs and nothing authoritative can differ.
 var intro: SetIntroDirector
+## "MATCH N … FIGHT!" before every round (PRES-ROUND-START-001).
+var round_start: RoundStartDirector
 var _user_paused: bool = false
 var _finished: bool = false
 var _touch_layout: bool = false
+## The set has been decided and its deciding round is still playing out: the
+## winner keeps control, live, until the match itself ends (Phase 14 —
+## `DuelSimulation.accepts_gameplay_input`), and only then is the winner's
+## showcase shown. Nothing is fast-forwarded or hidden.
+var _set_decided: bool = false
 
 
 func bind(riposte_app: RiposteApp) -> MatchScreen:
@@ -43,17 +50,16 @@ func _ready() -> void:
 	var config := app.match_config
 	var kits: DuelKits = null
 	if config != null:
-		session = MatchComposer.compose(config, human, app.telemetry)
-		kits = DuelKits.resolve(app.kit_catalog, config.rules, app.fighter_skins(), app.weapon_skins())
-		if kits.is_complete():
-			kits.match_loadout = RiposteKits.match_loadout(kits.arena)
-	if session == null or not kits.is_complete():
+		session = app.compose(config, human)
+		kits = app.resolve_kits(config)
+	if session == null or kits == null or not kits.is_complete():
 		push_error("MatchScreen: cannot compose the match (invalid rules or missing presentation kits)")
 		session = null
 		app.go_to(AppScreen.Id.MAIN_MENU)
 		return
 	var options := app.presentation_options()
 	_touch_layout = options.touch_layout
+	human.input.toggle_charge = app.settings.charge_toggle
 	## Put the local player at the bottom of the screen. The world does not
 	## move; only this viewer does (SIDE-001).
 	app.camera_rig.look_from(session.state.fighter(config.human_slot).side)
@@ -61,15 +67,24 @@ func _ready() -> void:
 	presenter.hitstop_requested.connect(driver.hold)
 	presenter.slow_motion_requested.connect(driver.slow_motion)
 	app.presentation_mount.add_child(presenter)
-	_build_ui(config)
+	_build_ui(config, kits)
 	hud.reduced_motion = options.reduced_motion
+	round_start.reduced_motion = options.reduced_motion
 	if options.captions:
 		presenter.audio().caption_requested.connect(hud.show_caption)
-	if app.consume_set_intro():
-		intro = presenter.create_intro(app.camera_rig.camera())
+	if options.sound_captions:
+		presenter.sound_caption_requested.connect(hud.show_sound_caption)
+	if app.claim_set_intro():
+		var takes: Array[IntroTake] = []
+		for slot in 2:
+			takes.append(IntroTake.of(IntroRehearsal.record(config.rules, config.seed_value, slot)))
+		intro = presenter.create_intro(app.camera_rig.camera(), takes)
 		intro.card_requested.connect(hud.show_card)
 		intro.finished.connect(_on_intro_finished)
 		_sync_clock()
+	else:
+		_announce_round()
+	_sync_chrome()
 	if config.mode == MatchConfig.Mode.TRAINING:
 		tutorial = TutorialTracker.create(config.human_slot)
 		_show_tutorial_step()
@@ -101,17 +116,53 @@ func advance_frame(delta: float) -> void:
 		return
 	if is_intro_playing() and not _user_paused:
 		intro.advance(delta)
+	if not _user_paused:
+		round_start.advance(delta)
 	if not driver.paused:
 		var keys := InputActions.move_vector()
 		human.input.set_key_axis(keys.x, keys.y)
+	var scaled := delta
 	if not _finished:
 		var steps := driver.consume(delta)
+		scaled = driver.presentation_delta()
 		for _i in steps:
 			_advance_tick()
 			if _finished:
 				break
-	presenter.render(driver.alpha(), delta)
+	presenter.render(driver.alpha(), delta, scaled)
 	debug_overlay.update(presenter.current_snapshot(), Engine.get_frames_per_second())
+	_sync_chrome()
+
+
+## The one presentation-chrome policy (PRES-CHROME-001): the gameplay HUD —
+## plates, bars, pips, clock, Pause — shows only while a duel is being fought.
+## Never during the set intro, the round-start card, or the set's final beat
+## and victory; no director toggles it.
+func is_gameplay_chrome_visible() -> bool:
+	if session == null or _finished or is_intro_playing() or is_in_final_beat():
+		return false
+	return session.state.phase != MatchPhase.Id.ROUND_INTRO
+
+
+func _sync_chrome() -> void:
+	if hud != null:
+		hud.set_gameplay_chrome(is_gameplay_chrome_visible())
+
+
+## Introduce the round about to start: "MATCH N" over the set score, in the
+## HUD's left/right order (the human is always on the left).
+func _announce_round() -> void:
+	var snapshot := presenter.current_snapshot()
+	if snapshot.phase != MatchPhase.Id.ROUND_INTRO:
+		return
+	var human_slot := session.config.human_slot
+	round_start.announce_match(snapshot.round_number, PackedInt32Array([snapshot.scores[human_slot], snapshot.scores[1 - human_slot]]), snapshot.rounds_to_win)
+
+
+## True once the deciding round has ended and its final beat — the rest of that
+## round, played live — is playing.
+func is_in_final_beat() -> bool:
+	return _set_decided and not _finished
 
 
 func is_paused() -> bool:
@@ -134,6 +185,8 @@ func skip_intro() -> void:
 func _on_intro_finished() -> void:
 	intro = null
 	_sync_clock()
+	_announce_round()
+	_sync_chrome()
 
 
 func pause() -> void:
@@ -185,10 +238,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(InputActions.TOGGLE_DEBUG) and OS.is_debug_build():
 		get_viewport().set_input_as_handled()
 		debug_overlay.visible = not debug_overlay.visible
-		## The numbers and the vectors are one mode. Reading "closing speed
-		## 4.2" without seeing which way the tip is going is half the picture,
+		## The numbers, the swing vectors, and the elbow solve are one mode.
+		## Reading "closing speed 4.2" without seeing which way the tip is
+		## going — or which way an elbow was asked to bend — is half the picture,
 		## and splitting them across two keys only ever meant forgetting one.
 		presenter.debug_vectors().visible = debug_overlay.visible
+		for slot in 2:
+			presenter.fighter_proxy(slot).set_pose_debug(debug_overlay.visible)
 		return
 	if driver.paused or _finished or event.is_echo() or not event.is_action(InputActions.ATTACK):
 		return
@@ -209,26 +265,43 @@ func _notification(what: int) -> void:
 func _advance_tick() -> void:
 	var phase_before := session.state.phase
 	var events := session.step()
-	if session.state.phase != phase_before:
-		_on_phase_transition(phase_before, session.state.phase)
 	var snapshot := SnapshotProjector.project(session.state, session.config.rules)
 	presenter.push(snapshot, events)
 	hud.update(snapshot)
+	if session.state.phase != phase_before:
+		_on_phase_transition(phase_before, session.state.phase)
 	debug_overlay.observe(events)
 	if tutorial != null and tutorial.observe(session.state, events):
 		_show_tutorial_step()
+	if (snapshot.set_winner == 0 or snapshot.set_winner == 1) and session.config.mode == MatchConfig.Mode.QUICK_PLAY_CPU:
+		## The set is decided: its deciding round plays on, live, and the
+		## winner's showcase follows the match's own end (PRES-VICTORY-001).
+		_set_decided = true
 	if session.is_finished():
-		_finished = true
-		human.input.cancel_all()
-		touch.set_enabled(false)
-		app.finish_match(session)
+		_finish()
+
+
+func _finish() -> void:
+	if _finished:
+		return
+	_finished = true
+	human.input.cancel_all()
+	touch.set_enabled(false)
+	app.finish_match(session)
 
 
 ## Flush stale input at every round-boundary phase transition so no buffered
-## attack, held state, or tap history leaks across rounds (INPUT-002).
-func _on_phase_transition(_from: MatchPhase.Id, _to: MatchPhase.Id) -> void:
+## attack, held state, or tap history leaks across rounds (INPUT-002) — so a
+## press held through "MATCH N" is discarded and the first live tick after
+## "FIGHT!" starts from neutral input. A new round is announced; a round going
+## live calls "FIGHT!" on that same tick.
+func _on_phase_transition(from: MatchPhase.Id, to: MatchPhase.Id) -> void:
 	human.input.begin_input_epoch()
 	touch.reset()
+	if to == MatchPhase.Id.ROUND_INTRO:
+		_announce_round()
+	elif from == MatchPhase.Id.ROUND_INTRO and to == MatchPhase.Id.ROUND_ACTIVE:
+		round_start.fight()
 
 
 ## Stopped by the user or by the rotate prompt. Resuming drops the backlog
@@ -267,16 +340,15 @@ func _cue_partner() -> void:
 				partner.beat = TrainingDummyController.Beat.SPAR
 
 
-func _build_ui(config: MatchConfig) -> void:
+func _build_ui(config: MatchConfig, kits: DuelKits) -> void:
 	var mine := session.state.fighter(config.human_slot).side
-	hud = DuelHud.create(
-		HudCopy.sided(AppCopy.YOU, mine),
-		HudCopy.sided(AppCopy.opponent_label(config), DuelSide.other(mine)),
-		config.human_slot,
-		mine
-	)
+	var labels := PackedStringArray([HudCopy.sided(AppCopy.YOU, mine), HudCopy.sided(AppCopy.opponent_label(config), DuelSide.other(mine))])
+	hud = DuelHud.create(labels[0], labels[1], config.human_slot, mine)
 	hud.pause_pressed.connect(pause)
 	add_child(hud)
+	var announcer := kits.match_loadout.announcer if kits.match_loadout != null else null
+	round_start = RoundStartDirector.create(announcer, presenter.audio(), labels)
+	add_child(round_start)
 	touch = TouchControls.new()
 	touch.opacity = app.settings.opacity_value()
 	touch.exclusions.append(hud.pause_button())
@@ -288,7 +360,7 @@ func _build_ui(config: MatchConfig) -> void:
 	if _touch_layout:
 		touch.reveal()
 	debug_overlay = DebugOverlay.create()
-	debug_overlay.describe(session.config.rules.fighter, session.config.rules.weapon)
+	debug_overlay.describe(session.config.rules.combatants)
 	add_child(debug_overlay)
 	pause_overlay = PauseOverlay.create(app)
 	pause_overlay.resume_requested.connect(resume, CONNECT_DEFERRED)

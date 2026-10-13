@@ -72,11 +72,6 @@ var tempo_awareness: float = 0.0
 var withdrawal_discipline: float = 0.0
 ## Weight for lateral (clockwise/counterclockwise) burst evaluation.
 var lateral_dash_weight: float = 0.0
-## How much stamina cost weighs against action utility (STAMINA-001). 0 =
-## ignore stamina entirely (overextend), higher = conserve more. The CPU
-## computes expected stamina cost from the motor physics, not from authored
-## action-specific constants.
-var stamina_cost_weight: float = 0.0
 ## How aggressively to exploit opponent edge position. Hard uses this to
 ## herd the opponent toward the cliff and recognize knockback ring-out
 ## opportunities. Scaling `edge_position_advantage` from TacticalAssessment.
@@ -130,8 +125,6 @@ static func easy() -> CpuProfile:
 	profile.tempo_awareness = 0.0
 	profile.withdrawal_discipline = 0.0
 	profile.lateral_dash_weight = 0.0
-	## Easy ignores stamina and overextends.
-	profile.stamina_cost_weight = 0.0
 	## Easy has no awareness of edge positioning.
 	profile.edge_exploit_weight = 0.0
 	return profile
@@ -172,8 +165,6 @@ static func medium() -> CpuProfile:
 	profile.tempo_awareness = 0.3
 	profile.withdrawal_discipline = 0.1
 	profile.lateral_dash_weight = 0.05
-	## Medium starts conserving stamina.
-	profile.stamina_cost_weight = 0.3
 	## Medium notices edge positioning but does not actively exploit it.
 	profile.edge_exploit_weight = 0.2
 	return profile
@@ -223,21 +214,21 @@ static func hard() -> CpuProfile:
 	## commitment, so dashing out of most decisive steps reads as twitchy and
 	## costs more structure than the distance is worth.
 	profile.burst_weight = 0.18
-	## Hard picks its moments, and when it takes one it commits at least as
-	## hard as Medium would. Charging *less* than a weaker profile was the one
-	## place its sharper judgment worked against it: severity goes as `v²`, so
-	## a timid ceiling capped its best strikes and cancelled out the
-	## positional edge its reactions had earned.
+	## Hard picks its moments and keeps its charges short. Since rules 47 a
+	## committed charge carries its wielder down its own line while the heading
+	## comes round (MOVEMENT-FRAME-001), so the heavy end of the charge range
+	## concedes the positional window a read opponent steps into; severity's
+	## `v²` no longer pays for it. Measured on the tuning corpus only (40 duels
+	## each): capping at 0.5 instead of 0.8 took Hard from +10 to +14 over Easy
+	## and from −10 to −2 against Medium.
 	profile.charge_min = 0.2
-	profile.charge_max = 0.8
+	profile.charge_max = 0.5
 	## Hard exploits tempo, presses corners, disengages deliberately, and
 	## uses lateral dashes to exploit angles and evade point threats.
 	profile.corner_pressure_weight = 0.6
 	profile.tempo_awareness = 0.7
 	profile.withdrawal_discipline = 0.5
 	profile.lateral_dash_weight = 0.12
-	## Hard spends deliberately — only when the expected gain justifies it.
-	profile.stamina_cost_weight = 0.6
 	## Hard actively herds the opponent toward the cliff.
 	profile.edge_exploit_weight = 0.6
 	return profile

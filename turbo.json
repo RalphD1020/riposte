@@ -45,6 +45,31 @@
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
     },
+    "test:balance": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:balance:accept": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:balance:audit": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:contact:ship": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "test:focused": {
+      "cache": false
+    },
+    "test:changed": {
+      "cache": false
+    },
+    "test:perf": {
+      "cache": false
+    },
     "format": {
       "cache": false
     },

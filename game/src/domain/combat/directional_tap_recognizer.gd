@@ -79,7 +79,7 @@ static func _sector(
 	return MovementGestureState.Direction.RIGHT if intent_x > 0.0 else MovementGestureState.Direction.LEFT
 
 
-## The world heading a burst commits to, from the fighter's duel axis.
+## The world heading a burst commits to, from the fighter's combat frame.
 static func heading(fighter: FighterState, kind: MovementGestureState.BurstKind) -> PackedFloat64Array:
 	match kind:
 		MovementGestureState.BurstKind.FORWARD_DASH:

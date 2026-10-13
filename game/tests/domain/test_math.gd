@@ -12,6 +12,15 @@ func _init() -> void:
 	suite_name = "MATH"
 
 
+func test_hermite_step_eases_between_its_edges_and_clamps_outside() -> void:
+	assert_eq(SimMath.hermite_step(0.0, 1.0, -0.5), 0.0, "below the first edge reads 0")
+	assert_eq(SimMath.hermite_step(0.0, 1.0, 1.5), 1.0, "past the second reads 1")
+	assert_near(SimMath.hermite_step(0.0, 1.0, 0.5), 0.5, 1e-15, "symmetric about the middle")
+	assert_near(SimMath.hermite_step(0.0, 2.0, 0.5), smoothstep(0.0, 2.0, 0.5), 1e-12, "agrees with the engine's ease")
+	assert_true(SimMath.hermite_step(0.0, 1.0, 0.01) < 0.01, "flat at the start (no corner)")
+	assert_eq(SimMath.hermite_step(1.0, 1.0, 1.0), 1.0, "a zero-width step is a step")
+
+
 func test_sine_and_cosine_hit_exact_landmarks() -> void:
 	assert_near(SimMath.sine(0.0), 0.0, TOLERANCE, "sin 0")
 	assert_near(SimMath.sine(PI / 6.0), 0.5, TOLERANCE, "sin 30°")
@@ -93,3 +102,23 @@ func test_segment_queries() -> void:
 	assert_near(contact.distance, SimMath.length(2.0, 1.0), TOLERANCE, "endpoint to endpoint")
 	SimMath.closest_segments(0.0, 0.0, 0.0, 0.0, 2.0, -1.0, 2.0, 1.0, contact)
 	assert_near(contact.distance, 2.0, TOLERANCE, "point to segment")
+
+
+## Parallel segments are equally close all across their overlap; the answer is
+## the overlap's midpoint, the same point whichever segment is named first —
+## never the first segment's end, which would hand slot 0 a different contact
+## from slot 1 in a mirrored clash.
+func test_parallel_segments_meet_at_the_overlap_midpoint_either_way_round() -> void:
+	var forward := SegmentContact.new()
+	var reversed := SegmentContact.new()
+	SimMath.closest_segments(0.0, 0.0, 1.0, 0.0, 1.5, 0.1, 0.5, 0.1, forward)
+	SimMath.closest_segments(1.5, 0.1, 0.5, 0.1, 0.0, 0.0, 1.0, 0.0, reversed)
+	assert_near(forward.distance, 0.1, TOLERANCE, "fixture: anti-parallel, 0.1 apart, overlapping on [0.5, 1]")
+	assert_near(forward.ax, 0.75, TOLERANCE, "the first segment's point is the overlap's midpoint")
+	assert_near(forward.bx, 0.75, TOLERANCE, "and so is the second's")
+	assert_near(reversed.ax, forward.bx, TOLERANCE, "named the other way round, the same points (x)")
+	assert_near(reversed.bx, forward.ax, TOLERANCE, "and the other")
+	assert_near(reversed.ay, forward.by, TOLERANCE, "(y)")
+	SimMath.closest_segments(0.0, 0.0, 1.0, 0.0, 2.0, 0.5, 3.0, 0.5, forward)
+	assert_near(forward.ax, 1.0, TOLERANCE, "disjoint parallel segments meet at their nearest ends")
+	assert_near(forward.bx, 2.0, TOLERANCE, "on both")

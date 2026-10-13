@@ -20,7 +20,7 @@ func _rig() -> WeaponRig:
 ## The most wind-back one tick of the motor can earn, and so the ceiling on
 ## any single tick's credit.
 func _one_tick_of_windback() -> float:
-	return _rules.weapon.windup_speed * SimulationTimebase.TICK_SECONDS
+	return _rules.combatant(0).weapon.windup_speed * SimulationTimebase.TICK_SECONDS
 
 
 func test_tap_launches_exactly_zero_charge() -> void:
@@ -44,7 +44,7 @@ func test_same_tick_press_and_release_is_a_tap() -> void:
 func test_holding_past_threshold_charges_from_zero() -> void:
 	var rig := _rig()
 	rig.press()
-	rig.hold(_rules.weapon.tap_threshold_ticks)
+	rig.hold(_rules.combatant(0).weapon.tap_threshold_ticks)
 	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.CHARGING, "threshold crossed into CHARGING")
 	## Crossing the threshold does not award charge; the blade has only had
 	## one tick of travel, and that is all it is credited with.
@@ -60,15 +60,15 @@ func test_charge_is_earned_wind_back_not_elapsed_time() -> void:
 	## arc is exactly 90° plus the wind-back that was earned.
 	var rig := _rig()
 	rig.press()
-	rig.hold(_rules.weapon.tap_threshold_ticks + 20)
+	rig.hold(_rules.combatant(0).weapon.tap_threshold_ticks + 20)
 	var weapon := rig.fighter.weapon
 	assert_true(weapon.earned_windback > 0.0, "precondition: the blade actually travelled")
-	assert_near(weapon.charge, weapon.earned_windback / _rules.weapon.windback_span(), 1e-12, "charge is wind-back as a fraction of the span")
-	var travelled := absf(weapon.angle) - _rules.weapon.guard_angle
+	assert_near(weapon.charge, weapon.earned_windback / _rules.combatant(0).weapon.windback_span(), 1e-12, "charge is wind-back as a fraction of the span")
+	var travelled := absf(weapon.angle) - _rules.combatant(0).weapon.guard_angle
 	assert_near(weapon.earned_windback, travelled, 1e-9, "every degree past the guard was credited")
 	rig.release()
 	var arc := rig.events_of(DuelEventTypes.ATTACK_RELEASED)[0].number(DuelEventKeys.ARC)
-	assert_near(arc, _rules.weapon.min_arc + weapon.swing_charge * _rules.weapon.windback_span(), 1e-9, "arc is 90° plus the earned wind-back")
+	assert_near(arc, _rules.combatant(0).weapon.min_arc + weapon.swing_charge * _rules.combatant(0).weapon.windback_span(), 1e-9, "arc is 90° plus the earned wind-back")
 
 
 func test_charge_caps_at_full_and_spans_half_a_turn() -> void:
@@ -76,7 +76,7 @@ func test_charge_caps_at_full_and_spans_half_a_turn() -> void:
 	rig.press()
 	rig.hold(600)
 	assert_true(rig.fighter.weapon.charge == 1.0, "charge stops at 100% once the blade runs out of travel")
-	assert_near(rig.fighter.weapon.earned_windback, _rules.weapon.windback_span(), 1e-9, "and wind-back saturates with it")
+	assert_near(rig.fighter.weapon.earned_windback, _rules.combatant(0).weapon.windback_span(), 1e-9, "and wind-back saturates with it")
 	rig.hold(120)
 	assert_true(rig.fighter.weapon.charge == 1.0, "holding a saturated blade longer buys nothing")
 	rig.release()
@@ -97,11 +97,11 @@ func test_restoring_an_under_prepared_blade_earns_nothing() -> void:
 	## Winding in from inside the guard is restoration, not preparation.
 	var rig := _rig()
 	rig.fighter.weapon.angle = deg_to_rad(-20.0)
-	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	rig.press()
-	rig.hold(_rules.weapon.tap_threshold_ticks)
+	rig.hold(_rules.combatant(0).weapon.tap_threshold_ticks)
 	var ticks := 0
-	while rig.fighter.weapon.angle > -_rules.weapon.guard_angle:
+	while rig.fighter.weapon.angle > -_rules.combatant(0).weapon.guard_angle:
 		assert_eq(rig.fighter.weapon.charge, 0.0, "nothing is earned while the blade is still inside the guard")
 		rig.hold(1)
 		ticks += 1
@@ -116,36 +116,37 @@ func test_a_collision_displacement_is_not_free_charge() -> void:
 	## not cash in displacement the player never generated.
 	var rig := _rig()
 	rig.fighter.weapon.angle = deg_to_rad(100.0)
-	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	rig.step(true, true)
 	assert_eq(rig.fighter.weapon.swing_charge, 0.0, "releasing from inherited displacement is a 0% tap")
 	var far := _rig()
 	far.fighter.weapon.angle = deg_to_rad(135.0)
-	WeaponSystem.update_stable_side(far.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(far.fighter.weapon, _rules.combatant(0).weapon)
 	far.press()
 	far.hold(300)
 	assert_eq(far.fighter.weapon.charge, 0.0, "a blade already at the limit can hold forever and earn nothing")
 
 
-## Charge-while-pinned. A bind is the one place a fighter is holding the
-## button with a blade that physically cannot travel, so it is where a
-## duration-based charge would be most obviously wrong: the player would walk
-## out of the bind with a free full swing they never earned.
-func test_a_press_while_the_blades_are_bound_cannot_charge() -> void:
+## Charge-while-busy. Holding the button while the weapon cannot start an
+## attack is where a duration-based charge would be most obviously wrong: the
+## player would walk out of a long recovery with a free full swing they never
+## earned.
+func test_a_press_while_the_weapon_is_busy_cannot_charge() -> void:
 	var rig := _rig()
-	rig.fighter.weapon.set_phase(CombatPhase.Id.BIND)
+	var busy := _rules.combatant(0).weapon.tap_threshold_ticks * 4 + _rules.combatant(0).weapon.buffer_ticks
+	WeaponSystem.enter_recovery(rig.fighter.weapon, busy + 10)
 	rig.press()
 	## The press is not swallowed: it waits, like any press made while the
-	## weapon is busy. It just never becomes a charge while the blade is held.
+	## weapon is busy. It just never becomes a charge while the weapon is busy.
 	assert_true(rig.fighter.buffered_press_tick >= 0, "the press is buffered rather than discarded")
-	rig.hold(_rules.weapon.tap_threshold_ticks * 4)
-	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.BIND, "precondition: still pinned")
-	assert_eq(rig.fighter.weapon.charge, 0.0, "a pinned blade earns nothing however long it is held")
-	assert_eq(rig.fighter.weapon.earned_windback, 0.0, "because it has not travelled")
+	rig.hold(busy)
+	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.RECOVERY, "precondition: still busy")
+	assert_eq(rig.fighter.weapon.charge, 0.0, "a busy weapon earns nothing however long it is held")
+	assert_eq(rig.fighter.weapon.earned_windback, 0.0, "because it has not wound back")
 	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 0, "and it never entered a charge at all")
-	## A bind outlasting the input buffer expires the press, so walking out of
-	## a long bind does not fire a swing the player has mentally moved on from.
-	assert_eq(rig.fighter.buffered_press_tick, -1, "and a bind longer than the buffer expires it")
+	## Busy longer than the input buffer expires the press, so walking out of
+	## a long recovery does not fire a swing the player has mentally moved on from.
+	assert_eq(rig.fighter.buffered_press_tick, -1, "and busy longer than the buffer expires it")
 
 
 func test_wind_back_is_credited_from_where_the_hold_began() -> void:
@@ -153,9 +154,9 @@ func test_wind_back_is_credited_from_where_the_hold_began() -> void:
 	## earns only what it adds — not the 55° it was handed.
 	var rig := _rig()
 	rig.fighter.weapon.angle = deg_to_rad(100.0)
-	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	rig.press()
-	rig.hold(_rules.weapon.tap_threshold_ticks + 400)
+	rig.hold(_rules.combatant(0).weapon.tap_threshold_ticks + 400)
 	var weapon := rig.fighter.weapon
 	assert_near(rad_to_deg(weapon.angle), 135.0, 1e-9, "precondition: wound out to the limit")
 	assert_near(rad_to_deg(weapon.earned_windback), 35.0, 1e-9, "only the 35° it travelled counts")
@@ -165,10 +166,10 @@ func test_wind_back_is_credited_from_where_the_hold_began() -> void:
 func test_earned_wind_back_is_not_refunded_by_drifting_back() -> void:
 	var rig := _rig()
 	rig.press()
-	rig.hold(_rules.weapon.tap_threshold_ticks + 20)
+	rig.hold(_rules.combatant(0).weapon.tap_threshold_ticks + 20)
 	var earned := rig.fighter.weapon.earned_windback
 	assert_true(earned > 0.0, "precondition: some wind-back earned")
-	rig.fighter.weapon.angle = -_rules.weapon.guard_angle
+	rig.fighter.weapon.angle = -_rules.combatant(0).weapon.guard_angle
 	rig.hold(1)
 	assert_eq(rig.fighter.weapon.earned_windback, earned, "being shoved back to baseline does not refund the hold")
 
@@ -177,9 +178,9 @@ func test_charge_cannot_outrun_the_motor() -> void:
 	## One violent impulse must not convert itself into instant full charge.
 	var rig := _rig()
 	rig.press()
-	rig.hold(_rules.weapon.tap_threshold_ticks + 4)
+	rig.hold(_rules.combatant(0).weapon.tap_threshold_ticks + 4)
 	var before := rig.fighter.weapon.earned_windback
-	rig.fighter.weapon.angle = -_rules.weapon.guard_limit
+	rig.fighter.weapon.angle = -_rules.combatant(0).weapon.guard_limit
 	var one_tick := _one_tick_of_windback()
 	rig.hold(1)
 	assert_near(rig.fighter.weapon.earned_windback, before + one_tick, 1e-12, "a 90° shove credits exactly one tick of wind-back")
@@ -209,7 +210,7 @@ func test_tap_sweeps_ninety_degrees_then_overswings() -> void:
 	var start := rig.fighter.weapon.angle
 	rig.attack(3)
 	assert_true(rig.step_until_phase(CombatPhase.Id.OVERSWING), "reached overswing")
-	var one_tick := rad_to_deg(_rules.weapon.swing_speed_tap / float(SimulationTimebase.TICK_RATE))
+	var one_tick := rad_to_deg(_rules.combatant(0).weapon.swing_speed_tap / float(SimulationTimebase.TICK_RATE))
 	assert_between(rad_to_deg(rig.fighter.weapon.angle - start), 90.0, 90.0 + one_tick, "active arc covers 90° (at most one tick of motion past the end)")
 	rig.settle()
 	assert_true(rig.fighter.weapon.angle > rig.fighter.weapon.swing_end, "momentum carries the blade past the arc end")
@@ -237,7 +238,7 @@ func test_tap_sweeps_ninety_degrees_from_wherever_the_blade_is() -> void:
 	for i in cases.size():
 		var rig := _rig()
 		rig.fighter.weapon.angle = deg_to_rad(cases[i])
-		WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+		WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 		rig.step(true, true)
 		assert_near(
 			rad_to_deg(rig.fighter.weapon.swing_end),
@@ -248,35 +249,35 @@ func test_tap_sweeps_ninety_degrees_from_wherever_the_blade_is() -> void:
 
 
 func test_committed_side_ignores_the_centre_deadzone() -> void:
-	var deadzone := _rules.weapon.side_deadzone
+	var deadzone := _rules.combatant(0).weapon.side_deadzone
 	var rig := _rig()
 	assert_eq(rig.fighter.weapon.stable_side, -1.0, "precondition: blade committed to the right")
 	rig.fighter.weapon.angle = deadzone * 0.5
-	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	assert_eq(rig.fighter.weapon.stable_side, -1.0, "drifting a hair past centre does not re-commit the side")
 	assert_eq(WeaponSystem.swing_direction(rig.fighter.weapon), 1.0, "so the valid attack direction is unchanged")
 	rig.fighter.weapon.angle = deadzone * 2.0
-	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	assert_eq(rig.fighter.weapon.stable_side, 1.0, "clearing the deadzone commits to the new side")
 	assert_eq(WeaponSystem.swing_direction(rig.fighter.weapon), -1.0, "and reverses the valid attack direction")
 
 
 func test_side_does_not_chatter_across_centre() -> void:
 	var rig := _rig()
-	var deadzone := _rules.weapon.side_deadzone
+	var deadzone := _rules.combatant(0).weapon.side_deadzone
 	var sides := PackedFloat64Array()
 	for i in 12:
 		## Noise straddling exact zero, the case the old `angle <= 0`
 		## tie-break would have flipped on every sample.
 		rig.fighter.weapon.angle = (deadzone * 0.4) * (1.0 if i % 2 == 0 else -1.0)
-		WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+		WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 		sides.append(rig.fighter.weapon.stable_side)
 	for side in sides:
 		assert_eq(side, -1.0, "numerical noise at centre never re-commits the side")
 
 
 func test_readiness_is_continuous_and_saturates_at_baseline() -> void:
-	var weapon := _rules.weapon
+	var weapon := _rules.combatant(0).weapon
 	assert_eq(weapon.readiness(0.0), 0.0, "a blade at dead centre has no preparation")
 	assert_near(weapon.readiness(deg_to_rad(22.5)), 0.5, 1e-12, "halfway to baseline is half readiness")
 	assert_eq(weapon.readiness(weapon.guard_angle), 1.0, "the canonical guard is fully prepared")
@@ -289,7 +290,7 @@ func test_under_prepared_tap_reaches_a_lower_top_speed() -> void:
 	prepared.step(true, true)
 	var under := _rig()
 	under.fighter.weapon.angle = deg_to_rad(-10.0)
-	WeaponSystem.update_stable_side(under.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(under.fighter.weapon, _rules.combatant(0).weapon)
 	under.step(true, true)
 	assert_near(prepared.fighter.weapon.launch_readiness, 1.0, 1e-12, "the canonical guard launches fully prepared")
 	assert_near(under.fighter.weapon.launch_readiness, 10.0 / 45.0, 1e-12, "a 10° blade launches at 10/45 readiness")
@@ -306,20 +307,20 @@ func test_launch_readiness_is_fixed_at_release() -> void:
 	## under-prepared cut into a prepared one.
 	var rig := _rig()
 	rig.fighter.weapon.angle = deg_to_rad(-10.0)
-	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.weapon)
+	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	rig.step(true, true)
 	var at_launch := rig.fighter.weapon.launch_readiness
 	rig.step_until_phase(CombatPhase.Id.OVERSWING)
-	assert_true(absf(rig.fighter.weapon.angle) > _rules.weapon.guard_angle, "precondition: the blade swept well past baseline")
+	assert_true(absf(rig.fighter.weapon.angle) > _rules.combatant(0).weapon.guard_angle, "precondition: the blade swept well past baseline")
 	assert_eq(rig.fighter.weapon.launch_readiness, at_launch, "readiness stays the value captured at release")
 
 
 func test_guard_region_classifies_without_snapping() -> void:
-	var guard := _rules.weapon.guard_angle
+	var guard := _rules.combatant(0).weapon.guard_angle
 	assert_eq(GuardRegion.of(0.0, guard), GuardRegion.Id.UNDER_PREPARED, "centre is under-prepared")
 	assert_eq(GuardRegion.of(guard, guard), GuardRegion.Id.BASELINE, "the canonical guard is baseline")
 	assert_eq(GuardRegion.of(-guard, guard), GuardRegion.Id.BASELINE, "either canonical guard is baseline")
-	assert_eq(GuardRegion.of(_rules.weapon.guard_limit, guard), GuardRegion.Id.OUTWARD, "the guard limit is outward")
+	assert_eq(GuardRegion.of(_rules.combatant(0).weapon.guard_limit, guard), GuardRegion.Id.OUTWARD, "the guard limit is outward")
 	var nearly := guard - GuardRegion.BASELINE_EPSILON * 0.5
 	assert_eq(GuardRegion.of(nearly, guard), GuardRegion.Id.BASELINE, "a hair inside baseline still labels as baseline")
 	var rig := _rig()
@@ -340,7 +341,7 @@ func test_sword_persists_where_it_stopped() -> void:
 	rig.attack(3)
 	rig.settle()
 	var rest := rig.fighter.weapon.angle
-	assert_ne(rest, -_rules.weapon.guard_angle, "precondition: blade left the guard")
+	assert_ne(rest, -_rules.combatant(0).weapon.guard_angle, "precondition: blade left the guard")
 	rig.hold(120)
 	assert_eq(rig.fighter.weapon.angle, rest, "no automatic return to an idle pose")
 
@@ -356,7 +357,11 @@ func test_heavy_overswings_and_recovers_longer_than_tap() -> void:
 	heavy.step_until_phase(CombatPhase.Id.RECOVERY)
 	var heavy_overswing := (heavy.fighter.weapon.angle - heavy.fighter.weapon.swing_end) * heavy.fighter.weapon.swing_dir
 	assert_true(heavy_overswing > tap_overswing, "heavy carries further past its arc")
-	assert_true(heavy.fighter.weapon.recovery_ticks > tap_recovery, "heavy recovery is longer")
+	## RECOVERY-001: the recovery phase itself is the same universal floor for
+	## both free whiffs (each overswing braked to rest first); the heavy one is
+	## longer only because its weak brake takes longer to stop it.
+	assert_eq(heavy.fighter.weapon.recovery_ticks, tap_recovery, "the recovery floor is universal")
+	assert_eq(tap_recovery, _rules.combat.recovery_min_ticks, "and is the authored floor")
 
 
 func test_press_just_before_recovery_ends_is_buffered() -> void:
@@ -368,10 +373,10 @@ func test_press_just_before_recovery_ends_is_buffered() -> void:
 	var pressed_at := rig.tick
 	rig.press()
 	assert_eq(rig.events_of(DuelEventTypes.ATTACK_STARTED).size(), 1, "press during recovery does not start yet")
-	rig.hold(_rules.weapon.buffer_ticks)
+	rig.hold(_rules.combatant(0).weapon.buffer_ticks)
 	var starts := rig.events_of(DuelEventTypes.ATTACK_STARTED)
 	assert_eq(starts.size(), 2, "buffered press started once control returned")
-	assert_true(starts[1].tick - pressed_at <= _rules.weapon.buffer_ticks, "within the buffer window")
+	assert_true(starts[1].tick - pressed_at <= _rules.combatant(0).weapon.buffer_ticks, "within the buffer window")
 
 
 func test_stale_press_expires() -> void:
@@ -413,7 +418,7 @@ func test_guard_limit_is_never_exceeded() -> void:
 	var worst := 0.0
 	for angle in rig.angles:
 		worst = maxf(worst, absf(angle))
-	assert_true(worst <= _rules.weapon.guard_limit + 1e-12, "blade stays inside the 270° coverage")
+	assert_true(worst <= _rules.combatant(0).weapon.guard_limit + 1e-12, "blade stays inside the 270° coverage")
 	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 4, "every heavy launched")
 
 
@@ -435,3 +440,200 @@ func test_dead_weapon_ignores_input() -> void:
 	rig.step(true, true)
 	assert_eq(rig.events.size(), 0, "no events from a dead fighter")
 	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.DEAD, "stays dead")
+
+
+# ── RECOVERY-001: physical recovery (rules 44) ───────────────────────────────
+
+
+## Ticks from release to NEUTRAL for an attack held `hold_ticks`.
+func _release_to_neutral(hold_ticks: int) -> int:
+	var rig := _rig()
+	rig.attack(hold_ticks)
+	var released := rig.tick
+	rig.settle()
+	return rig.tick - released
+
+
+## A recovery entered with the blade still moving fast: the floor passes, and
+## the phase still waits until the attack's own brake has the blade back under
+## control — never ending above `control_speed`, never before the floor.
+func test_recovery_is_a_floor_plus_the_blade_back_under_control() -> void:
+	## ARRANGE: an arrested cut rebounding at 24 rad/s into recovery — fast
+	## enough that its brake needs longer than the floor to arrest it.
+	var rig := _rig()
+	var definition := _rules.combatant(0).weapon
+	var w := rig.fighter.weapon
+	var start_angle := w.angle
+	w.swing_charge = 1.0
+	w.speed = 24.0
+	w.commitment = 0.8
+	WeaponSystem.enter_recovery(w, _rules.combat.recovery_min_ticks)
+	var inertia := WeaponKinematics.motor_inertia(_rules.combatant(0), w.angle)
+	var brake := definition.brake_accel(1.0, _rules.combatant(0).fighter.weapon_torque_scale, inertia)
+	## ACT: one tick, then to the end of recovery.
+	rig.step()
+	var first_drop := 24.0 - w.speed
+	var ticks := 1
+	while w.phase == CombatPhase.Id.RECOVERY and ticks < 240:
+		rig.step()
+		ticks += 1
+	## ASSERT
+	assert_near(first_drop, brake * SimulationTimebase.TICK_SECONDS, 1e-9, "the blade is arrested by the attack's brake torque, not the hold")
+	assert_true(brake > definition.hold_accel(_rules.combatant(0).fighter.weapon_torque_scale, inertia), "fixture: the brake is the stronger of the two")
+	assert_eq(w.phase, CombatPhase.Id.NEUTRAL, "recovery ends")
+	assert_true(ticks > _rules.combat.recovery_min_ticks, "later than the floor, because the blade was still fast (%d ticks)" % ticks)
+	assert_true(absf(w.speed) <= definition.control_speed, "and only once it is under control (%.3f rad/s)" % w.speed)
+	## PERTURB: the mirrored rebound — the mirror of (θ, θ̇) is (−θ, −θ̇) —
+	## takes exactly as long.
+	var mirrored := _rig()
+	mirrored.fighter.weapon.angle = -start_angle
+	mirrored.fighter.weapon.swing_charge = 1.0
+	mirrored.fighter.weapon.speed = -24.0
+	mirrored.fighter.weapon.commitment = 0.8
+	WeaponSystem.enter_recovery(mirrored.fighter.weapon, _rules.combat.recovery_min_ticks)
+	var mirrored_ticks := 0
+	while mirrored.fighter.weapon.phase == CombatPhase.Id.RECOVERY and mirrored_ticks < 240:
+		mirrored.step()
+		mirrored_ticks += 1
+	assert_eq(mirrored_ticks, ticks, "a mirrored recovery is exactly as long")
+
+
+## A blade already under control still sits out the universal floor.
+func test_the_floor_always_holds() -> void:
+	## ARRANGE
+	var rig := _rig()
+	var w := rig.fighter.weapon
+	w.speed = 0.0
+	WeaponSystem.enter_recovery(w, _rules.combat.recovery_min_ticks)
+	## ACT
+	var ticks := 0
+	while w.phase == CombatPhase.Id.RECOVERY and ticks < 60:
+		rig.step()
+		ticks += 1
+	## ASSERT
+	assert_eq(ticks, _rules.combat.recovery_min_ticks, "exactly the floor, no more and no less")
+
+
+## Nothing but the blade's own motion and the floor decides recovery:
+## overswing, facing error, displacement and balance cost their time through
+## the brake, the turn and movement authority — never again here.
+func test_no_recovery_term_reads_facing_displacement_or_balance() -> void:
+	## ARRANGE: the same whiff, once square and composed, once turned away and
+	## off balance.
+	var square := _rig()
+	var turned := _rig()
+	DuelFixture.place(turned.opponent, 0.0, 10.0, -PI / 2.0)
+	turned.fighter.stability = _rules.combatant(0).fighter.stability_floor
+	## ACT
+	for rig: WeaponRig in [square, turned]:
+		rig.attack(40)
+		rig.step_until_phase(CombatPhase.Id.RECOVERY)
+	var square_left := square.settle()
+	var turned_left := turned.settle()
+	## ASSERT
+	assert_eq(turned_left, square_left, "the turned, unbalanced fighter recovers in exactly the same time")
+	## And the authored duration terms no longer exist.
+	var names := PackedStringArray()
+	for property in _rules.combatant(0).weapon.get_property_list():
+		names.append(str(property["name"]))
+	for removed: String in ["recovery_base_ticks", "recovery_commit_ticks", "recovery_overswing_ticks_per_rad", "recovery_displacement_ticks_per_speed", "recovery_facing_ticks_per_rad", "recovery_balance_ticks", "recovery_max_ticks"]:
+		assert_false(names.has(removed), "no weapon authors %s" % removed)
+
+
+## A tap — little momentum, a strong brake — is back under control sooner
+## than a full whiff overswinging on its weak brake, with no authored
+## difference between them.
+func test_a_tap_recovers_sooner_than_a_full_whiff() -> void:
+	## ARRANGE + ACT
+	var tap := _release_to_neutral(3)
+	var full := _release_to_neutral(80)
+	## ASSERT
+	assert_true(tap < full, "the tap is whole again sooner (%d vs %d ticks)" % [tap, full])
+
+
+## Commitment flows into recovery without a step and decays with the blade.
+func test_commitment_is_continuous_into_recovery() -> void:
+	## ARRANGE
+	var rig := _rig()
+	rig.attack(60)
+	## ACT: the last overswing tick and the first recovery tick.
+	var before := 0.0
+	while rig.fighter.weapon.phase != CombatPhase.Id.RECOVERY and rig.tick < 400:
+		before = rig.fighter.weapon.commitment
+		rig.step()
+	var entered := rig.fighter.weapon.commitment
+	rig.settle()
+	## ASSERT
+	assert_true(before > 0.5, "fixture: the cut was committed (%.3f)" % before)
+	assert_near(entered, before, 1e-12, "recovery starts from exactly the commitment overswing held")
+	assert_eq(rig.fighter.weapon.commitment, 0.0, "and none is left once the gate passes")
+
+
+# ── WHIFF-001: a whiff is a label, never a mechanic ──────────────────────────
+
+
+## A landed hit is a hit, not a miss: the attack met the opponent, so its end
+## emits no ATTACK_WHIFFED. A tap at an idle defender standing in measure,
+## its guard seated at the far guard limit outside the sweep. (The cut that
+## carries on through a hit into its overswing is CONTACT's mechanism test.)
+func test_a_landed_tap_is_never_a_whiff() -> void:
+	## ARRANGE
+	var runner := SimRunner.create(_rules, 2)
+	runner.skip_intro()
+	var attacker := runner.state.fighter(0)
+	var defender := runner.state.fighter(1)
+	defender.weapon.angle = -_rules.combatant(1).weapon.guard_limit
+	var reach := WeaponKinematics.strike_reach(_rules.combatant(0), _rules.combatant(1))
+	var guard := 0
+	while DuelGeometry.distance(attacker, defender) > reach and guard < 300:
+		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0), PlayerCommand.idle(runner.state.tick))
+		guard += 1
+	## ACT: tap, then idle until the attack is over.
+	runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0, true, true), PlayerCommand.idle(runner.state.tick))
+	for _i in 120:
+		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+		if attacker.weapon.phase == CombatPhase.Id.NEUTRAL:
+			break
+	## ASSERT: the scene is what it claims to be...
+	var hit := runner.first(DuelEventTypes.BODY_HIT)
+	assert_true(hit != null and hit.actor == 0, "precondition: the tap landed on the defender")
+	assert_eq(runner.count(DuelEventTypes.BLADE_CONTACT), 0, "precondition: no sword was involved")
+	assert_eq(attacker.weapon.phase, CombatPhase.Id.NEUTRAL, "precondition: the attack has ended")
+	## ...and its end is not a whiff.
+	assert_true(attacker.weapon.attack_contacted, "the attack is marked as having met the opponent")
+	assert_eq(runner.count(DuelEventTypes.ATTACK_WHIFFED), 0, "a landed hit never emits ATTACK_WHIFFED")
+	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+
+## Nothing in the simulation reads a whiff (WHIFF-001): the same free miss,
+## once labelled and once with its label suppressed, moves every body, sword
+## and phase identically on every tick. The only difference is the event.
+func test_a_whiff_label_changes_no_physics() -> void:
+	## ARRANGE: a tap at an idle defender far out of measure — a clean miss.
+	var labelled := SimRunner.create(_rules, 2)
+	var silenced := SimRunner.create(_rules, 2)
+	for runner: SimRunner in [labelled, silenced]:
+		runner.skip_intro()
+		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 0.0, true, true), PlayerCommand.idle(runner.state.tick))
+	## PERTURB: suppress the label on one of them.
+	silenced.state.fighter(0).weapon.attack_contacted = true
+	## ACT
+	var diverged := ""
+	for tick in 120:
+		for runner: SimRunner in [labelled, silenced]:
+			runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+		for slot in 2:
+			var a := labelled.state.fighter(slot)
+			var b := silenced.state.fighter(slot)
+			var same := (
+				a.x == b.x and a.y == b.y and a.vx == b.vx and a.vy == b.vy
+				and a.facing == b.facing and a.turn_rate == b.turn_rate
+				and a.weapon.angle == b.weapon.angle and a.weapon.speed == b.weapon.speed
+				and a.weapon.phase == b.weapon.phase and a.weapon.commitment == b.weapon.commitment
+				and a.weapon.recovery_left == b.weapon.recovery_left and a.health == b.health
+			)
+			if not same and diverged == "":
+				diverged = "tick %d slot %d" % [tick, slot]
+	## ASSERT
+	assert_eq(labelled.count(DuelEventTypes.ATTACK_WHIFFED), 1, "control: the free miss is labelled once")
+	assert_eq(silenced.count(DuelEventTypes.ATTACK_WHIFFED), 0, "perturbed: the label is suppressed")
+	assert_eq(diverged, "", "and no physical quantity differs on any tick")

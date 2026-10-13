@@ -5,32 +5,36 @@ extends TestCase
 ## Implements: /spec/invariants.md#combat-003
 ## See also: /docs/concepts/combat.md
 
+## What a fixed-iteration solve with friction leaves of a velocity target (m/s).
+const SOLVE_RESIDUAL := 1.0e-6
+
 var _rules: DuelRules
 
 
 func _init() -> void:
 	suite_name = "CONTACT"
-	_rules = DuelFixture.rules()
+	## Hand-built revolute scenes: the mechanism under test, on the fixed pivot.
+	_rules = DuelFixture.revolute_rules()
 
 
 ## A heavy swing along +X meets a parallel guard lying 4.4 cm above it.
 func _beat_scene() -> MatchState:
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 18.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 2.2, 0.044, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 18.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 2.2, 0.044, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	return state
 
 
 func test_heavy_swing_beats_through_a_weak_guard() -> void:
 	var state := _beat_scene()
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
 	var contacts := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)
 	assert_eq(contacts.size(), 1, "one blade collision")
 	assert_eq(contacts[0].text(DuelEventKeys.CONTACT_CLASS), String(ContactResolver.CLASS_STRONG), "strong contact")
 	assert_eq(contacts[0].actor, 0, "the swinging fighter is the attacker")
 	assert_true(CombatPhase.is_swinging(state.fighter(0).weapon.phase), "momentum carries the heavy swing through")
-	assert_true(absf(state.fighter(1).weapon.speed) > _rules.weapon.control_speed, "guard knocked out of control")
+	assert_true(absf(state.fighter(1).weapon.speed) > _rules.combatant(0).weapon.control_speed, "guard knocked out of control")
 	assert_eq(DuelFixture.of_type(events, DuelEventTypes.PARRY).size(), 0, "no parry when the attacker wins")
 
 
@@ -41,7 +45,7 @@ func test_heavy_swing_beats_through_a_weak_guard() -> void:
 func test_a_blade_contact_carries_its_own_geometry() -> void:
 	var state := _beat_scene()
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
 	var contact := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)[0]
 	var normal := SimMath.length(contact.number(DuelEventKeys.NORMAL_X), contact.number(DuelEventKeys.NORMAL_Y))
 	assert_near(normal, 1.0, 1e-9, "the collision normal arrives as a unit vector")
@@ -50,89 +54,201 @@ func test_a_blade_contact_carries_its_own_geometry() -> void:
 	## A bounded reading rather than a class name, so feedback can be a curve.
 	var intensity := contact.number(DuelEventKeys.INTENSITY)
 	assert_between(intensity, 0.0, 1.0, "intensity is a fraction")
-	assert_eq(intensity, SwingSemantics.clash_intensity(contact.number(DuelEventKeys.CLOSING_SPEED), _rules.combat), "of the closing speed that counts as a full deflection")
+	assert_eq(intensity, SwingSemantics.clash_intensity(contact.number(DuelEventKeys.ENERGY), _rules.combat), "of the energy the solve took out, against a strong clash")
 	assert_eq(contact.text(DuelEventKeys.CONTACT_CLASS), String(ContactResolver.CLASS_STRONG), "and the class is still there for audio")
 
 
+## A tap thrown from measure on the shipping rules at an idle defender whose
+## guard rests at `guard` (rad); runs `ticks` ticks after the release.
+func _tap_at_guard(guard: float, ticks: int) -> SimRunner:
+	var rules := DuelFixture.rules()
+	var runner := SimRunner.create(rules, 2)
+	runner.skip_intro()
+	var attacker := runner.state.fighter(0)
+	var defender := runner.state.fighter(1)
+	defender.weapon.angle = guard
+	var reach := WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1))
+	var walked := 0
+	while DuelGeometry.distance(attacker, defender) > reach and walked < 300:
+		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0), PlayerCommand.idle(runner.state.tick))
+		walked += 1
+	runner.idle(20)
+	defender.weapon.angle = guard
+	defender.weapon.speed = 0.0
+	runner.push(PlayerCommand.create(runner.state.tick, 0.0, 0.0, true, true), PlayerCommand.idle(runner.state.tick))
+	for _i in ticks:
+		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+	return runner
+
+
+## A parry is physical interception, never a timing verdict (PARRY-001). The
+## scene proves itself first: with the defender's guard seated away the same
+## tap lands, so it threatened; with the guard in its path, the guard meets it
+## before that hit would have come, with a positive impulse that arrests it,
+## and no body is hit. Then the label MUST fire, credited to the defender. The
+## riposte advantage rides along as a separate reading — here a parry that
+## won no tempo, which is still a parry.
 func test_tap_into_a_strong_guard_is_parried() -> void:
-	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 9.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	state.fighter(0).stability = 0.6
-	ContactFixture.arm(state.fighter(1), 1.5, 0.044, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	var limit := _rules.combatant(1).weapon.guard_limit
+	## ARRANGE (control): the guard seated outside the sweep — the tap lands.
+	var control := _tap_at_guard(-limit, 40)
+	var landed := control.first(DuelEventTypes.BODY_HIT)
+	assert_eq(control.count(DuelEventTypes.BLADE_CONTACT), 0, "control: no sword contact")
+	assert_true(landed != null and landed.actor == 0, "control: without the guard in its path the tap hits")
+	## PERTURB + ACT: the same tap, the guard resting in its path.
+	var runner := _tap_at_guard(limit, 40)
+	## ASSERT: physically a parry...
+	var contact := runner.first(DuelEventTypes.BLADE_CONTACT)
+	assert_true(contact != null, "the guard meets the tap")
+	assert_true(contact.tick < landed.tick, "before the hit it would otherwise have taken (tick %d < %d)" % [contact.tick, landed.tick])
+	assert_eq(contact.actor, 0, "the tap is the attacker")
+	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "with a solved, positive impulse")
+	assert_true(contact.number(DuelEventKeys.DELTA_0) * runner.state.fighter(0).weapon.swing_dir < 0.0, "that opposed the cut")
+	assert_true(bool(contact.data[DuelEventKeys.DEFLECTED_0]), "and arrested it")
+	assert_eq(runner.count(DuelEventTypes.BODY_HIT), 0, "the body hit is prevented")
+	## ...so it is labelled a parry, whatever the tempo it left.
+	var parries := DuelFixture.of_type(runner.events, DuelEventTypes.PARRY)
+	assert_eq(parries.size(), 1, "physical interception is a parry")
+	assert_eq(parries[0].tick, contact.tick, "on the interception itself")
+	assert_eq(parries[0].actor, 1, "the defender is credited")
+	assert_eq(parries[0].target, 0, "against the attacker")
+	assert_true(is_finite(parries[0].number(DuelEventKeys.MARGIN)), "and carries the riposte advantage as a reading")
+	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+
+## The other half of PARRY-001: a clash the cut carries on through is not a
+## parry, even with a weapon in the way and however much it slowed the cut.
+func test_a_clash_the_cut_carries_through_is_not_a_parry() -> void:
+	var state := _beat_scene()
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.15, 0.0, 1.15, 0.044), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
 	var contact := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)[0]
-	assert_true(bool(contact.data[DuelEventKeys.DEFLECTED_0]), "the tap is deflected")
-	assert_eq(state.fighter(0).weapon.phase, CombatPhase.Id.RECOVERY, "attacker must recover")
-	var parries := DuelFixture.of_type(events, DuelEventTypes.PARRY)
-	assert_eq(parries.size(), 1, "the strong guard parries")
-	assert_eq(parries[0].actor, 1, "defender is credited")
-	assert_true(parries[0].number(DuelEventKeys.MARGIN) >= _rules.combat.parry_margin_seconds, "defender threatens first by the margin")
+	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "precondition: a real clash")
+	assert_true(contact.number(DuelEventKeys.DELTA_0) < 0.0, "precondition: the guard took progress from the cut")
+	assert_false(bool(contact.data[DuelEventKeys.DEFLECTED_0]), "precondition: but did not arrest it")
+	assert_true(state.fighter(0).weapon.speed * state.fighter(0).weapon.swing_dir > 0.0, "precondition: the cut still progresses")
+	assert_true(state.fighter(0).weapon.attack_contacted, "the attack did meet the opponent")
+	assert_eq(DuelFixture.of_type(events, DuelEventTypes.PARRY).size(), 0, "but a carried-through cut is not parried")
 
 
 func test_separating_blades_do_not_collide() -> void:
 	var state := _beat_scene()
 	state.fighter(0).weapon.speed = -9.0
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
 	assert_eq(events.size(), 0, "blades moving apart exchange nothing")
-	assert_eq(state.blade_contact.phase, ContactPairState.Phase.SEPARATED, "and never enter a contact")
+	assert_eq(state.blade_contact.phase, SwordContactSet.Phase.SEPARATED, "and never enter a contact")
 
 
-func test_low_energy_contact_binds_and_the_planted_fighter_wins() -> void:
+## Closing speed (m/s, > 0 approaching) of the two blades at (px, py) along
+## the normal the resolver recorded.
+func _closing_at(state: MatchState, px: float, py: float) -> float:
+	var spec := _rules.combatant(0)
+	var pose_a := WeaponKinematics.pose_of(state.fighter(0), spec, BladePose.new())
+	var pose_b := WeaponKinematics.pose_of(state.fighter(1), spec, BladePose.new())
+	WeaponKinematics.velocity_into(state.fighter(0), pose_a, px, py)
+	WeaponKinematics.velocity_into(state.fighter(1), pose_b, px, py)
+	var contact := state.blade_contact
+	return -((pose_a.vx - pose_b.vx) * contact.normal_x + (pose_a.vy - pose_b.vy) * contact.normal_y)
+
+
+## RIGID-CONTACT-002: there is no scripted bind. A contact closing below the
+## restitution threshold is resting, not an impact: it is inelastic — the
+## blades stop closing and neither bounces — and it simply persists for the
+## rigid solver. Nothing is zeroed, no input or charge is cleared, and no
+## winner is picked; the old bind did all three.
+func test_a_slow_contact_is_inelastic_and_persists_without_a_bind() -> void:
 	var state := _beat_scene()
 	state.fighter(0).weapon.speed = 1.0
-	state.fighter(1).stability = 0.5
+	var defender := state.fighter(1)
+	defender.attack_held = true
+	defender.press_tick = 0
+	defender.weapon.charge = 0.3
+	defender.weapon.earned_windback = 0.2
+	defender.weapon.phase = CombatPhase.Id.CHARGING
+	state.blade_contact.set_normal(0.0, -1.0)
+	var closing := _closing_at(state, 1.1, 0.022)
+	assert_between(closing, SimMath.EPSILON, _rules.combatant(0).weapon.restitution_threshold_speed, "precondition: a slow closing contact (%.3f m/s)" % closing)
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
-	assert_eq(DuelFixture.of_type(events, DuelEventTypes.BIND_STARTED).size(), 1, "slow contact binds")
-	assert_eq(state.fighter(0).weapon.phase, CombatPhase.Id.BIND, "fighter 0 bound")
-	assert_eq(state.fighter(1).weapon.phase, CombatPhase.Id.BIND, "fighter 1 bound")
-	assert_true(state.blade_contact.is_bound(), "and the pair records the bind")
-	for tick in range(2, 2 + _rules.weapon.bind_ticks):
-		ContactResolver.update_bind(state, _rules, tick, events)
-	var ended := DuelFixture.of_type(events, DuelEventTypes.BIND_ENDED)
-	assert_eq(ended.size(), 1, "bind resolves")
-	assert_eq(ended[0].actor, 0, "planted fighter wins the bind")
-	assert_eq(state.fighter(0).weapon.phase, CombatPhase.Id.NEUTRAL, "winner free")
-	assert_eq(state.fighter(1).weapon.phase, CombatPhase.Id.RECOVERY, "loser recovers")
-	assert_eq(state.blade_contact.phase, ContactPairState.Phase.SEPARATING, "and the pair is coming apart")
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
+	var contacts := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)
+	assert_eq(contacts.size(), 1, "a slow contact is an ordinary blade contact")
+	assert_eq(contacts[0].text(DuelEventKeys.CONTACT_CLASS), String(ContactResolver.CLASS_LIGHT), "classified light")
+	## Friction iterates with the normal; four fixed passes leave a residual far
+	## below a micrometre per second, which is no bounce.
+	assert_near(_closing_at(state, 1.1, 0.022), 0.0, SOLVE_RESIDUAL, "inelastic: the blades stop closing and do not bounce apart")
+	assert_true(absf(state.fighter(0).weapon.speed) > SimMath.EPSILON, "the cut is not zeroed by fiat")
+	assert_true(defender.attack_held and defender.press_tick == 0, "the defender's held input survives")
+	assert_eq(defender.weapon.charge, 0.3, "and so does the charge it earned")
+	assert_eq(defender.weapon.phase, CombatPhase.Id.CHARGING, "and its phase")
 
 
-func test_a_bind_can_never_become_unrecoverable() -> void:
-	## COMBAT §45. The authored duration normally ends a bind, so the escape
-	## bound only matters if that counter is wrong. Perturb exactly that: give
-	## both fighters a bind that would outlast the match.
+## The restitution threshold is a speed, not a state: below it a new contact
+## is inelastic, at or above it the blades leave at e × the closing speed.
+func test_a_fast_contact_still_bounces() -> void:
+	var w := _rules.combatant(0).weapon
+	assert_eq(w.restitution_at(w.restitution_threshold_speed * 0.99), 0.0, "below the threshold: inelastic")
+	assert_eq(w.restitution_at(w.restitution_threshold_speed), w.restitution, "at the threshold: the authored restitution")
 	var state := _beat_scene()
-	state.fighter(0).weapon.speed = 1.0
+	state.blade_contact.set_normal(0.0, -1.0)
+	var closing := _closing_at(state, 1.1, 0.022)
+	assert_true(closing > w.restitution_threshold_speed, "precondition: a fast contact (%.2f m/s)" % closing)
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
-	for slot in 2:
-		state.fighter(slot).weapon.bind_left = 100000
-	var escape := _rules.combat.bind_escape_ticks
-	for tick in range(2, 2 + escape):
-		state.blade_contact.tick()
-		ContactResolver.update_bind(state, _rules, tick, events)
-	var ended := DuelFixture.of_type(events, DuelEventTypes.BIND_ENDED)
-	assert_eq(ended.size(), 1, "the escape bound frees the pair anyway")
-	assert_eq(ended[0].text(DuelEventKeys.REASON), String(ContactResolver.REASON_ESCAPED), "reported as an escape")
-	assert_eq(ended[0].actor, DuelEvent.NONE, "a fail-safe picks no winner")
-	for slot in 2:
-		assert_eq(state.fighter(slot).weapon.phase, CombatPhase.Id.NEUTRAL, "both fighters are free")
-	assert_eq(StateInvariants.check(state, _rules), StateInvariants.OK, "so the stuck-pair invariant never trips")
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
+	assert_near(_closing_at(state, 1.1, 0.022), -w.restitution * closing, SOLVE_RESIDUAL, "the blades separate at e × closing")
 
 
-func test_bind_breaks_when_fighters_disengage() -> void:
-	var state := _beat_scene()
-	state.fighter(0).weapon.speed = 1.0
+## RIGID-CONTACT-002: one interrupt law for a first impact and a held
+## contact. The phase describes what the sword did: a cut ends when a contact
+## opposed it and either stopped or reversed it, or pinned it — held it under
+## the wielder's `control_speed` with nothing gained over the tick. A cut
+## travelling faster than control, or one still accelerating out of a contact
+## it was launched in, is not interrupted; no ratio or timer decides it. Both
+## swing directions.
+func test_one_interrupt_law_decides_blocked_from_glancing() -> void:
+	var control := _rules.combatant(0).weapon.control_speed
+	for dir: float in [1.0, -1.0]:
+		var weapon := WeaponState.new()
+		weapon.swing_dir = dir
+		weapon.speed = (control + 1.0) * dir
+		assert_false(ContactResolver.arrests(weapon, -9.0 * dir, control, 12.0 * dir), "glancing (dir %+.0f): still faster than control → still a cut" % dir)
+		weapon.speed = 0.3 * dir
+		assert_true(ContactResolver.arrests(weapon, -9.0 * dir, control, 9.3 * dir), "pressed (dir %+.0f): brought under control from a fast cut → arrested" % dir)
+		assert_true(ContactResolver.arrests(weapon, -0.4 * dir, control, 0.3 * dir), "pinned (dir %+.0f): under control and no faster than the tick began → arrested" % dir)
+		assert_false(ContactResolver.arrests(weapon, -0.4 * dir, control, 0.0), "launched from a contact (dir %+.0f): under control but gaining on it → still a cut" % dir)
+		weapon.speed = control * dir
+		assert_true(ContactResolver.arrests(weapon, -1.0 * dir, control, (control + 1.0) * dir), "exactly at control (dir %+.0f), slowed → arrested" % dir)
+		weapon.speed = 0.0
+		assert_true(ContactResolver.arrests(weapon, -6.0 * dir, control, 6.0 * dir), "blocked (dir %+.0f): stopped dead → arrested" % dir)
+		assert_true(ContactResolver.arrests(weapon, -0.5 * dir, control, -1.0 * dir), "stopped dead arrests whatever the tick began at (dir %+.0f)" % dir)
+		weapon.speed = -1.5 * dir
+		assert_true(ContactResolver.arrests(weapon, -7.5 * dir, control, 6.0 * dir), "reversed (dir %+.0f) → arrested" % dir)
+		weapon.speed = -1.0 * dir
+		assert_false(ContactResolver.arrests(weapon, 0.5 * dir, control, -1.5 * dir), "a contact pushing along the cut never arrests it, even one already reversed (dir %+.0f)" % dir)
+
+
+## The motor is a finite torque, not a velocity setter: a cut a contact slowed
+## is re-driven from the speed the contact left it, by at most one tick of the
+## motor's authority (`α·dt`, `α = τ / M_θ`), never snapped back to its ceiling.
+## That is what lets a contact's effect survive — no pause, no timer.
+func test_a_met_cut_is_re_driven_at_finite_torque() -> void:
+	var state := DuelFixture.state(_rules)
+	var w := _rules.combatant(0).weapon
+	var ceiling := w.achievable_swing_speed(1.0, 1.0)
+	var authority := w.swing_accel(1.0, _rules.combatant(0).fighter.weapon_torque_scale, WeaponKinematics.motor_inertia(_rules.combatant(0), deg_to_rad(-60.0))) * SimulationTimebase.TICK_SECONDS
+	var met := state.fighter(0)
+	ContactFixture.arm(met, 0.0, 0.0, 0.0, deg_to_rad(-60.0), ceiling, CombatPhase.Id.ACTIVE_EARLY, 1.0, w)
+	met.weapon.launch_readiness = 1.0
+	ContactFixture.arm(state.fighter(1), 3.0, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, w)
+	var after_contact := ceiling - 1.5 * authority
+	met.weapon.speed = after_contact
+	assert_true(after_contact > 0.0, "fixture: the contact took %.1f of %.1f rad/s, more than one tick of motor authority (%.2f)" % [ceiling - after_contact, ceiling, authority])
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.blade_report(1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
-	state.fighter(1).x += 3.0
-	ContactResolver.update_bind(state, _rules, 2, events)
-	var ended := DuelFixture.of_type(events, DuelEventTypes.BIND_ENDED)
-	assert_eq(ended.size(), 1, "stepping away ends the bind")
-	assert_eq(ended[0].text(DuelEventKeys.REASON), String(ContactResolver.REASON_DISENGAGED), "disengage reason")
-	assert_eq(state.fighter(1).weapon.phase, CombatPhase.Id.NEUTRAL, "both free")
+	WeaponSystem.step(met, _rules, 0, events)
+	assert_true(CombatPhase.is_swinging(met.weapon.phase), "precondition: still a cut")
+	assert_near(met.weapon.speed, after_contact + authority, 1e-9, "the motor adds exactly one tick of its torque to what the contact left")
+	assert_true(met.weapon.speed < ceiling, "so the contact's effect is still there a tick later")
+	WeaponSystem.step(met, _rules, 1, events)
+	assert_near(met.weapon.speed, ceiling, 1e-9, "and the cut regains its ceiling only as fast as its torque allows")
 
 
 ## One live tick with the attacker mid-swing at `attacker_angle` and the
@@ -142,10 +258,10 @@ func _one_live_tick(attacker_angle: float, speed: float, guard_angle: float) -> 
 	var runner := SimRunner.create(_rules, 5)
 	runner.skip_intro()
 	var state := runner.state
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, attacker_angle, speed, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, attacker_angle, speed, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.combatant(0).weapon)
 	var dx := SimMath.cosine(deg_to_rad(-40.0))
 	var dy := SimMath.sine(deg_to_rad(-40.0))
-	ContactFixture.arm(state.fighter(1), dx, dy, atan2(-dy, -dx), guard_angle, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(1), dx, dy, atan2(-dy, -dx), guard_angle, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var idle := PlayerCommand.idle(state.tick)
 	return runner.simulation.step(state, idle, idle)
 
@@ -167,8 +283,8 @@ func test_an_intercepted_swing_never_reaches_the_body_behind_it() -> void:
 
 func test_body_hit_applies_damage_and_knockback() -> void:
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
 	var hits := DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)
@@ -187,17 +303,21 @@ func test_body_hit_applies_damage_and_knockback() -> void:
 	)
 
 
-func test_displacement_is_impulse_over_resisting_mass() -> void:
+func test_displacement_is_impulse_over_body_mass() -> void:
 	## PHYS-004, PHYS-010. Bilateral impulse: the target is pushed by J / m_T
 	## where J is the single authoritative bilateral impulse. There is no
-	## feel scale — the push is the physical consequence of one J. Exposure
-	## affects damage, never displacement.
+	## feel scale — the push is the physical consequence of one J. Exposure is
+	## a reading (v36): it scales neither damage nor displacement.
+	## The composed target faces the attacker on its guard, ready to answer;
+	## the helpless one is caught in a full overswing, turned away.
+	var facing := SimMath.arctan2(-0.27, -0.9)
+	var guard := -_rules.combatant(0).weapon.guard_angle
 	var composed := DuelFixture.state(_rules)
-	ContactFixture.arm(composed.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(composed.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(composed.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(composed.fighter(1), 0.9, 0.27, facing, guard, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var helpless := DuelFixture.state(_rules)
-	ContactFixture.arm(helpless.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(helpless.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.OVERSWING, 1.0, _rules.weapon)
+	ContactFixture.arm(helpless.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(helpless.fighter(1), 0.9, 0.27, facing + PI * 0.6, guard, 0.0, CombatPhase.Id.OVERSWING, 1.0, _rules.combatant(0).weapon)
 	var calm_events: Array[DuelEvent] = []
 	ContactResolver.resolve(composed, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, calm_events)
 	var exposed_events: Array[DuelEvent] = []
@@ -205,7 +325,7 @@ func test_displacement_is_impulse_over_resisting_mass() -> void:
 	var calm := DuelFixture.of_type(calm_events, DuelEventTypes.BODY_HIT)[0]
 	var exposed := DuelFixture.of_type(exposed_events, DuelEventTypes.BODY_HIT)[0]
 	assert_true(exposed.number(DuelEventKeys.EXPOSURE) > calm.number(DuelEventKeys.EXPOSURE), "precondition: one target is far worse positioned")
-	assert_true(exposed.number(DuelEventKeys.DAMAGE) > calm.number(DuelEventKeys.DAMAGE), "and is hurt more for it")
+	assert_near(exposed.number(DuelEventKeys.DAMAGE), calm.number(DuelEventKeys.DAMAGE), 1e-9, "and is hurt exactly as much: the same impact, the same damage")
 	assert_true(absf(composed.fighter(1).vy) > 0.0, "the hit pushes the target")
 	assert_near(composed.fighter(1).vy, calm.number(DuelEventKeys.PUSH), 1e-9, "displacement matches the reported bilateral push")
 	assert_near(helpless.fighter(1).vy, composed.fighter(1).vy, 1e-9, "and exposure adds none of it")
@@ -216,17 +336,17 @@ func test_stagger_is_decided_by_impulse_not_by_damage() -> void:
 	## that hurts badly need not unbalance anyone, and the threshold the
 	## resolver reads is impulse-derived.
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var strike := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
 	assert_near(
 		strike.stagger_pressure,
-		strike.impact.normalized_impulse(_rules.combat) * strike.exposure,
+		strike.impact.normalized_impulse(_rules.combat),
 		1e-12,
-		"stagger pressure is normalized impulse scaled by susceptibility"
+		"stagger pressure is the normalized impulse itself (v36: exposure never scales it)"
 	)
 	assert_true(strike.damage > 0.0, "precondition: the cut does real damage")
-	assert_true(strike.stagger_pressure < _rules.weapon.stagger_impulse, "precondition: but not enough momentum to unbalance a composed fighter")
+	assert_true(strike.stagger_pressure < _rules.combatant(0).weapon.stagger_impulse, "precondition: but not enough momentum to unbalance a composed fighter")
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
 	assert_eq(DuelFixture.of_type(events, DuelEventTypes.STAGGERED).size(), 0, "so a damaging cut alone does not stagger")
@@ -234,8 +354,8 @@ func test_stagger_is_decided_by_impulse_not_by_damage() -> void:
 
 func test_true_double_hit_damages_both() -> void:
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, PI, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, PI, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
 	var report := ContactFixture.body_report(0, 0.9, 0.0)
 	report.body[1] = true
 	report.body_x[1] = 0.0
@@ -248,8 +368,8 @@ func test_true_double_hit_damages_both() -> void:
 
 func test_lethal_hit_kills() -> void:
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 15.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 15.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	state.fighter(1).health = 5.0
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.375, events)
@@ -262,38 +382,98 @@ func test_lethal_hit_kills() -> void:
 
 
 func test_strong_hit_staggers_the_target() -> void:
+	## Stagger is the solved impulse crossing `stagger_impulse`, not a speed
+	## that used to be "strong" under a lighter fake mass. Build the hit so
+	## its pressure is over that line, then require the resolver to stagger.
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 10.0, CombatPhase.Id.ACTIVE_THREAT, 0.5, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.CHARGING, 0.5, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 10.0, CombatPhase.Id.ACTIVE_THREAT, 0.5, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.CHARGING, 0.5, _rules.combatant(0).weapon)
+	var probe := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
+	var line := _rules.combatant(0).weapon.stagger_impulse
+	assert_true(probe.stagger_pressure > 0.0, "precondition: the cut carries stagger pressure")
+	var speed := 10.0 * line / probe.stagger_pressure * 1.05
+	state.fighter(0).weapon.speed = speed
+	var over := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
+	assert_true(over.stagger_pressure >= line, "precondition: this hit is over the stagger line (%.3f)" % over.stagger_pressure)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
 	assert_eq(DuelFixture.of_type(events, DuelEventTypes.STAGGERED).size(), 1, "stagger reported")
 	assert_eq(state.fighter(1).weapon.phase, CombatPhase.Id.STAGGER, "charge interrupted by stagger")
-	## PHYS-008: body contact does NOT change attacker weapon state.
-	assert_eq(state.fighter(0).weapon.phase, CombatPhase.Id.ACTIVE_THREAT, "attacker weapon phase unchanged by body contact (PHYS-008)")
+	## The attacker's cut follows the one arrest law (RIGID-CONTACT-002) on
+	## what the hit left of it: still a cut above control speed, over below.
+	var cut := state.fighter(0).weapon
+	var arrested := cut.speed * cut.swing_dir <= _rules.combatant(0).weapon.control_speed
+	assert_eq(cut.phase, CombatPhase.Id.RECOVERY if arrested else CombatPhase.Id.ACTIVE_THREAT, "the attacker's phase is the arrest law's verdict (%.2f rad/s left)" % cut.speed)
 
 
-## --- PHYS-008: conditional weapon/body coupling (sword independence) --------
-## Stabbing-angle contacts (point-first entry) penetrate cleanly: the blade
-## receives NO reactive impulse. Non-stabbing contacts (transverse slashes,
-## oblique impacts) receive an opposite reactive angular impulse. One
-## definition, not two: if the geometry qualifies as a point strike (POKE or
-## THRUST), the blade also penetrates without reaction.
+## WHIFF-001: a landed hit whose cut carries on into its overswing is still a
+## hit. The hit here is a walking poke met dead along the blade: its lever is
+## zero (PHYS-008), so it takes nothing from the cut, which runs on to its
+## end. The hit marks the attack as having met the opponent, so that end emits
+## no ATTACK_WHIFFED; the same cut at nothing emits exactly one.
+func test_a_hit_that_carries_into_overswing_is_never_a_whiff() -> void:
+	var weapon := _rules.combatant(0).weapon
+	## ARRANGE: the poke scene, and its free twin with the target far away.
+	var hit_state := DuelFixture.state(_rules)
+	var free_state := DuelFixture.state(_rules)
+	for state: MatchState in [hit_state, free_state]:
+		var a := state.fighter(0)
+		DuelFixture.place(a, 0.0, 0.0, 0.0)
+		a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
+		a.weapon.angle = 0.0
+		a.weapon.speed = 2.0
+		a.weapon.swing_dir = 1.0
+		a.weapon.swing_start = deg_to_rad(-45.0)
+		a.weapon.swing_end = deg_to_rad(45.0)
+		a.vx = 5.0
+	DuelFixture.place(hit_state.fighter(1), weapon.tip_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
+	DuelFixture.place(free_state.fighter(1), 10.0, 0.0, PI)
+	var hit_events: Array[DuelEvent] = []
+	ContactResolver.resolve(hit_state, ContactFixture.body_report(0, weapon.tip_radius, 0.0), _rules, 1, 0.0, hit_events)
+	var cut := hit_state.fighter(0).weapon
+	assert_eq(DuelFixture.of_type(hit_events, DuelEventTypes.BODY_HIT).size(), 1, "precondition: the poke landed")
+	assert_true(cut.speed * cut.swing_dir > weapon.control_speed, "precondition: the hit left the cut travelling (%.2f rad/s)" % cut.speed)
+	assert_true(CombatPhase.is_swinging(cut.phase), "precondition: so it is still a cut")
+	## ACT: both cuts run on to their end.
+	var overswung: Array[bool] = [false, false]
+	var whiffs := PackedInt32Array([0, 0])
+	var states: Array[MatchState] = [hit_state, free_state]
+	for index in 2:
+		var events: Array[DuelEvent] = []
+		var fighter := states[index].fighter(0)
+		for tick in 120:
+			WeaponSystem.step(fighter, _rules, tick, events)
+			overswung[index] = overswung[index] or fighter.weapon.phase == CombatPhase.Id.OVERSWING
+			if fighter.weapon.phase == CombatPhase.Id.RECOVERY:
+				break
+		whiffs[index] = DuelFixture.of_type(events, DuelEventTypes.ATTACK_WHIFFED).size()
+	## ASSERT
+	assert_true(overswung[0], "precondition: the hit cut carried on into its overswing")
+	assert_true(overswung[1], "control: so did the free cut")
+	assert_eq(whiffs[0], 0, "a landed hit's end is not a whiff")
+	assert_eq(whiffs[1], 1, "control: the cut that met nothing is labelled a whiff, once")
+
+## --- PHYS-008: weapon/body coupling through the contact Jacobian -----------
+## Every body contact turns the blade by `J·c/M_θ` — no classification is
+## exempt. A point driven straight along its blade from Long Guard has a zero
+## lever (`C′_fwd(0) = 0`, and the rotation term is perpendicular to the
+## axis), so it turns nothing; a slash or an oblique contact has a real lever
+## and reacts. Off-axis points are in IMPACT.
 ##
-## Implements: /spec/invariants.md#combat-003 (PHYS-008)
+## Implements: /spec/invariants.md#phys-008
 ## See also: /docs/concepts/combat.md
 
 
-## Group 1: Stabbing invariants — weapon.speed unchanged through body contact.
+## Group 1: centred axial points — zero lever, so weapon.speed is unchanged.
 
 func test_poke_does_not_change_weapon_speed() -> void:
-	## A walking poke: tip-region contact, sufficient alignment, sufficient
-	## incidence. The blade penetrates cleanly — no Δω on the weapon.
+	## A walking poke straight along the blade into the target's centre: the
+	## normal is the blade axis, the lever is zero, no Δω on the weapon.
 	var state := DuelFixture.state(_rules)
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
-	DuelFixture.place(b, _rules.weapon.tip_radius + _rules.fighter.body_radius, 0.0, PI)
+	DuelFixture.place(b, _rules.combatant(0).weapon.tip_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.angle = 0.0
 	a.weapon.speed = 2.0
@@ -301,10 +481,10 @@ func test_poke_does_not_change_weapon_speed() -> void:
 	a.vx = 5.0
 	var speed_before := a.weapon.speed
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.weapon.tip_radius, 0.0), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.combatant(0).weapon.tip_radius, 0.0), _rules, 1, 0.0, events)
 	assert_eq(DuelFixture.of_type(events, DuelEventTypes.BODY_HIT).size(), 1, "body hit resolved")
 	assert_eq(a.weapon.speed, speed_before, "poke: weapon speed unchanged (PHYS-008)")
-	assert_true(b.health < _rules.fighter.max_health, "target took damage")
+	assert_true(b.health < _rules.combatant(0).fighter.max_health, "target took damage")
 	assert_true(absf(b.vx) > 0.0 or absf(b.vy) > 0.0, "target was pushed")
 
 
@@ -314,7 +494,7 @@ func test_thrust_does_not_change_weapon_speed() -> void:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
-	DuelFixture.place(b, _rules.weapon.tip_radius + _rules.fighter.body_radius, 0.0, PI)
+	DuelFixture.place(b, _rules.combatant(0).weapon.tip_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.angle = 0.0
 	a.weapon.speed = 1.5
@@ -327,19 +507,19 @@ func test_thrust_does_not_change_weapon_speed() -> void:
 	a.gesture.burst_dir_y = 0.0
 	var speed_before := a.weapon.speed
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.weapon.tip_radius, 0.0), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.combatant(0).weapon.tip_radius, 0.0), _rules, 1, 0.0, events)
 	assert_eq(DuelFixture.of_type(events, DuelEventTypes.BODY_THRUST).size(), 1, "classified as THRUST")
 	assert_eq(a.weapon.speed, speed_before, "thrust: weapon speed unchanged (PHYS-008)")
 
 
-## Group 2: Non-stabbing reaction — measurable Δω on weapon.speed.
+## Group 2: transverse and oblique contacts — a real lever, measurable Δω.
 
 func test_slash_produces_blade_reaction() -> void:
 	## A transverse slash: the blade's edge leads, contact is mid-blade
 	## (not tip region). The weapon receives a reactive angular impulse.
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var speed_before := state.fighter(0).weapon.speed
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.45, 0.0), _rules, 1, 0.0, events)
@@ -354,15 +534,15 @@ func test_charged_slash_has_larger_reaction_than_tap() -> void:
 	## is also proportionally larger. However, what matters here is that a
 	## stronger swing + same contact produces a measurably different Δω.
 	var tap_state := DuelFixture.state(_rules)
-	ContactFixture.arm(tap_state.fighter(0), 0.0, 0.0, 0.0, 0.0, 6.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(tap_state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(tap_state.fighter(0), 0.0, 0.0, 0.0, 0.0, 6.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(tap_state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var tap_speed_before := tap_state.fighter(0).weapon.speed
 	var tap_events: Array[DuelEvent] = []
 	ContactResolver.resolve(tap_state, ContactFixture.body_report(0, 0.45, 0.0), _rules, 1, 0.0, tap_events)
 	var tap_dw := absf(tap_state.fighter(0).weapon.speed - tap_speed_before)
 	var charged_state := DuelFixture.state(_rules)
-	ContactFixture.arm(charged_state.fighter(0), 0.0, 0.0, 0.0, 0.0, 14.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
-	ContactFixture.arm(charged_state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(charged_state.fighter(0), 0.0, 0.0, 0.0, 0.0, 14.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.combatant(0).weapon)
+	ContactFixture.arm(charged_state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var charged_speed_before := charged_state.fighter(0).weapon.speed
 	var charged_events: Array[DuelEvent] = []
 	ContactResolver.resolve(charged_state, ContactFixture.body_report(0, 0.45, 0.0), _rules, 1, 0.0, charged_events)
@@ -384,54 +564,55 @@ func test_oblique_tip_below_thresholds_gets_both_reaction_and_push() -> void:
 	a.weapon.angle = 0.0
 	a.weapon.speed = 10.0
 	a.weapon.swing_dir = 1.0
-	DuelFixture.commit(a, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
+	DuelFixture.commit(a, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
 	var speed_before := a.weapon.speed
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.85, 0.0), _rules, 1, 0.0, events)
 	var hits := DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)
 	assert_eq(hits.size(), 1, "body hit")
 	var strike := DamageModel.evaluate(a, b, 0.85, 0.0, _rules)
-	assert_false(strike.is_stabbing, "precondition: oblique geometry is not stabbing")
-	assert_true(absf(state.fighter(0).weapon.speed - speed_before) > 0.001, "blade reacted (non-stabbing)")
-	assert_true(b.health < _rules.fighter.max_health, "target took damage")
+	assert_true(strike.contact_kind != StrikeResult.ContactKind.POKE and strike.contact_kind != StrikeResult.ContactKind.THRUST, "precondition: oblique geometry is not a point strike")
+	assert_true(absf(state.fighter(0).weapon.speed - speed_before) > 0.001, "blade reacted through its lever")
+	assert_true(b.health < _rules.combatant(0).fighter.max_health, "target took damage")
 
 
-## Group 3: Weapon-body lifecycle — one damage on entry, nothing inside.
+## Group 3: Weapon-body lifecycle — one damage entry per real episode.
+## CollisionSystem reports a body hit only when `observe` returns true, which
+## is only the OUTSIDE → ENTERED transition. These two fixtures are that gate.
+## A swing's speed and whatever else it hits are not part of the law.
 
-func test_weapon_body_lifecycle_no_repeat_damage_inside() -> void:
-	## COMBAT-007 / PHYS-008: WeaponBodyContact lifecycle gates re-entry.
-	## The collision system (not the resolver) tracks OUTSIDE → ENTERED →
-	## INSIDE → EXITED → OUTSIDE. A penetrating sword that stays inside the
-	## body volume does not deal repeated damage. Test through the full
-	## simulation path since lifecycle is a CollisionSystem concern.
-	var runner := SimRunner.create(_rules, 20)
-	runner.skip_intro()
-	var state := runner.state
-	## Position fighters close enough that a swing will hit, with attacker
-	## already in a swinging phase. Speed must be within capacity (< 40 r/s)
-	## and the start angle close enough that the blade crosses the body once
-	## before the swing reverses.
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-20.0), 39.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), _rules.weapon.tip_radius * 0.9, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
-	var initial_health := state.fighter(1).health
-	var idle := PlayerCommand.idle(state.tick)
-	var attacker_hits := 0
-	var first_hit_tick := -1
-	for tick in 15:
-		var events := runner.simulation.step(state, idle, idle)
-		var hits := DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)
-		for hit in hits:
-			if hit.actor == 0:
-				attacker_hits += 1
-				if first_hit_tick < 0:
-					first_hit_tick = state.tick
-	assert_true(first_hit_tick >= 0, "precondition: the swing connected")
-	assert_true(state.fighter(1).health < initial_health, "damage was dealt")
-	## The key invariant: only ONE hit per attacker from a single swing
-	## passage through the body, even though the blade was inside for
-	## multiple ticks. The opponent's neutral blade may also produce a
-	## separate contact (COMBAT-010); that is a distinct lifecycle.
-	assert_eq(attacker_hits, 1, "lifecycle: exactly one body hit per entry (COMBAT-007)")
+func test_staying_inside_a_body_is_one_hit() -> void:
+	var lifecycle := WeaponBodyContact.new()
+	var touch := 0.2
+	var epsilon := _rules.combat.separation_epsilon
+	var hits := 0
+	if lifecycle.observe(touch - 0.01, touch, epsilon):
+		hits += 1
+	lifecycle.advance_after_entry(false)
+	for _tick in 10:
+		if lifecycle.observe(touch - 0.01, touch, epsilon):
+			hits += 1
+		assert_true(lifecycle.is_inside(), "the blade is still inside")
+	assert_eq(hits, 1, "ten ticks inside the body are one entry, one hit")
+
+
+func test_leaving_past_hysteresis_and_reentering_is_a_second_hit() -> void:
+	var lifecycle := WeaponBodyContact.new()
+	var touch := 0.2
+	var epsilon := _rules.combat.separation_epsilon
+	var clear := touch + epsilon + 0.01
+	var hits := 0
+	if lifecycle.observe(touch - 0.01, touch, epsilon):
+		hits += 1
+	lifecycle.advance_after_entry(false)
+	assert_false(lifecycle.observe(clear, touch, epsilon), "the first step clear is EXITING, not a new hit")
+	assert_eq(lifecycle.phase, WeaponBodyContact.Phase.EXITING, "precondition: exiting")
+	assert_false(lifecycle.observe(clear, touch, epsilon), "still clear, so the lifecycle rearms")
+	assert_eq(lifecycle.phase, WeaponBodyContact.Phase.OUTSIDE, "precondition: back outside, past hysteresis")
+	if lifecycle.observe(touch - 0.01, touch, epsilon):
+		hits += 1
+	assert_eq(hits, 2, "a genuine exit and re-entry is a second hit")
+	assert_false(lifecycle.observe(touch - 0.01, touch, epsilon), "and staying in after that does not add a third")
 
 
 ## --- Bilateral sword-body impulse (PHYS-010) --------------------------------
@@ -443,11 +624,11 @@ func test_bilateral_momentum_conservation() -> void:
 	## applied to the attacker. The angular term on the sword is a torque
 	## derived from the same J.
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var strike := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
-	var m_t := strike.impact.target_effective_mass
-	var m_a := strike.impact.attacker_effective_mass
+	var m_t := strike.impact.target_mass
+	var m_a := strike.impact.attacker_mass
 	var a0_vx := state.fighter(0).vx
 	var a0_vy := state.fighter(0).vy
 	var events: Array[DuelEvent] = []
@@ -466,11 +647,11 @@ func test_newton_third_law_bilateral() -> void:
 	## the single bilateral J: m_T * dv_T + m_A * dv_A = 0 where m is the
 	## effective mass used in the bilateral computation.
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var strike := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
-	var m_t := strike.impact.target_effective_mass
-	var m_a := strike.impact.attacker_effective_mass
+	var m_t := strike.impact.target_mass
+	var m_a := strike.impact.attacker_mass
 	var a0_vx := state.fighter(0).vx
 	var a0_vy := state.fighter(0).vy
 	var events: Array[DuelEvent] = []
@@ -491,8 +672,8 @@ func test_restitution_relation_on_sword_body() -> void:
 	## -e * v_rel_before along the contact normal. With e near zero the
 	## bodies barely separate after contact.
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	var hit := DamageModel.evaluate(state.fighter(0), state.fighter(1), 0.9, 0.0, _rules)
 	var v_rel_before := hit.impact.normal_speed
 	var events: Array[DuelEvent] = []
@@ -508,8 +689,8 @@ func test_nonlethal_enters_constraining() -> void:
 	## PHYS-010. A nonlethal body hit transitions the weapon-body lifecycle
 	## from ENTERED to CONSTRAINING (blade cannot phase through body).
 	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), 0.9, 0.27, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	assert_eq(state.weapon_body_contacts[0].phase, WeaponBodyContact.Phase.OUTSIDE, "precondition: outside")
 	## Create a body report AND manually set lifecycle to ENTERED (as collision system would).
 	state.weapon_body_contacts[0].phase = WeaponBodyContact.Phase.ENTERED
@@ -523,11 +704,11 @@ func test_lethal_enters_penetrating() -> void:
 	## to PENETRATING (blade continues through).
 	var state := DuelFixture.state(_rules)
 	## Set up a lethal thrust scenario: high-speed point-first contact.
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-20.0), 39.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
-	ContactFixture.arm(state.fighter(1), _rules.weapon.tip_radius * 0.9, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.weapon)
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-20.0), 39.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.combatant(0).weapon)
+	ContactFixture.arm(state.fighter(1), _rules.combatant(0).weapon.tip_radius * 0.9, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, _rules.combatant(0).weapon)
 	state.weapon_body_contacts[0].phase = WeaponBodyContact.Phase.ENTERED
 	var events: Array[DuelEvent] = []
-	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.weapon.tip_radius * 0.9, 0.0), _rules, 1, 0.0, events)
+	ContactResolver.resolve(state, ContactFixture.body_report(0, _rules.combatant(0).weapon.tip_radius * 0.9, 0.0), _rules, 1, 0.0, events)
 	var body_hits := DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)
 	assert_true(body_hits.size() > 0, "a body hit was produced")
 	var is_lethal := body_hits[0].number(DuelEventKeys.LETHAL) > 0.5

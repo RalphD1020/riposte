@@ -58,10 +58,6 @@ var contact_kind: ContactKind = ContactKind.SLASH
 ## instant kill. True for unprotected THRUSTs (no prior blade defense) and
 ## POKEs whose physical severity reaches the lethal threshold.
 var lethal: bool = false
-## Whether the contact geometry satisfies the stabbing-angle predicate
-## (PHYS-008). True for point-first entry with sufficient axial alignment
-## and incidence. Controls blade reaction suppression, not classification.
-var is_stabbing: bool = false
 
 
 func to_payload() -> Dictionary:
@@ -92,7 +88,7 @@ func to_payload() -> Dictionary:
 		DuelEventKeys.BLADE_FRACTION: impact.blade_fraction,
 		DuelEventKeys.ALIGNMENT: impact.edge_alignment,
 		DuelEventKeys.COUPLING: impact.coupling,
-		DuelEventKeys.EFFECTIVE_MASS: impact.attacker_effective_mass,
+		DuelEventKeys.EFFECTIVE_MASS: 1.0 / impact.inverse_effective_mass if impact.inverse_effective_mass > SimMath.EPSILON else 0.0,
 		DuelEventKeys.IMPULSE: impact.impulse,
 		DuelEventKeys.SEVERITY: impact.kinetic_severity,
 		DuelEventKeys.STAGGER_PRESSURE: stagger_pressure,

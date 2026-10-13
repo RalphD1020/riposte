@@ -12,7 +12,8 @@ var _collision := CollisionSystem.new()
 
 func _init() -> void:
 	suite_name = "BODY-PUSH"
-	_rules = DuelFixture.rules()
+	## Hand-built revolute scenes: the mechanism under test, on the fixed pivot.
+	_rules = DuelFixture.revolute_rules()
 
 
 ## --- Detection ---------------------------------------------------------------
@@ -20,14 +21,14 @@ func _init() -> void:
 
 func test_overlapping_bodies_detected_as_body_push() -> void:
 	var state := DuelFixture.state(_rules)
-	var radius := _rules.fighter.body_radius
+	var radius := _rules.combatant(0).fighter.push_radius
 	## Weapons angled perpendicular so neutral blades do not overlap bodies
 	## (COMBAT-010: neutral blades can now produce body contacts).
 	var a := ContactFixture.pose(0.0, 0.0, 0.0, deg_to_rad(90.0))
 	var b := ContactFixture.pose(radius * 1.5, 0.0, PI, deg_to_rad(90.0))
 	var start := ContactFixture.poses(a, b)
-	var pair := ContactPairState.new()
-	pair.set_phase(ContactPairState.Phase.CONTACTING)
+	var pair := SwordContactSet.new()
+	pair.set_phase(SwordContactSet.Phase.CONTACTING)
 	var report := ContactReport.new()
 	_collision.detect(state, start, start, _rules, pair, report)
 	assert_true(report.body_push, "overlapping bodies produce a body-push contact")
@@ -40,8 +41,8 @@ func test_separated_bodies_produce_no_push() -> void:
 	var a := ContactFixture.pose(0.0, 0.0, 0.0, 0.0)
 	var b := ContactFixture.pose(3.0, 0.0, PI, 0.0)
 	var start := ContactFixture.poses(a, b)
-	var pair := ContactPairState.new()
-	pair.set_phase(ContactPairState.Phase.CONTACTING)
+	var pair := SwordContactSet.new()
+	pair.set_phase(SwordContactSet.Phase.CONTACTING)
 	var report := ContactReport.new()
 	_collision.detect(state, start, start, _rules, pair, report)
 	assert_false(report.body_push, "far-apart bodies produce no push")
@@ -52,7 +53,7 @@ func test_blade_contact_outranks_body_push() -> void:
 	var a := ContactFixture.pose(0.0, 0.0, 0.0, 0.0)
 	var b := ContactFixture.pose(0.52, 0.0, PI, 0.0)
 	var start := ContactFixture.poses(a, b)
-	var pair := ContactPairState.new()
+	var pair := SwordContactSet.new()
 	var report := ContactReport.new()
 	_collision.detect(state, start, start, _rules, pair, report)
 	assert_true(report.blade, "blade contact fires when blades overlap")
@@ -65,8 +66,8 @@ func test_blade_body_outranks_body_push() -> void:
 	var a := ContactFixture.pose(0.0, 0.0, 0.0, 0.0)
 	var b := ContactFixture.pose(0.52, 0.0, PI, 0.0)
 	var start := ContactFixture.poses(a, b)
-	var pair := ContactPairState.new()
-	pair.set_phase(ContactPairState.Phase.CONTACTING)
+	var pair := SwordContactSet.new()
+	pair.set_phase(SwordContactSet.Phase.CONTACTING)
 	var report := ContactReport.new()
 	_collision.detect(state, start, start, _rules, pair, report)
 	assert_true(report.body[0], "blade-body contact fires")
@@ -120,11 +121,11 @@ func test_low_restitution_absorbs_energy() -> void:
 	DuelFixture.place(b, 0.4, 0.0, PI)
 	a.vx = 5.0
 	b.vx = 0.0
-	var ke_before := 0.5 * _rules.fighter.mass * a.vx * a.vx
+	var ke_before := 0.5 * _rules.combatant(0).fighter.mass * a.vx * a.vx
 	var report := ContactFixture.body_push_report(1.0, 0.0)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, report, _rules, 0, 0.5, events)
-	var ke_after := 0.5 * _rules.fighter.mass * (a.vx * a.vx + b.vx * b.vx)
+	var ke_after := 0.5 * _rules.combatant(0).fighter.mass * (a.vx * a.vx + b.vx * b.vx)
 	assert_true(ke_after < ke_before, "low restitution dissipates kinetic energy")
 	assert_true(_rules.combat.body_restitution < 0.5, "precondition: restitution is low")
 
@@ -268,14 +269,14 @@ func test_arena_separation_is_mass_aware() -> void:
 	DuelFixture.place(b, 0.3, 0.0, PI)
 	a.vx = 2.0
 	b.vx = -2.0
-	var body_radius := _rules.fighter.body_radius
+	var push_radius := _rules.combatant(0).fighter.push_radius
 	var light := 40.0
 	var heavy := 120.0
 	var a_before := a.x
 	var b_before := b.x
-	ArenaConstraints.separate(a, b, body_radius, light, heavy)
+	ArenaConstraints.separate(a, b, push_radius, push_radius, light, heavy)
 	var gap := SimMath.length(b.x - a.x, b.y - a.y)
-	assert_near(gap, body_radius * 2.0, 1e-6, "bodies pushed apart to contact distance")
+	assert_near(gap, push_radius * 2.0 + ArenaConstraints.BODY_CONTACT_REST_EPSILON, 1e-9, "bodies pushed apart to contact distance, resting just outside it")
 	var light_moved := absf(a.x - a_before)
 	var heavy_moved := absf(b.x - b_before)
 	assert_true(light_moved > heavy_moved, "lighter fighter absorbs more displacement")
@@ -290,10 +291,10 @@ func test_equal_mass_separation_is_symmetric() -> void:
 	DuelFixture.place(b, 0.3, 0.0, PI)
 	a.vx = 2.0
 	b.vx = -2.0
-	var body_radius := _rules.fighter.body_radius
+	var push_radius := _rules.combatant(0).fighter.push_radius
 	var a_before := a.x
 	var b_before := b.x
-	ArenaConstraints.separate(a, b, body_radius, 80.0, 80.0)
+	ArenaConstraints.separate(a, b, push_radius, push_radius, 80.0, 80.0)
 	var a_moved := absf(a.x - a_before)
 	var b_moved := absf(b.x - b_before)
 	assert_near(a_moved, b_moved, 1e-9, "equal-mass separation moves both by the same amount")
@@ -305,7 +306,7 @@ func test_equal_mass_separation_is_symmetric() -> void:
 
 func test_body_push_detected_during_fast_approach() -> void:
 	var state := DuelFixture.state(_rules)
-	var radius := _rules.fighter.body_radius
+	var radius := _rules.combatant(0).fighter.push_radius
 	var far := radius * 3.0
 	## Weapons angled perpendicular so neutral blades do not overlap bodies.
 	var a := ContactFixture.pose(0.0, 0.0, 0.0, deg_to_rad(90.0))
@@ -313,8 +314,8 @@ func test_body_push_detected_during_fast_approach() -> void:
 	var a_close := ContactFixture.pose(far * 0.5, 0.0, 0.0, deg_to_rad(90.0))
 	var start := ContactFixture.poses(a, b)
 	var finish := ContactFixture.poses(a_close, b)
-	var pair := ContactPairState.new()
-	pair.set_phase(ContactPairState.Phase.CONTACTING)
+	var pair := SwordContactSet.new()
+	pair.set_phase(SwordContactSet.Phase.CONTACTING)
 	var report := ContactReport.new()
 	_collision.detect(state, start, finish, _rules, pair, report)
 	assert_true(report.body_push, "CCD catches body overlap during a fast approach")
@@ -325,7 +326,72 @@ func test_body_push_detected_during_fast_approach() -> void:
 
 
 func test_tick_order_version_bumped_for_body_push() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 9, "body push in contact loop bumps tick order")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 13, "body push in contact loop bumps tick order (13: a spent re-hold budget carries the remainder without tunnelling)")
+
+
+## --- Rest epsilon (BODY-CONTACT-OWNERSHIP-001) -------------------------------
+
+
+## `BODY_CONTACT_REST_EPSILON` is numerical hysteresis separating the resting
+## configuration from the contact trigger, not physics: far above the ULP of
+## the authoritative 64-bit positions anywhere on the platform, far below
+## anything visible and the sword contact slop — and it survives the
+## separation arithmetic, so separated bodies really do rest outside touching.
+## (Mirrored contact is exact: `test_held_pressure_mirrors_exactly`.)
+func test_the_body_rest_epsilon_is_hysteresis_not_physics() -> void:
+	var epsilon := ArenaConstraints.BODY_CONTACT_REST_EPSILON
+	var ulp_at_rim := _rules.platform_radius * pow(2.0, -52.0)
+	assert_true(epsilon > 1.0e5 * ulp_at_rim, "five orders above double precision at the rim (%s vs %s m)" % [str(epsilon), str(ulp_at_rim)])
+	assert_true(epsilon <= _rules.combat.contact_slop * 1.0e-3, "at least three orders below the sword slop (%s vs %s m)" % [str(epsilon), str(_rules.combat.contact_slop)])
+	var state := DuelFixture.state(_rules)
+	var a := state.fighter(0)
+	var b := state.fighter(1)
+	var touch := 2.0 * _rules.combatant(0).fighter.push_radius
+	for at: float in [0.0, _rules.platform_radius - touch - 0.01]:
+		DuelFixture.place(a, at, 0.0, 0.0)
+		DuelFixture.place(b, at + touch - 0.003, 0.0, PI)
+		assert_true(DuelGeometry.distance(a, b) < touch, "fixture: overlapping at x = %.2f" % at)
+		ArenaConstraints.separate(a, b, _rules.combatant(0).fighter.push_radius, _rules.combatant(1).fighter.push_radius, _rules.combatant(0).fighter.mass, _rules.combatant(1).fighter.mass)
+		var gap := DuelGeometry.distance(a, b) - touch
+		assert_true(gap > 0.5 * epsilon and gap < 2.0 * epsilon, "separated bodies rest just outside touching at x = %.2f (gap %s m)" % [at, str(gap)])
+
+
+## A long hold is stable: two fighters walking into each other for five
+## seconds, swords held back out of the way, stay in one continuous body
+## contact — never interpenetrating, never flickering apart and re-impacting
+## (which would re-apply first-contact restitution every few ticks).
+func test_a_long_body_hold_is_stable() -> void:
+	var runner := SimRunner.create(_rules, 1)
+	runner.skip_intro()
+	var state := runner.state
+	var touch := 2.0 * _rules.combatant(0).fighter.push_radius
+	DuelFixture.place(state.fighter(0), 0.0, -0.4, PI * 0.5)
+	DuelFixture.place(state.fighter(1), 0.0, 0.4, -PI * 0.5)
+	for slot in 2:
+		state.fighter(slot).weapon.angle = _rules.combatant(0).weapon.guard_limit * (1.0 if slot == 0 else -1.0)
+	var swords := 0
+	var touched := -1
+	var flickers := 0
+	var deepest := INF
+	var widest := 0.0
+	for tick in 300:
+		var commands: Array[PlayerCommand] = [PlayerCommand.create(state.tick, 0.0, 1.0), PlayerCommand.create(state.tick, 0.0, 1.0)]
+		for event in runner.simulation.step(state, commands[0], commands[1]):
+			if event.type == DuelEventTypes.BLADE_CONTACT or event.type == DuelEventTypes.BODY_HIT:
+				swords += 1
+		if touched < 0 and state.body_contact.phase == BodyContactState.Phase.CONTACTING:
+			touched = tick
+		if touched >= 0:
+			if state.body_contact.phase != BodyContactState.Phase.CONTACTING:
+				flickers += 1
+			var gap := DuelGeometry.distance(state.fighter(0), state.fighter(1)) - touch
+			deepest = minf(deepest, gap)
+			widest = maxf(widest, gap)
+	assert_eq(swords, 0, "fixture: the swords stay out of it")
+	assert_true(touched >= 0 and touched < 120, "fixture: the bodies meet (tick %d)" % touched)
+	assert_eq(flickers, 0, "one continuous contact for the whole hold")
+	assert_true(deepest >= -1.0e-12, "never interpenetrating (deepest %s m)" % str(deepest))
+	assert_true(widest <= 1.0e-4, "never drifting visibly apart (widest %s m)" % str(widest))
 
 
 ## --- Body contact lifecycle (PHYS-009) ---------------------------------------
@@ -350,6 +416,35 @@ func test_new_contact_uses_authored_restitution() -> void:
 	assert_true(post_rel < 0.0, "new contact: fighters separate after impact (restitution)")
 	var expected_rel := -_rules.combat.body_restitution * 5.0
 	assert_near(post_rel, expected_rel, 0.01, "restitution: v_rel_after ≈ -e × v_rel_before")
+
+
+## The shove's mechanics, at the precondition the FULL-E2E journey only
+## reaches: a dashing body meets a standing one at a known closing speed, equal
+## masses, along a known normal. The struck body leaves at (1 + e)/2 of the
+## closing speed, momentum is conserved, and the dash ends into recovery. The
+## journey proves a real dash gets here; this proves what happens when it does.
+func test_a_dash_into_a_standing_body_shoves_it_by_momentum() -> void:
+	var state := DuelFixture.state(_rules)
+	var a := state.fighter(0)
+	var b := state.fighter(1)
+	DuelFixture.place(a, 0.0, 0.0, 0.0)
+	DuelFixture.place(b, 2.0 * _rules.combatant(0).fighter.push_radius, 0.0, PI)
+	var closing := _rules.combatant(0).fighter.burst_speed_axial
+	a.vx = closing
+	a.gesture.mode = MovementGestureState.Mode.BURST
+	a.gesture.burst_kind = MovementGestureState.BurstKind.FORWARD_DASH
+	a.gesture.burst_ticks_remaining = _rules.combatant(0).fighter.burst_ticks
+	a.gesture.burst_dir_x = 1.0
+	a.gesture.burst_dir_y = 0.0
+	assert_true(a.gesture.is_bursting(), "fixture: the shover is mid-dash")
+	var momentum_before := _rules.combatant(0).fighter.mass * (a.vx + b.vx)
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.body_push_report(1.0, 0.0), _rules, 0, 0.5, events)
+	var e := _rules.combat.body_restitution
+	assert_near(b.vx, 0.5 * (1.0 + e) * closing, 1e-9, "the struck body leaves at (1 + e)/2 of the closing speed (%.2f m/s)" % b.vx)
+	assert_near(_rules.combatant(0).fighter.mass * (a.vx + b.vx), momentum_before, 1e-9, "momentum is conserved")
+	assert_false(a.gesture.is_bursting(), "and the dash ends on the body it hit")
+	assert_true(a.gesture.is_recovering(), "into its recovery")
 
 
 func test_persistent_contact_uses_zero_restitution() -> void:
@@ -432,7 +527,7 @@ func test_momentum_conservation_on_new_contact() -> void:
 	var state := DuelFixture.state(_rules)
 	var a := state.fighter(0)
 	var b := state.fighter(1)
-	var mass := _rules.fighter.mass
+	var mass := _rules.combatant(0).fighter.mass
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
 	DuelFixture.place(b, 0.4, 0.0, PI)
 	a.vx = 5.0

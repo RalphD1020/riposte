@@ -14,7 +14,6 @@ enum Id {
 	ACTIVE_LATE,
 	OVERSWING,
 	RECOVERY,
-	BIND,
 	STAGGER,
 	DEAD,
 }
@@ -48,8 +47,6 @@ static func label(phase: Id) -> String:
 			return "OVERSWING"
 		Id.RECOVERY:
 			return "RECOVERY"
-		Id.BIND:
-			return "BIND"
 		Id.STAGGER:
 			return "STAGGER"
 		Id.DEAD:

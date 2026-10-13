@@ -1,8 +1,9 @@
 class_name FighterIntroProfile
 extends Resource
 
-## How a fighter is presented in the once-per-set introduction: the card,
-## the line the announcer reads, and the flourish the showcase plays.
+## How a fighter is presented in the once-per-set introduction: the card and
+## the line the announcer reads. The motion is not content: it is real play,
+## recorded through the simulation (`IntroTake`).
 ##
 ## `spoken_override_first_slot` exists for one deliberate bit: when this
 ## fighter is introduced first, the announcer may read a different line
@@ -14,8 +15,6 @@ extends Resource
 @export var spoken_name: String = ""
 @export var spoken_override_first_slot: String = ""
 @export var spoken_override_first_slot_line: AudioStream
-## Animation semantic or clip the showcase plays (default: the idle guard).
-@export var intro_clip: StringName = &""
 
 
 ## The caption the announcer reads for this fighter in `slot`.

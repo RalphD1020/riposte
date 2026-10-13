@@ -1,18 +1,17 @@
 class_name StructuralCoupling
 extends RefCounted
 
-## How much of the fighter's body is actually behind the blade at an impact
-## (COMBAT §36, §62).
+## How well the fighter's structure supports the cut at an impact (COMBAT §36,
+## §62): a reading of the body's current motion taken at the moment of contact,
+## derived, never persisted. No movement state carries a damage bonus or
+## penalty — the differences between planted, advancing and retreating strikes
+## fall out of the ingredients below.
 ##
-## Real striking biomechanics calls this *effective mass*: a striker's whole
-## body weight is not automatically transferred into an impact, because only
-## the portion coupled through the kinetic chain participates. So
-## `effective_mass` is never `fighter.mass`, and no movement state carries a
-## damage bonus or penalty — the differences between planted, advancing and
-## retreating strikes fall out of the ingredients below.
-##
-## Coupling is derived, never persisted: it is a reading of the body's current
-## motion taken at the moment of contact.
+## Coupling is never a mass and never an inertia. Bodies answer every contact
+## with their real mass, and the held sword's inertia is the sword plus the
+## hands on the grip (rules v33, PHYS-002). How hard a planted or committed
+## fighter pushes back is the bounded actuators' answer. Coupling remains a
+## reading of structure for presentation and the CPU.
 ##
 ## Commitment is a different question. Commitment asks "how hard is this
 ## action to change?"; coupling asks "how well is the body supporting this
@@ -71,25 +70,3 @@ static func coupling(fighter: FighterState, strike_x: float, strike_y: float, de
 	var coherence := movement_coherence(fighter, strike_x, strike_y)
 	var structure := SimMath.mix(plant, coherence, tuning.coupling_coherence_share)
 	return clampf(structure, tuning.coupling_floor, 1.0)
-
-
-## Effective striking mass (kg): the weapon's own participating mass plus the
-## share of the body that `share` says is behind it.
-##
-## Takes the coupling rather than the fighter and the strike direction. The
-## caller that needs this mass needs to *report* the coupling as well, and
-## deriving it twice is how the number shown and the number used to resolve
-## the hit come to disagree. This is the one place the formula is written.
-static func effective_mass(share: float, rules: DuelRules) -> float:
-	return rules.weapon.mass + share * rules.combat.body_contribution_mass
-
-
-## Mass a fighter brings to *resisting* being displaced, in kg.
-##
-## Resistance is not directional in the way striking is — it is about how much
-## of the body is braced against the ground — so this reads plant quality and
-## nothing else. A planted fighter stands their ground; one mid-scramble gets
-## thrown. The floor keeps a shove from launching anyone across the arena.
-static func resisting_mass(fighter: FighterState, definition: FighterDefinition, tuning: CombatTuning) -> float:
-	var braced := plant_quality(fighter, definition, tuning)
-	return definition.mass * SimMath.mix(tuning.resist_plant_floor, 1.0, braced)

@@ -19,7 +19,7 @@ func _init() -> void:
 
 
 func _swinging(tip_speed: float) -> float:
-	return SwingSemantics.potential(tip_speed, 1.0, 1.0, CombatPhase.Id.ACTIVE_THREAT, _rules.weapon)
+	return SwingSemantics.potential(tip_speed, 1.0, 1.0, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
 
 
 # ── Swing potential ───────────────────────────────────────────────────────
@@ -28,8 +28,28 @@ func _swinging(tip_speed: float) -> float:
 ## Cutting is an energy problem, so potential has to rise *faster* than speed.
 ## A linear mapping would understate exactly the part of the curve the whole
 ## duel turns on: the difference between a fast cut and a very fast one.
+## A clash's intensity is the energy the solve took out of it against a
+## reference strong clash, as an amplitude (7C): the reference clash reads
+## exactly 1, a quarter of its energy exactly a half, and at the same closing
+## speed a clash the bodies take (heavier effective mass, more energy) reads
+## harder than one a free point flicks off — never by closing speed alone.
+func test_a_clash_reads_as_hard_as_the_energy_it_dissipated() -> void:
+	var rules := DuelFixture.rules()
+	var combat := rules.combat
+	var strong := combat.reference_clash_energy
+	assert_true(strong > 0.0, "fixture: the reference strong clash is derived (%.3f J)" % strong)
+	assert_near(SwingSemantics.clash_intensity(strong, combat), 1.0, 1.0e-12, "the reference clash reads as a full one")
+	assert_near(SwingSemantics.clash_intensity(strong * 0.25, combat), 0.5, 1.0e-12, "a quarter of its energy, half as hard")
+	assert_eq(SwingSemantics.clash_intensity(0.0, combat), 0.0, "nothing taken out, nothing felt")
+	var speed := combat.blade_strong_speed * 0.6
+	var e := rules.combatant(0).weapon.restitution_at(speed)
+	var heavy := ContactMechanics.dissipated_energy(speed, 0.05, e)
+	var light := ContactMechanics.dissipated_energy(speed, 2.0, e)
+	assert_true(SwingSemantics.clash_intensity(heavy, combat) > SwingSemantics.clash_intensity(light, combat), "the same closing speed reads harder where more gives way (%.2f vs %.2f)" % [SwingSemantics.clash_intensity(heavy, combat), SwingSemantics.clash_intensity(light, combat)])
+
+
 func test_potential_grows_quadratically_with_tip_speed() -> void:
-	var fastest := _rules.weapon.swing_speed_full * _rules.weapon.tip_radius
+	var fastest := _rules.combatant(0).weapon.swing_speed_full * _rules.combatant(0).weapon.tip_radius
 	assert_true(fastest > 0.0, "precondition: the weapon has a top tip speed (%.1f m/s)" % fastest)
 	assert_near(_swinging(0.0), 0.0, 1e-12, "a motionless blade threatens nothing")
 	var half := _swinging(fastest * 0.5)
@@ -55,7 +75,7 @@ func test_potential_reads_the_blade_not_the_input_that_produced_it() -> void:
 	assert_true(charged > tapped, "a charged swing does reach a higher potential")
 	## But only through speed: at the *same* tip speed the two are identical,
 	## which is the claim that matters.
-	var sample := _rules.weapon.swing_speed_tap * _rules.weapon.tip_radius * 0.8
+	var sample := _rules.combatant(0).weapon.swing_speed_tap * _rules.combatant(0).weapon.tip_radius * 0.8
 	assert_near(_swinging(sample), _swinging(sample), 1e-12, "potential is a function of the blade alone")
 	var both := PackedFloat64Array([tapped, charged])
 	for value in both:
@@ -72,11 +92,11 @@ func _measure_peak_potential(rig: WeaponRig, tap: bool = true) -> float:
 		peak = maxf(
 			peak,
 			SwingSemantics.potential(
-				SwingSemantics.tip_speed(rig.fighter, _rules.weapon),
+				SwingSemantics.tip_speed(rig.fighter, _rules.combatant(0)),
 				rig.fighter.weapon.launch_readiness,
 				rig.fighter.stability,
 				rig.fighter.weapon.phase,
-				_rules.weapon
+				_rules.combatant(0).weapon
 			)
 		)
 	return peak
@@ -85,16 +105,16 @@ func _measure_peak_potential(rig: WeaponRig, tap: bool = true) -> float:
 ## A wind-back is a fast-moving sword that cannot cut anyone. Showing it as a
 ## threat would teach the player to fear the wrong half of the swing.
 func test_a_blade_that_cannot_strike_has_no_potential() -> void:
-	var fastest := _rules.weapon.swing_speed_full * _rules.weapon.tip_radius
-	for phase in PackedInt32Array([CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.RECOVERY, CombatPhase.Id.BIND, CombatPhase.Id.STAGGER, CombatPhase.Id.DEAD]):
+	var fastest := _rules.combatant(0).weapon.swing_speed_full * _rules.combatant(0).weapon.tip_radius
+	for phase in PackedInt32Array([CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.RECOVERY, CombatPhase.Id.STAGGER, CombatPhase.Id.DEAD]):
 		assert_eq(
-			SwingSemantics.potential(fastest, 1.0, 1.0, phase as CombatPhase.Id, _rules.weapon),
+			SwingSemantics.potential(fastest, 1.0, 1.0, phase as CombatPhase.Id, _rules.combatant(0).weapon),
 			0.0,
 			"a blade in %s threatens nothing however fast it moves" % CombatPhase.label(phase as CombatPhase.Id)
 		)
 	for phase in PackedInt32Array([CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_EARLY, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.ACTIVE_LATE, CombatPhase.Id.OVERSWING]):
 		assert_true(
-			SwingSemantics.potential(fastest, 1.0, 1.0, phase as CombatPhase.Id, _rules.weapon) > 0.0,
+			SwingSemantics.potential(fastest, 1.0, 1.0, phase as CombatPhase.Id, _rules.combatant(0).weapon) > 0.0,
 			"but a blade in %s does" % CombatPhase.label(phase as CombatPhase.Id)
 		)
 
@@ -103,12 +123,12 @@ func test_a_blade_that_cannot_strike_has_no_potential() -> void:
 ## speed is dangerous even when thrown badly, so the floor is deliberately
 ## well above zero.
 func test_a_badly_structured_swing_reads_as_less_but_never_as_nothing() -> void:
-	var fastest := _rules.weapon.swing_speed_full * _rules.weapon.tip_radius
-	var composed := SwingSemantics.potential(fastest, 1.0, 1.0, CombatPhase.Id.ACTIVE_THREAT, _rules.weapon)
-	var scrambling := SwingSemantics.potential(fastest, _rules.weapon.readiness_floor, _rules.fighter.stability_floor, CombatPhase.Id.ACTIVE_THREAT, _rules.weapon)
+	var fastest := _rules.combatant(0).weapon.swing_speed_full * _rules.combatant(0).weapon.tip_radius
+	var composed := SwingSemantics.potential(fastest, 1.0, 1.0, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
+	var scrambling := SwingSemantics.potential(fastest, _rules.combatant(0).weapon.readiness_floor, _rules.combatant(0).fighter.stability_floor, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
 	assert_true(scrambling < composed, "a poorly prepared swing from an off-balance fighter reads lower")
 	assert_true(scrambling > 0.25, "but still clearly reads as a threat (%.2f)" % scrambling)
-	var unprepared := SwingSemantics.potential(fastest, 0.0, 0.0, CombatPhase.Id.ACTIVE_THREAT, _rules.weapon)
+	var unprepared := SwingSemantics.potential(fastest, 0.0, 0.0, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
 	assert_near(unprepared, composed * SwingSemantics.STRUCTURE_FLOOR, 1e-9, "and the floor is the worst case, not zero")
 
 
@@ -159,7 +179,7 @@ func test_a_swing_with_no_arc_reads_as_finished() -> void:
 ## a perfect edge at the hilt and a flat slap at the sweet spot are both poor
 ## contacts, for different reasons.
 func test_contact_quality_needs_both_the_right_part_and_the_right_edge() -> void:
-	var weapon := _rules.weapon
+	var weapon := _rules.combatant(0).weapon
 	var ideal := SwingSemantics.contact_quality(1.0, 1.0, weapon)
 	var hilt := SwingSemantics.contact_quality(weapon.efficiency(0.0), 1.0, weapon)
 	var flat := SwingSemantics.contact_quality(1.0, 0.0, weapon)
@@ -179,31 +199,43 @@ func test_the_sweet_region_is_a_fraction_of_the_blade() -> void:
 	assert_false(SwingSemantics.in_sweet_region(1.0), "and neither is the very tip")
 	## It must agree with the authored efficiency curve rather than being a
 	## second, independent opinion about where the good part of the blade is.
-	var inside := _rules.weapon.efficiency(0.75)
-	assert_true(inside > _rules.weapon.efficiency(0.1), "the region sits where the blade is actually efficient")
-	assert_true(inside > _rules.weapon.efficiency(1.0), "including past the tip")
+	var inside := _rules.combatant(0).weapon.efficiency(0.75)
+	assert_true(inside > _rules.combatant(0).weapon.efficiency(0.1), "the region sits where the blade is actually efficient")
+	assert_true(inside > _rules.combatant(0).weapon.efficiency(1.0), "including past the tip")
 
 
 # ── Exposure as a fraction ────────────────────────────────────────────────
 
 
-## One authored range, two readings. Deriving the fraction from the multiplier
-## is what guarantees they cannot drift apart the next time exposure is tuned.
-func test_exposure_reads_the_same_whichever_way_it_is_asked() -> void:
-	var combat := _rules.combat
-	assert_eq(SwingSemantics.exposure_fraction(combat.exposure_min, combat), 0.0, "the least exposed reads zero")
-	assert_eq(SwingSemantics.exposure_fraction(combat.exposure_max, combat), 1.0, "the most exposed reads one")
-	var middle := 0.5 * (combat.exposure_min + combat.exposure_max)
-	assert_near(SwingSemantics.exposure_fraction(middle, combat), 0.5, 1e-9, "and it is linear in between")
-	assert_between(SwingSemantics.exposure_fraction(99.0, combat), 0.0, 1.0, "out-of-range input stays bounded")
-	## And it tracks the real thing: a committed, off-balance fighter reads
-	## as more exposed than a composed one.
+## v36: one reading of exposure, from initiative (`ExposureModel`): even
+## initiative reads one half, a whole window behind reads one, and the
+## opening is only the part of being behind. A fighter caught in overswing
+## reads as more exposed than a composed one.
+func test_exposure_reads_initiative_whichever_way_it_is_asked() -> void:
 	var state := DuelFixture.state(_rules)
-	var composed := SwingSemantics.exposure_fraction(DamageModel.exposure(state.fighter(0), state.fighter(1), _rules), combat)
-	DuelFixture.commit(state.fighter(0), CombatPhase.Id.OVERSWING, 1.0, _rules.weapon)
-	state.fighter(0).stability = _rules.fighter.stability_floor
-	var caught := SwingSemantics.exposure_fraction(DamageModel.exposure(state.fighter(0), state.fighter(1), _rules), combat)
-	assert_true(caught > composed, "a committed, off-balance fighter reads as more exposed")
+	var a := state.fighter(0)
+	var b := state.fighter(1)
+	## ARRANGE: the mirrored opening drawn in symmetrically to 2 m, where a
+	## ready fighter threatens inside the predictor's horizon (THREAT-001);
+	## out of each other's reach both would read the horizon, and even.
+	var mx := (a.x + b.x) * 0.5
+	var my := (a.y + b.y) * 0.5
+	var apart := SimMath.length(b.x - a.x, b.y - a.y)
+	a.x = mx + (a.x - mx) * 2.0 / apart
+	a.y = my + (a.y - my) * 2.0 / apart
+	b.x = mx + (b.x - mx) * 2.0 / apart
+	b.y = my + (b.y - my) * 2.0 / apart
+	var horizon := float(InitiativeModel.HORIZON_TICKS) * SimulationTimebase.TICK_SECONDS
+	assert_true(InitiativeModel.time_to_threat(b, a, _rules) < horizon, "fixture: a ready fighter threatens inside the horizon")
+	var even := ExposureModel.margin(a, b, _rules)
+	assert_near(even, 0.0, 1e-12, "fixture: a mirrored opening is even initiative")
+	assert_near(ExposureModel.reading(a, b, _rules), 0.5, 1e-12, "even initiative reads one half")
+	assert_eq(ExposureModel.opening(a, b, _rules), 0.0, "and presents no opening")
+	DuelFixture.commit(a, CombatPhase.Id.OVERSWING, 1.0, _rules.combatant(0).weapon)
+	var caught := ExposureModel.reading(a, b, _rules)
+	assert_true(caught > 0.5, "caught in overswing reads as exposed (%.3f)" % caught)
+	assert_true(ExposureModel.opening(a, b, _rules) > 0.0, "and presents an opening")
+	assert_true(ExposureModel.reading(b, a, _rules) < 0.5, "while the opponent reads as the safer one")
 
 
 # ── Grades ────────────────────────────────────────────────────────────────
@@ -249,8 +281,8 @@ func test_a_resolved_strike_describes_itself_without_changing_itself() -> void:
 	## The blade sweeps counter-clockwise through the contact point, and the
 	## target stands just beyond it, so the normal and the blade's motion
 	## genuinely converge.
-	ContactFixture.arm(attacker, 0.0, 0.0, 0.0, 0.0, 14.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, rules.weapon)
-	ContactFixture.arm(target, 0.9, 0.27, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, rules.weapon)
+	ContactFixture.arm(attacker, 0.0, 0.0, 0.0, 0.0, 14.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, rules.combatant(0).weapon)
+	ContactFixture.arm(target, 0.9, 0.27, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, rules.combatant(0).weapon)
 	target.facing = SimMath.arctan2(-target.y, -target.x)
 	var strike := DamageModel.evaluate(attacker, target, 0.9, 0.0, rules)
 	assert_true(strike.damage > 0.0, "precondition: a real hit landed (%.1f)" % strike.damage)

@@ -4,69 +4,109 @@ extends RefCounted
 ## Every fighter the game ships, keyed by identity (CONTENT-001). A rule set
 ## asks for a fighter by id; it never reaches in and assembles one.
 ##
-## The entries are written as a *size* plus a set of baseline quantities, not
-## as a column of magic numbers. That is the whole point of CONTENT-002: a
-## second build is a different scale, and the scaling laws — geometry linear,
-## mass cubic, force squared, torque cubic — then produce its physics. Nobody
-## hand-writes "and this one accelerates a bit less".
+## A shipped fighter is authored as explicit physical facts — height, mass,
+## push and hurt geometry, hands, the lying body — plus three actuator scales
+## relative to the reference duelist (Wolf, 1.0 each):
 ##
-## Mass is the one default that content is expected to override. Volumetric
-## mass assumes the same density throughout, which is a reasonable *starting*
-## guess for a human body and a poor final answer for any particular one, so a
-## lean or heavy build simply assigns `mass` after the frame is laid down and
-## the derived accelerations follow (PHYS-005).
+## ```text
+## strength_scale       weapon drive          × the weapon's authored torques
+## traction_scale       locomotion, braking and burst force   × Wolf's N
+## turn_support_scale   heading turn torque                   × Wolf's N·m
+## ```
+##
+## The scales are an authoring convenience only: `resolve_actuators` turns them
+## into forces and torques when the definition is built, and the simulation
+## reads only the resolved SI values (CONTENT-002). Strength is no longer
+## inferred from size; a big fighter is strong only if it is authored strong.
+##
+## `prototype_at(size)` is the old size-derived generator, kept for scaling
+## proofs and quick prototypes — geometry linear, mass cubic, force squared,
+## torque cubic. It is never how a shipped fighter is defined.
 ##
 ## See also: /docs/concepts/content.md, /docs/concepts/combat.md
 
-## The baseline duelist's strength, measured at `size_scale = 1.0`. Forces in
-## newtons and torques in newton-metres, never accelerations (PHYS-005):
-## against the baseline 80 kg these are the ~22 / ~30 / ~70 m/s² the duel was
-## tuned at, but authored this way a heavier build pays for its own mass
-## instead of being handed the same acceleration for free.
+## The reference duelist's strength (scale 1.0). Forces in newtons and torques
+## in newton-metres, never accelerations (PHYS-005): against the reference
+## 80 kg these are the ~22 / ~30 / ~70 m/s² the duel was tuned at, but authored
+## this way a heavier build pays for its own mass instead of being handed the
+## same acceleration for free.
 const LOCOMOTION_FORCE_N := 1760.0
 const BRAKING_FORCE_N := 2400.0
 const BURST_FORCE_N := 5600.0
 const TURN_TORQUE_NM := 175.0
+## The reference duelist lying on the floor: half his 1.70 m lying length
+## through his centre of mass, and his torso's thickness.
+const LYING_HALF_LENGTH_M := 0.85
+const LYING_RADIUS_M := 0.18
 
 
 static func of(id: StringName) -> FighterDefinition:
 	if id == ContentIds.FIGHTER_DUELIST:
 		return duelist()
 	## Fail closed. An unknown id yields nothing rather than a plausible
-	## substitute, and `DuelRules.is_valid()` then refuses the match.
+	## substitute, and the loadout then refuses the match.
 	return null
 
 
-## The normalized duelist (COMBAT §2): the fighter `scale = 1.0` means.
+## The reference duelist, Wolf (COMBAT §2): the fighter every scale is 1.0 of.
 static func duelist() -> FighterDefinition:
-	return duelist_at(1.0)
-
-
-## The duelist at an arbitrary size. Shipping content is this at 1.0; the
-## parameter is here because it is what makes the scaling laws real rather than
-## decorative, and it is the surface the scaling proofs exercise.
-static func duelist_at(size_scale: float) -> FighterDefinition:
 	var fighter := FighterDefinition.new()
 	fighter.id = ContentIds.FIGHTER_DUELIST
+	fighter.height = PhysicalBaseline.FIGHTER_HEIGHT_M
+	fighter.push_radius = PhysicalBaseline.FIGHTER_RADIUS_M
+	fighter.hurt_radius = PhysicalBaseline.TORSO_HURT_RADIUS_M
+	fighter.hand_radius = PhysicalBaseline.HAND_PROXY_RADIUS_M
+	fighter.grip_radius = PhysicalBaseline.GRIP_RADIUS_M
+	fighter.mass = PhysicalBaseline.FIGHTER_MASS_KG
+	fighter.hand_mass = fighter.mass * PhysicalBaseline.HAND_REFLECTED_MASS_SHARE
+	## Solid cylinder about its own axis. With the reference mass and footprint
+	## `moment_of_inertia()` is ~2.92 kg·m², the scale `TURN_TORQUE_NM` is
+	## authored against.
+	fighter.body_inertia_coefficient = 0.5
+	fighter.lying_half_length = LYING_HALF_LENGTH_M
+	fighter.lying_radius = LYING_RADIUS_M
+	resolve_actuators(fighter, 1.0, 1.0, 1.0)
+	_semantics(fighter)
+	fighter.precompute()
+	return fighter
 
+
+## Resolve authored actuator scales into the forces and torques the
+## simulation reads. The one place a scale ever multiplies a reference value.
+static func resolve_actuators(fighter: FighterDefinition, strength_scale: float, traction_scale: float, turn_support_scale: float) -> void:
+	fighter.locomotion_force = LOCOMOTION_FORCE_N * traction_scale
+	fighter.braking_force = BRAKING_FORCE_N * traction_scale
+	fighter.burst_force = BURST_FORCE_N * traction_scale
+	## `α = τ / I_body` works out to ~60 rad/s² for the reference duelist.
+	fighter.turn_torque = TURN_TORQUE_NM * turn_support_scale
+	## How hard this fighter drives *any* weapon. A stronger arm applies more
+	## torque to the same sword; the sword never changes.
+	fighter.weapon_torque_scale = strength_scale
+
+
+## A prototype duelist at an arbitrary size: the reference body scaled by the
+## CONTENT-002 laws, with strength, traction and turn support derived from
+## size (`torque_scale` / `structural_scale`). For scaling proofs and
+## prototypes only — a fighter that ships authors its own body and scales.
+static func prototype_at(size_scale: float) -> FighterDefinition:
+	var fighter := FighterDefinition.new()
+	fighter.id = ContentIds.FIGHTER_DUELIST
 	fighter.height = PhysicalBaseline.fighter_height(size_scale)
-	fighter.body_radius = PhysicalBaseline.fighter_radius(size_scale)
+	fighter.push_radius = PhysicalBaseline.fighter_radius(size_scale)
+	fighter.hurt_radius = PhysicalBaseline.torso_hurt_radius(size_scale)
+	fighter.hand_radius = PhysicalBaseline.hand_proxy_radius(size_scale)
 	fighter.grip_radius = PhysicalBaseline.fighter_grip(size_scale)
 	fighter.mass = PhysicalBaseline.volumetric_mass(PhysicalBaseline.FIGHTER_MASS_KG, size_scale)
-	## Solid cylinder about its own axis — a shape fact, so it does not scale.
-	## With the baseline mass and footprint `moment_of_inertia()` is
-	## ~2.92 kg·m², the scale `TURN_TORQUE_NM` is authored against.
+	fighter.hand_mass = fighter.mass * PhysicalBaseline.HAND_REFLECTED_MASS_SHARE
 	fighter.body_inertia_coefficient = 0.5
-
-	fighter.locomotion_force = PhysicalBaseline.structural_scale(LOCOMOTION_FORCE_N, size_scale)
-	fighter.braking_force = PhysicalBaseline.structural_scale(BRAKING_FORCE_N, size_scale)
-	fighter.burst_force = PhysicalBaseline.structural_scale(BURST_FORCE_N, size_scale)
-	## `α = τ / I_body` works out to ~60 rad/s² at the baseline.
-	fighter.turn_torque = PhysicalBaseline.torque_scale(TURN_TORQUE_NM, size_scale)
-	## How hard this fighter drives *any* weapon. A longer, stronger arm
-	## applies more torque to the same sword; the sword never changes.
-	fighter.weapon_torque_scale = PhysicalBaseline.torque_scale(1.0, size_scale)
-
+	fighter.lying_half_length = LYING_HALF_LENGTH_M * size_scale
+	fighter.lying_radius = LYING_RADIUS_M * size_scale
+	resolve_actuators(
+		fighter,
+		PhysicalBaseline.torque_scale(1.0, size_scale),
+		PhysicalBaseline.structural_scale(1.0, size_scale),
+		PhysicalBaseline.torque_scale(1.0, size_scale)
+	)
 	_semantics(fighter)
 	fighter.precompute()
 	return fighter
@@ -90,12 +130,9 @@ static func _semantics(fighter: FighterDefinition) -> void:
 	## fully committed fighter keeps whatever stride they had and loses two
 	## thirds of their ability to change it.
 	fighter.accel_commit_penalty = 0.66
-	fighter.tracking_commit_penalty = 0.72
-	fighter.overswing_tracking_penalty = 0.1
+	## A fully committed cut keeps ~18 % of its turning authority: a side-step
+	## outside its heading stays outside long enough to punish (HEADING-001).
 	fighter.min_move_authority = 0.25
-	fighter.min_tracking = 0.12
-	fighter.counter_rotation_penalty = 0.5
-	fighter.counter_rotation_reference_rate = 3.0
 	fighter.stability_floor = 0.35
 	fighter.stability_rate = 3.0
 	fighter.stability_accel_weight = 0.35

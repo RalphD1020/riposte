@@ -17,13 +17,13 @@ import { existsSync, readFileSync } from "node:fs";
  * which is the whole reason this can be served from our own origin next to
  * ordinary pages rather than from an isolated one.
  *
- * `/play` rewrites to the staged shell **only when the artifact is present**.
- * An unconditional rewrite is the worst of the options: with no export staged
+ * `/play` redirects to the staged shell **only when the artifact is present**.
+ * An unconditional redirect is the worst of the options: with no export staged
  * it turns `/play` into a 404 instead of the page that explains where the
  * game is. Staging is a build-time fact, so it is read once, here.
  *
  * When `STATIC_EXPORT=true`, produces a static site (`out/`). `async
- * headers()` and `async rewrites()` are unsupported by `output: 'export'`;
+ * headers()` and `async redirects()` are unsupported by `output: 'export'`;
  * static hosts set their own headers and `PlayGateway` performs the hop in
  * the browser.
  *
@@ -46,6 +46,7 @@ const { version } = JSON.parse(readFileSync("./package.json", "utf-8")) as {
  * stays equal to `HOSTED_PLAY_PATH`.
  */
 const HOSTED_PLAY_PATH = "/game/index.html";
+const SITE_PLAY_PATH = "/play";
 const hasStagedGame = existsSync(`./public${HOSTED_PLAY_PATH}`);
 
 /**
@@ -138,19 +139,22 @@ const nextConfig: NextConfig = {
           ];
         },
         /**
-         * `beforeFiles`, not the bare array. A bare array is `afterFiles`,
-         * which loses to the `/play` page that exists precisely as the
-         * fallback — so the rewrite would never fire and every visitor would
-         * take a needless client-side hop through it.
+         * A redirect, not a rewrite. A rewrite keeps the address bar at
+         * `/play`, so the shell's relative `index.js` / `index.pck` resolve
+         * against the site root and 404, and the document is served under
+         * the site policy, which refuses WebAssembly. The engine only boots
+         * at its own URL. Temporary, because staging is a per-deploy fact.
          */
-        async rewrites() {
-          return {
-            beforeFiles: hasStagedGame
-              ? [{ source: "/play", destination: HOSTED_PLAY_PATH }]
-              : [],
-            afterFiles: [],
-            fallback: [],
-          };
+        async redirects() {
+          return hasStagedGame
+            ? [
+                {
+                  source: SITE_PLAY_PATH,
+                  destination: HOSTED_PLAY_PATH,
+                  permanent: false,
+                },
+              ]
+            : [];
         },
       }),
 };

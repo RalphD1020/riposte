@@ -13,8 +13,11 @@ extends SceneTree
 ## See also: /docs/concepts/presentation.md
 
 const AUDIO := "res://assets/presentation/audio/"
+## "Match one." … "Match five.": a first-to-three set needs at most five.
+const MATCH_LINES := 5
 const WEAPON_KIT := "res://assets/presentation/weapons/bastard_sword/bastard_sword_kit.tres"
 const FIGHTER_KIT := "res://assets/presentation/fighters/duelist/duelist_kit.tres"
+const VICTORY_PROFILE := "res://assets/presentation/fighters/duelist/duelist_victory.tres"
 const ARENA_KIT := "res://assets/presentation/arenas/standard/standard_arena_kit.tres"
 
 const WEAPON_FAMILIES := {
@@ -63,11 +66,17 @@ func _init() -> void:
 	fighter.voice = voice
 	fighter.intro.spoken_override_first_slot_line = _first("voice/announcer:wold", problems)
 	_save(fighter, FIGHTER_KIT, problems)
+	var victory := load(VICTORY_PROFILE) as FighterVictoryProfile
+	victory.announcer_line = _first("voice/announcer:wolf_wins", problems)
+	victory.fanfare = _first("sfx/victory:fanfare_wolf", problems)
+	_save(victory, VICTORY_PROFILE, problems)
 	var announcer := AnnouncerKit.new()
 	announcer.announcer_id = &"announcer.deep"
 	announcer.versus = _first("voice/announcer:versus", problems)
-	announcer.duel = _first("voice/announcer:duel", problems)
 	announcer.sting = _first("sfx/round:duel_sting", problems)
+	for number in range(1, MATCH_LINES + 1):
+		announcer.match_numbers.append(_first("voice/announcer:match_%d" % number, problems))
+	announcer.fight = _first("voice/announcer:fight", problems)
 	_save(announcer, RiposteKits.ANNOUNCER_PATH, problems)
 	var ui := UiThemeKit.new()
 	ui.theme_id = &"ui.standard"
@@ -90,14 +99,16 @@ func _families(families: Dictionary, problems: PackedStringArray) -> Dictionary:
 	return cues
 
 
-## "dir" lists every take in the folder; "dir:stem" only `stem_*`.
+## "dir" lists every take in the folder; "dir:stem" only `stem.mp3` or
+## `stem_NN.mp3`, so `wolf` never picks up `wolf_wins_01`.
 func _takes(spec: String, problems: PackedStringArray) -> Array[AudioStream]:
 	var parts := spec.split(":")
 	var dir := AUDIO + parts[0]
 	var stem := parts[1] if parts.size() > 1 else ""
+	var take := RegEx.create_from_string("^%s(_\\d+)?\\.mp3$" % stem)
 	var files := PackedStringArray()
 	for file in DirAccess.get_files_at(dir):
-		if file.ends_with(".mp3") and (stem == "" or file.begins_with(stem)):
+		if file.ends_with(".mp3") and (stem == "" or take.search(file) != null):
 			files.append(file)
 	files.sort()
 	var takes: Array[AudioStream] = []

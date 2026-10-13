@@ -36,6 +36,10 @@ func intro() -> FighterIntroProfile:
 	return fighter.intro if fighter != null else null
 
 
+func victory() -> FighterVictoryProfile:
+	return fighter.victory if fighter != null else null
+
+
 ## The body scene to instance: a skin's full replacement wins over the base.
 func body_scene() -> PackedScene:
 	if fighter_skin != null and fighter_skin.scene != null:

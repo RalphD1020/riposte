@@ -20,7 +20,6 @@ var chosen_attack: CpuController.Attack = CpuController.Attack.NONE
 ## Tactical assessment summary (compact scalar snapshot).
 var measure_quality: float = 0.0
 var initiative: float = 0.0
-var stamina_depletion: float = 0.0
 var tempo_opportunity: float = 0.0
 var arena_pressure: float = 0.0
 ## Whether a burst was started on this decision.
@@ -58,7 +57,6 @@ static func create(
 	trace.chosen_attack = attack
 	trace.measure_quality = assessment.measure_quality
 	trace.initiative = assessment.initiative
-	trace.stamina_depletion = assessment.stamina_depletion
 	trace.tempo_opportunity = assessment.tempo_opportunity
 	trace.arena_pressure = assessment.arena_pressure
 	trace.edge_clearance = assessment.edge_clearance

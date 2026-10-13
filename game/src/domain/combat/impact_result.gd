@@ -19,7 +19,7 @@ var point_y: float = 0.0
 var normal_x: float = 1.0
 var normal_y: float = 0.0
 ## Unit direction the contact point is travelling. Drives directional feedback
-## and movement coherence; zero only at a degenerate pivot contact.
+## and movement coherence; zero only at a degenerate origin contact.
 var strike_x: float = 0.0
 var strike_y: float = 0.0
 ## Where on the blade, 0 = hilt, 1 = tip.
@@ -31,20 +31,30 @@ var relative_speed: float = 0.0
 ## most important physical variable in the system (PHYS-001).
 var normal_speed: float = 0.0
 
-## Share of the attacker's body that structure actually put behind the blade,
-## and the striking mass that produced, in kg.
+## How well the attacker's structure supports the cut (a reading; it scales
+## the held weapon coordinate's inertia, never a body mass).
 var coupling: float = 0.0
-var attacker_effective_mass: float = 0.0
-## Mass the target's structure brings to resisting displacement, in kg.
-var target_effective_mass: float = 0.0
+## The bodies on either side of the contact, in kg: always each fighter's real
+## mass (rules v33) — footing changes what the actuators do, not the weight.
+var attacker_mass: float = 0.0
+var target_mass: float = 0.0
 
-## Impulse `J = m_eff · v_n`, kg·m/s. Drives displacement, blade deflection,
-## stagger, and camera response.
+## The contact's solved normal impulse (N·s, ContactMechanics):
+## `(1 + e)·v_n / k`, with the sword free to turn back through its lever.
+## Drives displacement, blade deflection, stagger, and camera response.
 var impulse: float = 0.0
-## Kinetic severity `E = ½ m_eff · v_n²`, joules. Drives cutting, injury, and
-## lethality. Deliberately a different quantity from impulse: a heavy weapon
-## shoves and a light fast one cuts.
+## Energy the contact dissipates, `½(1 − e²)·v_n² / k` (J): what goes into
+## the body rather than back into rebound — the physical ceiling on injury,
+## which damage then scales by loss-only factors (bite, edge, incidence).
+## Deliberately a different quantity from impulse: the bodies shove, the
+## blade cuts.
 var kinetic_severity: float = 0.0
+## The most the contact could take out, `½·v_n² / k` (J).
+var available_energy: float = 0.0
+## Relative contact velocity decomposed against the blade: across it (the cut,
+## along the travelling edge) and along the contact surface (sliding).
+var transverse_speed: float = 0.0
+var tangent_speed: float = 0.0
 
 ## Contact geometry: where on the blade it landed and how well the edge led.
 var blade_efficiency: float = 0.0
@@ -58,17 +68,19 @@ var axial_speed: float = 0.0
 var thrust_alignment: float = 0.0
 var incidence_quality: float = 0.0
 
-## Bilateral impulse (PHYS-010). Inverse effective mass scalar k accounts for
-## both body masses and (for non-stab) the weapon's angular inertia at the
-## contact lever arm. The bilateral J is a base (zero-restitution) impulse
-## that fully prevents interpenetration. The contact resolver scales by
-## (1 + e) for first-contact restitution.
+## Contact inverse effective mass `k` (PHYS-010, ContactMechanics): the
+## target's body, the attacker's body, and the held weapon coordinate through
+## its lever.
 var inverse_effective_mass: float = 0.0
-## Lever arm cross product: r × n, where r is pivot→contact and n is the
-## contact normal. Stored for the resolver to derive angular reaction.
+## The weapon coordinate's lever at the contact: how fast the contact point
+## moves along the normal per unit θ̇ (`WeaponKinematics.lever`; `r × n` on a
+## fixed pivot). Stored for the resolver to derive angular reaction.
 var lever_cross: float = 0.0
-## Base bilateral impulse (zero restitution): v_rel_n / k.
-var bilateral_impulse: float = 0.0
+## The weapon coordinate's effective inertia at this pose
+## (`ContactMechanics.weapon_inertia`), paired with `lever_cross`.
+var weapon_inertia: float = 0.0
+## Restitution the contact was solved with.
+var restitution: float = 0.0
 
 
 ## Impulse as a fraction of a reference solid impact, for consumers that need
@@ -81,10 +93,9 @@ func normalized_severity(tuning: CombatTuning) -> float:
 	return kinetic_severity / tuning.reference_severity
 
 
-## Velocity change this impulse imparts to the target, m/s. Falls straight out
-## of `J = m Δv`, so a planted target is shoved less than a scrambling one and
-## exposure never enters it.
+## Velocity change the cut's impulse imparts to the target, m/s. Falls straight
+## out of `J = m Δv`, so exposure never enters it.
 func target_delta_v() -> float:
-	if target_effective_mass <= SimMath.EPSILON:
+	if target_mass <= SimMath.EPSILON:
 		return 0.0
-	return impulse / target_effective_mass
+	return impulse / target_mass

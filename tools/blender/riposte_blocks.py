@@ -6,8 +6,8 @@ those solids deterministically so a bootstrap script always produces the same
 source file, which artists (or Blender MCP) then refine by hand.
 
 Axes: Blender is Z-up. Fighters face -Y, so the glTF exporter's Y-up
-conversion puts them facing Godot +Z, which is where `SwordPivot` points the
-blade at weapon angle 0.
+conversion puts them facing Godot +Z, which is where the proxy's
+`WeaponOrigin` points the blade at weapon angle 0.
 """
 
 import math

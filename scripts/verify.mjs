@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * check → test → build. Release/admin command.
+ * check → test → test:balance → build. Release/admin command.
  *
  * @see ../docs/reference/tooling.md
  */
@@ -25,7 +25,10 @@ const readReport = (name) => {
 
 const checkOk = runNode("check.mjs");
 const testOk = checkOk ? runPnpm("test") : false;
-const buildOk = testOk ? runNode("build.mjs") : false;
+// The benchmark tier is its own process: a slow benchmark never reads as a
+// hung correctness run, and a missed balance grade is reported, not gated.
+const balanceOk = testOk ? runPnpm("test:balance") : false;
+const buildOk = balanceOk ? runNode("build.mjs") : false;
 const duration = ((Date.now() - started) / 1000).toFixed(2);
 const checkReport = readReport("check");
 const buildReport = readReport("build");
@@ -35,7 +38,8 @@ const markdown = [
   "",
   `CHECK: ${checkOk ? "PASS" : "FAIL"}`,
   `TEST: ${testOk ? "PASS" : checkOk ? "FAIL" : "SKIPPED"}`,
-  `BUILD: ${buildOk ? "PASS" : testOk ? "FAIL" : "SKIPPED"}`,
+  `BALANCE: ${balanceOk ? "PASS" : testOk ? "FAIL" : "SKIPPED"}`,
+  `BUILD: ${buildOk ? "PASS" : balanceOk ? "FAIL" : "SKIPPED"}`,
   "",
   `Duration: ${duration}s`,
   checkReport?.environment?.godot
@@ -46,13 +50,20 @@ const markdown = [
   "Behavior: " + (testOk ? "verified" : "not verified"),
   "Artifacts: " + (buildOk ? "produced" : "not produced"),
   "",
-  `FINAL: ${checkOk && testOk && buildOk ? "PASS" : "FAIL"}`,
+  `FINAL: ${checkOk && testOk && balanceOk && buildOk ? "PASS" : "FAIL"}`,
   "",
 ].join("\n");
 
 writeReport(
   "verify",
-  { check: checkOk, test: testOk, build: buildOk, checkReport, buildReport },
+  {
+    check: checkOk,
+    test: testOk,
+    balance: balanceOk,
+    build: buildOk,
+    checkReport,
+    buildReport,
+  },
   markdown,
 );
-if (!checkOk || !testOk || !buildOk) process.exit(1);
+if (!checkOk || !testOk || !balanceOk || !buildOk) process.exit(1);

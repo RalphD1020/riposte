@@ -38,6 +38,10 @@ const PARRY_RING_SIZE := 0.8
 ## against a clean-parry ceiling. A threshold deflection already reads; a
 ## decisive one is razor-bright. Presentation interpretation, not a measurement.
 const PARRY_QUALITY_CEIL := 0.16
+## Clang pitch by where the swords met: forte → foible, and a hilt knock.
+const CLASH_PITCH_FORTE := 0.92
+const CLASH_PITCH_FOIBLE := 1.08
+const CLASH_PITCH_HILT := 0.8
 const PARRY_SPARKS_MIN := 4
 const PARRY_SPARKS_MAX := 14
 const PARRY_SPARK_SPEED := 3.2
@@ -52,6 +56,11 @@ const SWING_VOLUME_DB_TAP := -6.0
 const SWING_VOLUME_DB_FULL := 0.0
 const SWING_PITCH_TAP := 1.15
 const SWING_PITCH_FULL := 0.9
+## A whiff's hollow follow-through: lower than any swing, quieter than a
+## release, louder for a harder launch.
+const WHIFF_PITCH := 0.72
+const WHIFF_VOLUME_DB_TAP := -12.0
+const WHIFF_VOLUME_DB_FULL := -4.0
 ## Dust burst.
 const DUST_COUNT := 7
 const DUST_SPEED := 1.4
@@ -97,27 +106,32 @@ static func process(
 	weapon_kit: PresentationKit,
 	flash_scale: float,
 	particle_scale: float = 1.0,
-	style: VfxStyleKit = null
+	style: VfxStyleKit = null,
+	contact_height: float = NAN
 ) -> FeedbackFrame:
 	var frame := FeedbackFrame.new()
 	var palette := style if style != null else VfxStyleKit.new()
 	for event in events:
-		_classify(event, snapshot, weapon_kit, flash_scale, clampf(particle_scale, 0.0, 1.0), palette, frame)
+		_classify(event, snapshot, weapon_kit, flash_scale, clampf(particle_scale, 0.0, 1.0), palette, frame, contact_height)
 	return frame
 
 
-static func _classify(event: DuelEvent, snapshot: PresentationSnapshot, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame) -> void:
+## `contact_height` is the rendered sword-contact height
+## (`ContactPresentation`, CONTACT-PRESENTATION-001): a clash or a parry
+## sparks and sounds where the drawn swords meet; NAN falls back to the blade
+## plane. A strike on a body is not a sword contact and keeps the plane.
+static func _classify(event: DuelEvent, snapshot: PresentationSnapshot, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame, contact_height: float = NAN) -> void:
 	match event.type:
 		DuelEventTypes.ATTACK_RELEASED:
 			_on_release(event, snapshot, frame)
+		DuelEventTypes.ATTACK_WHIFFED:
+			_on_whiff(event, snapshot, frame)
 		DuelEventTypes.BURST_STARTED:
 			_on_burst(event, snapshot, flash, particles, palette, frame)
 		DuelEventTypes.BLADE_CONTACT:
-			_on_blade_contact(event, weapon_kit, flash, particles, palette, frame)
-		DuelEventTypes.BIND_STARTED:
-			_on_bind(event, weapon_kit, frame)
+			_on_blade_contact(event, weapon_kit, flash, particles, palette, frame, contact_height)
 		DuelEventTypes.PARRY:
-			_on_parry(event, weapon_kit, flash, particles, palette, frame)
+			_on_parry(event, weapon_kit, flash, particles, palette, frame, contact_height)
 		DuelEventTypes.BODY_HIT:
 			_on_body_hit(event, snapshot, weapon_kit, flash, particles, palette, frame)
 		DuelEventTypes.BODY_POKE:
@@ -151,6 +165,20 @@ static func _on_release(event: DuelEvent, snapshot: PresentationSnapshot, frame:
 	))
 
 
+## A true whiff (COMBAT-READABILITY-001): the cut met nothing and ran on into
+## its overswing. It is heard — a hollow follow-through, louder for a harder
+## launch — and seen in the body's own overswing, and it is never punctuated
+## like a hit: no sparks, no hitstop, no shake, no haptic.
+static func _on_whiff(event: DuelEvent, snapshot: PresentationSnapshot, frame: FeedbackFrame) -> void:
+	var charge := clampf(event.number(DuelEventKeys.CHARGE), 0.0, 1.0)
+	frame.audio_requests.append(AudioCueRequest.create(
+		PresentationKit.CUE_WHIFF, _fighter_world(snapshot, event.actor),
+		lerpf(WHIFF_VOLUME_DB_TAP, WHIFF_VOLUME_DB_FULL, charge),
+		WHIFF_PITCH,
+		AudioCueRequest.KitSource.WEAPON, variant_key(event)
+	))
+
+
 ## Footwork writes on the floor, never in the air.
 static func _on_burst(event: DuelEvent, snapshot: PresentationSnapshot, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame) -> void:
 	var heading := Vector3(event.number(DuelEventKeys.HEADING_X), 0.0, -event.number(DuelEventKeys.HEADING_Y))
@@ -159,8 +187,8 @@ static func _on_burst(event: DuelEvent, snapshot: PresentationSnapshot, flash: f
 	frame.audio_requests.append(AudioCueRequest.create(PresentationKit.CUE_DASH, world, 0.0, 1.0, AudioCueRequest.KitSource.WEAPON, variant_key(event)))
 
 
-static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame) -> void:
-	var world := _contact_world(event, weapon_kit)
+static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame, contact_height: float = NAN) -> void:
+	var world := _contact_world(event, weapon_kit, contact_height)
 	var intensity := clampf(event.number(DuelEventKeys.INTENSITY), 0.0, 1.0)
 	var profile := ImpactPresentationProfile.clash()
 	var count := lerpf(float(profile.spark_count_min), float(profile.spark_count_max), intensity)
@@ -170,10 +198,22 @@ static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, fla
 	var hot := palette.spark.lerp(palette.spark_hot, intensity)
 	_append_particles(frame, VfxRequest.sparks(world, tangent, hot, roundi(count * (1.0 - SPARK_NORMAL_SHARE)), speed, flash), particles)
 	_append_particles(frame, VfxRequest.sparks(world, normal, hot, roundi(count * SPARK_NORMAL_SHARE), speed, flash), particles)
-	frame.audio_requests.append(AudioCueRequest.create(_clash_cue(event), world, 0.0, 1.0, AudioCueRequest.KitSource.WEAPON, variant_key(event)))
+	frame.audio_requests.append(AudioCueRequest.create(_clash_cue(event), world, 0.0, clash_pitch(event), AudioCueRequest.KitSource.WEAPON, variant_key(event)))
 	frame.hitstop_requests.append(HitstopRequest.create(weapon_kit.hitstop_for_clash(intensity)))
 	frame.camera_requests.append(CameraShakeRequest.create(IMPULSE_BLADE_MAX * intensity * 100.0, normal, CameraShakeRequest.Profile.BLADE))
 	frame.fighter_requests.append(FighterCueRequest.haptic(event.actor, FighterCueRequest.Kind.HAPTIC_BLADE))
+
+
+## The clang's timbre from where the swords met (7C): steel struck near the
+## guard rings lower than steel struck toward the point, and a crossguard or a
+## handle in the contact gives a dull, low knock. Read from the contact's own
+## features and blade fractions — never from charge or speed.
+static func clash_pitch(event: DuelEvent) -> float:
+	var blade := SwordContactSet.Feature.BLADE
+	if int(event.number(DuelEventKeys.FEATURE_0)) != blade or int(event.number(DuelEventKeys.FEATURE_1)) != blade:
+		return CLASH_PITCH_HILT
+	var fraction := clampf((event.number(DuelEventKeys.FRACTION_0) + event.number(DuelEventKeys.FRACTION_1)) * 0.5, 0.0, 1.0)
+	return lerpf(CLASH_PITCH_FORTE, CLASH_PITCH_FOIBLE, fraction)
 
 
 ## A parry is the defender ending up threatening first (COMBAT): the cleaner the
@@ -182,8 +222,8 @@ static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, fla
 ## spark fan, rings a crisp high TING, and snaps the camera a frame. There is no
 ## hitstop, no slow motion, no damage, and no stun: the simulation already
 ## settled the exchange and this only tells the eye how clean it was.
-static func _on_parry(event: DuelEvent, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame) -> void:
-	var world := _contact_world(event, weapon_kit)
+static func _on_parry(event: DuelEvent, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame, contact_height: float = NAN) -> void:
+	var world := _contact_world(event, weapon_kit, contact_height)
 	var quality := clampf(event.number(DuelEventKeys.MARGIN) / PARRY_QUALITY_CEIL, 0.0, 1.0)
 	frame.vfx_requests.append(VfxRequest.ring(world, palette.spark, PARRY_RING_SIZE * (0.7 + 0.3 * quality), flash))
 	var hot := palette.spark.lerp(palette.spark_hot, quality)
@@ -196,14 +236,6 @@ static func _on_parry(event: DuelEvent, weapon_kit: PresentationKit, flash: floa
 		AudioCueRequest.KitSource.WEAPON, variant_key(event)
 	))
 	frame.camera_requests.append(CameraShakeRequest.create(IMPULSE_BLADE_MAX * quality * 100.0, Vector3.ZERO, CameraShakeRequest.Profile.BLADE))
-	frame.fighter_requests.append(FighterCueRequest.haptic(event.actor, FighterCueRequest.Kind.HAPTIC_BLADE))
-
-
-## Pinned blades are their own situation: a held grind, no hitstop.
-static func _on_bind(event: DuelEvent, weapon_kit: PresentationKit, frame: FeedbackFrame) -> void:
-	var request := AudioCueRequest.create(PresentationKit.CUE_BIND, _contact_world(event, weapon_kit), 0.0, 1.0, AudioCueRequest.KitSource.WEAPON, variant_key(event))
-	request.hold = true
-	frame.audio_requests.append(request)
 	frame.fighter_requests.append(FighterCueRequest.haptic(event.actor, FighterCueRequest.Kind.HAPTIC_BLADE))
 
 
@@ -241,11 +273,12 @@ static func _on_body_hit(event: DuelEvent, snapshot: PresentationSnapshot, weapo
 		_lethal(event, world, strike, flash, particles, palette, frame)
 	## The lock is the killing blow, not the stab: a death sequence is requested
 	## only on the blow that leaves the target not alive. A non-lethal thrust or
-	## poke lands its contact feel above and stops there (COMBAT-011).
+	## poke lands its contact feel above and stops there (COMBAT-011). The
+	## dead hand's release is timed by the death style the kit resolves, so the
+	## presenter queues it with the death rather than this pure mapping.
 	if not snapshot.fighter(event.target).is_alive():
 		var family := DeathPresentationProfile.family_of(event.text(DuelEventKeys.CONTACT_KIND))
 		frame.death_requests.append(DeathPresentationRequest.create(event.target, family, strike, gain, variant_key(event), event.actor))
-		frame.weapon_drop_requests.append(WeaponDropRequest.from_blade(event.target, WeaponDropRequest.DEATH_DELAY, snapshot.fighter(event.target), variant_key(event)))
 
 
 ## Light and heavy families crossfade by damage, so there is no audible step
@@ -337,8 +370,8 @@ static func _clash_cue(event: DuelEvent) -> StringName:
 			return PresentationKit.CUE_BLADE_LIGHT
 
 
-static func _contact_world(event: DuelEvent, weapon_kit: PresentationKit) -> Vector3:
-	return ArenaTransform.to_world(event.number(DuelEventKeys.X), event.number(DuelEventKeys.Y), weapon_kit.blade_height)
+static func _contact_world(event: DuelEvent, weapon_kit: PresentationKit, height: float = NAN) -> Vector3:
+	return ArenaTransform.to_world(event.number(DuelEventKeys.X), event.number(DuelEventKeys.Y), weapon_kit.blade_height if is_nan(height) else height)
 
 
 static func _fighter_world(snapshot: PresentationSnapshot, slot: int) -> Vector3:

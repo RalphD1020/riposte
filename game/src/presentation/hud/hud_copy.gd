@@ -9,8 +9,10 @@ extends RefCounted
 
 const PAUSE := "Pause"
 const ROUND := "ROUND %d"
-const READY := "READY"
-const DUEL := "DUEL"
+## The round-start card (PRES-ROUND-START-001): presentation says "Match N"
+## for the domain's round N; the domain keeps its own word.
+const MATCH := "MATCH %d"
+const FIGHT := "FIGHT!"
 const ROUND_WON := "ROUND WON"
 const ROUND_LOST := "ROUND LOST"
 const ROUND_DRAWN := "ROUND DRAWN"
@@ -25,9 +27,26 @@ const DRAW := "DRAW"
 const SIDED := "%s · %s"
 const HEALTH := "%s health"
 const HEALTH_VALUE := "%d of %d"
-const STAMINA := "%s stamina"
-const STAMINA_VALUE := "%d of %d"
 const ROUNDS_WON := "%s rounds won: %d of %d"
+## Sound captions (`SoundCaptions`): what was heard, in brackets, the way
+## captions mark non-speech sound.
+const SOUND_CAPTIONS := {
+	PresentationKit.CUE_CRITICAL: "[Critical hit]",
+	PresentationKit.CUE_BODY_HEAVY: "[Heavy hit]",
+	PresentationKit.CUE_BODY_LIGHT: "[Light hit]",
+	PresentationKit.CUE_BODY_THRUST: "[Thrust lands]",
+	PresentationKit.CUE_BODY_POKE: "[Point touches]",
+	PresentationKit.CUE_BLADE_STRONG: "[Heavy clash]",
+	PresentationKit.CUE_BLADE_SOLID: "[Blades clash]",
+	PresentationKit.CUE_BLADE_LIGHT: "[Blades tap]",
+	PresentationKit.CUE_FALL: "[Body falls]",
+	PresentationKit.CUE_WHIFF: "[Swing misses]",
+}
+const SOUND_SCRAPE := "[Blades scrape]"
+
+
+static func sound_caption(cue: StringName) -> String:
+	return SOUND_CAPTIONS.get(cue, "")
 
 
 ## Name a fighter by who they are *and* which end they hold.
@@ -35,15 +54,11 @@ static func sided(label: String, side: DuelSide.Id) -> String:
 	return SIDED % [label, DuelSide.label(side)]
 
 
-## Round intro thirds: ROUND N → READY → DUEL (UX §24); result and match
-## end name the outcome from the human's side. Empty while fighting.
+## Result and match end name the outcome from the human's side. Empty while
+## fighting, and through the round intro, which belongs to the round-start
+## card rather than the gameplay HUD.
 static func banner(snapshot: PresentationSnapshot, human_slot: int) -> String:
 	match snapshot.phase:
-		MatchPhase.Id.ROUND_INTRO:
-			var third := maxi(floori(float(snapshot.intro_ticks) / 3.0), 1)
-			if snapshot.phase_ticks < third:
-				return ROUND % snapshot.round_number
-			return READY if snapshot.phase_ticks < 2 * third else DUEL
 		MatchPhase.Id.ROUND_RESULT:
 			var outcome := _outcome(snapshot.round_winner, human_slot, ROUND_WON, ROUND_LOST, ROUND_DRAWN)
 			var cause := _cause(snapshot.end_reason)

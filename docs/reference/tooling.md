@@ -19,8 +19,16 @@ pnpm lint              # ESLint + game source scanners (not Godot import)
 pnpm typecheck         # tsc + GDScript load
 pnpm test              # Vitest 100% + manifest check + Godot harness + GDScript manifest
 pnpm test:tooling      # Fail-fixture gate (not inside pnpm test)
+pnpm test:balance      # CPU balance smoke (CPU-BALANCE), own process + progress guard (verify runs it)
+pnpm test:balance:audit  # CPU tuning-corpus report (40 seeds), a line per duel; never a gate
+pnpm test:balance:accept # CPU held-out ladder (CPU-ACCEPT), run once after a tuning pass
+pnpm test:contact:ship  # contact ship + development corpora (CONTACT-INTEGRITY-SHIP), audit only
+pnpm test:perf         # frame-cost report, never a gate
+pnpm test:changed      # suites owning the changed files (TEST-TIER-001), no import
+pnpm test:focused <area|SUITE>…  # one area or named suites, no import
+pnpm game:import       # Godot --import: once per session, after new assets or class_name scripts
 pnpm check             # import + lint + typecheck + format + docs/arch + tooling
-pnpm verify            # check then test then build
+pnpm verify            # check then test then test:balance then build
 pnpm test:fast
 pnpm format
 pnpm format:check
@@ -55,7 +63,7 @@ pnpm --filter @riposte/game godot:test
 
 ## Staging `/play`
 
-`pnpm game:stage:web` copies `dist/game/web/` into `apps/web/public/game/` and fails closed on a missing or incomplete export (see [web](../concepts/web.md)). It is deliberately **not** a Turbo dependency of the web `build`: that would make Godot a hard prerequisite of building the site, so `scripts/build.mjs` reports whether an artifact is staged instead, and `next.config.ts` adds the `/play` rewrite only when one is. `scripts/check-architecture.mjs` asserts the fail-closed behaviour on every run.
+`pnpm game:stage:web` copies `dist/game/web/` into `apps/web/public/game/` and fails closed on a missing or incomplete export (see [web](../concepts/web.md)). It is deliberately **not** a Turbo dependency of the web `build`: that would make Godot a hard prerequisite of building the site, so `scripts/build.mjs` reports whether an artifact is staged instead, and `next.config.ts` adds the `/play` redirect only when one is. `scripts/check-architecture.mjs` asserts the fail-closed behaviour on every run.
 
 ## Report runners
 

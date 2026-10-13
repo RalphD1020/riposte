@@ -46,7 +46,32 @@ const CONTROLS_VERBS := "Tap for a quick cut. Hold to wind back and charge. Rele
 const CONTROLS_PHYSICS := "Your sword stays where it stops; the next cut starts there. Put your blade in their path to parry, then strike before they recover."
 const CONTROLS_PAUSE := "Esc pauses. You always face your opponent."
 
-const SETTINGS_SECTIONS: PackedStringArray = ["Audio", "Display", "Gameplay", "Controls"]
+const SETTINGS_SECTIONS: PackedStringArray = ["Audio", "Display", "Gameplay", "Controls", "Move keys", "Action keys"]
+const SETTING_SOUND_CAPTIONS := "Sound captions"
+const SETTING_CONTACT_HIGHLIGHT := "Show where blades touch"
+const BINDING_ACTIONS := {
+	InputActions.MOVE_UP: "Move up",
+	InputActions.MOVE_DOWN: "Move down",
+	InputActions.MOVE_LEFT: "Move left",
+	InputActions.MOVE_RIGHT: "Move right",
+	InputActions.ATTACK: "Attack",
+	InputActions.DASH_MODIFIER: "Dash",
+	InputActions.PAUSE: "Pause",
+}
+const BINDING_PRESS := "Press a key"
+const BINDING_NONE := "None"
+## Accessible name of one binding button: action, slot number, current input.
+const BINDING_SLOT := "%s, binding %d: %s"
+const BINDING_RESET := "Reset keys"
+const BINDING_HINT := "Choose a binding, then press the new key or mouse button. Esc cancels."
+const BINDING_REFUSED := "%s is the only binding for %s."
+const MOUSE_BUTTON_LABELS := {
+	MOUSE_BUTTON_LEFT: "Left mouse",
+	MOUSE_BUTTON_RIGHT: "Right mouse",
+	MOUSE_BUTTON_MIDDLE: "Middle mouse",
+	MOUSE_BUTTON_XBUTTON1: "Mouse back",
+	MOUSE_BUTTON_XBUTTON2: "Mouse forward",
+}
 const SETTING_MASTER := "Master volume"
 const SETTING_MUSIC := "Music volume"
 const SETTING_SFX := "Effects volume"
@@ -64,6 +89,7 @@ const TRAIL_LEVELS: PackedStringArray = ["Off", "Subtle", "Full"]
 const SWEET_SPOT_LEVELS: PackedStringArray = ["Off", "Standard", "Strong"]
 const SETTING_CONTROL_OPACITY := "Touch control opacity"
 const SETTING_HAPTICS := "Haptics"
+const SETTING_CHARGE_TOGGLE := "Toggle charge (tap to start, tap to swing)"
 const SETTING_TRAINING_GEAR := "Training gear (cosmetic)"
 const OPACITY_LEVELS: PackedStringArray = ["Low", "Medium", "High"]
 const SETTINGS_NOT_SAVED := "Settings could not be saved on this device; they last for this visit."
@@ -96,6 +122,20 @@ static func opponent_label(config: MatchConfig) -> String:
 	if config.mode == MatchConfig.Mode.TRAINING:
 		return DUMMY
 	return CPU % MatchConfig.difficulty_label(config.cpu_difficulty)
+
+
+## The input a binding names: the engine's own key name (it follows the
+## physical key, as the binding does), a mouse button, or none.
+static func binding_label(binding: int) -> String:
+	if binding > 0:
+		return OS.get_keycode_string(binding as Key)
+	if binding < 0:
+		return str(MOUSE_BUTTON_LABELS.get(-binding, BINDING_NONE))
+	return BINDING_NONE
+
+
+static func binding_action(action: StringName) -> String:
+	return str(BINDING_ACTIONS.get(action, String(action)))
 
 
 static func difficulty_labels() -> PackedStringArray:

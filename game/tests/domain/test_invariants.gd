@@ -75,12 +75,12 @@ func test_out_of_range_health_and_stability_are_detected() -> void:
 	var state := DuelFixture.state(rules)
 	state.fighter(1).health = -5.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.HEALTH_RANGE, "negative health is rejected")
-	state.fighter(1).health = rules.fighter.max_health + 1.0
+	state.fighter(1).health = rules.combatant(0).fighter.max_health + 1.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.HEALTH_RANGE, "health above the authored maximum is rejected")
-	state.fighter(1).health = rules.fighter.max_health
+	state.fighter(1).health = rules.combatant(0).fighter.max_health
 	state.fighter(1).stability = 1.5
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.STABILITY_RANGE, "stability above one is rejected")
-	state.fighter(1).stability = rules.fighter.stability_floor - 0.1
+	state.fighter(1).stability = rules.combatant(0).fighter.stability_floor - 0.1
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.STABILITY_RANGE, "stability below the authored floor is rejected")
 
 
@@ -91,7 +91,7 @@ func test_non_finite_or_negative_stamina_is_detected() -> void:
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.STAMINA_NOT_FINITE, "NaN stamina is rejected")
 	state.fighter(0).stamina = -1.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.STAMINA_NOT_FINITE, "negative stamina is rejected")
-	state.fighter(0).stamina = rules.fighter.base_stamina
+	state.fighter(0).stamina = rules.combatant(0).fighter.base_stamina
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "full stamina is sound")
 
 
@@ -104,8 +104,8 @@ func test_death_and_weapon_phase_must_agree() -> void:
 	state.fighter(0).weapon.set_phase(CombatPhase.Id.DEAD)
 	state.fighter(0).lethal_fraction = 0.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "zero health with a DEAD weapon is sound")
-	state.fighter(0).health = rules.fighter.max_health
-	state.fighter(0).stamina = rules.fighter.base_stamina
+	state.fighter(0).health = rules.combatant(0).fighter.max_health
+	state.fighter(0).stamina = rules.combatant(0).fighter.base_stamina
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.DEATH_PHASE_MISMATCH, "a living fighter in DEAD is impossible")
 
 
@@ -130,9 +130,9 @@ func test_weapon_bounds_are_detected() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	var weapon := state.fighter(0).weapon
-	weapon.angle = rules.weapon.guard_limit + 0.05
+	weapon.angle = rules.combatant(0).weapon.guard_limit + 0.05
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.ANGLE_OUT_OF_GUARD, "an angle past the guard limit is rejected")
-	weapon.angle = -rules.weapon.guard_angle
+	weapon.angle = -rules.combatant(0).weapon.guard_angle
 	weapon.speed = NAN
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.WEAPON_NOT_FINITE, "a NaN angular speed is rejected")
 	weapon.speed = 0.0
@@ -141,7 +141,7 @@ func test_weapon_bounds_are_detected() -> void:
 	weapon.charge = 0.0
 	weapon.earned_windback = -0.2
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.WINDBACK_RANGE, "negative wind-back is rejected")
-	weapon.earned_windback = rules.weapon.windback_span() * 2.0
+	weapon.earned_windback = rules.combatant(0).weapon.windback_span() * 2.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.WINDBACK_RANGE, "wind-back beyond the span that buys full charge is rejected")
 	weapon.earned_windback = 0.0
 	weapon.commitment = -0.3
@@ -150,23 +150,21 @@ func test_weapon_bounds_are_detected() -> void:
 	weapon.swing_dir = 0.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.SWING_DIRECTION, "a swing direction must be exactly plus or minus one")
 	weapon.swing_dir = 1.0
-	weapon.bind_left = -2
-	assert_eq(StateInvariants.check(state, rules), StateInvariants.COUNTER_NEGATIVE, "a negative bind counter is rejected")
-	weapon.bind_left = 0
+	weapon.recovery_left = -2
+	assert_eq(StateInvariants.check(state, rules), StateInvariants.COUNTER_NEGATIVE, "a negative recovery counter is rejected")
+	weapon.recovery_left = 0
 
 
-func test_an_inescapable_bind_is_detected() -> void:
-	## The contact lifecycle must stay escapable (COMBAT §45). Park the pair
-	## in BOUND past its escape bound and the totality check must say so,
-	## rather than letting a duel sit in a deadlock nobody can leave.
+## The blade-contact lifecycle has no timer that could strand a pair
+## (RIGID-CONTACT-002): however long the blades stay together, that is legal
+## — only physically coming apart ends a contact.
+func test_a_long_contact_is_legal_and_a_negative_counter_is_not() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
-	state.blade_contact.set_phase(ContactPairState.Phase.BOUND)
-	state.blade_contact.phase_ticks = rules.combat.bind_escape_ticks
-	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "a bind at its escape bound is still legal")
-	state.blade_contact.phase_ticks = rules.combat.bind_escape_ticks + 1
-	assert_eq(StateInvariants.check(state, rules), StateInvariants.CONTACT_PAIR_STUCK, "one tick past it is not")
-	state.blade_contact.set_phase(ContactPairState.Phase.SEPARATED)
+	state.blade_contact.set_phase(SwordContactSet.Phase.CONTACTING)
+	state.blade_contact.phase_ticks = rules.round_time_limit_ticks
+	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "a contact lasting a whole round is still legal")
+	state.blade_contact.set_phase(SwordContactSet.Phase.SEPARATED)
 	state.blade_contact.phase_ticks = -1
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.COUNTER_NEGATIVE, "and a negative pair counter is rejected")
 
@@ -175,7 +173,7 @@ func test_clamped_bounds_tolerate_float_slack() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	var weapon := state.fighter(0).weapon
-	weapon.angle = rules.weapon.guard_limit + StateInvariants.BOUND_SLACK * 0.5
+	weapon.angle = rules.combatant(0).weapon.guard_limit + StateInvariants.BOUND_SLACK * 0.5
 	weapon.charge = 1.0 + StateInvariants.BOUND_SLACK * 0.5
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "accumulation a hair outside a clamped bound is not a fault")
 
@@ -216,7 +214,7 @@ func test_finished_match_emits_no_further_faults() -> void:
 
 
 func test_tick_order_version_is_pinned() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 9, "the canonical tick order is version 9; bump this deliberately")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 13, "the canonical tick order is version 13; bump this deliberately")
 
 
 func test_input_edges_resolve_before_the_motor() -> void:

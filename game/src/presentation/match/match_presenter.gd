@@ -17,11 +17,10 @@ extends Node3D
 
 signal hitstop_requested(seconds: float)
 signal slow_motion_requested(time_scale: float, seconds: float)
+## A combat sound as text, when sound captions are on (`SoundCaptions`).
+signal sound_caption_requested(text: String, seconds: float)
 
-## While blades are bound, a couple of grind sparks every few ticks at the
-## point where they met.
-const GRIND_EVERY_TICKS := 4
-const GRIND_SPARKS := 2
+## Speed of a grind spark thrown from a scraping contact (m/s).
 const GRIND_SPEED := 0.9
 
 var _kits: DuelKits
@@ -38,7 +37,6 @@ var _previous: PresentationSnapshot
 var _current: PresentationSnapshot
 var _snap: bool = true
 var _disposed: bool = false
-var _bind_point := Vector3.ZERO
 var _last_frame: FeedbackFrame = FeedbackFrame.new()
 ## Killing blows → the first backend that can carry them out. Primitive today;
 ## a ragdoll backend goes ahead of it once the rig has a physical skeleton.
@@ -46,6 +44,17 @@ var _deaths: DeathPresentationController
 ## Swords waiting for the hands to let go, and the ones already tumbling.
 var _drops := WeaponDropController.new()
 var _dropped: Array[DroppedWeapon3D] = []
+var _contact := ContactPresentation.new()
+## The current tick's rendered contact height, NAN when the swords are apart.
+var _contact_height: float = NAN
+## Friction work not yet thrown as grind sparks (J, `ContactScrape`).
+var _spark_energy: float = 0.0
+## Only built when the option is on.
+var _highlight: ContactHighlight3D
+## The held contact whose scrape was last captioned, so one scrape is one
+## caption however long it lasts; -1 when none is held.
+var _captioned_scrape: int = -1
+var _scrape_started: bool = false
 
 
 static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> MatchPresenter:
@@ -74,26 +83,56 @@ func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
 		for slot in 2:
 			_audio.release_tension(slot)
 		_audio.release_bind(0)
+		_spark_energy = 0.0
+		_captioned_scrape = -1
 		_deaths.reset()
 		_clear_drops()
+		for proxy in _fighters:
+			proxy.reset_terminal()
 	var style := _kits.match_loadout.vfx_style if _kits.match_loadout != null else null
-	_last_frame = CombatFeedbackDirector.process(snapshot, events, _kits.weapon, _options.flash_scale(), _options.particle_intensity, style)
+	## One rendered contact height for the tick (CONTACT-PRESENTATION-001):
+	## the drawn swords, the clash sparks and the grind all meet there.
+	_contact_height = _contact.contact_height(snapshot, _kits.weapon.blade_height)
+	_last_frame = CombatFeedbackDirector.process(snapshot, events, _kits.weapon, _options.flash_scale(), _options.particle_intensity, style, _contact_height)
 	_apply(_last_frame)
 	_grind(snapshot, style)
+	if _highlight != null:
+		var none: Array[PresentationContact] = []
+		_highlight.show_contacts(none if is_nan(_contact_height) else snapshot.contacts, _contact_height)
+	_caption_sounds()
 
 
-func render(alpha: float, delta: float) -> void:
+## One caption per tick: the most significant sound the frame played, else a
+## scrape that has just become audible.
+func _caption_sounds() -> void:
+	var scrape := _scrape_started
+	_scrape_started = false
+	if not _options.sound_captions:
+		return
+	var text := SoundCaptions.pick(_last_frame.audio_requests)
+	if text == "" and scrape:
+		text = HudCopy.SOUND_SCRAPE
+	if text != "":
+		sound_caption_requested.emit(text, SoundCaptions.HOLD_SECONDS)
+
+
+## One display frame. `real_delta` is wall-clock time (camera, VFX, trails);
+## `scaled_delta` is presentation-scaled time — real time with hitstop as zero
+## and slow motion at its scale — which drives the fighters' clips and every
+## terminal timer (PRES-TIME-001). Omitted, it equals real time.
+func render(alpha: float, real_delta: float, scaled_delta: float = -1.0) -> void:
 	if _current == null or _disposed:
 		return
+	var scaled := real_delta if scaled_delta < 0.0 else scaled_delta
 	var weight := clampf(alpha, 0.0, 1.0)
-	var first := _pose(0, weight, delta)
-	var second := _pose(1, weight, delta)
+	var first := _pose(0, weight, real_delta, scaled, _contact_height)
+	var second := _pose(1, weight, real_delta, scaled, _contact_height)
 	_vectors.update(_current)
-	_vfx.advance(delta)
-	for drop in _drops.advance(delta):
+	_vfx.advance(real_delta)
+	for drop in _drops.advance(scaled):
 		_launch_drop(drop)
 	if _camera != null:
-		_camera.frame(first, second, delta, _options, _snap)
+		_camera.frame(first, second, real_delta, _options, _snap)
 	_snap = false
 
 
@@ -101,15 +140,16 @@ func fighter_proxy(slot: int) -> FighterPresentation3D:
 	return _fighters[slot]
 
 
-## The once-per-set introduction, built over this presenter's world. The
-## screen decides whether a set is starting; the presenter only stages it.
-func create_intro(gameplay_camera: Camera3D) -> SetIntroDirector:
+## The once-per-set introduction, built over this presenter's world from the
+## fighters' recorded takes. The screen decides whether a set is starting and
+## records the takes; the presenter only stages them.
+func create_intro(gameplay_camera: Camera3D, takes: Array[IntroTake] = []) -> SetIntroDirector:
 	var proxies: Array[Node3D] = []
 	for proxy in _fighters:
 		proxies.append(proxy)
 	for ribbon in _trails:
 		proxies.append(ribbon)
-	var intro := SetIntroDirector.create(_kits, _current, _audio, proxies, gameplay_camera)
+	var intro := SetIntroDirector.create(_kits, _current, _audio, proxies, gameplay_camera, takes)
 	add_child(intro)
 	return intro
 
@@ -140,6 +180,16 @@ func current_snapshot() -> PresentationSnapshot:
 	return _current
 
 
+## The contact-point highlight, null when the option is off.
+func contact_highlight() -> ContactHighlight3D:
+	return _highlight
+
+
+## The current tick's rendered contact height (m), NAN when apart.
+func contact_height() -> float:
+	return _contact_height
+
+
 ## The requests the last pushed tick produced, for tests and debug.
 func last_frame() -> FeedbackFrame:
 	return _last_frame
@@ -167,7 +217,7 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 	add_child(_arena)
 	for slot in 2:
 		var row := first.fighter(slot)
-		var proxy := FighterPresentation3D.create(slot, row.side, _kits.combatant(slot), row.body_radius, row.hilt_radius, row.tip_radius)
+		var proxy := FighterPresentation3D.create(slot, row.side, _kits.combatant(slot), row.push_radius, row.combatant_spec)
 		proxy.set_charge_indicator(_options.show_charge_indicator)
 		proxy.set_high_contrast(_options.high_contrast_weapons)
 		add_child(proxy)
@@ -179,6 +229,9 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 		_trails.append(ribbon)
 	_vectors = DebugVectors3D.create(_kits.weapon.blade_height)
 	add_child(_vectors)
+	if _options.contact_highlight:
+		_highlight = ContactHighlight3D.create()
+		add_child(_highlight)
 	_vfx = VfxDirector.new()
 	add_child(_vfx)
 	_audio = AudioDirector.new()
@@ -191,23 +244,36 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 
 ## Interpolate one fighter between the last two snapshots, pose its proxy
 ## and trail, and return where it stands in the world.
-func _pose(slot: int, weight: float, delta: float) -> Vector3:
+func _pose(slot: int, weight: float, real_delta: float, scaled_delta: float, height: float = NAN) -> Vector3:
 	var from := _previous.fighter(slot)
 	var to := _current.fighter(slot)
 	var world := ArenaTransform.to_world(lerpf(from.x, to.x, weight), lerpf(from.y, to.y, weight))
 	var proxy := _fighters[slot]
-	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to, delta)
-	var blade := proxy.blade_points()
+	var time_scale := scaled_delta / real_delta if real_delta > 0.0 else 1.0
+	var lift := lift_inputs(from, to, weight)
+	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to, scaled_delta, time_scale, height, lift.x, lift.y)
+	var blade := proxy.trail_points()
 	_trails[slot].add_sample(blade[0], blade[1], to.swing_potential, to.blade_speed, _kits.weapon.trail_min_speed)
-	_trails[slot].advance(delta)
+	_trails[slot].advance(real_delta)
 	_tension(slot, to, world)
 	return world
 
 
-## The wind-back needs no invented cue: the blade physically travels backwards,
-## which is already the best anticipation the game has. Audio only tightens
-## behind it, rising with the wind-back actually earned and plateauing when
-## there is no more to earn. No charge glow (UX §19).
+## The sword lift's continuous inputs between two snapshots, (swing progress,
+## charge), interpolated like the blade angle they ride with: drawn between
+## ticks — a faster display, slow motion — the lift moves with the sword
+## instead of stepping once a tick. Across a phase change the current row's
+## own values are used and the proxy's carry blend owns the continuity. Pure.
+static func lift_inputs(from: PresentationFighter, to: PresentationFighter, weight: float) -> Vector2:
+	if from.phase != to.phase:
+		return Vector2(to.swing_progress, to.charge)
+	return Vector2(lerpf(from.swing_progress, to.swing_progress, weight), lerpf(from.charge, to.charge, weight))
+
+
+## The charge is shown by the body — the sword gathered up toward the striking
+## shoulder, point rising with the wind-back actually earned (PRES-CARRIAGE-001)
+## — and audio only tightens behind it, plateauing when there is no more to
+## earn. No charge glow (UX §19).
 func _tension(slot: int, row: PresentationFighter, world: Vector3) -> void:
 	if row.phase == CombatPhase.Id.CHARGING and row.is_alive():
 		_audio.hold_tension(slot, _kits.weapon, world, row.charge)
@@ -215,19 +281,42 @@ func _tension(slot: int, row: PresentationFighter, world: Vector3) -> void:
 		_audio.release_tension(slot)
 
 
-## A bind lasts as long as the snapshot says the blades are pinned, so its
-## grind is held from the snapshot rather than timed from the event.
+## Swords held against each other scrape as hard as friction works there
+## (`ContactScrape`): the held point doing the most friction work carries the
+## sound at the shared rendered contact, keyed by its `contact_id` so one
+## contact keeps one take; grind sparks are thrown at a rate set by the same
+## work. A blade pressed still is silent and throws nothing; the scrape lets go
+## the tick no point is held. Never a hitstop — a held contact is not a hit.
 func _grind(snapshot: PresentationSnapshot, style: VfxStyleKit) -> void:
-	var bound := snapshot.fighter(0).phase == CombatPhase.Id.BIND or snapshot.fighter(1).phase == CombatPhase.Id.BIND
-	if not bound:
+	var scraping := ContactScrape.dominant(snapshot.contacts)
+	if scraping < 0:
 		_audio.release_bind(0)
+		_spark_energy = 0.0
+		_captioned_scrape = -1
 		return
-	if _options.particle_intensity > 0.0 and snapshot.tick % GRIND_EVERY_TICKS == 0:
+	var row := snapshot.contacts[scraping]
+	if row.contact_id != _captioned_scrape and ContactScrape.level(ContactScrape.power(row)) > 0.0:
+		_captioned_scrape = row.contact_id
+		_scrape_started = true
+	var height := _kits.weapon.blade_height if is_nan(_contact_height) else _contact_height
+	var point := ArenaTransform.to_world(row.x, row.y, height)
+	_audio.hold_bind(0, _kits.weapon, point, ContactScrape.level(ContactScrape.power(row)), row.contact_id)
+	_spark_energy += ContactScrape.total_power(snapshot.contacts)
+	var sparks := mini(floori(_spark_energy / ContactScrape.SPARK_ENERGY), ContactScrape.SPARKS_PER_TICK)
+	_spark_energy = minf(_spark_energy - float(sparks) * ContactScrape.SPARK_ENERGY, ContactScrape.SPARK_ENERGY)
+	if sparks > 0 and _options.particle_intensity > 0.0:
 		var color := style.grind if style != null else RiposteTheme.SPARK
-		_vfx.sparks(_bind_point, Vector3.UP, color, GRIND_SPARKS, GRIND_SPEED, _options.flash_scale())
+		_vfx.sparks(point, Vector3.UP, color, sparks, GRIND_SPEED, _options.flash_scale())
+
+
+## Grind sparks this tick would throw (for tests and debug): the friction work
+## banked toward the next spark.
+func grind_energy() -> float:
+	return _spark_energy
 
 
 func _apply(frame: FeedbackFrame) -> void:
+	TerminalPresentationPolicy.filter(frame, _current)
 	for request in frame.camera_requests:
 		_impulse(request.intensity / 100.0, request.direction)
 	for request in frame.hitstop_requests:
@@ -241,26 +330,52 @@ func _apply(frame: FeedbackFrame) -> void:
 	for request in frame.fighter_requests:
 		_fighter_cue(request)
 	for request in frame.death_requests:
-		_deaths.present(request)
+		_present_death(request)
 	for request in frame.fall_requests:
 		_fighters[request.slot].begin_fall(request)
 	for request in frame.weapon_drop_requests:
 		_drops.request(request)
 
 
+## A killing blow: resolve the victim's death once from their kit, start it,
+## and time the dead hand's release from that same style — so the collapse and
+## the release can never belong to different deaths.
+func _present_death(request: DeathPresentationRequest) -> void:
+	request.spec = _kits.combatant(request.slot).fighter.death_spec(request.cause, request.key)
+	if _deaths.present(request):
+		_drops.request(WeaponDropRequest.from_blade(request.slot, request.spec.weapon_release_time, _current.fighter(request.slot), request.key))
+
+
 ## The hands let go: the held look is hidden and a presentation body carries a
-## copy of it, starting from the pivot with the blade's spin plus the presented
-## body's own motion. Physics bodies need an unscaled transform, and a collapse
-## squashes the body, so the pivot's basis is orthonormalized.
+## fresh look built from the same kits, starting where the sword was drawn
+## (the carriage) with the blade's spin plus the presented body's own motion.
+## Physics bodies need an unscaled transform, and a collapse squashes the
+## body, so the carriage's basis is orthonormalized.
 func _launch_drop(drop: WeaponDropRequest) -> void:
 	var proxy := _fighters[drop.slot]
 	var row := _current.fighter(drop.slot)
-	var at := proxy.sword_pivot().global_transform
+	var at := proxy.sword_carriage().global_transform
 	var length := row.tip_radius - row.hilt_radius
-	var body := DroppedWeapon3D.create(proxy.detach_weapon(), drop.linear_velocity + proxy.root_velocity(), drop.angular_velocity, length, _kits.weapon.blade_width, row.hilt_radius + length * 0.5)
+	var look := CombatantVisuals.weapon_look(proxy.combatant_kit(), proxy.side, row.hilt_radius, row.tip_radius)
+	var body := DroppedWeapon3D.create(look, row.weapon_mass, length, _kits.weapon.blade_width, row.hilt_radius + length * 0.5)
+	proxy.detach_weapon()
 	add_child(body)
-	body.global_transform = Transform3D(at.basis.orthonormalized(), at.origin)
+	body.launch(Transform3D(at.basis.orthonormalized(), at.origin), drop.linear_velocity + proxy.root_velocity(), drop.angular_velocity)
 	_dropped.append(body)
+
+
+## Terminal latches, for tests and debug: whether this round's death for
+## `slot` has started, and whether its sword is waiting to drop or has dropped.
+func has_death_started(slot: int) -> bool:
+	return _deaths.has_started(slot)
+
+
+func is_drop_pending(slot: int) -> bool:
+	return _drops.is_pending(slot)
+
+
+func has_drop_released(slot: int) -> bool:
+	return _drops.has_released(slot)
 
 
 func dropped_weapons() -> Array[DroppedWeapon3D]:
@@ -281,15 +396,14 @@ func _clear_drops() -> void:
 
 func _play(request: AudioCueRequest) -> void:
 	var kit := _kits.arena if request.kit_source == AudioCueRequest.KitSource.ARENA else _kits.weapon
-	if request.hold:
-		_bind_point = request.world_position
-		_audio.hold_bind(0, kit, request.world_position, 1.0, request.key)
-	elif request.flat:
+	if request.flat:
 		## A kit without a dedicated round-win sting uses its round sting.
 		if not _audio.play_flat(request.cue, kit, request.volume_db, request.key) and request.cue == PresentationKit.CUE_ROUND_WIN:
 			_audio.play_flat(PresentationKit.CUE_ROUND, kit, request.volume_db, request.key)
-	else:
-		_audio.play(request.cue, kit, request.world_position, request.volume_db, request.pitch, request.key)
+	elif not _audio.play(request.cue, kit, request.world_position, request.volume_db, request.pitch, request.key) and request.cue == PresentationKit.CUE_WHIFF:
+		## A kit without its own whiff take plays the swing take at the
+		## whiff's hollow pitch.
+		_audio.play(PresentationKit.CUE_SWING, kit, request.world_position, request.volume_db, request.pitch, request.key)
 
 
 func _draw(request: VfxRequest) -> void:

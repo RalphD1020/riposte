@@ -6,12 +6,53 @@ extends RefCounted
 ## See also: /docs/reference/testing.md
 
 
+## The standard rules as a mirror match whose two slots hold the *same*
+## `CombatantPhysicsSpec` instance, so a mechanism test that perturbs the
+## loadout (`combatant(0)`) perturbs both fighters, as a mirror match should.
+## Production compiles each slot on its own; heterogeneous tests build their
+## own pair (`with_loadouts`).
 static func rules() -> DuelRules:
-	return StandardDuelRules.create()
+	return mirror(StandardDuelRules.create())
+
+
+## `duel_rules` with slot 1 holding slot 0's spec instance.
+static func mirror(duel_rules: DuelRules) -> DuelRules:
+	duel_rules.combatants[1] = duel_rules.combatants[0]
+	return duel_rules
+
+
+## The standard arena and format with two given loadouts, one per slot.
+static func with_loadouts(first: CombatantPhysicsSpec, second: CombatantPhysicsSpec) -> DuelRules:
+	var duel_rules := StandardDuelRules.create()
+	duel_rules.combatants = [first, second]
+	return duel_rules
+
+
+## The standard rules with the sword on the fixed, body-centred pivot. For
+## tests of a mechanism — the sweep, a contact lifecycle, a stagger threshold,
+## a formula — whose hand-built geometry is written in revolute terms; the
+## attack manifold itself is proven by KINEMATICS, COLLIDE's curved sweep, the
+## golden corpus and the E2E suites (WEAPON-PATH-001).
+## The body-centred pivot the hand-built mechanism scenes are written for. Its
+## pommel is the wielder's centre, so a guard and handle there would sit inside
+## the wielder's own torso: on this pivot the sword is its blade alone (guard
+## and hilt contact are proven on the shipped orbit, GUARD).
+static func revolute_rules() -> DuelRules:
+	var duel_rules := rules()
+	duel_rules.combatant(0).handling.attack_path = WeaponAttackPath.fixed_pivot()
+	duel_rules.combatant(0).weapon.guard_half_span = 0.0
+	duel_rules.combatant(0).weapon.handle_radius = 0.0
+	return duel_rules
 
 
 static func state(duel_rules: DuelRules, seed_value: int = 1) -> MatchState:
 	return DuelSetup.new_state(duel_rules, seed_value)
+
+
+## Fighter 0 → fighter 1 on the plane. Two bodies that never swap sides keep
+## this pointing the same way from tick to tick, whichever axis they face on.
+static func separation(match_state: MatchState) -> Vector2:
+	return Vector2(match_state.fighter(1).x - match_state.fighter(0).x, match_state.fighter(1).y - match_state.fighter(0).y)
 
 
 static func place(fighter: FighterState, x: float, y: float, facing: float) -> void:
@@ -40,20 +81,11 @@ static func commit(fighter: FighterState, phase: CombatPhase.Id, charge: float, 
 	fighter.weapon.commitment = CommitmentModel.commitment(fighter.weapon, weapon)
 
 
-## How far ahead the stand-in opponent holds its measure. Any distance works;
-## it only has to be non-zero so the duel axis is well defined.
-const PARTNER_MEASURE := 3.0
-
-
-## One tick of footwork against a stand-in opponent holding its measure dead
-## ahead along +X. Footwork is duel-relative (MOVE-001), so this is what
-## pins duel forward `(0, 1)` to world `+X` and lets single-fighter movement
-## expectations stay closed-form.
+## One tick of footwork in the fighter's own combat frame (MOVEMENT-FRAME-001):
+## forward `(0, 1)` is its heading, so a fighter facing +X walks along world
+## +X and single-fighter movement expectations stay closed-form.
 static func spar(fighter: FighterState, input_x: float, input_y: float, definition: FighterDefinition, tick: int = 0) -> void:
-	var partner := FighterState.new()
-	partner.slot = 1 - fighter.slot
-	place(partner, fighter.x + PARTNER_MEASURE, fighter.y, fighter.facing + PI)
-	MovementSystem.step(fighter, partner, input_x, input_y, tick, definition)
+	MovementSystem.step(fighter, input_x, input_y, tick, definition)
 
 
 static func steady_speed(fighter: FighterState, input_x: float, input_y: float, definition: FighterDefinition, ticks: int) -> float:
@@ -72,8 +104,8 @@ static func of_type(events: Array[DuelEvent], type: StringName) -> Array[DuelEve
 
 
 ## Point the fighter's weapon perpendicular to the line toward the opponent so
-## its blade geometry does not overlap the opponent's body. Use instead of
-## setting the weapon to BIND solely to suppress its interference in a test.
+## its blade geometry does not overlap the opponent's body, so the blade cannot
+## interfere with a test about something else.
 static func weapon_clear_of(fighter: FighterState, opponent_x: float, opponent_y: float) -> void:
 	var dx := opponent_x - fighter.x
 	var dy := opponent_y - fighter.y

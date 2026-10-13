@@ -98,6 +98,39 @@ func test_invalid_sessions_fail_closed() -> void:
 	assert_true(MatchSession.create(broken, two) == null, "invalid rules never start")
 
 
+func test_monitors_read_the_live_session_and_unregister_cleanly() -> void:
+	var monitors := SimulationMonitors.new()
+	monitors.install()
+	assert_true(Performance.has_custom_monitor(SimulationMonitors.SIM_STEP_US), "the step-cost monitor is registered")
+	assert_true(Performance.has_custom_monitor(SimulationMonitors.CCD_CAP_HITS), "and the CCD cap monitor")
+	assert_eq(monitors.sim_step_us(), 0, "with no session every monitor reads 0")
+	var session := _finished_cpu_session(7)
+	assert_true(session.is_finished(), "fixture: a CPU match played to the end")
+	session.simulation.diagnostics.ccd_cap_hits = 3
+	session.simulation.diagnostics.contact_cap_hits = 2
+	session.simulation.diagnostics.rehold_budget_exhausted = 1
+	session.simulation.diagnostics.position_guard_hits = 5
+	session.simulation.diagnostics.meaningful_contacts_dropped = 4
+	session.simulation.diagnostics.pivot_cap_hits = 6
+	monitors.session = session
+	assert_eq(monitors.ccd_cap_hits(), 3, "the monitor reads the session's CCD cap counter")
+	assert_eq(monitors.contact_cap_hits(), 2, "and its contact cap counter")
+	## Perturb-by-contrast: distinct values per counter, so a monitor wired to
+	## the wrong counter (or to a sum) reads a wrong number.
+	assert_eq(monitors.rehold_budget_exhausted(), 1, "the re-hold budget has its own monitor")
+	assert_eq(monitors.position_guard_hits(), 5, "and so does the position-stage turn guard, never summed with it")
+	assert_eq(monitors.meaningful_contacts_dropped(), 4, "and the count of real constraints a feature pair could not hold")
+	assert_eq(monitors.pivot_cap_hits(), 6, "and the exact block's pivot cap")
+	for id: StringName in SimulationMonitors.ALL:
+		assert_true(Performance.has_custom_monitor(id), "%s is registered" % id)
+	assert_true(monitors.max_manifold_points() >= 1 and monitors.max_manifold_points() <= SwordContactSet.CAPACITY, "a played match touched swords within capacity (%d)" % monitors.max_manifold_points())
+	assert_eq(monitors.sim_step_us(), session.last_step_usec, "and the cost of its last step")
+	monitors.uninstall()
+	for id: StringName in SimulationMonitors.ALL:
+		assert_false(Performance.has_custom_monitor(id), "uninstall removes %s" % id)
+	assert_true(monitors.session == null, "and releases the session")
+
+
 func test_training_dummy_answers_only_inside_reach() -> void:
 	var rules := StandardDuelRules.training()
 	var runner := SimRunner.create(rules, 3)

@@ -21,6 +21,10 @@ var sweet_spot_cue: float = 1.0
 var touch_layout: bool = false
 ## Show announcer lines as on-screen captions.
 var captions: bool = true
+## Caption the combat sounds that carry gameplay (`SoundCaptions`).
+var sound_captions: bool = false
+## Mark where the swords actually touch (`ContactHighlight3D`).
+var contact_highlight: bool = false
 ## Particle count scale in [0, 1]. At 0 there are no particles and a hit is
 ## still marked by flash, sound, and pacing.
 var particle_intensity: float = 1.0

@@ -40,6 +40,9 @@ const BAD_MEASURE_MARGIN := 0.35
 ## threshold that looks like "a quarter committed" is never reached and the
 ## metric silently reports zero opportunities instead of none existing.
 const CHARGE_WINDBACK := 0.25
+## Blade contact lasting this long (0.1 s) is a bind, not a clash — a fencer's
+## reading of a persisting contact, for this audit only.
+const BIND_READ_TICKS := 6
 
 
 ## One measured behaviour: how often it was possible, how often it happened,
@@ -140,8 +143,8 @@ func observe(state: MatchState) -> void:
 		return
 	total_ticks += 1
 	var gap := DuelGeometry.distance(me, them)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
-	if gap <= reach and gap >= reach - rules.weapon.blade_length():
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
+	if gap <= reach and gap >= reach - rules.combatant(0).weapon.blade_length():
 		ideal_measure_ticks += 1
 	var launched := _launched(me)
 	_score_whiff(me, launched)
@@ -149,7 +152,7 @@ func observe(state: MatchState) -> void:
 	_score_punish(me, them, launched, state.tick)
 	_score_intercept(me, them, launched, gap, reach, state.tick)
 	_score_angular_escape(me, them, gap, reach, state.tick)
-	_score_bind_yield(me, them, state.tick)
+	_score_bind_yield(me, them, state)
 
 
 ## A release is a phase edge into LAUNCH, read from state rather than from the
@@ -234,11 +237,13 @@ func _score_angular_escape(me: FighterState, them: FighterState, gap: float, rea
 ## Strong on weak controls the bind; weak on strong should yield rather than
 ## push. Leverage here is the blade's own authority in the bind — how much
 ## speed it still carries and how committed it is — so the weaker party is
-## the one that should be leaving.
-func _score_bind_yield(me: FighterState, them: FighterState, tick: int) -> void:
-	var bound := me.weapon.phase == CombatPhase.Id.BIND
+## the one that should be leaving. A bind is blade contact that lasts, read
+## from the persistent contact exactly as presentation reads it.
+func _score_bind_yield(me: FighterState, them: FighterState, state: MatchState) -> void:
+	var contact := state.blade_contact
+	var bound := contact.phase == SwordContactSet.Phase.CONTACTING and contact.phase_ticks >= BIND_READ_TICKS
 	if bound and _bind_open < 0:
-		_bind_open = tick
+		_bind_open = state.tick
 		_bind_was_weak = me.weapon.commitment < them.weapon.commitment
 		if _bind_was_weak:
 			bind_yield.support += 1
@@ -269,7 +274,7 @@ func _score_whiff(me: FighterState, launched: bool) -> void:
 	if not resolved:
 		return
 	_swing_resolved = true
-	if not me.weapon.swing_contact:
+	if not me.weapon.attack_contacted:
 		whiff.taken += 1
 
 

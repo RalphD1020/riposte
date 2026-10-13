@@ -102,6 +102,16 @@ static func clamp01(value: float) -> float:
 	return clampf(value, 0.0, 1.0)
 
 
+## Cubic Hermite ease from 0 at `edge0` to 1 at `edge1` (flat at both ends),
+## clamped outside; `3t² − 2t³` evaluated as separate operations. The
+## domain's own step — the engine's is off limits to the simulation.
+static func hermite_step(edge0: float, edge1: float, x: float) -> float:
+	if edge1 <= edge0:
+		return 1.0 if x >= edge1 else 0.0
+	var t := clamp01((x - edge0) / (edge1 - edge0))
+	return t * t * (3.0 - 2.0 * t)
+
+
 ## Linear blend a + (b - a) * t, evaluated as separate operations.
 static func mix(a: float, b: float, t: float) -> float:
 	return a + (b - a) * t
@@ -181,14 +191,25 @@ static func closest_segments(
 		else:
 			var b := d1x * d2x + d1y * d2y
 			var denom := a * e - b * b
-			s = clamp01((b * f - c * e) / denom) if denom > EPSILON else 0.0
-			t = (b * s + f) / e
-			if t < 0.0:
-				t = 0.0
-				s = clamp01(-c / a)
-			elif t > 1.0:
-				t = 1.0
-				s = clamp01((b - c) / a)
+			if denom > EPSILON:
+				s = clamp01((b * f - c * e) / denom)
+				t = (b * s + f) / e
+				if t < 0.0:
+					t = 0.0
+					s = clamp01(-c / a)
+				elif t > 1.0:
+					t = 1.0
+					s = clamp01((b - c) / a)
+			else:
+				## Parallel: every pair across the overlap is equally close.
+				## Take the overlap's midpoint — the same point whichever
+				## segment is named first — never one segment's end.
+				var near := -c / a
+				var far := (b - c) / a
+				var lo := maxf(0.0, minf(near, far))
+				var hi := minf(1.0, maxf(near, far))
+				s = (lo + hi) * 0.5 if lo <= hi else (0.0 if maxf(near, far) < 0.0 else 1.0)
+				t = clamp01((b * s + f) / e)
 	out.s = s
 	out.t = t
 	out.ax = p1x + d1x * s

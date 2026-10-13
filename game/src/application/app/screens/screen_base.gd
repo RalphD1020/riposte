@@ -21,6 +21,7 @@ var _layout: BoxContainer
 var _margin: MarginContainer
 var _page: VBoxContainer
 var _primary: Control
+var _frame: Array[Control] = []
 
 
 func bind(riposte_app: RiposteApp) -> ScreenBase:
@@ -60,6 +61,13 @@ func primary() -> Control:
 func focus_primary() -> void:
 	if _primary != null and is_instance_valid(_primary) and _primary.is_inside_tree() and _primary.is_visible_in_tree():
 		_primary.grab_focus()
+
+
+## Show or hide the menu frame (surface, band, and the two columns), for a
+## screen that composes over the 3D world instead.
+func set_frame_visible(on: bool) -> void:
+	for control in _frame:
+		control.visible = on
 
 
 func is_side_by_side() -> bool:
@@ -133,6 +141,7 @@ func _build_frame() -> void:
 	lead = _column()
 	body = _column()
 	_page.add_child(_spring())
+	_frame = [surface, band, _margin]
 
 
 func _column() -> VBoxContainer:

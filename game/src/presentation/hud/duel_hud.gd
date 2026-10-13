@@ -2,7 +2,7 @@ class_name DuelHud
 extends Control
 
 ## In-match status (UX §23–§24): two mirrored ornamental name plates with
-## restrained health and stamina rules, sword-point round pips, the round and
+## a restrained health rule, sword-point round pips, the round and
 ## low-time clock in a centre plate, one slashing banner, announcer captions,
 ## an optional coaching prompt, and the pause button. The human is always on
 ## the left. Condition reads first from the fighter's body in the world; the
@@ -21,14 +21,20 @@ var human_slot: int = 0
 var _human_side: DuelSide.Id = DuelSide.Id.LIGHT_SOUTH
 var _labels: PackedStringArray = PackedStringArray(["", ""])
 var _frame: MarginContainer
+## Name plates, health, round pips, clock, and Pause: the gameplay
+## chrome, shown only while a duel is being fought. Banner, captions, and the
+## coaching prompt sit outside it, so an intro card or a caption still reads.
+var _chrome: Control
 var _bars: Array[ProgressBar] = []
-var _stamina_bars: Array[ProgressBar] = []
 var _condition_labels: Array[Label] = []
 var _condition_icons: Array[TextureRect] = []
 var _pips: Array[PipRow] = []
 var _caption_plate: PanelContainer
 var _caption: Label
 var _caption_left: float = 0.0
+var _sound_plate: PanelContainer
+var _sound_caption: Label
+var _sound_left: float = 0.0
 var _banner_tween: Tween
 var _card: String = ""
 var _card_active: bool = false
@@ -44,7 +50,6 @@ var _prompt_title: Label
 var _prompt_detail: Label
 var _pause: Button
 var _shown_health: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
-var _shown_stamina: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
 var _shown_condition: PackedInt32Array = PackedInt32Array([-1, -1])
 var _shown_wins: PackedInt32Array = PackedInt32Array([-1, -1])
 var _shown_round: int = -1
@@ -61,6 +66,17 @@ static func create(player_label: String, opponent_label: String, slot: int, huma
 	return hud
 
 
+## Show or hide the gameplay chrome as one unit. Only the screen's chrome
+## policy calls this (PRES-CHROME-001); no director toggles it.
+func set_gameplay_chrome(visible_now: bool) -> void:
+	if _chrome.visible != visible_now:
+		_chrome.visible = visible_now
+
+
+func is_gameplay_chrome_visible() -> bool:
+	return _chrome.visible
+
+
 ## Safe-area insets keep plates clear of notches (UX §38).
 func layout_insets(insets: Vector4) -> void:
 	RiposteTheme.apply_insets(_frame, RiposteTheme.HUD_EDGE, insets)
@@ -75,12 +91,6 @@ func update(snapshot: PresentationSnapshot) -> void:
 			bar.max_value = fighter.max_health
 			bar.value = fighter.health
 			bar.accessibility_description = HudCopy.HEALTH_VALUE % [ceili(fighter.health), ceili(fighter.max_health)]
-		if fighter.stamina != _shown_stamina[side]:
-			_shown_stamina[side] = fighter.stamina
-			var sbar := _stamina_bars[side]
-			sbar.max_value = maxf(fighter.stamina_max, 1.0)
-			sbar.value = fighter.stamina
-			sbar.accessibility_description = HudCopy.STAMINA_VALUE % [ceili(fighter.stamina), ceili(fighter.stamina_max)]
 		var cond_int := int(fighter.condition)
 		if cond_int != _shown_condition[side]:
 			_shown_condition[side] = cond_int
@@ -156,7 +166,23 @@ func caption_text() -> String:
 	return _caption.text if _caption_plate.visible else ""
 
 
+## A combat sound as text (`SoundCaptions`); the next one replaces it.
+func show_sound_caption(text: String, seconds: float) -> void:
+	if _sound_caption.text != text:
+		_sound_caption.text = text
+	_sound_plate.visible = text != ""
+	_sound_left = seconds
+
+
+func sound_caption_text() -> String:
+	return _sound_caption.text if _sound_plate.visible else ""
+
+
 func _process(delta: float) -> void:
+	if _sound_left > 0.0:
+		_sound_left -= delta
+		if _sound_left <= 0.0:
+			_sound_plate.visible = false
 	if _caption_left <= 0.0:
 		return
 	_caption_left -= delta
@@ -192,10 +218,6 @@ func clock_text() -> String:
 
 func health_bar(side: int) -> ProgressBar:
 	return _bars[side]
-
-
-func stamina_bar(side: int) -> ProgressBar:
-	return _stamina_bars[side]
 
 
 func condition_label(side: int) -> Label:
@@ -234,9 +256,11 @@ func _build() -> void:
 	layout_insets(Vector4.ZERO)
 	var column := _vbox(_frame)
 	var top := HBoxContainer.new()
+	top.name = "GameplayChrome"
 	top.theme_type_variation = &"HudRow"
 	top.mouse_filter = MOUSE_FILTER_IGNORE
 	column.add_child(top)
+	_chrome = top
 	_fighter_plate(top, 0)
 	_center_plate(top)
 	_fighter_plate(top, 1)
@@ -277,6 +301,13 @@ func _build() -> void:
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_caption.accessibility_live = AccessibilityServer.LIVE_POLITE
 	_caption_plate.visible = false
+	## Not a live region: a screen reader announcing every clash would bury
+	## the announcer and the prompts.
+	_sound_plate = _plate(column, &"CaptionPlate")
+	_sound_plate.size_flags_horizontal = SIZE_SHRINK_CENTER
+	_sound_caption = _hud_label(_sound_plate, "", &"HudCaptionLabel")
+	_sound_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_sound_plate.visible = false
 
 
 func _fighter_plate(row: HBoxContainer, side: int) -> void:
@@ -319,18 +350,6 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	bar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
 	stack.add_child(bar)
 	_bars.append(bar)
-	var sbar := ProgressBar.new()
-	sbar.theme_type_variation = &"StaminaBar"
-	sbar.show_percentage = false
-	sbar.min_value = 0.0
-	sbar.max_value = 100.0
-	sbar.value = 100.0
-	sbar.custom_minimum_size = Vector2(0.0, RiposteTheme.STAMINA_BAR_HEIGHT)
-	sbar.mouse_filter = MOUSE_FILTER_IGNORE
-	sbar.accessibility_name = HudCopy.STAMINA % _labels[side]
-	sbar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
-	stack.add_child(sbar)
-	_stamina_bars.append(sbar)
 	var condition_row := HBoxContainer.new()
 	condition_row.mouse_filter = MOUSE_FILTER_IGNORE
 	condition_row.alignment = BoxContainer.ALIGNMENT_END if side == 1 else BoxContainer.ALIGNMENT_BEGIN

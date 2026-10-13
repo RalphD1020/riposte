@@ -7,9 +7,25 @@ extends RefCounted
 ## mass-aware: a heavier fighter absorbs less of the push and less of the
 ## closing velocity (PHYS-005).
 ##
+## Body/body velocity response has one law and one mass (BODY-CONTACT-OWNERSHIP-001):
+## `ContactResolver` resolves the contact in the tick's chronology, and the
+## closing speed removed here is that same zero-restitution law with the same
+## `fighter.mass`, for a re-overlap later in the tick that the resolver has not
+## seen. The persistent sword solver keeps bodies apart by position only.
+##
 ## See also: /docs/concepts/combat.md
 
 const SEPARATION_PASSES := 2
+## How far outside touching (m) a separated pair is left: numerical
+## hysteresis separating the resting configuration from the contact trigger,
+## not game-world physics. Contact is detected at exactly touching; resting
+## exactly there would let rounding decide whether the next tick sees a
+## contact, and mirrored scenes would diverge. The contract (tested): far
+## above the ULP of the authoritative 64-bit positions at arena scale, far
+## below anything visible and the sword `contact_slop`, mirrored contacts
+## exact, a long hold stable. Its value is part of the rules: changing it moves
+## every replay that ever separates two bodies.
+const BODY_CONTACT_REST_EPSILON := 1.0e-9
 
 
 ## Resolve body separation for two non-falling, alive fighters. No confinement
@@ -17,9 +33,10 @@ const SEPARATION_PASSES := 2
 static func resolve(a: FighterState, b: FighterState, rules: DuelRules) -> void:
 	if a.is_falling or b.is_falling:
 		return
-	var mass := rules.fighter.mass
+	var body_a := rules.spec_of(a).fighter
+	var body_b := rules.spec_of(b).fighter
 	for _pass in SEPARATION_PASSES:
-		separate(a, b, rules.fighter.body_radius, mass, mass)
+		separate(a, b, body_a.push_radius, body_b.push_radius, body_a.mass, body_b.mass)
 
 
 ## Swept point-circle edge crossing. Given a center that linearly interpolates
@@ -51,9 +68,10 @@ static func detect_edge_crossing(sx: float, sy: float, fx: float, fy: float, rad
 ## Position correction and velocity correction both use inverse-mass
 ## weighting, so a heavier fighter moves less (PHYS-005). The arena has no
 ## wall: separation is purely physical and may push a fighter past the
-## platform edge, producing a ring-out.
-static func separate(a: FighterState, b: FighterState, body_radius: float, mass_a: float = 1.0, mass_b: float = 1.0) -> void:
-	var min_distance := body_radius * 2.0
+## platform edge, producing a ring-out. The bodies touch at the sum of their
+## own push radii.
+static func separate(a: FighterState, b: FighterState, push_radius_a: float, push_radius_b: float, mass_a: float, mass_b: float) -> void:
+	var min_distance := push_radius_a + push_radius_b
 	var dx := b.x - a.x
 	var dy := b.y - a.y
 	var distance := SimMath.length(dx, dy)
@@ -64,7 +82,7 @@ static func separate(a: FighterState, b: FighterState, body_radius: float, mass_
 	if distance > SimMath.EPSILON:
 		nx = dx / distance
 		ny = dy / distance
-	var overlap := min_distance - distance
+	var overlap := min_distance + BODY_CONTACT_REST_EPSILON - distance
 	var inv_total := 1.0 / mass_a + 1.0 / mass_b
 	var share_a := (1.0 / mass_a) / inv_total if inv_total > SimMath.EPSILON else 0.5
 	var share_b := 1.0 - share_a

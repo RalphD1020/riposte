@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="FighterStanceProfile" format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/fighter_stance_profile.gd" id="1_stance"]
+
+[resource]
+script = ExtResource("1_stance")
+lead_side = 0
+hip_yaw_degrees = 12.0
+chest_yaw_degrees = 22.5
+guard_coil_degrees = 2.5
+lead_load_coil_degrees = 10.0
+rear_load_coil_degrees = 14.0
+lead_foot_yaw_degrees = 8.0
+rear_foot_yaw_degrees = 25.0

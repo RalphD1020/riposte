@@ -25,6 +25,14 @@ desktop at 60. A device that cannot keep up with 60 Hz of _simulation_ is a
 different and worse problem: it starts spending catch-up ticks, which is a
 correctness failure wearing a performance costume.
 
+A fast blade is not a reason to raise the tick rate. A sword point moving
+15–25 m/s covers 25–40 cm in a tick, and that is exactly what the bounded
+swept collision exists for: substeps sized by blade and carriage travel inside
+one 60 Hz tick, with the contacts resolved in time order. Raising the whole
+simulation rate would multiply every system's cost on a phone to buy what the
+sword sweep already provides. Only a measured tunnelling or contact-ordering
+failure the sweep cannot fix reopens that.
+
 ## Website
 
 - Every route prerenders as static content; the layout reads no request data, so pages are CDN-cacheable and static-exportable.
@@ -34,16 +42,52 @@ correctness failure wearing a performance costume.
 ## Game
 
 - **Simulation**: scalar math, no allocations in the collision hot path (preallocated frames and reports), fixed 60 Hz with at most `MAX_CATCH_UP_TICKS` per frame; backgrounded tabs never fast-forward.
-- **Physics**: semi-implicit Euler integration, selective CCD for blades, TOI-ordered chronological contact loop with bounded iterations. Mass-aware body collisions use inverse-mass impulse. Point-strike detection shares the same substep sweep as blade contacts. All contact geometry is integer-compatible (`SimMath`) scalars on the gameplay plane — no Godot `PhysicsServer3D` or `NavigationServer3D`.
+- **Physics**: semi-implicit Euler integration, selective CCD for blades, TOI-ordered chronological contact loop with bounded iterations. Every contact cap is fixed — CCD substeps, contacts per tick, contact-set points (`SwordContactSet.CAPACITY` = 9 feature pairs × 2, preallocated), contact-block pivots (`ContactLcp.MAX_PIVOTS`), solver iterations (a constant, never "until converged") — so a pathological frame costs what an ordinary one does; reaching a cap is counted, never extended (CONTACT-MANIFOLD-001). The counters and the wall-clock cost of one step are Godot custom monitors (`Riposte/CcdCapHits`, `Riposte/ContactCapHits`, `Riposte/MaxManifoldPoints`, `Riposte/ReholdBudgetExhausted`, `Riposte/PositionGuardHits`, `Riposte/MeaningfulContactsDropped`, `Riposte/PivotCapHits`, `Riposte/SimStepUs`), one per cap and never summed, readable in the editor debugger and in exported builds. A healthy representative match reads zero on every cap counter; that is a release gate on exported builds, not a target to reach by raising budgets. Contact physics is not simplified for CPU fear: two fighters and a handful of scalar constraints are tiny next to skinning and rendering — measure release builds first. Mass-aware body collisions use inverse-mass impulse. Point-strike detection shares the same substep sweep as blade contacts. All contact geometry is integer-compatible (`SimMath`) scalars on the gameplay plane — no Godot `PhysicsServer3D` or `NavigationServer3D`.
 - **Stamina**: motor work accounting (`P = τ·ω` rotational, `P = F·v` linear) normalizes against `PhysicalBaseline` reference values per channel. One effort signal feeds drain/recovery. Contact shock rides on existing hit events. All stamina arithmetic is in `StaminaModel` static functions with no allocation.
-- **Capability**: `CapabilityModel` resolves a `[floor, 1]` scalar from health and stamina — four static calls (weapon, movement, turn, burst) per tick, each a clamp over two penalty curves. No allocation, no state.
+- **Condition**: `ConditionModel` writes each fighter's three scales into a reused `ConditionState` in its tick scratch once per tick — three linear maps of the health fraction. No allocation, no state.
+- **Threat estimate**: `InitiativeModel.threat_time` is a fixed 30-tick rollout (one pose and one capsule test per tick, no allocation in the loop); it runs only where a reading is needed (contact classification, exposure, CPU observation, snapshot).
 - **Projection once per tick**: `SnapshotProjector` copies state once; frames only interpolate.
-- **HUD** writes a `Label` or bar only when its value changes.
-- **Effects**: live VFX are capped (`MAX_EFFECTS`) and share one mesh and material per kind; audio voices are pooled (spatial + flat + one music voice); trails draw one `ImmediateMesh` from a bounded sample ring.
+- **HUD** writes a `Label` or bar only when its value changes; the round-start card and chrome policy change only on a phase transition.
+- **Fighter pose: one clip layer, one combat-pose pass, one native IK.** Per fighter the runtime stack is the `AnimationPlayer` (in-place locomotion, breathing, terminal clips; normal process step, presentation time as `speed_scale`, no root motion), one `CombatPoseModifier3D` (torso support and the elbows' bend planes, bone indices cached, nothing allocated per frame), and one `TwoBoneIK3D` with both arms as two settings. The orbit sample, lift, cut curve, elbow guides, and clearance are pure math and data (`WeaponKinematics`, `CombatPresentationField`, `CutPresentationCurve`, `ElbowGuideField`, `PoseClearance`) — never extra modifiers, never physics bodies or shape queries. Self-penetration is prevented **offline**: PRES-RIG sweeps the whole pose domain (5° steps × phases × charge levels × both sides) against the profile's proxies, and the runtime does no clearance correction at all. Do not add `AnimationTree` until locomotion genuinely needs continuous blending; do not thread or move this to GDExtension unless device profiling shows the pose pass above ~0.5 ms for both fighters.
+- **Hidden actors don't animate.** The intro's showcase figures are freed when it ends, the match presenter is gone before the victory showcase, and the showcase is freed on leaving the results.
+- **Effects**: live VFX are capped (`MAX_EFFECTS`), reuse a fixed pool of nodes (no allocate/free in sustained combat), and share one mesh and material per kind; audio voices are pooled (spatial + flat + one music voice); trails draw one `ImmediateMesh` from a bounded sample ring.
 - **A switched-off cue costs nothing.** `SwordTrail3D` and `DebugVectors3D` check `get_surface_count()` before clearing, so the off state — which is the default for debug vectors and the Reduced Motion setting for trails — is not an empty mesh cleared again 60 times a second. Trail samples still accumulate and age while off, so turning a cue back on is immediate.
 - **Rendering**: Compatibility renderer, primitive meshes, a handful of lights; 3D renders at ≤ 2× CSS resolution (`UiScale.scale_3d_for`) so dense phone panels do not multiply fill cost.
 - **Startup**: procedural placeholder audio is generated once and cached (low-rate music bed); kits resolve once per match.
 - **Web export**: single-threaded (no COOP/COEP requirement), desktop + mobile VRAM compression.
+
+### Mobile budgets and renderers
+
+Engineering targets at 60 FPS (16.67 ms), to be measured on real devices — not Godot guarantees:
+
+| System                                | Target       |
+| ------------------------------------- | ------------ |
+| Both fighters' combat-pose passes     | < 0.5 ms CPU |
+| Skeleton animation and skinning prep  | < 1.5 ms CPU |
+| All combat presentation scripting     | < 1.0 ms CPU |
+| Fighters + weapons + trails           | < 2 ms GPU   |
+| Ordinary combat VFX                   | < 1.5 ms GPU |
+| Normal match frame (≈20–25% headroom) | < 12–13 ms   |
+
+### Measured
+
+Desktop readings (i7-8700K, RTX 2080, rules v39) — upper bounds for script cost, not device numbers. Native rows are `tools/perf_report.gd` over four Hard-vs-Hard matches (21,851 ticks) on the headless editor binary, a debug build with no GPU; the frame row is start-to-start with the frame limiter and the headless idle sleep off, because Godot's process-time monitor reports the worst frame of each second rather than the current one.
+
+| Per 60 Hz frame                          | mean    | p99     |
+| ---------------------------------------- | ------- | ------- |
+| Authoritative step                       | 0.71 ms | 3.1 ms  |
+| … with swords held in contact            | 1.31 ms | 4.8 ms  |
+| … with swords apart                      | 0.59 ms | 1.8 ms  |
+| Both CPU controllers                     | 0.27 ms | 0.51 ms |
+| Presentation scripting (push + render)   | 0.50 ms | 0.85 ms |
+| Whole frame, presented                   | 1.65 ms | 4.4 ms  |
+| Whole frame, no presenter (engine floor) | 0.97 ms | 3.4 ms  |
+
+Presentation scripting is inside its 1 ms budget even at p99. The authoritative step's tail during held blade contact is the largest single cost, and it is the first thing to measure on a phone: interpreted GDScript in WebAssembly on a mid-range handset is several times slower than this desktop.
+
+The release Web export, run from `/play` in Cursor's embedded Chromium pane (ANGLE / Direct3D 11), holds a clean 60 fps on the menu and averages ~48 fps in a match, with about a quarter of frames taking two vsyncs. A sampling profile puts our WebAssembly at a few percent; ~57% of the time is the engine's two once-per-frame WebGL queries (`FRAMEBUFFER_BINDING`, `SCISSOR_TEST`), which are synchronous round trips that wait for the GPU process to finish the frame — about 95 draw calls and 2,300 WebGL calls per frame. That pane shares its GPU process with the IDE, so the reading is not representative of a standalone browser; if a standalone desktop browser or a phone shows the same, the lever is draw count, not the simulation. Only about 24 of the 95 draws are the duel itself (each fighter and each sword is one mesh with six material surfaces); the rest — arena kit, HUD, effects — are not yet attributed.
+
+Gameplay presentation MUST work on Mobile and Compatibility; Forward+ features are optional. Web is Compatibility (WEB-001). Native Android/iOS should target the Mobile renderer once native export presets exist (today `rendering_method.mobile` is still `gl_compatibility`, because only the web export ships). Live combat stays lean: one key light plus emissive accents (no light per clash), one short trail per sword from a fixed sample ring (`trail_samples` = 10), pooled VFX nodes under a hard cap, low-poly rigid block bodies with no morph targets and a minimal skeleton. Terminal, intro, and victory presentation may be richer, because only one of them runs at a time. Profile real matches — neutral spacing, held charge, rapid taps, binds, heavy VFX, dash thrust, ring-out, stab finisher, intro, victory — on the device matrix (native Android/iOS, Android and iPhone browsers, desktop Chromium, desktop native). Profile representative **release** builds (Godot 4.7's Android export templates can record Perfetto traces); debug and editor timings are not representative.
 
 ## Development
 

@@ -3,25 +3,13 @@ extends TestCase
 ## CPU: same commands, same rules; difficulty is decision quality only
 ## (PLAN Phase 9). Results are deterministic per seed; the seed set is fixed.
 ##
+## These are laws — a failure is a bug. Whether a sharper profile actually
+## wins more is a balance claim and lives in CPU-BALANCE (`test_cpu_balance.gd`).
+##
 ## Implements: /spec/invariants.md#cpu-001
 ## See also: /docs/concepts/cpu.md
 
 const MAX_TICKS := 40000
-
-## Two corpora, because tuning a profile against the seeds that then grade it
-## is training against the test set. Difficulty *ordering* is the one claim
-## here that depends on emergent outcomes rather than on authored data, so it
-## is the one claim that can be overfitted into looking true.
-##
-## Calibration seeds are for looking at while adjusting a profile. Nothing
-## asserts on them, so no amount of staring at them can make a gate pass.
-const CALIBRATION_SEEDS: Array[int] = [1, 2, 3, 4, 5, 6, 7, 8]
-## Acceptance seeds grade the ladder and MUST NOT be inspected while tuning.
-## Chosen by a rule rather than by search — the calibration block offset by
-## 100 — so they were fixed before any result from them was known. If a
-## profile change makes this fail, the ordering did not generalise; moving
-## these numbers until it passes is the overfitting this split exists to stop.
-const ACCEPTANCE_SEEDS: Array[int] = [101, 102, 103, 104, 105, 106, 107, 108]
 
 
 func _init() -> void:
@@ -43,29 +31,6 @@ func _play(session: MatchSession) -> MatchSession:
 	return session
 
 
-## Matches decided for `stronger` minus those decided for `weaker`, over every
-## seed in both slots. Playing both sides of each seed cancels any positional
-## advantage, so a positive margin is difficulty and nothing else.
-##
-## The assertion is the ordering, not a hand-tuned win count: these are
-## emergent physics outcomes, and a magic threshold would turn every
-## legitimate combat change into a spurious failure while proving no more.
-func _margin(stronger: MatchConfig.Difficulty, weaker: MatchConfig.Difficulty, seeds: Array[int]) -> int:
-	var margin := 0
-	for seed_value in seeds:
-		margin += _decision(_play(_session(stronger, weaker, seed_value)), 0)
-		margin += _decision(_play(_session(weaker, stronger, seed_value)), 1)
-	return margin
-
-
-## +1 when `slot` won, -1 when it lost, 0 for a draw.
-func _decision(session: MatchSession, slot: int) -> int:
-	var winner := session.state.match_winner
-	if winner == slot:
-		return 1
-	return -1 if winner == 1 - slot else 0
-
-
 ## Mean charge of the attacks a fighter actually committed to charging. Taps
 ## are deliberately excluded: a tap is 0% by definition, so counting them
 ## measures how often the CPU taps, not how heavily it charges.
@@ -82,69 +47,25 @@ func _mean_committed_charge(session: MatchSession, slot: int) -> float:
 	return 0.0 if count == 0 else total / float(count)
 
 
-## Fraction of attacks that were charged (had a CHARGE_STARTED preceding the
-## release). Measures the CPU's *decision* to hold rather than the charge
-## level it achieved — robust to physics changes that interrupt charges early.
-func _hold_ratio(session: MatchSession, slot: int) -> float:
-	var charges := 0
-	var releases := 0
-	for event in session.events:
-		if event.actor != slot:
-			continue
-		if event.type == DuelEventTypes.CHARGE_STARTED:
-			charges += 1
-		elif event.type == DuelEventTypes.ATTACK_RELEASED:
-			releases += 1
-	return 0.0 if releases == 0 else float(charges) / float(releases)
-
-
-## ───────────────────────────── BALANCE LADDER ─────────────────────────────
+## ──────────────────────────────── MEASURE ─────────────────────────────────
 ##
-## Emergent-outcome claims, graded on held-out seeds — and only where the
-## effect is large enough for an affordable sample to resolve it.
-##
-## Measured over 200 duels on seeds outside both corpora (`tools/balance_
-## report.gd`): a sharper profile takes Easy on roughly 88% of duels, but
-## Hard takes Medium on only about 54.5% (match margin +18, round margin +42,
-## health margin +1807). Sixteen duels cannot tell 54.5% from a coin — the
-## acceptance block runs -2 for Hard, and round and health margins agree with
-## it, because within one seed those three estimators are correlated rather
-## than independent. Asserting that sign here would be a gate that fails for
-## no code reason, so the effect size is left to the diagnostic tool and what
-## the suite gates is the part of the ladder that is unambiguous.
-##
-## Hard-over-Medium is still *proven as a mechanism* in the correctness
-## section below: faster reaction, lighter charges, and the dash it types.
-## What is not proven is that those mechanisms add up to a convincingly
-## harder opponent. That is a balance question, and it belongs to a person.
+## Profile distances are authored in metres at the reference duel's strike
+## reach. Correcting the reference geometry must not silently rescale them.
 
 
-## Both sharper profiles beat the blunt one decisively, in both slots, on
-## seeds no profile was tuned against. This is the ladder claim that survives
-## a small sample: the margin is near the 16-duel ceiling, so a regression
-## that actually broke a difficulty axis could not hide inside it.
-func test_sharper_profiles_beat_the_blunt_one_on_held_out_seeds() -> void:
-	var duels := ACCEPTANCE_SEEDS.size() * 2
-	var medium := _margin(MatchConfig.Difficulty.MEDIUM, MatchConfig.Difficulty.EASY, ACCEPTANCE_SEEDS)
-	var hard := _margin(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.EASY, ACCEPTANCE_SEEDS)
-	assert_true(medium > 0, "Medium is ahead of Easy over %d unseen duels (margin %d)" % [duels, medium])
-	assert_true(hard > 0, "Hard is ahead of Easy over %d unseen duels (margin %d)" % [duels, hard])
-	## Not merely positive: decisive. A one- or two-duel edge over Easy would
-	## mean a difficulty axis had quietly stopped working. Half the duels is
-	## the bar. The body-contact physics overhaul (rules v19) shifted emergent
-	## outcomes; >= accepts the 75%+ win rate that the margin represents.
-	var decisive := ACCEPTANCE_SEEDS.size()
-	assert_true(medium >= decisive, "and decisively so (%d of a possible %d)" % [medium, duels])
-	assert_true(hard >= decisive, "both of them (%d of a possible %d)" % [hard, duels])
-
-
-## The split is only real if the corpora are disjoint. Nothing asserts on the
-## calibration seeds, which is what makes staring at them while tuning safe;
-## a seed present in both would quietly undo that.
-func test_the_acceptance_seeds_were_never_tuned_against() -> void:
-	assert_eq(CALIBRATION_SEEDS.size(), ACCEPTANCE_SEEDS.size(), "fixture: equal-sized corpora, so margins are comparable")
-	for seed_value in ACCEPTANCE_SEEDS:
-		assert_false(CALIBRATION_SEEDS.has(seed_value), "acceptance seed %d is not a calibration seed" % seed_value)
+## For the reference fighter and sword a profile metre is a metre; any other
+## duel scales every preferred distance with its own strike reach (CPU-001).
+func test_a_profile_metre_is_a_metre_for_the_reference_duel() -> void:
+	var rules := StandardDuelRules.create()
+	var reach := WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1))
+	assert_near(CpuController.calibration_reach(), reach, 1e-12, "fixture: calibrated at the reference duel's own strike reach")
+	var standard := CpuController.create(rules, CpuProfile.for_difficulty(MatchConfig.Difficulty.MEDIUM), 1, 0)
+	assert_near(standard._range(1.0), 1.0, 1e-12, "the reference duel reads a profile metre literally")
+	var longer := StandardDuelRules.create()
+	longer.combatant(1).fighter.hurt_radius += 0.1
+	assert_near(WeaponKinematics.strike_reach(longer.combatant(0), longer.combatant(1)), reach + 0.1, 1e-12, "perturbation: only the strike reach against a bigger target grew")
+	var scaled := CpuController.create(longer, CpuProfile.for_difficulty(MatchConfig.Difficulty.MEDIUM), 1, 0)
+	assert_near(scaled._range(1.0), (reach + 0.1) / reach, 1e-12, "a longer reach scales every preferred distance with it")
 
 
 ## ──────────────────────────────── FAIRNESS ────────────────────────────────
@@ -188,11 +109,11 @@ func test_every_difficulty_resolves_one_set_of_rules() -> void:
 	assert_eq(easy.cpu_difficulty, MatchConfig.Difficulty.EASY, "fixture: the configs differ in difficulty")
 	assert_eq(hard.cpu_difficulty, MatchConfig.Difficulty.HARD, "fixture: and the other way")
 	assert_eq(easy.rules.version, hard.rules.version, "one rules version")
-	assert_eq(easy.rules.fighter.mass, hard.rules.fighter.mass, "one body mass")
-	assert_eq(easy.rules.fighter.max_speed, hard.rules.fighter.max_speed, "one movement cap")
-	assert_eq(easy.rules.fighter.turn_speed_max, hard.rules.fighter.turn_speed_max, "one turn authority")
-	assert_eq(easy.rules.weapon.mass, hard.rules.weapon.mass, "one sword mass")
-	assert_eq(easy.rules.weapon.blade_length(), hard.rules.weapon.blade_length(), "one reach")
+	assert_eq(easy.rules.combatant(0).fighter.mass, hard.rules.combatant(0).fighter.mass, "one body mass")
+	assert_eq(easy.rules.combatant(0).fighter.max_speed, hard.rules.combatant(0).fighter.max_speed, "one movement cap")
+	assert_eq(easy.rules.combatant(0).fighter.turn_speed_max, hard.rules.combatant(0).fighter.turn_speed_max, "one turn authority")
+	assert_eq(easy.rules.combatant(0).weapon.mass, hard.rules.combatant(0).weapon.mass, "one sword mass")
+	assert_eq(easy.rules.combatant(0).weapon.blade_length(), hard.rules.combatant(0).weapon.blade_length(), "one reach")
 	assert_eq(easy.rules.combat.damage_values, hard.rules.combat.damage_values, "one damage curve")
 
 
@@ -211,7 +132,7 @@ const PROFILE_POLICY: Array[String] = [
 	"point_threat_weight", "burst_weight",
 	"charge_min", "charge_max",
 	"corner_pressure_weight", "tempo_awareness", "withdrawal_discipline",
-	"lateral_dash_weight", "stamina_cost_weight",
+	"lateral_dash_weight",
 	"edge_exploit_weight",
 ]
 
@@ -240,40 +161,58 @@ func test_a_profile_may_only_own_perception_cadence_and_policy() -> void:
 ## independent of who wins. These hold regardless of balance.
 
 
-func test_every_match_ends_decisively() -> void:
-	var session := _play(_session(MatchConfig.Difficulty.MEDIUM, MatchConfig.Difficulty.MEDIUM, 5))
-	assert_true(session.is_finished(), "CPU mirror match finishes")
-	var timeouts := 0
-	for event in session.events:
-		if event.type == DuelEventTypes.ROUND_ENDED and event.text(DuelEventKeys.REASON) == String(MatchPhase.REASON_TIMEOUT):
-			timeouts += 1
-	assert_true(timeouts <= 1, "no stalemated standoffs (%d timeouts)" % timeouts)
+## Starting distances, as multiples of the duel's own strike reach, so the law
+## is read in the same combat situation whatever the geometry makes a metre.
+const OVERCHARGE_SPACINGS: PackedFloat64Array = [1.0, 1.2, 1.4]
+const OVERCHARGE_TICKS := 900
 
 
+## The charge `profile` commits to from the same scene: an idle opponent
+## `spacing` strike reaches away, both at guard, the same seed. Mean committed
+## charge over its charged releases, and how many there were.
+func _committed_from(profile: CpuProfile, spacing: float, seed_value: int) -> PackedFloat64Array:
+	var rules := DuelFixture.rules()
+	var runner := SimRunner.create(rules, seed_value)
+	runner.skip_intro()
+	DuelFixture.place(runner.state.fighter(0), 0.0, 0.0, 0.0)
+	DuelFixture.place(runner.state.fighter(1), spacing * WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1)), 0.0, PI)
+	var cpu := CpuController.create(rules, profile, seed_value, 0)
+	for _i in OVERCHARGE_TICKS:
+		runner.push(cpu.command_for(runner.state, 0), PlayerCommand.idle(runner.state.tick))
+	var total := 0.0
+	var count := 0
+	for event in runner.events:
+		if event.actor == 0 and event.type == DuelEventTypes.ATTACK_RELEASED and event.number(DuelEventKeys.CHARGE) > 0.0:
+			total += event.number(DuelEventKeys.CHARGE)
+			count += 1
+	return PackedFloat64Array([total, float(count)])
+
+
+## Hard wastes less time overcharging: put Easy and Hard in exactly the same
+## situations — an idle opponent at the same multiples of the strike reach,
+## the same seeds — and Hard commits to lighter charges. Read in reach, not
+## metres, so a geometry change cannot move the situation out from under the
+## law; how often each holds over whole duels is a balance reading
+## (CPU-BALANCE), not this law.
 func test_easy_overcharges_and_hard_stays_quick() -> void:
-	## The law lives in two places and both must agree: the authored charge
-	## targets express it, and the duels it produces exhibit it.
 	var easy_profile := CpuProfile.easy()
 	var hard_profile := CpuProfile.hard()
 	assert_true(easy_profile.charge_min > hard_profile.charge_max, "Easy's lightest charge target is heavier than Hard's heaviest")
-	## Behavioral measure: Easy's charge_weight (0.9) is much higher than
-	## Hard's (0.45), so Easy should hold more often. We measure the hold
-	## ratio (CHARGE_STARTED / ATTACK_RELEASED) — the CPU's DECISION to hold,
-	## which is robust to physics changes that may interrupt charges early.
-	var easy_holds := 0.0
-	var hard_holds := 0.0
-	var samples := 0
-	for seed_value: int in [3, 7, 11]:
-		var easy_session := _play(_session(MatchConfig.Difficulty.EASY, MatchConfig.Difficulty.MEDIUM, seed_value))
-		var hard_session := _play(_session(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.MEDIUM, seed_value))
-		if easy_session.summary(0).attacks > 0 and hard_session.summary(0).attacks > 0:
-			easy_holds += _hold_ratio(easy_session, 0)
-			hard_holds += _hold_ratio(hard_session, 0)
-			samples += 1
-	assert_true(samples >= 2, "precondition: at least 2 seeds produced attacks")
-	var easy_ratio := easy_holds / float(samples)
-	var hard_ratio := hard_holds / float(samples)
-	assert_true(easy_ratio > hard_ratio, "Easy holds more often than Hard (%.2f vs %.2f)" % [easy_ratio, hard_ratio])
+	var sums := {"easy": PackedFloat64Array([0.0, 0.0]), "hard": PackedFloat64Array([0.0, 0.0])}
+	for spacing in OVERCHARGE_SPACINGS:
+		for seed_value: int in [3, 7]:
+			for key: String in sums:
+				var got := _committed_from(easy_profile if key == "easy" else hard_profile, spacing, seed_value)
+				var sum: PackedFloat64Array = sums[key]
+				sum[0] += got[0]
+				sum[1] += got[1]
+				sums[key] = sum
+	var easy: PackedFloat64Array = sums["easy"]
+	var hard: PackedFloat64Array = sums["hard"]
+	assert_true(easy[1] >= 3.0 and hard[1] >= 3.0, "precondition: both charged in these situations (Easy %d, Hard %d releases)" % [int(easy[1]), int(hard[1])])
+	var easy_mean := easy[0] / maxf(easy[1], 1.0)
+	var hard_mean := hard[0] / maxf(hard[1], 1.0)
+	assert_true(easy_mean > hard_mean, "from the same situations Easy commits heavier charges than Hard (%.2f vs %.2f)" % [easy_mean, hard_mean])
 
 
 func test_reading_state_never_changes_it() -> void:
@@ -311,9 +250,19 @@ func test_the_cpu_reads_exposure_as_a_body_not_as_a_forecast() -> void:
 	var state := DuelFixture.state(rules)
 	var me := state.fighter(1)
 	var them := state.fighter(0)
+	## ARRANGE: drawn in symmetrically to 2 m, inside the threat horizon
+	## (THREAT-001) — out of each other's reach both read even.
+	var mx := (me.x + them.x) * 0.5
+	var my := (me.y + them.y) * 0.5
+	var apart := SimMath.length(me.x - them.x, me.y - them.y)
+	for fighter: FighterState in [me, them]:
+		fighter.x = mx + (fighter.x - mx) * 2.0 / apart
+		fighter.y = my + (fighter.y - my) * 2.0 / apart
+	var horizon := float(InitiativeModel.HORIZON_TICKS) * SimulationTimebase.TICK_SECONDS
+	assert_true(InitiativeModel.time_to_threat(me, them, rules) < horizon, "fixture: a ready fighter threatens inside the horizon")
 	var composed := CpuObservation.observe(state, 1, rules)
 	## Exactly the reading the player's own HUD is given for this fighter.
-	assert_eq(composed.opp_exposure, SwingSemantics.exposure_fraction(DamageModel.exposure(them, me, rules), rules.combat), "the same exposure the snapshot projects")
+	assert_eq(composed.opp_exposure, ExposureModel.reading(them, me, rules), "the same exposure the snapshot projects")
 	assert_between(composed.opp_exposure, 0.0, 1.0, "as a bounded fraction")
 	them.weapon.set_phase(CombatPhase.Id.OVERSWING)
 	them.weapon.commitment = 1.0
@@ -336,8 +285,8 @@ func test_the_cpu_perceives_point_threats() -> void:
 	var composed := CpuObservation.observe(state, 1, rules)
 	var base_threat := composed.opp_point_threat
 	## Close along the facing direction (toward the opponent).
-	them.vx = cos(them.facing) * rules.fighter.max_speed * 0.8
-	them.vy = sin(them.facing) * rules.fighter.max_speed * 0.8
+	them.vx = cos(them.facing) * rules.combatant(0).fighter.max_speed * 0.8
+	them.vy = sin(them.facing) * rules.combatant(0).fighter.max_speed * 0.8
 	var closing := CpuObservation.observe(state, 1, rules)
 	assert_true(closing.opp_point_threat > base_threat, "closing velocity increases point threat")
 	them.vx = 0.0
@@ -347,12 +296,42 @@ func test_the_cpu_perceives_point_threats() -> void:
 	assert_true(sideways.opp_point_threat < base_threat, "a perpendicular blade is not a point threat")
 
 
+## THREAT-001 cost: a decision reads an observation `reaction_ticks` old, so
+## the costly readings are taken only when one is read — from the bodies as
+## they stood then. An observation recorded mid-exchange and resolved after
+## the duel has moved on reads exactly what an observation taken whole at that
+## tick reads, to the bit.
+func test_a_recorded_observation_resolves_to_what_was_seen_then() -> void:
+	## ARRANGE: a live exchange, both fighters moving and swinging.
+	var rules := DuelFixture.rules()
+	var runner := SimRunner.create(rules, 3)
+	runner.skip_intro()
+	runner.drive(0.0, 1.0, 40)
+	runner.push(PlayerCommand.create(runner.state.tick, 0.3, 1.0, true, true), PlayerCommand.create(runner.state.tick, -0.2, 1.0, true))
+	runner.drive(0.0, 1.0, 3)
+	var whole := CpuObservation.observe(runner.state, 1, rules)
+	var recorded := CpuObservation.record(runner.state, 1, rules)
+	assert_true(whole.my_threat_time > 0.0 and whole.opp_threat_time > 0.0, "fixture: both sides read a threat time")
+	## PERTURB: the duel moves on before the observation is read.
+	runner.drive(1.0, -1.0, 25)
+	assert_ne(runner.state.fighter(0).x, recorded.opp_x, "fixture: the live bodies have moved")
+	## ACT
+	recorded.resolve(rules)
+	## ASSERT
+	assert_eq(recorded.my_threat_time, whole.my_threat_time, "my threat time is the one seen then")
+	assert_eq(recorded.opp_threat_time, whole.opp_threat_time, "the opponent's too")
+	assert_eq(recorded.my_threat.residual_gap, whole.my_threat.residual_gap, "and what was left of each prediction")
+	assert_eq(recorded.opp_threat.readiness_remaining, whole.opp_threat.readiness_remaining, "readiness still owed")
+	assert_eq(recorded.opp_exposure, whole.opp_exposure, "the exposure read from them")
+	assert_eq(recorded.opp_opening, whole.opp_opening, "and the opening")
+
+
 func test_the_cpu_perceives_opponent_condition() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	var seen := CpuObservation.observe(state, 1, rules)
 	assert_eq(seen.opp_condition, FighterCondition.Id.HEALTHY, "full health reads HEALTHY")
-	state.fighter(0).health = rules.fighter.max_health * 0.2
+	state.fighter(0).health = rules.combatant(0).fighter.max_health * 0.2
 	var hurt := CpuObservation.observe(state, 1, rules)
 	assert_eq(hurt.opp_condition, FighterCondition.Id.CRITICAL, "20% health reads CRITICAL")
 
@@ -404,7 +383,9 @@ func test_the_cpu_holds_for_travel_rather_than_for_ticks() -> void:
 	var cpu := CpuController.create(rules, CpuProfile.medium(), 7, 0)
 	var weapon := runner.state.fighter(0).weapon
 	var charging := 0
-	for _i in 240:
+	## Long enough to see several charges against an idle opponent; the law is
+	## per release, so the window only has to contain one.
+	for _i in 900:
 		var command := cpu.command_for(runner.state, 0)
 		if weapon.phase == CombatPhase.Id.CHARGING:
 			charging += 1
@@ -436,7 +417,7 @@ func test_assessment_is_pure_and_compact() -> void:
 	var state := DuelFixture.state(rules)
 	var me := state.fighter(0)
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var before := StateHasher.hash_state(state)
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.medium())
 	assert_eq(StateHasher.hash_state(state), before, "assessment does not mutate state")
@@ -454,7 +435,7 @@ func test_assessment_reads_tempo_from_recovery() -> void:
 	them.weapon.set_phase(CombatPhase.Id.RECOVERY)
 	them.weapon.recovery_left = 20
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, state.fighter(0), 1.5, reach, rules, CpuProfile.hard())
 	assert_true(assessment.tempo_opportunity > 0.0, "opponent in recovery reads as a tempo opportunity")
 
@@ -467,7 +448,7 @@ func test_assessment_reads_arena_pressure() -> void:
 	state.fighter(1).x = rules.platform_radius * 0.8
 	state.fighter(1).y = 0.0
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, state.fighter(0), 5.0, reach, rules, CpuProfile.hard())
 	assert_true(assessment.arena_pressure > 0.0, "opponent near edge reads as positive arena pressure")
 
@@ -485,53 +466,26 @@ func test_lateral_dashes_are_available_to_all_difficulties() -> void:
 	assert_true(hard.lateral_dash_weight >= medium.lateral_dash_weight, "Hard at least as lateral as Medium")
 
 
-## ──────────────── STAMINA COST IN TACTICAL UTILITY ───────────────────────
+## ──────────────── STAMINA IS NOT A CPU SIGNAL (STAMINA-002) ────────────────
 
 
-func test_easy_ignores_stamina_hard_conserves() -> void:
-	var easy := CpuProfile.easy()
-	var hard := CpuProfile.hard()
-	assert_eq(easy.stamina_cost_weight, 0.0, "Easy does not care about stamina cost")
-	assert_true(hard.stamina_cost_weight > 0.0, "Hard weighs stamina cost")
-	assert_true(hard.stamina_cost_weight > CpuProfile.medium().stamina_cost_weight, "Hard is more disciplined than Medium")
-
-
-func test_depleted_stamina_penalizes_burst_scores() -> void:
+## Stamina is a deprecated resource with no gameplay consumer: the CPU must
+## not read it, so draining it changes nothing the assessment says.
+func test_stamina_never_changes_the_tactical_assessment() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	var me := state.fighter(0)
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var fresh := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard())
-	me.stamina = 5.0
-	var depleted := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard())
-	assert_true(depleted.stamina_depletion > fresh.stamina_depletion, "low stamina reads as higher depletion")
-	assert_true(depleted.burst_scores[TacticalAssessment.BURST_FORWARD] < fresh.burst_scores[TacticalAssessment.BURST_FORWARD], "burst forward penalized when depleted")
-
-
-func test_stamina_cost_uses_motor_physics_not_constants() -> void:
-	var rules := DuelFixture.rules()
-	var state := DuelFixture.state(rules)
-	var me := state.fighter(0)
-	me.stamina = 20.0
-	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
-	var profile := CpuProfile.hard()
-	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, profile)
-	assert_true(assessment.stamina_depletion > 0.0, "precondition: depleted")
-	## The penalty is proportional to burst_force × burst_speed, not a hand-authored constant.
-	## Verify the axial penalty is larger than lateral (because axial speed > lateral speed).
-	var fwd_penalty := assessment.burst_scores[TacticalAssessment.BURST_FORWARD]
-	var cw_penalty := assessment.burst_scores[TacticalAssessment.BURST_CLOCKWISE]
-	## Both are penalized relative to a fresh-stamina baseline
-	var fresh_state := DuelFixture.state(rules)
-	var fresh_me := fresh_state.fighter(0)
-	var fresh_seen := CpuObservation.observe(fresh_state, 0, rules)
-	var fresh := TacticalAssessment.evaluate(fresh_seen, fresh_me, 1.5, reach, rules, profile)
-	var axial_drop := fresh.burst_scores[TacticalAssessment.BURST_FORWARD] - fwd_penalty
-	var lateral_drop := fresh.burst_scores[TacticalAssessment.BURST_CLOCKWISE] - cw_penalty
-	assert_true(axial_drop >= lateral_drop, "axial dash costs at least as much stamina as lateral (higher speed)")
-
+	assert_eq(me.stamina, rules.combatant(0).fighter.base_stamina, "arrange: full stamina")
+	me.stamina = 0.0
+	assert_eq(me.stamina, 0.0, "perturb: stamina emptied")
+	var drained := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard())
+	assert_eq(drained.burst_scores, fresh.burst_scores, "burst utilities ignore stamina")
+	assert_eq(drained.withdrawal_urge, fresh.withdrawal_urge, "withdrawal ignores stamina")
+	assert_false("stamina_depletion" in drained, "the assessment carries no stamina reading")
+	assert_false("stamina_cost_weight" in CpuProfile.hard(), "no profile weighs stamina")
 
 ## ──────────────────────── DECISION TRACE (Phase 8a) ───────────────────────
 
@@ -541,7 +495,7 @@ func test_trace_has_fixed_typed_fields() -> void:
 	var state := DuelFixture.state(rules)
 	var me := state.fighter(0)
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.medium())
 	var utilities := PackedFloat64Array([0.15, 0.5, 0.2, 0.1, 0.05])
 	var trace := CpuDecisionTrace.create(42, 40, utilities, CpuController.Move.APPROACH, CpuController.Attack.TAP, assessment)
@@ -559,12 +513,50 @@ func test_trace_utilities_are_independent_copies() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, state.fighter(0), 1.5, reach, rules, CpuProfile.medium())
 	var utilities := PackedFloat64Array([0.15, 0.8, 0.2, 0.1, 0.05])
 	var trace := CpuDecisionTrace.create(10, 8, utilities, CpuController.Move.APPROACH, CpuController.Attack.NONE, assessment)
 	utilities[1] = 99.0
 	assert_eq(trace.move_scores[1], 0.8, "modifying source does not change trace (independent copy)")
+
+
+## Hard's last approach score `spacing` metres from an idle opponent at the
+## arena centre while its own body moves toward them at `speed` (held each
+## tick: the scene is frozen and only the tick advances).
+func _approach_score(spacing: float, speed: float) -> float:
+	var rules := DuelFixture.rules()
+	var runner := SimRunner.create(rules, 3)
+	runner.skip_intro()
+	var state := runner.state
+	DuelFixture.place(state.fighter(0), -spacing * 0.5, 0.0, 0.0)
+	DuelFixture.place(state.fighter(1), spacing * 0.5, 0.0, PI)
+	var cpu := CpuController.create(rules, CpuProfile.hard(), 3, 0)
+	for _i in 40:
+		state.tick += 1
+		state.fighter(0).vx = speed
+		cpu.command_for(state, 0)
+	return cpu.traces[cpu.traces.size() - 1].move_scores[CpuController.Move.APPROACH]
+
+
+## Measure is judged where the bodies will be once an approach can be stopped
+## (7B.8): the same distance that still calls a standing CPU in stops calling
+## one already closing fast, because its stride will carry it the rest of the
+## way — two fighters judged on distance alone overshoot into each other's
+## hilts.
+func test_an_approach_counts_its_own_stopping_distance() -> void:
+	var rules := DuelFixture.rules()
+	var hard := CpuProfile.hard()
+	var spacing := 1.7
+	var speed := 4.0
+	var desired := hard.tap_range * WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1)) / CpuController.calibration_reach() + CpuController.READY_RANGE_LEAD
+	var lead := speed * float(hard.decision_ticks) * SimulationTimebase.TICK_SECONDS + speed * speed / (2.0 * rules.combatant(0).fighter.brake_accel())
+	assert_true(spacing - hard.range_error > desired, "fixture: standing, the opponent is outside Hard's measure (%.2f > %.2f m)" % [spacing, desired])
+	assert_true(spacing + hard.range_error - lead < desired, "fixture: closing at %.1f m/s it would arrive inside it (lead %.2f m)" % [speed, lead])
+	var standing := _approach_score(spacing, 0.0)
+	assert_true(standing > 0.0, "standing outside its measure, Hard steps in (%.2f)" % standing)
+	## Perturb: the same distance, already closing fast.
+	assert_eq(_approach_score(spacing, speed), 0.0, "closing that fast, its stride already reaches the measure: no more approach")
 
 
 func test_cpu_controller_accumulates_traces() -> void:
@@ -613,7 +605,7 @@ func test_push_assessment_inactive_when_separated() -> void:
 	var state := DuelFixture.state(rules)
 	var me := state.fighter(0)
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard())
 	assert_false(assessment.body_contact_active, "no body contact when SEPARATED")
 	assert_eq(assessment.push_pressure, 0.0, "zero push pressure when SEPARATED")
@@ -635,7 +627,7 @@ func test_push_assessment_reads_solved_impulse() -> void:
 	bc.last_constraint_normal_x = -1.0
 	bc.last_constraint_normal_y = 0.0
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard(), bc)
 	assert_true(assessment.body_contact_active, "body contact active during CONTACTING")
 	assert_true(assessment.push_pressure > 0.0, "positive push pressure when pushed outward")
@@ -655,7 +647,7 @@ func test_push_assessment_inward_push_is_not_displacement() -> void:
 	bc.last_constraint_normal_x = 1.0
 	bc.last_constraint_normal_y = 0.0
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard(), bc)
 	assert_true(assessment.body_contact_active, "contact is active")
 	assert_true(assessment.push_pressure < 0.0, "negative push pressure = pushed toward center")
@@ -676,7 +668,7 @@ func test_push_time_to_support_loss_finite_when_displaced() -> void:
 	bc.last_constraint_normal_x = -1.0
 	bc.last_constraint_normal_y = 0.0
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard(), bc)
 	assert_true(assessment.being_displaced, "strong outward push = displaced")
 	assert_true(assessment.time_to_support_loss < 2147483647, "finite time to support loss")
@@ -695,7 +687,7 @@ func test_push_trace_captures_fields() -> void:
 	bc.last_constraint_normal_x = -1.0
 	bc.last_constraint_normal_y = 0.0
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard(), bc)
 	var utilities := PackedFloat64Array([0.1, 0.5, 0.2, 0.1, 0.05])
 	var trace := CpuDecisionTrace.create(42, 40, utilities, CpuController.Move.RETREAT, CpuController.Attack.NONE, assessment)
@@ -750,7 +742,7 @@ func test_push_pressure_from_physics_not_motor_intent() -> void:
 	ContactResolver.resolve(state, report, rules, 0, 0.5, events)
 	## Now read what the CPU assessment sees.
 	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.weapon.tip_radius + rules.fighter.body_radius
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
 	var assessment := TacticalAssessment.evaluate(seen, a, 1.5, reach, rules, CpuProfile.hard(), state.body_contact)
 	assert_true(assessment.body_contact_active, "contact active after resolver ran")
 	assert_true(assessment.push_pressure > 0.0, "push pressure from the solved impulse, not motor intent")

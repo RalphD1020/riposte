@@ -21,6 +21,9 @@ var impact_direction: Vector3 = Vector3.ZERO
 var impact_severity: float = 0.0
 ## Deterministic per-event key, so a replay dies the same way.
 var key: int = 0
+## The victim's death resolved from their kit (style, clip, timings). Filled by
+## the presenter, which owns the kits, before any backend runs; null until then.
+var spec: DeathStyleSpec
 
 
 static func create(p_slot: int, p_cause: DeathPresentationProfile.Family, p_direction: Vector3, p_severity: float, p_key: int, p_killer: int = -1) -> DeathPresentationRequest:

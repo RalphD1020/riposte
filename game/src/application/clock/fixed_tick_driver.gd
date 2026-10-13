@@ -24,10 +24,12 @@ var _accumulator: float = 0.0
 var _hold: float = 0.0
 var _slow_scale: float = 1.0
 var _slow_left: float = 0.0
+var _presentation_delta: float = 0.0
 
 
 func consume(delta_seconds: float) -> int:
 	if paused:
+		_presentation_delta = 0.0
 		return 0
 	var remaining := maxf(delta_seconds, 0.0)
 	if _hold > 0.0:
@@ -42,12 +44,21 @@ func consume(delta_seconds: float) -> int:
 		if _slow_left < SLOW_EPSILON:
 			_slow_left = 0.0
 		remaining = slowed * _slow_scale + (remaining - slowed)
+	_presentation_delta = remaining
 	_accumulator += remaining
 	var steps := 0
 	while _accumulator >= tick_seconds and steps < MAX_CATCH_UP_TICKS:
 		_accumulator -= tick_seconds
 		steps += 1
 	return steps
+
+
+## Presentation-scaled time for the last `consume` (PRES-TIME-001): the frame's
+## real seconds with hitstop counted as zero and slow motion at its scale —
+## exactly the time the duel itself was fed. Paused is zero. Terminal
+## choreography runs on this so it freezes and slows with what it shows.
+func presentation_delta() -> float:
+	return _presentation_delta
 
 
 ## Hitstop: the longest pending hold wins; holds never stack.

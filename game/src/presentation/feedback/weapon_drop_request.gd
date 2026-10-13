@@ -16,15 +16,15 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/presentation.md
 
-## The dead hand goes slack as the collapse begins (wall-clock seconds).
-const DEATH_DELAY := 0.12
-## Over the edge the hands let go between these, chosen from the event key.
-const RING_OUT_DELAY_MIN := 0.15
-const RING_OUT_DELAY_MAX := 0.35
+## Over the edge the hands let go between these (presentation-scaled seconds),
+## chosen from the event key. Not tied to an authored clip, so it lives here;
+## a death's release is its style's `DeathStyleTiming`.
+const RING_OUT_DELAY_MIN := 0.12
+const RING_OUT_DELAY_MAX := 0.18
 const RING_OUT_DELAY_STEPS := 5
 
 var slot: int = 0
-## Wall-clock seconds from the event until the hands let go.
+## Presentation-scaled seconds from the event until the hands let go.
 var delay: float = 0.0
 ## The blade's own velocity at its centre (world, m/s), from its spin.
 var linear_velocity: Vector3 = Vector3.ZERO

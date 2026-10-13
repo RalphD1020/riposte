@@ -21,7 +21,7 @@ CombatFeedbackDirector (pure computation, no SceneTree)
     ├── WeaponPresenter A/B
     ├── VfxPresenter
     ├── AudioPresenter
-    └── PresentationTimeController
+    └── clock requests → FixedTickDriver (hold / slow_motion → presentation_delta)
 ```
 
 **Critical rule:** Nothing below `CombatFeedbackDirector` may modify authoritative state. Presentation reads. It never writes back.
@@ -54,9 +54,18 @@ Consumes `CameraShakeRequest`, produces a camera offset. Owns:
 
 `CameraController` combines: base framing/interpolation + presentation shake offset.
 
-### PresentationTimeController
+### Clock requests (PRES-TIME-001)
 
-Consumes `HitstopRequest`, calls `FixedTickDriver.hold()`. This indirection exists because hitstop belongs to presentation orchestration, not impact classification. The director decides duration from `ImpactFeedback` + kit hitstop bands; the controller executes it. Wall-clock only (HITSTOP-001).
+`HitstopRequest` and `SlowMotionRequest` leave `MatchPresenter` as `hitstop_requested` / `slow_motion_requested`, and the clock owner (`MatchScreen`) connects them to `FixedTickDriver.hold()` / `slow_motion()`. There is no separate time-controller class: hitstop belongs to presentation orchestration, not impact classification, and the driver is the one place that knows how much time the duel was actually fed. It reports that as `presentation_delta()` — the frame's real seconds with hitstop counted as zero and slow motion at its scale — and `MatchPresenter.render(alpha, real_delta, scaled_delta)` hands each consumer its clock:
+
+| Clock                    | Drives                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| Simulation ticks         | every outcome                                                                                    |
+| Presentation-scaled time | fighter clips (`AnimationPlayer.speed_scale`), death collapse, finisher, fall, drop timers, grip |
+| Real time                | camera, VFX, trails, audio, UI, set intro and victory cinematics                                 |
+| Godot physics time       | dropped swords, a future ragdoll                                                                 |
+
+The director decides hitstop duration from `ImpactFeedback` + kit hitstop bands. Wall-clock only for ticks (HITSTOP-001).
 
 ## Camera shake
 
@@ -79,7 +88,7 @@ lethal contact → impact freeze (~40–80 ms) → 100-shake impulse
 → round result
 ```
 
-Slow motion is animation-side time scaling via `PresentationTimeController`, not `Engine.time_scale`. The authoritative simulation stays at 60 Hz.
+Slow motion is `FixedTickDriver.slow_motion()`, not `Engine.time_scale`: ticks are fed at the reduced rate, and the same scaled time (`presentation_delta`) drives the death clip, finisher, and sword release, so the collapse plays through the slow motion rather than ahead of it. The authoritative simulation stays at 60 Hz.
 
 ## Kit architecture (PRES-KIT-001)
 

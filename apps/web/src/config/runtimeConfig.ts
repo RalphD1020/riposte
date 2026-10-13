@@ -62,7 +62,7 @@ export interface RuntimeEnv {
 
 export const DEFAULT_LOCAL_PLAY_URL = "http://127.0.0.1:8060/";
 /**
- * Where the staged export lives on this origin. `/play` rewrites here on the
+ * Where the staged export lives on this origin. `/play` redirects here on the
  * server build; static exports navigate to it.
  */
 export const HOSTED_PLAY_PATH = "/game/index.html";

@@ -140,6 +140,22 @@ static func slider_row(host: Container, text: String, value: float, on_change: C
 	return slider
 
 
+## One action's bindings on one 48 px row: its name, then a button per slot.
+## `on_press` receives the slot. Each button's accessible name says the
+## action, the slot and what is bound, so a screen reader hears a full answer.
+static func binding_row(host: Container, text: String, bindings: PackedStringArray, on_press: Callable) -> Array[Button]:
+	var line := row(host)
+	var label := _label(line, text, &"FieldLabel")
+	label.custom_minimum_size = Vector2(RiposteTheme.FIELD_LABEL_WIDTH, RiposteTheme.TOUCH_TARGET)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var buttons: Array[Button] = []
+	for slot in bindings.size():
+		var control := button(line, bindings[slot], on_press.bind(slot))
+		control.accessibility_name = AppCopy.BINDING_SLOT % [text, slot + 1, bindings[slot]]
+		buttons.append(control)
+	return buttons
+
+
 ## A modal sheet: dimmed backdrop that swallows input, centered column.
 static func sheet(parent: Control) -> VBoxContainer:
 	var dim := ColorRect.new()

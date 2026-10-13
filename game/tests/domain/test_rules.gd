@@ -13,8 +13,8 @@ func test_standard_rules_are_valid() -> void:
 	var rules := StandardDuelRules.create()
 	assert_true(rules.is_valid(), "standard duel rules validate")
 	assert_eq(rules.id, ContentIds.RULES_STANDARD_DUEL, "rules id")
-	assert_eq(rules.weapon.id, ContentIds.WEAPON_BASTARD_SWORD, "weapon id")
-	assert_eq(rules.fighter.id, ContentIds.FIGHTER_DUELIST, "fighter id")
+	assert_eq(rules.combatant(0).weapon.id, ContentIds.WEAPON_BASTARD_SWORD, "weapon id")
+	assert_eq(rules.combatant(0).fighter.id, ContentIds.FIGHTER_DUELIST, "fighter id")
 	assert_eq(rules.rounds_to_win, 3, "best of five is first to three")
 
 
@@ -40,11 +40,11 @@ func test_arc_grows_ninety_degrees_with_charge() -> void:
 func test_inertia_is_mass_times_length_squared() -> void:
 	var weapon := WeaponCatalog.bastard_sword()
 	var expected := weapon.inertia_coefficient * weapon.mass * weapon.length() * weapon.length()
-	assert_near(weapon.moment_of_inertia(), expected, 1e-12, "inertia is k·m·L² about the pivot")
+	assert_near(weapon.moment_of_inertia(), expected, 1e-12, "inertia is k·m·L² about the origin")
 	assert_true(weapon.moment_of_inertia() > 0.0, "precondition: a real weapon resists being turned")
 	## Sanity against the hand calculation for a rod pivoting about its end:
 	## ⅓ × 1.6 × 1.22² ≈ 0.794 kg·m². This blade's mass starts at the hilt
-	## rather than the pivot, so it sits a little above that — but not
+	## rather than the origin, so it sits a little above that — but not
 	## anywhere near a different order of magnitude.
 	var rod_about_end := PhysicalBaseline.SWORD_MASS_KG * PhysicalBaseline.SWORD_LENGTH_M * PhysicalBaseline.SWORD_LENGTH_M / 3.0
 	assert_near(rod_about_end, 0.794, 1e-3, "precondition: the baseline hand calculation is ~0.794 kg·m²")
@@ -58,19 +58,161 @@ func test_mass_distribution_is_authored_not_assumed() -> void:
 	var tip_heavy := WeaponCatalog.bastard_sword()
 	tip_heavy.inertia_coefficient = rod.inertia_coefficient * 1.5
 	assert_true(tip_heavy.moment_of_inertia() > rod.moment_of_inertia(), "a tip-heavy blade has more inertia")
-	assert_true(tip_heavy.swing_accel(1.0, 1.0) < rod.swing_accel(1.0, 1.0), "so the same torque accelerates it less")
-	assert_true(tip_heavy.brake_accel(1.0, 1.0) < rod.brake_accel(1.0, 1.0), "and arrests it less")
+	var duelist := FighterCatalog.duelist()
+	var rod_inertia := WeaponKinematics.motor_inertia(CombatantPhysicsSpec.compile(duelist, rod, HandlingCatalog.of(duelist, rod)), 0.0)
+	var heavy_inertia := WeaponKinematics.motor_inertia(CombatantPhysicsSpec.compile(duelist, tip_heavy, HandlingCatalog.of(duelist, tip_heavy)), 0.0)
+	assert_true(tip_heavy.swing_accel(1.0, 1.0, heavy_inertia) < rod.swing_accel(1.0, 1.0, rod_inertia), "so the same torque accelerates it less")
+	assert_true(tip_heavy.brake_accel(1.0, 1.0, heavy_inertia) < rod.brake_accel(1.0, 1.0, rod_inertia), "and arrests it less")
+
+
+func test_mass_profile_derives_a_uniform_blade_exactly() -> void:
+	## ARRANGE: a uniform blade segment of a known mass and span.
+	var a := 0.25
+	var b := 1.22
+	var mass := 1.6
+	var profile := WeaponMassProfile.new().add_segment(a, b, mass)
+	## ACT + ASSERT: mass, balance point and inertia are the exact rod integrals.
+	assert_near(profile.total_mass(), mass, 1e-12, "a uniform segment carries all of its mass")
+	assert_near(profile.center_of_mass_radius(), (a + b) * 0.5, 1e-12, "its centre of mass is the midpoint")
+	assert_near(profile.moment_of_inertia_about_origin(), mass * (a * a + a * b + b * b) / 3.0, 1e-12, "its inertia about the origin is the rod integral")
+	assert_near(profile.inertia_coefficient(b), (a * a + a * b + b * b) / (3.0 * b * b), 1e-12, "and k = I / (m·L²)")
+
+
+func test_mass_profile_point_mass_sits_where_it_is_placed() -> void:
+	## ARRANGE + ACT: a single point mass at a radius.
+	var profile := WeaponMassProfile.new().add_point(0.9, 2.0)
+	## ASSERT: a point's centre of mass is itself and its inertia is m·r².
+	assert_near(profile.total_mass(), 2.0, 1e-12, "a point carries its mass")
+	assert_near(profile.center_of_mass_radius(), 0.9, 1e-12, "a point's centre of mass is where it sits")
+	assert_near(profile.moment_of_inertia_about_origin(), 2.0 * 0.9 * 0.9, 1e-12, "a point's inertia is m·r²")
+
+
+func test_mass_profile_distribution_changes_handling_by_itself() -> void:
+	## A pommel-weighted sword and a tip-weighted sword of the SAME total mass
+	## and length differ only in where the mass sits, and that alone must move
+	## the balance point and the inertia (EMERGENT-COMBAT-001) — no coefficient
+	## is authored.
+	var pommel_heavy := WeaponMassProfile.new().add_point(0.1, 1.0).add_segment(0.25, 1.22, 0.6)
+	var tip_heavy := WeaponMassProfile.new().add_segment(0.25, 1.22, 0.6).add_point(1.2, 1.0)
+	assert_near(pommel_heavy.total_mass(), tip_heavy.total_mass(), 1e-12, "precondition: same total mass")
+	assert_true(pommel_heavy.center_of_mass_radius() < tip_heavy.center_of_mass_radius(), "the pommel-weighted balance point sits nearer the hand")
+	assert_true(pommel_heavy.moment_of_inertia_about_origin() < tip_heavy.moment_of_inertia_about_origin(), "and it is easier to turn")
+
+
+func test_bastard_sword_physics_is_derived_from_its_mass_profile() -> void:
+	## ARRANGE: the shipped sword and its authored distribution.
+	var weapon := WeaponCatalog.bastard_sword()
+	var profile := WeaponCatalog.reference_mass_profile()
+	assert_true(weapon.mass_profile != null, "the shipped sword carries its mass distribution")
+	## ACT + ASSERT: mass, balance point and k are the distribution's, exactly —
+	## one source of physical truth, no hand-copied scalar beside it.
+	assert_near(weapon.mass, profile.total_mass(), 1e-15, "its mass is the distribution's")
+	assert_near(weapon.center_of_mass_radius, profile.center_of_mass_radius(), 1e-15, "its balance point is the distribution's")
+	assert_near(weapon.inertia_coefficient, profile.inertia_coefficient(weapon.tip_radius), 1e-15, "its k is the distribution's")
+	assert_near(weapon.moment_of_inertia(), profile.moment_of_inertia_about_origin(), 1e-12, "so I about the pommel is the distribution's second moment")
+	assert_true(weapon.is_valid(), "precondition: the derived weapon is valid")
+	## PERTURB: overwrite a derived scalar and the weapon must fail validation,
+	## so the distribution and the runtime numbers can never disagree.
+	weapon.inertia_coefficient *= 1.0 + 1.0e-6
+	assert_false(weapon.is_valid(), "a coefficient that no longer matches the distribution is invalid")
+
+
+func test_held_inertia_adds_the_hands_riding_the_grip() -> void:
+	## ARRANGE: the shipped pair, sampled across the hilt track.
+	var rules := StandardDuelRules.create()
+	var pose := BladePose.new()
+	assert_true(rules.combatant(0).fighter.hand_mass > 0.5 and rules.combatant(0).fighter.hand_mass < 1.5, "precondition: about a kilogram of hand and forearm per hand (%.2f kg)" % rules.combatant(0).fighter.hand_mass)
+	for degrees: float in [-135.0, -80.0, -45.0, 0.0, 45.0, 80.0, 135.0]:
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, deg_to_rad(degrees), rules.combatant(0), pose)
+		## ACT
+		var sword := WeaponKinematics.generalized_inertia(rules.combatant(0), pose)
+		var held := WeaponKinematics.held_inertia(rules.combatant(0), pose)
+		## ASSERT: the hands are point masses on the rigid sword at the grip
+		## markers, so they add exactly what a point mass there would.
+		var expected := sword
+		for r: float in [rules.combatant(0).weapon.offhand_grip_radius, rules.combatant(0).weapon.dominant_grip_radius]:
+			var vx := pose.dorigin_x - r * pose.uy
+			var vy := pose.dorigin_y + r * pose.ux
+			expected += rules.combatant(0).fighter.hand_mass * (vx * vx + vy * vy)
+		## (`SimMath`'s deterministic sine/cosine are unit-length to ~1e-10.)
+		assert_near(held, expected, 1e-9, "at %+.0f° the hands add m·|dP/dθ|² at each grip point" % degrees)
+		assert_true(held > sword, "and a held sword is harder to turn than a loose one")
+		assert_true(held < sword * 1.5, "but the sword still dominates (%.3f vs %.3f kg·m²)" % [held, sword])
+	## PERTURB: no hands, no extra inertia. More hand mass adds inertia and
+	## sheds less speed under the same impulse. The mirror of a pose is the
+	## same inertia. The authored kilogram is a content approximation, not a
+	## claimed measurement of a hand.
+	var light := WeaponKinematics.held_inertia(rules.combatant(0), pose)
+	var hand_mass := rules.combatant(0).fighter.hand_mass
+	rules.combatant(0).fighter.hand_mass = 0.0
+	assert_near(WeaponKinematics.held_inertia(rules.combatant(0), pose), WeaponKinematics.generalized_inertia(rules.combatant(0), pose), 1e-15, "a sword with no hands on it is just the sword")
+	rules.combatant(0).fighter.hand_mass = hand_mass * 2.0
+	var heavy := WeaponKinematics.held_inertia(rules.combatant(0), pose)
+	rules.combatant(0).fighter.hand_mass = hand_mass
+	assert_true(heavy > light and light > 0.0, "more reflected grip mass makes the held sword harder to turn")
+	var lever := 0.4
+	var impulse := 2.0
+	assert_true(absf(impulse * lever / heavy) < absf(impulse * lever / light), "the same impulse changes θ̇ less behind the heavier grip")
+	for degrees: float in [15.0, 45.0, 80.0, 135.0]:
+		var right := BladePose.new()
+		var left := BladePose.new()
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, deg_to_rad(degrees), rules.combatant(0), right)
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, deg_to_rad(-degrees), rules.combatant(0), left)
+		assert_near(
+			WeaponKinematics.held_inertia(rules.combatant(0), right),
+			WeaponKinematics.held_inertia(rules.combatant(0), left),
+			1e-12,
+			"held inertia mirrors at %.0f°" % degrees
+		)
 
 
 func test_motor_accelerations_derive_from_torque_over_inertia() -> void:
-	var weapon := WeaponCatalog.bastard_sword()
-	var inertia := weapon.moment_of_inertia()
-	assert_near(weapon.swing_accel(0.0, 1.0), weapon.swing_torque_tap / inertia, 1e-12, "tap swing is τ/I")
-	assert_near(weapon.swing_accel(1.0, 1.0), weapon.swing_torque_full / inertia, 1e-12, "full swing is τ/I")
-	assert_near(weapon.brake_accel(0.0, 1.0), weapon.brake_torque_tap / inertia, 1e-12, "tap brake is τ/I")
-	assert_near(weapon.windup_accel(1.0), weapon.windup_torque / inertia, 1e-12, "wind-back is τ/I")
-	assert_near(weapon.hold_accel(1.0), weapon.hold_torque / inertia, 1e-12, "settling is τ/I")
-	assert_true(weapon.brake_accel(0.0, 1.0) > weapon.brake_accel(1.0, 1.0), "a full swing is far more reluctant to be arrested than a tap")
+	var spec := LoadoutCatalog.compile(ContentIds.FIGHTER_DUELIST, ContentIds.WEAPON_BASTARD_SWORD)
+	var weapon := spec.weapon
+	var inertia := WeaponKinematics.motor_inertia(spec, 0.0)
+	assert_near(weapon.swing_accel(0.0, 1.0, inertia), weapon.swing_torque_tap / inertia, 1e-12, "tap swing is τ/M_θ")
+	assert_near(weapon.swing_accel(1.0, 1.0, inertia), weapon.swing_torque_full / inertia, 1e-12, "full swing is τ/M_θ")
+	assert_near(weapon.brake_accel(0.0, 1.0, inertia), weapon.brake_torque_tap / inertia, 1e-12, "tap brake is τ/M_θ")
+	assert_near(weapon.windup_accel(1.0, inertia), weapon.windup_torque / inertia, 1e-12, "wind-back is τ/M_θ")
+	assert_near(weapon.hold_accel(1.0, inertia), weapon.hold_torque / inertia, 1e-12, "settling is τ/M_θ")
+	assert_true(weapon.brake_accel(0.0, 1.0, inertia) > weapon.brake_accel(1.0, 1.0, inertia), "a full swing is far more reluctant to be arrested than a tap")
+
+
+## UNIFIED-MASS-001: the weapon coordinate has one inertia. Through the real
+## motor step, a swing launched from rest at θ gains exactly `τ·dt / M_θ(θ)` of
+## speed in one tick — `M_θ` the held sword's generalized inertia at that pose,
+## the very one every contact divides its impulse by — so the motor feels the
+## hilt track and the hands as a contact does, and the same torque turns the
+## sword at different rates where the track makes it heavier.
+func test_the_motor_and_every_contact_share_one_weapon_inertia() -> void:
+	var rules := StandardDuelRules.create()
+	var weapon := rules.combatant(0).weapon
+	var dt := SimulationTimebase.TICK_SECONDS
+	var inertias := PackedFloat64Array()
+	for degrees: float in [-135.0, -80.0, -45.0, 0.0, 45.0, 80.0, 135.0]:
+		var angle := deg_to_rad(degrees)
+		var fighter := FighterState.new()
+		fighter.health = rules.combatant(0).fighter.max_health
+		fighter.weapon.reset(angle)
+		var opponent := FighterState.new()
+		DuelFixture.place(opponent, 10.0, 0.0, PI)
+		var w := fighter.weapon
+		w.phase = CombatPhase.Id.LAUNCH
+		w.swing_dir = -1.0 if angle > 0.0 else 1.0
+		w.swing_charge = 0.0
+		w.launch_readiness = 1.0
+		w.swing_start = angle
+		w.swing_end = angle + w.swing_dir * weapon.arc(0.0)
+		w.speed = 0.0
+		var events: Array[DuelEvent] = []
+		WeaponSystem.step(fighter, rules, 0, events)
+		var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, rules.combatant(0), BladePose.new())
+		var contact_inertia := ContactMechanics.weapon_inertia(pose, rules.combatant(0))
+		var torque := rules.combatant(0).fighter.weapon_torque_scale * weapon.swing_torque_tap
+		assert_near(absf(w.speed) / dt * contact_inertia, torque, 1e-9, "at %.0f° the motor's τ divides by the contact's own M_θ" % degrees)
+		inertias.append(contact_inertia)
+	assert_near(inertias[0], inertias[6], 1e-12, "the inertia mirrors")
+	assert_true(absf(inertias[3] - inertias[6]) > 1e-3, "and is not one constant: the track makes the sword heavier in some poses (%.4f vs %.4f kg·m²)" % [inertias[3], inertias[6]])
 
 
 func test_tap_threshold_is_in_the_specified_window() -> void:
@@ -86,7 +228,7 @@ func test_sweet_spot_is_outer_middle() -> void:
 
 func test_broken_rules_fail_validation() -> void:
 	var rules := StandardDuelRules.create()
-	rules.weapon.tip_radius = rules.weapon.hilt_radius
+	rules.combatant(0).weapon.tip_radius = rules.combatant(0).weapon.hilt_radius
 	assert_false(rules.is_valid(), "zero-length blade is invalid")
 	var empty := DuelRules.new()
 	assert_false(empty.is_valid(), "neutral defaults are invalid until content fills them")
@@ -113,9 +255,9 @@ func test_fighter_has_base_stamina() -> void:
 
 func test_base_stamina_required_for_validation() -> void:
 	var rules := StandardDuelRules.create()
-	rules.fighter.base_stamina = 0.0
+	rules.combatant(0).fighter.base_stamina = 0.0
 	assert_false(rules.is_valid(), "a fighter with zero base_stamina is invalid")
-	rules.fighter.base_stamina = -10.0
+	rules.combatant(0).fighter.base_stamina = -10.0
 	assert_false(rules.is_valid(), "a fighter with negative base_stamina is invalid")
 
 
@@ -123,7 +265,7 @@ func test_stamina_initialized_at_round_start() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	for slot in 2:
-		assert_eq(state.fighter(slot).stamina, rules.fighter.base_stamina, "slot %d starts with full stamina" % slot)
+		assert_eq(state.fighter(slot).stamina, rules.combatant(0).fighter.base_stamina, "slot %d starts with full stamina" % slot)
 
 
 func test_stamina_enters_the_state_hash() -> void:
@@ -137,4 +279,61 @@ func test_stamina_enters_the_state_hash() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 20, "rules version tracks gameplay-affecting changes (20: grip belongs to the fighter)")
+	assert_eq(rules.version, 47, "rules version tracks gameplay-affecting changes (47: combat-frame movement — footwork is expressed in the CombatHeading, the bearing only turns the heading)")
+
+
+## IMPACT-PHYSICS-001 (rules 42): the injury calibration is a named physical
+## constant with units, not "whatever the reference strike delivers today".
+## Changing the sword's swing speed — or its hilt track — changes what a cut
+## delivers, never what the same energy does to a body, so the references do
+## not move with it; the reference strike measured on the current mechanics is
+## only their witness, and stays close.
+func test_the_injury_calibration_is_a_named_physical_constant() -> void:
+	var rules := StandardDuelRules.create()
+	assert_eq(rules.combat.reference_impulse, StandardDuelRules.REFERENCE_STAGGER_IMPULSE_NS, "the stagger impulse (N·s) is the pinned constant")
+	assert_eq(rules.combat.reference_severity, StandardDuelRules.REFERENCE_CUT_ENERGY_J, "and the cut's dissipated energy (J)")
+	assert_eq(rules.combat.reference_thrust_severity, StandardDuelRules.REFERENCE_THRUST_ENERGY_J, "and the thrust energy (J)")
+	## Perturb the mechanics: the rules-39 hilt track the calibration was
+	## measured on. The witness moves with it; the calibration does not.
+	var calibrated := StandardDuelRules.create()
+	var knots := PackedFloat64Array()
+	for degrees in HandlingCatalog.ATTACK_PATH_DEGREES:
+		knots.append(deg_to_rad(degrees))
+	calibrated.combatant(0).handling.attack_path = WeaponAttackPath.from_carriage_knots(knots, PackedFloat64Array([0.63, 0.615, 0.56, 0.45, 0.30]), PackedFloat64Array([0.0, 0.045, 0.13, 0.18, 0.20]))
+	assert_near(ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_CUT_ENERGY_J, 1e-9, "on the rules-39 track the reference strike delivers exactly the pinned energy")
+	assert_near(ContactMechanics.reference_impulse(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_STAGGER_IMPULSE_NS, 1e-9, "and the pinned stagger impulse")
+	var witness := ContactMechanics.reference_severity(rules.combatant(0), rules.combatant(0), rules.combat)
+	assert_ne(witness, StandardDuelRules.REFERENCE_CUT_ENERGY_J, "on today's track the strike delivers a little differently")
+	assert_eq(calibrated.combat.reference_severity, rules.combat.reference_severity, "yet the calibration is the same constant")
+	assert_between(rules.combat.reference_severity / witness, 0.9, 1.1, "the reference strike on today's mechanics is its witness (%.2f vs %.2f J)" % [rules.combat.reference_severity, witness])
+	assert_between(rules.combat.reference_impulse / ContactMechanics.reference_impulse(rules.combatant(0), rules.combatant(0), rules.combat), 0.9, 1.1, "and the stagger impulse's")
+	assert_near(rules.combat.reference_thrust_severity, ContactMechanics.reference_thrust_severity(rules.combatant(0), rules.combatant(0), rules.combat), 1e-6, "a point driven straight in does not see the track at all")
+
+
+func test_the_hurt_torso_never_exceeds_the_push_footprint() -> void:
+	var rules := StandardDuelRules.create()
+	assert_true(rules.is_valid(), "fixture: the shipped rules are valid")
+	assert_near(rules.combatant(0).fighter.hurt_radius, PhysicalBaseline.TORSO_HURT_RADIUS_M, 1e-12, "the shipped torso is the measured one")
+	rules.combatant(0).fighter.hurt_radius = rules.combatant(0).fighter.push_radius * 1.01
+	assert_false(rules.is_valid(), "a torso wider than the footprint is invalid")
+	rules.combatant(0).fighter.hurt_radius = 0.0
+	assert_false(rules.is_valid(), "and so is no torso at all")
+
+
+## A fallen body and the clash reference are rules content like any other:
+## one bad value refuses the whole duel rather than dividing by zero or
+## sliding a body with no friction.
+func test_fallen_body_and_clash_reference_fail_closed() -> void:
+	var broken := {
+		"fallen_settle_ticks_cut": -1,
+		"fallen_settle_ticks_point": -1,
+		"fallen_ground_friction": 0.0,
+		"reference_clash_energy": 0.0,
+	}
+	for field: String in broken:
+		var rules := StandardDuelRules.create()
+		assert_true(rules.is_valid() and DuelSimulation.create(rules) != null, "fixture: the shipped rules start a duel (%s)" % field)
+		rules.combat.set(field, broken[field])
+		assert_eq(rules.combat.get(field), broken[field], "perturbed: %s" % field)
+		assert_false(rules.is_valid(), "%s out of range is invalid" % field)
+		assert_true(DuelSimulation.create(rules) == null, "and no duel starts on it (%s)" % field)

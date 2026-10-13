@@ -99,6 +99,23 @@ func test_director_produces_empty_frame_with_no_events() -> void:
 	assert_false(frame.has_requests(), "no events = no requests")
 
 
+## The clang's timbre comes from where the swords met (7C): forte lower than
+## foible, a crossguard or handle a dull knock, and nothing about charge.
+func test_a_clash_rings_by_where_the_swords_met() -> void:
+	var blade := SwordContactSet.Feature.BLADE
+	var at := func(f0: float, f1: float, a: int, b: int, charge: float) -> float:
+		return CombatFeedbackDirector.clash_pitch(DuelEvent.create(DuelEventTypes.BLADE_CONTACT, 1, 0, 1, {
+			DuelEventKeys.FRACTION_0: f0, DuelEventKeys.FRACTION_1: f1,
+			DuelEventKeys.FEATURE_0: a, DuelEventKeys.FEATURE_1: b, DuelEventKeys.CHARGE: charge,
+		}))
+	var forte: float = at.call(0.1, 0.1, blade, blade, 0.0)
+	var foible: float = at.call(0.9, 0.9, blade, blade, 0.0)
+	assert_true(foible > forte, "steel struck toward the point rings higher than at the forte (%.3f vs %.3f)" % [foible, forte])
+	var hilt: float = at.call(0.0, 0.5, SwordContactSet.Feature.GUARD, blade, 0.0)
+	assert_true(hilt < forte, "a crossguard in the contact knocks lower still (%.3f)" % hilt)
+	assert_eq(at.call(0.9, 0.9, blade, blade, 1.0), foible, "and a full charge changes nothing about it")
+
+
 func test_director_classifies_blade_contact_into_typed_requests() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)
@@ -492,14 +509,15 @@ func test_the_fall_trajectory_preserves_exit_momentum_under_gravity() -> void:
 
 
 ## The sword leaves the hands only when the fighter is out of the round: a
-## killing blow slackens the dead hand at once, a ring-out lets go a beat after
-## the ledge, and a hit the fighter survives keeps the sword in hand.
+## killing blow's release is timed by its death style (queued with the death,
+## not by this pure mapping), a ring-out lets go a beat after the ledge, and a
+## hit the fighter survives keeps the sword in hand.
 func test_only_a_kill_or_a_ring_out_drops_the_sword() -> void:
-	assert_true(_body_hit_frame("thrust", false).weapon_drop_requests.is_empty(), "a survived stab keeps the sword in hand")
+	var survived := _body_hit_frame("thrust", false)
+	assert_true(survived.weapon_drop_requests.is_empty() and survived.death_requests.is_empty(), "a survived stab keeps the sword in hand")
 	var killed := _body_hit_frame("slash", true)
-	assert_eq(killed.weapon_drop_requests.size(), 1, "a killing blow drops one sword")
-	assert_eq(killed.weapon_drop_requests[0].slot, 1, "the dead fighter's, not the striker's")
-	assert_eq(killed.weapon_drop_requests[0].delay, WeaponDropRequest.DEATH_DELAY, "as the collapse begins")
+	assert_eq(killed.death_requests.size(), 1, "a killing blow requests the death that will release the sword")
+	assert_true(killed.weapon_drop_requests.is_empty(), "and leaves the release beat to the death style")
 	var events: Array[DuelEvent] = [DuelEvent.create(DuelEventTypes.RING_OUT, 30, 0, DuelEvent.NONE, {
 		DuelEventKeys.POSITION_X: 2.5, DuelEventKeys.POSITION_Y: 0.0,
 		DuelEventKeys.VELOCITY_X: 3.0, DuelEventKeys.VELOCITY_Y: 0.0, DuelEventKeys.TOI: 0.5,
@@ -509,6 +527,32 @@ func test_only_a_kill_or_a_ring_out_drops_the_sword() -> void:
 	var delay := fell.weapon_drop_requests[0].delay
 	assert_true(delay >= WeaponDropRequest.RING_OUT_DELAY_MIN and delay <= WeaponDropRequest.RING_OUT_DELAY_MAX, "a beat after the ledge (%.2f s)" % delay)
 	assert_eq(_frame(events).weapon_drop_requests[0].delay, delay, "the same beat in every replay")
+
+
+## Each death style owns when its hand lets go: an authored timing wins, a
+## style without one takes the profile default, and the style, clip, and
+## timing are resolved together so they cannot drift apart.
+func test_a_death_style_owns_its_weapon_release_time() -> void:
+	var profile := DeathPresentationProfile.new()
+	profile.stab_styles = [DeathPresentationProfile.STYLE_STAB_PITCH]
+	profile.slash_styles = [DeathPresentationProfile.STYLE_DEAD_DROP]
+	profile.style_clips = {DeathPresentationProfile.STYLE_STAB_PITCH: &"death_stab"}
+	profile.style_timings = {DeathPresentationProfile.STYLE_STAB_PITCH: DeathStyleTiming.of(0.45, 1.1)}
+	assert_eq(profile.default_weapon_release, DeathPresentationProfile.DEFAULT_WEAPON_RELEASE, "fixture: the default beat is the built-in one")
+	var stab := profile.resolve(DeathPresentationProfile.Family.STAB, 9)
+	assert_eq(stab.style, DeathPresentationProfile.STYLE_STAB_PITCH, "the stab resolves its authored style")
+	assert_eq(stab.clip, &"death_stab", "with its clip")
+	## A killing thrust is one timeline for both bodies (PRES-STAB-001): the
+	## victim lets go when its collapse takes it, never on a per-style or global
+	## beat that could drop the sword while it is still impaled.
+	var finisher := profile.stab_timeline()
+	assert_near(stab.weapon_release_time, finisher.victim_weapon_release, 1e-9, "a stab lets go on the shared stab timeline")
+	assert_near(stab.collapse_delay, finisher.victim_collapse_start, 1e-9, "after holding for the blade to clear")
+	assert_true(stab.finisher != null, "and carries that timeline for the striker")
+	assert_near(stab.ragdoll_handoff_time, 1.1, 1e-9, "carrying its ragdoll handoff for a future backend")
+	var slash := profile.resolve(DeathPresentationProfile.Family.SLASH, 9)
+	assert_near(slash.weapon_release_time, DeathPresentationProfile.DEFAULT_WEAPON_RELEASE, 1e-9, "an untimed style takes the default")
+	assert_true(slash.ragdoll_handoff_time < 0.0, "and never hands over")
 
 
 ## The released blade carries its own spin: a still blade drops dead, a turning
@@ -602,3 +646,23 @@ func test_a_cleaner_parry_reads_brighter_but_never_hits() -> void:
 	for frame: FeedbackFrame in [faint, sharp]:
 		assert_eq(frame.hitstop_requests.size(), 0, "a parry never freezes the clock")
 		assert_eq(frame.slow_motion_requests.size(), 0, "and never slows time")
+
+
+## Sustained combat reuses effect nodes (mobile budget): bursts after the first
+## take expired nodes back instead of allocating new ones, and the pool never
+## grows past the effect cap.
+func test_effects_are_pooled_not_reallocated() -> void:
+	var vfx := VfxDirector.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(vfx)
+	vfx.sparks(Vector3.ZERO, Vector3.FORWARD, Color.WHITE, 12, 3.0, 1.0)
+	var first_burst := vfx.pooled_node_count()
+	assert_eq(first_burst, 12, "fixture: one burst made its nodes")
+	for _round in 20:
+		vfx.advance(1.0)
+		assert_eq(vfx.effect_count(), 0, "fixture: the burst expired")
+		vfx.sparks(Vector3.ZERO, Vector3.FORWARD, Color.WHITE, 12, 3.0, 1.0)
+	assert_eq(vfx.pooled_node_count(), first_burst, "twenty more bursts reused the same nodes")
+	for _i in 10:
+		vfx.sparks(Vector3.ZERO, Vector3.FORWARD, Color.WHITE, 12, 3.0, 1.0)
+	assert_true(vfx.pooled_node_count() <= VfxDirector.MAX_EFFECTS, "and the pool is capped (%d)" % vfx.pooled_node_count())
+	vfx.queue_free()

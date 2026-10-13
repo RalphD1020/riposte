@@ -18,9 +18,18 @@ static func project(state: MatchState, rules: DuelRules) -> PresentationSnapshot
 	snapshot.round_winner = state.round_winner
 	snapshot.match_winner = state.match_winner
 	snapshot.end_reason = state.end_reason
+	if state.phase != MatchPhase.Id.ROUND_INTRO and state.phase != MatchPhase.Id.ROUND_ACTIVE:
+		snapshot.set_winner = MatchOutcome.set_winner(state.scores, state.round_number, rules)
 	snapshot.intro_ticks = rules.intro_ticks
 	snapshot.spawn_offset = rules.spawn_offset
 	snapshot.reference_impulse = rules.combat.reference_impulse
+	var contact := state.blade_contact
+	if contact.phase == SwordContactSet.Phase.CONTACTING and contact.is_touching():
+		snapshot.blade_contact_ticks = contact.phase_ticks
+		snapshot.blade_contact_x = contact.point_x[0]
+		snapshot.blade_contact_y = contact.point_y[0]
+		for point in contact.point_count:
+			snapshot.contacts.append(_contact(contact, point))
 	snapshot.time_left_ticks = maxi(rules.round_time_limit_ticks - state.round_ticks, 0)
 	var a := state.fighter(0)
 	var b := state.fighter(1)
@@ -32,26 +41,64 @@ static func project(state: MatchState, rules: DuelRules) -> PresentationSnapshot
 	return snapshot
 
 
+## A read-only copy of manifold point `point` (CONTACT-PRESENTATION-001). Its
+## slip is the held record's reading at the same contact (the record is stored
+## in row order, so it is found by the same features and the nearest place).
+static func _contact(contact: SwordContactSet, point: int) -> PresentationContact:
+	var row := PresentationContact.new()
+	row.x = contact.point_x[point]
+	row.y = contact.point_y[point]
+	row.feature_a = contact.feature_a[point]
+	row.feature_b = contact.feature_b[point]
+	row.fraction_a = contact.fraction_a[point]
+	row.fraction_b = contact.fraction_b[point]
+	row.local_a = contact.local_a[point]
+	row.local_b = contact.local_b[point]
+	row.normal_x = contact.point_nx[point]
+	row.normal_y = contact.point_ny[point]
+	row.normal_impulse = contact.normal_impulse[point]
+	row.tangent_impulse = contact.tangent_impulse[point]
+	row.age = contact.age[point]
+	row.contact_id = contact.contact_id[point]
+	var nearest := INF
+	for held in contact.hold_count():
+		if contact.hold_feature_a[held] != row.feature_a or contact.hold_feature_b[held] != row.feature_b:
+			continue
+		var moved := absf(contact.hold_local_a[held] - row.local_a) + absf(contact.hold_local_b[held] - row.local_b)
+		if moved < nearest:
+			nearest = moved
+			row.slip = contact.hold_slip[held]
+	return row
+
+
 static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelRules) -> PresentationFighter:
 	var row := PresentationFighter.new()
 	var weapon := fighter.weapon
+	var spec := rules.spec_of(fighter)
+	var body := spec.fighter
 	row.slot = fighter.slot
 	row.side = fighter.side
 	row.x = fighter.x
 	row.y = fighter.y
 	row.facing = fighter.facing
+	row.target_bearing = DuelGeometry.bearing(fighter, opponent)
+	row.turn_authority = CommitmentModel.turn_torque_share(fighter, spec, ConditionModel.of(fighter, rules), rules.combat)
 	row.blade_angle = DuelGeometry.blade_angle(fighter)
 	row.weapon_angle = weapon.angle
+	row.swing_end = weapon.swing_end
 	row.vx = fighter.vx
 	row.vy = fighter.vy
 	row.blade_speed = absf(fighter.turn_rate + weapon.speed)
-	row.tip_speed = SwingSemantics.tip_speed(fighter, rules.weapon)
+	row.tip_speed = SwingSemantics.tip_speed(fighter, spec)
 	row.swing_dir = signf(fighter.turn_rate + weapon.speed) if absf(fighter.turn_rate + weapon.speed) > 0.0 else weapon.swing_dir
+	row.cut_dir = weapon.swing_dir
+	row.weapon_speed = weapon.speed
 	row.charge = weapon.charge
+	row.swing_charge = weapon.swing_charge
 	row.launch_readiness = weapon.launch_readiness
 	row.swing_progress = SwingSemantics.phase_progress(weapon)
 	row.swing_potential = SwingSemantics.potential(
-		row.tip_speed, weapon.launch_readiness, fighter.stability, weapon.phase, rules.weapon
+		row.tip_speed, weapon.launch_readiness, fighter.stability, weapon.phase, spec.weapon
 	)
 	row.phase = weapon.phase
 	row.commitment = weapon.commitment
@@ -59,67 +106,79 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	## Each fighter's *own* exposure, projected for them rather than against
 	## their opponent's swing: vulnerability is a physical state a player can
 	## read off a body, not a prediction about an attack that has not happened.
-	row.exposure = SwingSemantics.exposure_fraction(DamageModel.exposure(fighter, opponent, rules), rules.combat)
+	row.exposure = ExposureModel.reading(fighter, opponent, rules)
 	row.facing_error = DuelGeometry.facing_error(fighter, opponent)
 	row.stable_side = weapon.stable_side
-	row.guard_region = GuardRegion.of(weapon.angle, rules.weapon.guard_angle)
+	row.guard_region = GuardRegion.of(weapon.angle, spec.weapon.guard_angle)
 	row.burst = fighter.gesture.burst_kind
 	row.health = fighter.health
-	row.max_health = rules.fighter.max_health
-	row.stamina = fighter.stamina
-	row.stamina_max = StaminaModel.max_for_health(fighter.health, rules.fighter.max_health, rules.fighter.base_stamina, rules.combat)
-	row.capability = CapabilityModel.resolve_weapon(fighter.health, rules.fighter.max_health, fighter.stamina, row.stamina_max, rules.combat)
-	row.condition = FighterCondition.classify(fighter.health, rules.fighter.max_health)
-	row.body_radius = rules.fighter.body_radius
+	row.max_health = body.max_health
+	var condition := ConditionModel.of(fighter, rules)
+	row.force_scale = condition.force_scale
+	row.speed_scale = condition.speed_scale
+	row.tracking_scale = condition.tracking_scale
+	row.condition = FighterCondition.classify(fighter.health, body.max_health)
+	row.push_radius = body.push_radius
 	row.is_falling = fighter.is_falling
-	row.hilt_radius = rules.weapon.hilt_radius
-	row.tip_radius = rules.weapon.tip_radius
+	row.terminal_cause = fighter.terminal_kind()
+	row.body_lying = fighter.fallen.is_lying()
+	row.body_yaw = fighter.fallen.yaw
+	row.body_spin = fighter.fallen.spin
+	row.body_over_edge = fighter.fallen.over_edge
+	row.hilt_radius = spec.weapon.hilt_radius
+	row.tip_radius = spec.weapon.tip_radius
+	row.weapon_definition = spec.weapon
+	row.combatant_spec = spec
+	var tip := WeaponKinematics.pose_of(fighter, spec, BladePose.new())
+	WeaponKinematics.velocity_into(fighter, tip, tip.point_x(spec.weapon.tip_radius), tip.point_y(spec.weapon.tip_radius))
+	row.tip_vx = tip.vx
+	row.tip_vy = tip.vy
+	row.weapon_mass = spec.weapon.mass
 	row.threat_time = InitiativeModel.time_to_threat(fighter, opponent, rules)
 	## Combat readability state (Phase 9): normalized 0-1 derived quantities.
 	row.recovery_remaining01 = _recovery_remaining(weapon)
-	row.stamina01 = fighter.stamina / StaminaModel.max_for_health(fighter.health, rules.fighter.max_health, rules.fighter.base_stamina, rules.combat) if row.stamina_max > 0.0 else 0.0
 	row.point_threat01 = _point_threat(fighter, opponent, rules)
-	row.movement_speed01 = SimMath.clamp01(SimMath.length(fighter.vx, fighter.vy) / rules.fighter.max_speed) if rules.fighter.max_speed > 0.0 else 0.0
+	row.movement_speed01 = SimMath.clamp01(SimMath.length(fighter.vx, fighter.vy) / body.max_speed) if body.max_speed > 0.0 else 0.0
 	row.burst01 = 1.0 if fighter.gesture.burst_kind != MovementGestureState.BurstKind.NONE else 0.0
 	return row
 
 
 ## Recovery remaining as a fraction: 1.0 = just entered recovery, 0.0 = done.
-## Uses weapon.recovery_ticks (the assigned total) as the denominator, so the
-## reading is a true normalized fraction. OVERSWING = 1.0 (maximum remaining;
-## hasn't started recovery yet).
+## OVERSWING = 1.0 (maximum remaining; hasn't started recovery yet).
 static func _recovery_remaining(weapon: WeaponState) -> float:
 	if weapon.phase == CombatPhase.Id.OVERSWING:
 		return 1.0
-	if weapon.phase == CombatPhase.Id.RECOVERY and weapon.recovery_ticks > 0:
+	if weapon.phase != CombatPhase.Id.RECOVERY:
+		return 0.0
+	## Recovery ends on a physical gate, not a timer (RECOVERY-001), so the
+	## reading is the domain's own decay of the commitment the blade carried
+	## in — the floor or the blade's remaining speed, whichever is more.
+	if weapon.recovery_commitment > 0.0:
+		return SimMath.clamp01(weapon.commitment / weapon.recovery_commitment)
+	if weapon.recovery_ticks > 0:
 		return SimMath.clamp01(float(weapon.recovery_left) / float(weapon.recovery_ticks))
 	return 0.0
 
 
 ## Physics-derived point threat using the same tip-velocity kinematics as
-## ImpactModel (PHYS-007): v_tip = v_fighter + omega_total × r_tip, then
-## project onto the blade axis (thrust_alignment) and toward the opponent
-## (incidence). This replaces the earlier heuristic that used body closing
-## speed + blade alignment, which did not capture rotational tip motion.
+## ImpactModel (PHYS-007, `WeaponKinematics`), then projected onto the blade
+## axis (thrust_alignment) and toward the opponent (incidence). This replaces
+## the earlier heuristic that used body closing speed + blade alignment, which
+## did not capture rotational tip motion.
 static func _point_threat(fighter: FighterState, opponent: FighterState, rules: DuelRules) -> float:
 	var dx := opponent.x - fighter.x
 	var dy := opponent.y - fighter.y
 	var dist := SimMath.length(dx, dy)
 	if dist < SimMath.EPSILON:
 		return 0.0
-	## Tip position relative to fighter pivot.
-	var blade_global := SimMath.wrap_angle(fighter.facing + fighter.weapon.angle)
-	var blade_ax := cos(blade_global)
-	var blade_ay := sin(blade_global)
-	var tip_rx := blade_ax * rules.weapon.tip_radius
-	var tip_ry := blade_ay * rules.weapon.tip_radius
-	## Tip velocity: v_fighter + omega_total × r_tip (same as ImpactModel).
-	var omega := fighter.turn_rate + fighter.weapon.speed
-	var tip_vx := fighter.vx - omega * tip_ry
-	var tip_vy := fighter.vy + omega * tip_rx
+	var spec := rules.spec_of(fighter)
+	var pose := WeaponKinematics.pose_of(fighter, spec, BladePose.new())
+	var blade_ax := pose.ux
+	var blade_ay := pose.uy
+	WeaponKinematics.velocity_into(fighter, pose, pose.point_x(spec.weapon.tip_radius), pose.point_y(spec.weapon.tip_radius))
 	## Relative tip velocity vs opponent body.
-	var rel_vx := tip_vx - opponent.vx
-	var rel_vy := tip_vy - opponent.vy
+	var rel_vx := pose.vx - opponent.vx
+	var rel_vy := pose.vy - opponent.vy
 	var rel_speed := SimMath.length(rel_vx, rel_vy)
 	if rel_speed < SimMath.EPSILON:
 		return 0.0
@@ -133,7 +192,7 @@ static func _point_threat(fighter: FighterState, opponent: FighterState, rules: 
 	var incidence := maxf(0.0, blade_ax * toward_x + blade_ay * toward_y)
 	## Axial closing speed toward opponent, normalized against reference.
 	var axial_closing := maxf(0.0, rel_vx * toward_x + rel_vy * toward_y)
-	var reference_speed := rules.fighter.max_speed if rules.fighter.max_speed > 0.0 else 1.0
+	var reference_speed := spec.fighter.max_speed if spec.fighter.max_speed > 0.0 else 1.0
 	var speed_fraction := SimMath.clamp01(axial_closing / reference_speed)
 	## Composite: zero unless blade is aimed at opponent AND tip is moving
 	## axially AND actually closing. Matches combat classification conditions.

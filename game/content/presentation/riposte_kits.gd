@@ -93,6 +93,8 @@ static func _filled(kit: PresentationKit, fallback: PresentationKit) -> Presenta
 			filled.audio_cues[cue] = fallback.audio_cues[cue]
 	if filled.intro == null:
 		filled.intro = fallback.intro
+	if filled.victory == null:
+		filled.victory = fallback.victory
 	return filled
 
 
@@ -118,6 +120,7 @@ static func factory_kits() -> Array[PresentationKit]:
 	fighter.primitive = PresentationKit.PRIMITIVE_FIGHTER
 	fighter.body_height = 1.4
 	fighter.intro = duelist_intro()
+	fighter.victory = duelist_victory()
 	var sword := PresentationKit.new()
 	sword.id = ContentIds.WEAPON_BASTARD_SWORD
 	sword.primitive = PresentationKit.PRIMITIVE_BLADE
@@ -155,8 +158,15 @@ static func duelist_intro() -> FighterIntroProfile:
 	intro.display_name = "WOLF"
 	intro.spoken_name = "Wolf."
 	intro.spoken_override_first_slot = "Wold."
-	intro.intro_clip = &"flourish"
 	return intro
+
+
+## Wolf winning a set. The announcer finally gets his name right.
+static func duelist_victory() -> FighterVictoryProfile:
+	var victory := FighterVictoryProfile.new()
+	victory.display_name = "WOLF"
+	victory.announcer_caption = "Wolf wins."
+	return victory
 
 
 static func camera_profile() -> CameraProfile:

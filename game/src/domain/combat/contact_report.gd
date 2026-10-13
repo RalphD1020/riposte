@@ -26,10 +26,11 @@ var body_push: bool = false
 var body_push_persistent: bool = false
 var body_push_nx: float = 0.0
 var body_push_ny: float = 0.0
-## Sword-body nonpenetration: attacker[i]'s blade is in CONSTRAINING phase
-## inside the defender's body. The resolver enforces a zero-restitution
-## velocity constraint to prevent the blade from advancing through.
-var sword_body_constraining: Array[bool] = [false, false]
+## A pair already in contact (the blades past their first clash, a sword
+## inside a body's entry lifecycle) came back into touch in this substep. It
+## is not a new contact — no impulse, no damage — but the persistent normal
+## constraint must hold it here (RIGID-CONTACT-001).
+var persistent: bool = false
 
 
 func clear() -> void:
@@ -39,9 +40,8 @@ func clear() -> void:
 	body[1] = false
 	body_push = false
 	body_push_persistent = false
-	sword_body_constraining[0] = false
-	sword_body_constraining[1] = false
+	persistent = false
 
 
 func any() -> bool:
-	return blade or body[0] or body[1] or body_push or sword_body_constraining[0] or sword_body_constraining[1]
+	return blade or body[0] or body[1] or body_push or persistent

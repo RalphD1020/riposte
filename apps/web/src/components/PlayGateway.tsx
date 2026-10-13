@@ -4,10 +4,10 @@
  * `/play`. One mechanism in both build modes: the surface is resolved at
  * build time and this navigates to it.
  *
- * In the server build a staged export is already a rewrite, so this page is
+ * In the server build a staged export is already a redirect, so this page is
  * never reached for the `hosted` surface — it is the fallback that explains
  * where the game is when this deployment does not carry one. In the static
- * export there are no rewrites, so the same component performs the hop.
+ * export there are no redirects, so the same component performs the hop.
  *
  * There used to be a proxy doing this server-side and this doing it again in
  * the browser, from the visitor's hostname. Two implementations of one

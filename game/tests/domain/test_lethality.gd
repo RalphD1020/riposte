@@ -11,17 +11,19 @@ extends TestCase
 ## Implements: /spec/invariants.md#combat-010, #combat-011
 ## See also: /docs/concepts/combat.md
 
+## The lethality law, on the fixed pivot: these fixtures place the contact by
+## hand at `centre + tip_radius`, which is exactly the tip only there.
 var _rules: DuelRules
 
 
 func _init() -> void:
 	suite_name = "LETHAL"
-	_rules = DuelFixture.rules()
+	_rules = DuelFixture.revolute_rules()
 
 
 ## Helper: evaluate a point-strike at the blade tip with the given setup.
 func _evaluate_tip(a: FighterState, b: FighterState) -> StrikeResult:
-	var tip_x := a.x + _rules.weapon.tip_radius
+	var tip_x := a.x + _rules.combatant(0).weapon.tip_radius
 	return DamageModel.evaluate(a, b, tip_x, 0.0, _rules)
 
 
@@ -31,7 +33,7 @@ func _pair(a_speed: float) -> Array:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
-	DuelFixture.place(b, _rules.weapon.tip_radius + _rules.fighter.body_radius, 0.0, PI)
+	DuelFixture.place(b, _rules.combatant(0).weapon.tip_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.swing_dir = 1.0
 	a.weapon.angle = 0.0
@@ -60,7 +62,7 @@ func test_walking_speed_poke_is_survivable() -> void:
 	assert_eq(strike.contact_kind, StrikeResult.ContactKind.POKE, "classified as POKE")
 	assert_false(strike.lethal, "walking-speed poke is below the lethal threshold")
 	assert_true(strike.damage > 0.0, "but it still does damage")
-	assert_true(strike.damage < _rules.fighter.max_health, "and is survivable")
+	assert_true(strike.damage < _rules.combatant(0).fighter.max_health, "and is survivable")
 
 
 func test_thrusts_statistically_more_lethal_than_pokes() -> void:
@@ -95,7 +97,7 @@ func test_poke_can_be_lethal_at_high_speed() -> void:
 	var strike := _evaluate_tip(a, b)
 	assert_eq(strike.contact_kind, StrikeResult.ContactKind.POKE, "this is classified as a POKE")
 	assert_true(strike.lethal, "high-speed poke exceeds the lethal severity threshold")
-	assert_eq(strike.damage, _rules.fighter.max_health, "lethal poke deals max health damage")
+	assert_eq(strike.damage, _rules.combatant(0).fighter.max_health, "lethal poke deals max health damage")
 
 
 func test_opponent_dashing_onto_point_is_lethal() -> void:
@@ -118,18 +120,18 @@ func test_poor_burst_alignment_downgrades_to_poke() -> void:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, deg_to_rad(45.0))
-	DuelFixture.place(b, _rules.weapon.tip_radius + _rules.fighter.body_radius, 0.0, PI)
+	DuelFixture.place(b, _rules.combatant(0).weapon.tip_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.angle = 0.0
 	a.weapon.speed = 0.0
 	a.weapon.swing_dir = 1.0
 	a.vx = 3.0
 	_make_thrust(a)
-	var tip_x := a.x + _rules.weapon.tip_radius
+	var tip_x := a.x + _rules.combatant(0).weapon.tip_radius
 	var strike := DamageModel.evaluate(a, b, tip_x, 0.0, _rules)
 	assert_eq(strike.contact_kind, StrikeResult.ContactKind.POKE, "poor burst alignment → POKE, not THRUST")
 	assert_false(strike.lethal, "a poke at low speed is not lethal")
-	assert_true(strike.damage < _rules.fighter.max_health, "poor alignment → survivable")
+	assert_true(strike.damage < _rules.combatant(0).fighter.max_health, "poor alignment → survivable")
 
 
 func test_thrust_is_always_lethal() -> void:
@@ -143,7 +145,7 @@ func test_thrust_is_always_lethal() -> void:
 	_make_thrust(a)
 	var strike := _evaluate_tip(a, b)
 	assert_true(strike.lethal, "a thrust is always lethal")
-	assert_eq(strike.damage, _rules.fighter.max_health, "damage equals max health")
+	assert_eq(strike.damage, _rules.combatant(0).fighter.max_health, "damage equals max health")
 
 
 func test_thrust_lethal_at_any_speed() -> void:
@@ -153,9 +155,9 @@ func test_thrust_lethal_at_any_speed() -> void:
 	var a: FighterState = data[1]
 	var b: FighterState = data[2]
 	_make_thrust(a)
-	var strike := DamageModel.evaluate(a, b, a.x + _rules.weapon.tip_radius, 0.0, _rules)
+	var strike := DamageModel.evaluate(a, b, a.x + _rules.combatant(0).weapon.tip_radius, 0.0, _rules)
 	assert_true(strike.lethal, "even a slow thrust is lethal")
-	assert_eq(strike.damage, _rules.fighter.max_health, "slow thrust still deals max health")
+	assert_eq(strike.damage, _rules.combatant(0).fighter.max_health, "slow thrust still deals max health")
 
 
 func test_poke_severity_curve_is_continuous() -> void:

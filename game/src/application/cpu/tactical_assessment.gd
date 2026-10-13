@@ -31,9 +31,6 @@ var arena_pressure: float = 0.0
 var opponent_commitment: float = 0.0
 ## Urgency to withdraw after own committed attack, [0, 1].
 var withdrawal_urge: float = 0.0
-## Own stamina depletion [0, 1]. 0 = full, 1 = empty. Scaled by profile's
-## stamina_cost_weight to penalize costly actions when exhausted.
-var stamina_depletion: float = 0.0
 ## Utility scores for all 4 burst directions.
 var burst_scores: PackedFloat64Array = PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
 ## Own distance to the platform edge (m). Higher = safer.
@@ -69,26 +66,25 @@ static func evaluate(
 	body_contact: BodyContactState = null,
 ) -> TacticalAssessment:
 	var assessment := TacticalAssessment.new()
-	var desired := profile.tap_range if WeaponSystem.can_start_attack(me, rules.weapon) else profile.engage_range
+	var desired := profile.tap_range if WeaponSystem.can_start_attack(me, rules.spec_of(me).weapon) else profile.engage_range
 	assessment.measure_quality = SimMath.clamp01(1.0 - absf(perceived_distance - desired) / CpuController.APPROACH_RAMP)
 	assessment.initiative = seen.opp_threat_time - seen.my_threat_time
 	assessment.opponent_commitment = seen.opp_commitment
-	_assess_tempo(assessment, seen, perceived_distance, reach, rules)
+	_assess_tempo(assessment, seen, perceived_distance, reach, rules.spec_of(me).fighter)
 	_assess_indes(assessment, seen)
 	_assess_line(assessment, seen, me)
 	_assess_arena(assessment, seen, me, rules)
 	_assess_withdrawal(assessment, me)
-	_assess_stamina(assessment, me, rules)
 	_assess_push(assessment, me, rules, body_contact)
 	_evaluate_bursts(assessment, seen, me, perceived_distance, reach, desired, rules, profile)
 	return assessment
 
 
-static func _assess_tempo(assessment: TacticalAssessment, seen: CpuObservation, perceived_distance: float, reach: float, rules: DuelRules) -> void:
+static func _assess_tempo(assessment: TacticalAssessment, seen: CpuObservation, perceived_distance: float, reach: float, body: FighterDefinition) -> void:
 	if seen.opp_phase != CombatPhase.Id.RECOVERY and seen.opp_phase != CombatPhase.Id.OVERSWING:
 		return
 	var gap := maxf(0.0, perceived_distance - reach)
-	var close_time := gap / maxf(rules.fighter.max_speed, SimMath.EPSILON)
+	var close_time := gap / maxf(body.max_speed, SimMath.EPSILON)
 	var window := maxf(seen.opp_threat_time, SimMath.EPSILON)
 	assessment.tempo_opportunity = SimMath.clamp01(1.0 - close_time / window)
 
@@ -126,7 +122,7 @@ static func _assess_arena(assessment: TacticalAssessment, seen: CpuObservation, 
 	assessment.edge_position_advantage = opp_pressure - my_pressure
 	if my_dist > SimMath.EPSILON:
 		assessment.outward_radial_speed = (me.x * me.vx + me.y * me.vy) / my_dist
-	var brake_accel := rules.fighter.brake_accel()
+	var brake_accel := rules.spec_of(me).fighter.brake_accel()
 	if assessment.outward_radial_speed > 0.0 and brake_accel > SimMath.EPSILON:
 		assessment.stopping_margin = assessment.outward_radial_speed * assessment.outward_radial_speed / (2.0 * brake_accel)
 
@@ -139,14 +135,6 @@ static func _assess_withdrawal(assessment: TacticalAssessment, me: FighterState)
 	)
 	if own_committed:
 		assessment.withdrawal_urge = SimMath.clamp01(me.weapon.commitment + (1.0 - me.stability))
-
-
-static func _assess_stamina(assessment: TacticalAssessment, me: FighterState, rules: DuelRules) -> void:
-	var max_stamina := StaminaModel.max_for_health(me.health, rules.fighter.max_health, rules.fighter.base_stamina, rules.combat)
-	if max_stamina <= SimMath.EPSILON:
-		assessment.stamina_depletion = 1.0
-		return
-	assessment.stamina_depletion = SimMath.clamp01(1.0 - me.stamina / max_stamina)
 
 
 ## Push-pressure awareness (CPU-007). Reads the solved constraint impulse from
@@ -174,11 +162,11 @@ static func _assess_push(assessment: TacticalAssessment, me: FighterState, rules
 	var push_radial := (push_dir_x * radial_x + push_dir_y * radial_y) * force
 	assessment.push_pressure = push_radial
 	## Being displaced: pushed outward with significant force.
-	var displacement_threshold := rules.fighter.mass * 2.0
+	var displacement_threshold := rules.spec_of(me).fighter.mass * 2.0
 	if push_radial > displacement_threshold:
 		assessment.being_displaced = true
 		## Time to support loss: edge_clearance / displacement_rate.
-		var displacement_rate := push_radial / rules.fighter.mass * dt
+		var displacement_rate := push_radial / rules.spec_of(me).fighter.mass * dt
 		if displacement_rate > SimMath.EPSILON:
 			var ticks := int(assessment.edge_clearance / displacement_rate)
 			assessment.time_to_support_loss = clampi(ticks, 0, 2147483647)
@@ -198,8 +186,8 @@ static func _evaluate_bursts(
 	profile: CpuProfile,
 ) -> void:
 	var approach_ramp := CpuController.APPROACH_RAMP
-	var burst_estimate := rules.fighter.burst_speed_axial * float(rules.fighter.burst_ticks) * SimulationTimebase.TICK_SECONDS
-	var lateral_estimate := rules.fighter.burst_speed_lateral * float(rules.fighter.burst_ticks) * SimulationTimebase.TICK_SECONDS
+	var burst_estimate := rules.spec_of(me).fighter.burst_speed_axial * float(rules.spec_of(me).fighter.burst_ticks) * SimulationTimebase.TICK_SECONDS
+	var lateral_estimate := rules.spec_of(me).fighter.burst_speed_lateral * float(rules.spec_of(me).fighter.burst_ticks) * SimulationTimebase.TICK_SECONDS
 	## Forward: closes distance. Good when approaching from outside.
 	var fwd_dist := maxf(0.0, perceived_distance - burst_estimate)
 	var fwd_measure := SimMath.clamp01(1.0 - absf(fwd_dist - desired) / approach_ramp)
@@ -217,19 +205,6 @@ static func _evaluate_bursts(
 	var ccw_edge := _edge_risk_lateral(me, -lateral_estimate, rules)
 	assessment.burst_scores[BURST_CLOCKWISE] = angle_gain * 0.8 - cw_edge
 	assessment.burst_scores[BURST_COUNTERCLOCKWISE] = angle_gain * 0.8 - ccw_edge
-	## Stamina cost penalty: motor-derived, same law for all directions (STAMINA-001).
-	if profile.stamina_cost_weight > 0.0:
-		var dt := SimulationTimebase.TICK_SECONDS
-		var ticks := float(rules.fighter.burst_ticks)
-		var ref := maxf(rules.combat.stamina_move_reference_work, SimMath.EPSILON)
-		var axial_work := rules.fighter.burst_force * rules.fighter.burst_speed_axial * dt
-		var lateral_work := rules.fighter.burst_force * rules.fighter.burst_speed_lateral * dt
-		var axial_cost := (axial_work * ticks / ref) * assessment.stamina_depletion * profile.stamina_cost_weight
-		var lateral_cost := (lateral_work * ticks / ref) * assessment.stamina_depletion * profile.stamina_cost_weight
-		assessment.burst_scores[BURST_FORWARD] -= axial_cost
-		assessment.burst_scores[BURST_BACKWARD] -= axial_cost
-		assessment.burst_scores[BURST_CLOCKWISE] -= lateral_cost
-		assessment.burst_scores[BURST_COUNTERCLOCKWISE] -= lateral_cost
 
 
 ## Estimated edge risk if the fighter moved `delta` along the duel forward axis.

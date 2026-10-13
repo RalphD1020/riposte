@@ -25,10 +25,10 @@ var vy: float = 0.0
 var ax: float = 0.0
 var ay: float = 0.0
 var facing: float = 0.0
-## Last bearing toward the opponent that was numerically meaningful, as a unit
-## vector. Footwork is expressed relative to this axis, and it is remembered so
-## that two fighters standing on the same spot keep moving the way they were
-## rather than snapping to an invented direction (COMBAT §25.1).
+## The combat frame footwork last used, as a unit vector: the CombatHeading at
+## the start of that tick (MOVEMENT-FRAME-001). Recorded so lateral and back
+## dashes, the CPU and presentation read the frame the body was actually asked
+## to move in, rather than re-deriving it.
 var duel_forward_x: float = 1.0
 var duel_forward_y: float = 0.0
 ## Body angular velocity, rad/s. Driven by bounded torque against the body's
@@ -54,10 +54,22 @@ var gesture: MovementGestureState = MovementGestureState.new()
 ## hashed, and reset per round. Falling fighters are removed from collision
 ## and invariant-exempt for position bounds.
 var is_falling: bool = false
+## Tick fraction at which this fighter's centre crossed the platform edge, or
+## `SUPPORTED` while they stand on it. Set only through `lose_support`, beside
+## `is_falling`, so a same-tick kill and ring-out are ordered by when each
+## actually happened (COMBAT-014).
+var support_lost_fraction: float = SUPPORTED
+## The body this fighter became when killed (inactive while alive).
+var fallen: FallenBodyState = FallenBodyState.new()
 
 ## Sentinel for "has not been killed". Negative so any real time of impact,
 ## including exactly 0.0, compares as earlier.
 const ALIVE := -1.0
+## Sentinel for "still standing on the platform".
+const SUPPORTED := -1.0
+
+## How a fighter left the round (COMBAT-014).
+enum Terminal { NONE, KILLED, RING_OUT }
 
 ## Attack input, reconstructed from command edges by the simulation.
 var attack_held: bool = false
@@ -68,6 +80,37 @@ var buffered_release: bool = false
 
 func is_alive() -> bool:
 	return health > 0.0
+
+
+## The fighter's centre crossed the edge at tick fraction `fraction`.
+func lose_support(fraction: float) -> void:
+	is_falling = true
+	support_lost_fraction = SimMath.clamp01(fraction)
+
+
+## The one reading of how this fighter left the round: whichever of a lethal
+## blow and a lost footing came first in the tick. An exact tie reads as the
+## kill — the blade arrived no later than the edge did. NONE while they stand.
+func terminal_kind() -> Terminal:
+	var killed := not is_alive()
+	if killed and is_falling:
+		return Terminal.RING_OUT if support_lost_fraction < lethal_fraction else Terminal.KILLED
+	if killed:
+		return Terminal.KILLED
+	if is_falling:
+		return Terminal.RING_OUT
+	return Terminal.NONE
+
+
+## When this fighter left the round (tick fraction), or `ALIVE` while they
+## still stand.
+func terminal_time() -> float:
+	match terminal_kind():
+		Terminal.KILLED:
+			return lethal_fraction
+		Terminal.RING_OUT:
+			return support_lost_fraction
+	return ALIVE
 
 
 func speed() -> float:

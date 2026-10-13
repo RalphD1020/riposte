@@ -1,16 +1,32 @@
 class_name FighterDefinition
 extends RefCounted
 
-## Immutable fighter body and footwork semantics. Every value is authored in
-## content (StandardDuelRules); defaults here are neutral. Units: meters,
-## seconds, radians. Treat instances as frozen after creation.
+## Immutable character definition: one body, its actuators, and how it fights
+## on its feet. Two facets, kept in separate sections below:
+##
+## - **Body physics** — actual SI properties: mass, height, push / hurt / hand
+##   geometry, inertia, the lying body. Each is authored on its own; nothing at
+##   runtime derives one from another (height never scales mass or radius).
+## - **Actuators** — the force production the body can apply: forces (N),
+##   torques (N·m) and the voluntary speed caps (m/s, rad/s). Content authors
+##   them relative to the reference duelist and resolves them to these values
+##   when the definition is built; the simulation only ever reads the resolved
+##   values, never a scale (CONTENT-002).
+##
+## It knows no weapon: how this body carries a particular weapon is a
+## `WeaponHandlingProfile`, and both reach the simulation through a
+## `CombatantPhysicsSpec`. Every value is authored in content; defaults here
+## are neutral. Units: metres, seconds, radians. Frozen after creation.
 ##
 ## See also: /docs/concepts/combat.md
-## Source: game/content/rules/standard_duel_rules.gd
+## Source: game/content/rules/fighter_catalog.gd
 
 var id: StringName = &""
+
+## --- Body physics ------------------------------------------------------------
+
 ## Physical build, in SI units relative to the PhysicalBaseline duelist.
-## Height is the honest scale of the body; `body_radius` is the gameplay
+## Height is the honest scale of the body; `push_radius` is the gameplay
 ## footprint, and presentation derives body size from both.
 ##
 ## Size and mass are **independent** authored facts (PHYS-005). A taller
@@ -18,8 +34,22 @@ var id: StringName = &""
 ## `height` at runtime — a lean duelist and a heavy one of the same height are
 ## both legitimate, and the physics is what makes them play differently.
 var height: float = 0.0
-var body_radius: float = 0.0
-## Distance from the swing pivot to the guard, where this fighter's hands
+## The push / spacing proxy: how close two bodies may come, the arena margins,
+## and the body's turning inertia. Never what a blade strikes.
+var push_radius: float = 0.0
+## The torso a weapon strikes, at blade height (CONTACT-ROLES-001). Weapon →
+## body contact, its nonpenetration constraint and threat reach use this; it
+## never exceeds the push proxy that keeps the bodies apart.
+var hurt_radius: float = 0.0
+## A hand's planar size around its grip point. Only for the attack track's
+## clearance check (WEAPON-PATH-003): a hand's *surface* must stay outside the
+## hurt torso. Hands are never a hurt or push shape.
+var hand_radius: float = 0.0
+## Mass each hand and forearm carry along with a held sword (kg per hand):
+## the passive resistance the grip adds to the weapon coordinate, never
+## strength (RIGID-CONTACT-001). Derived from body mass in content.
+var hand_mass: float = 0.0
+## Distance from the swing origin to the guard, where this fighter's hands
 ## hold any weapon. Authored gameplay reach, never measured from a model:
 ## `WeaponDefinition.hilt_radius` is this, and `tip_radius` adds the blade.
 var grip_radius: float = 0.0
@@ -32,11 +62,19 @@ var mass: float = 0.0
 ## Mass-distribution factor for `moment_of_inertia()`. A solid cylinder about
 ## its own axis is 0.5; a body with mass held closer in authors less.
 var body_inertia_coefficient: float = 0.0
+## The body once it lies on the floor (`FallenBodyState`): a capsule of half
+## length `lying_half_length` through its centre of mass (half the body's
+## lying length) and radius `lying_radius` (the torso's thickness). The lying
+## body's inertia is a uniform rod of its own length and mass.
+var lying_half_length: float = 0.0
+var lying_radius: float = 0.0
 
 ## Stamina pool at full health. The current ceiling is derived from health by
 ## `StaminaModel.max_for_health()` — never stored in FighterState — so injury
 ## is the cause and reduced stamina ceiling is the consequence.
 var base_stamina: float = 100.0
+
+## --- Actuators ---------------------------------------------------------------
 
 ## Strength, authored as **forces and torques** — never as accelerations
 ## (PHYS-005). Mass and strength are separate facts, and the fighter's
@@ -45,11 +83,15 @@ var base_stamina: float = 100.0
 var locomotion_force: float = 0.0
 var braking_force: float = 0.0
 var burst_force: float = 0.0
-## How hard this fighter drives *any* weapon, as a multiple of the baseline
-## duelist's arm (COMBAT §27). This is how the same sword behaves differently
-## in different hands. It scales the wielder's effort; it never alters the
-## weapon's own mass or inertia, which are properties of the object.
+## How hard this fighter drives *any* weapon, as a multiple of the torques the
+## weapon's motor is authored at (COMBAT §27): the fighter's resolved arm
+## strength. This is how the same sword behaves differently in different
+## hands. It scales the wielder's effort; it never alters the weapon's own
+## mass or inertia, which are properties of the object.
 var weapon_torque_scale: float = 0.0
+
+## --- Footwork and fighting semantics -----------------------------------------
+
 
 ## Footwork. Desired velocity = input × max_speed × direction multiplier.
 var max_speed: float = 0.0
@@ -63,18 +105,13 @@ var turn_speed_max: float = 0.0
 var turn_torque: float = 0.0
 var track_gain: float = 0.0
 
-## Commitment penalties (COMBAT §20, §62): authority = 1 - penalty × K.
-## Commitment spends the ability to *change* motion, never motion itself
-## (PHYS-003), so these scale acceleration and torque — not velocity.
+## Commitment costs (COMBAT §20, §62, PHYS-003): commitment spends the ability
+## to *change* motion, never motion itself, so these scale acceleration and
+## torque — not velocity. Footwork: authority = 1 − `accel_commit_penalty` × K.
+## Turning reads directional commitment, whose limits are rules-wide
+## (`CombatTuning.commit_*`, DIRECTIONAL-COMMIT-001).
 var accel_commit_penalty: float = 0.0
-var tracking_commit_penalty: float = 0.0
-var overswing_tracking_penalty: float = 0.0
 var min_move_authority: float = 0.0
-var min_tracking: float = 0.0
-
-## Counter-rotation (COMBAT §26): tracking × (1 - k × K × O), O from orbit rate.
-var counter_rotation_penalty: float = 0.0
-var counter_rotation_reference_rate: float = 0.0
 
 ## Stability B (COMBAT §36), smoothed toward a target each tick.
 var stability_floor: float = 0.0
@@ -120,12 +157,19 @@ var dash_recovery_ticks: int = 0
 func is_valid() -> bool:
 	return (
 		height > 0.0
-		and body_radius > 0.0
-		and body_radius < height
+		and push_radius > 0.0
+		and push_radius < height
+		and hurt_radius > 0.0
+		and hurt_radius <= push_radius
+		and hand_radius > 0.0
+		and hand_mass >= 0.0
+		and hand_mass < mass
 		and grip_radius > 0.0
 		and max_health > 0.0
 		and mass > 0.0
 		and body_inertia_coefficient > 0.0
+		and lying_half_length > 0.0
+		and lying_radius > 0.0
 		and base_stamina > 0.0
 		and max_speed > 0.0
 		and locomotion_force > 0.0
@@ -186,7 +230,7 @@ func precompute() -> void:
 ## Turning is torque against this, which is why a body already rotating into
 ## its swing must arrest that rotation before it can reverse.
 func moment_of_inertia() -> float:
-	return body_inertia_coefficient * mass * body_radius * body_radius
+	return body_inertia_coefficient * mass * push_radius * push_radius
 
 
 ## Angular acceleration available to turn the body, `α = τ / I_body`.
@@ -208,4 +252,4 @@ func mass_ratio() -> float:
 
 
 func radius_ratio() -> float:
-	return body_radius / PhysicalBaseline.FIGHTER_RADIUS_M
+	return push_radius / PhysicalBaseline.FIGHTER_RADIUS_M

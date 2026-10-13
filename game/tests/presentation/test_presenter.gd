@@ -26,14 +26,14 @@ class Mount:
 		root.queue_free()
 
 
-func _mount(options: PresentationOptions = PresentationOptions.new(), catalog: PresentationKitCatalog = null) -> Mount:
+func _mount(options: PresentationOptions = PresentationOptions.new(), catalog: PresentationKitCatalog = null, state: MatchState = null) -> Mount:
 	var mount := Mount.new()
 	mount.root = Node3D.new()
 	(Engine.get_main_loop() as SceneTree).root.add_child(mount.root)
 	mount.camera = DuelCameraRig.new()
 	mount.root.add_child(mount.camera)
 	mount.camera.configure(RiposteKits.camera_profile())
-	mount.state = DuelSetup.new_state(_rules, 1)
+	mount.state = state if state != null else DuelSetup.new_state(_rules, 1)
 	var kits := DuelKits.resolve(catalog if catalog != null else RiposteKits.build_catalog(), _rules)
 	mount.presenter = MatchPresenter.create(kits, options, mount.camera, _rules.platform_radius, _rules.edge_warning_inset, SnapshotProjector.project(mount.state, _rules))
 	mount.root.add_child(mount.presenter)
@@ -43,6 +43,11 @@ func _mount(options: PresentationOptions = PresentationOptions.new(), catalog: P
 
 func _kit_weapon() -> PresentationKit:
 	return DuelKits.resolve(RiposteKits.build_catalog(), _rules).weapon
+
+
+func _no_events() -> Array[DuelEvent]:
+	var none: Array[DuelEvent] = []
+	return none
 
 
 func _events(type: StringName, actor: int, target: int, data: Dictionary) -> Array[DuelEvent]:
@@ -112,6 +117,9 @@ func test_frames_interpolate_between_ticks() -> void:
 	mount.dispose()
 
 
+## One horizontal truth (WEAPON-ORBIT-005): the presenter's reference blade is
+## exactly where collision has it, and the drawn sword's carriage sits on the
+## authoritative carriage with the authoritative yaw — only lifted.
 func test_the_blade_points_where_the_simulated_blade_points() -> void:
 	var mount := _mount()
 	var fighter := mount.state.fighter(0)
@@ -119,10 +127,53 @@ func test_the_blade_points_where_the_simulated_blade_points() -> void:
 	var none: Array[DuelEvent] = []
 	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
 	mount.presenter.render(1.0, 1.0 / 60.0)
-	var blade_angle := DuelGeometry.blade_angle(fighter)
+	var pose := WeaponKinematics.pose_of(fighter, _rules.combatant(0), BladePose.new())
+	assert_false(_rules.combatant(0).handling.attack_path.is_fixed(), "fixture: the shipped sword rides its orbit, off the body axis")
+	assert_true(SimMath.length(pose.origin_x - fighter.x, pose.origin_y - fighter.y) > 0.01, "fixture: so the old body-centred circle would be the wrong answer")
 	var proxy := mount.presenter.fighter_proxy(0)
-	var expected := ArenaTransform.to_world(fighter.x + _rules.weapon.tip_radius * cos(blade_angle), fighter.y + _rules.weapon.tip_radius * sin(blade_angle), proxy.blade_height())
-	assert_true(proxy.blade_points()[1].is_equal_approx(expected), "tip matches the gameplay blade")
+	var height := proxy.blade_height()
+	var hilt := ArenaTransform.to_world(pose.point_x(_rules.combatant(0).weapon.hilt_radius), pose.point_y(_rules.combatant(0).weapon.hilt_radius), height)
+	var tip := ArenaTransform.to_world(pose.point_x(_rules.combatant(0).weapon.tip_radius), pose.point_y(_rules.combatant(0).weapon.tip_radius), height)
+	var authoritative := proxy.authoritative_blade_points()
+	assert_true(authoritative[0].distance_to(hilt) < 1e-4 and authoritative[1].distance_to(tip) < 1e-4, "the reference blade is the collision blade (hilt %s vs %s, tip %s vs %s)" % [authoritative[0], hilt, authoritative[1], tip])
+	var carriage := ArenaTransform.to_plane(proxy.visual_root().global_transform * proxy.carriage().carriage_point)
+	assert_true(carriage.distance_to(Vector2(pose.carriage_x, pose.carriage_y)) < 1e-4, "the drawn carriage sits on the authoritative one (%s vs (%.4f, %.4f))" % [carriage, pose.carriage_x, pose.carriage_y])
+	var drawn := proxy.blade_points()
+	var drawn_yaw := atan2(-(drawn[1].z - drawn[0].z), drawn[1].x - drawn[0].x)
+	assert_near(angle_difference(DuelGeometry.blade_angle(fighter), drawn_yaw), 0.0, 1e-4, "and the drawn blade's horizontal yaw is exactly φ + θ")
+	mount.dispose()
+
+
+## TRAIL-PARITY-001: the trail's ground footprint is the authoritative planar
+## sweep — the dangerous space — even while the drawn sword is lifted and
+## pitched, and it still rides at the drawn sword's height.
+func test_the_trail_footprint_is_the_authoritative_sweep() -> void:
+	## ARRANGE: a cut in flight, so the presentation field lifts and pitches it.
+	var mount := _mount()
+	var fighter := mount.state.fighter(0)
+	var w := fighter.weapon
+	w.phase = CombatPhase.Id.ACTIVE_THREAT
+	w.swing_dir = 1.0
+	w.swing_charge = 1.0
+	w.swing_start = -_rules.combatant(0).weapon.guard_limit
+	w.swing_end = w.swing_start + _rules.combatant(0).weapon.arc(1.0)
+	w.angle = deg_to_rad(-60.0)
+	w.speed = 15.0
+	## ACT
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _no_events())
+	mount.presenter.render(1.0, 1.0 / 60.0)
+	var proxy := mount.presenter.fighter_proxy(0)
+	var planar := proxy.authoritative_blade_points()
+	var drawn := proxy.blade_points()
+	var trail := proxy.trail_points()
+	## ASSERT
+	var drawn_reach := Vector2(drawn[1].x - drawn[0].x, drawn[1].z - drawn[0].z).length()
+	var planar_reach := Vector2(planar[1].x - planar[0].x, planar[1].z - planar[0].z).length()
+	assert_true(drawn_reach < planar_reach - 1e-4, "fixture: the drawn blade is pitched, so its own footprint is shorter (%.4f vs %.4f m)" % [drawn_reach, planar_reach])
+	for i in 2:
+		assert_near(trail[i].x, planar[i].x, 1e-9, "trail point %d lies on the authoritative sweep (x)" % i)
+		assert_near(trail[i].z, planar[i].z, 1e-9, "trail point %d lies on the authoritative sweep (z)" % i)
+		assert_near(trail[i].y, drawn[i].y, 1e-9, "and rides at the drawn sword's height (%d)" % i)
 	mount.dispose()
 
 
@@ -196,20 +247,6 @@ func test_impact_feedback_follows_the_carried_contact_direction() -> void:
 	## silently send every impact the wrong way.
 	assert_true(other.camera.impulse_direction().is_equal_approx(Vector3(0.0, 0.0, -1.0)), "lane +y is world -z")
 	other.dispose()
-
-
-## A bind is a situation, not a quiet clash. It gets its own sound and
-## deliberately no hitstop: the simulation has already stopped both blades
-## dead, and freezing on top of that reads as a hitch.
-func test_a_bind_sounds_like_itself_and_does_not_freeze() -> void:
-	var mount := _mount()
-	mount.presenter.push(
-		SnapshotProjector.project(mount.state, _rules),
-		_events(DuelEventTypes.BIND_STARTED, DuelEvent.NONE, DuelEvent.NONE, {DuelEventKeys.X: 0.0, DuelEventKeys.Y: 0.0, DuelEventKeys.INTENSITY: 0.2})
-	)
-	assert_eq(mount.presenter.audio().last_cue, PresentationKit.CUE_BIND, "its own category")
-	assert_eq(mount.hitstops.size(), 0, "and no freeze")
-	mount.dispose()
 
 
 ## Recoil is shown at the scale the simulation applied, never beyond it: the
@@ -424,7 +461,7 @@ func test_a_burst_kicks_dust_along_the_floor_behind_the_fighter() -> void:
 	var start := Vector3.ZERO
 	for child in vfx.get_children():
 		var puff := child as MeshInstance3D
-		assert_true(puff.position.y < _rules.weapon.tip_radius, "dust stays well below blade height")
+		assert_true(puff.position.y < _rules.combatant(0).weapon.tip_radius, "dust stays well below blade height")
 		assert_near(puff.position.y, VfxDirector.DUST_HEIGHT, 1e-6, "it is on the floor")
 		start += puff.position
 	mount.presenter.render(1.0, 0.1)
@@ -463,7 +500,10 @@ func test_a_whiff_is_never_punctuated_like_a_hit() -> void:
 		_events(DuelEventTypes.ATTACK_WHIFFED, 0, DuelEvent.NONE, {DuelEventKeys.ARC: 1.2})
 	)
 	assert_eq(mount.hitstops.size(), 0, "a miss does not stop time")
-	assert_eq(audio.last_cue, before, "and makes no contact sound")
+	## Heard as its own hollow follow-through (COMBAT-READABILITY-001) — the
+	## whiff take, or the swing take at the whiff's pitch — never as contact.
+	assert_ne(audio.last_cue, before, "a miss is heard")
+	assert_true([PresentationKit.CUE_WHIFF, PresentationKit.CUE_SWING].has(audio.last_cue), "as a follow-through, never a contact sound (%s)" % audio.last_cue)
 	assert_eq(mount.presenter.vfx().effect_count(), 0, "nor a spark")
 	mount.dispose()
 
@@ -532,6 +572,13 @@ func test_selector_names_every_semantic_from_snapshot_facts() -> void:
 		assert_eq(FighterAnimationSelector.select(row, false, false), phase[1], "phase %s" % phase[1])
 		seen[phase[1]] = true
 	row.phase = CombatPhase.Id.CHARGING
+	row.vx = 2.0
+	assert_eq(FighterAnimationSelector.select(row, false, false), PresentationKit.ANIM_MOVE_FORWARD, "a charge while walking keeps the gait (PRES-LOCO-001)")
+	row.phase = CombatPhase.Id.ACTIVE_THREAT
+	assert_eq(FighterAnimationSelector.select(row, false, false), PresentationKit.ANIM_MOVE_FORWARD, "and so does a swing")
+	assert_true(FighterAnimationSelector.is_locomotion(PresentationKit.ANIM_MOVE_FORWARD) and not FighterAnimationSelector.is_locomotion(PresentationKit.ANIM_CHARGE), "only gait clips play at ground speed")
+	row.vx = 0.0
+	row.phase = CombatPhase.Id.CHARGING
 	row.burst = MovementGestureState.BurstKind.FORWARD_DASH
 	assert_eq(FighterAnimationSelector.select(row, false, false), PresentationKit.ANIM_DASH_FORWARD, "committed footwork outranks the weapon pose")
 	assert_eq(FighterAnimationSelector.select(row, true, false), PresentationKit.ANIM_HURT, "a fresh hurt outranks footwork")
@@ -540,11 +587,39 @@ func test_selector_names_every_semantic_from_snapshot_facts() -> void:
 	seen[PresentationKit.ANIM_CRITICAL] = true
 	row.phase = CombatPhase.Id.STAGGER
 	assert_eq(FighterAnimationSelector.select(row, true, true), PresentationKit.ANIM_STAGGER, "stagger outranks a flinch")
+	row.is_falling = true
+	assert_eq(FighterAnimationSelector.select(row, true, true), PresentationKit.ANIM_RING_FALL, "over the edge, the fall outranks a stagger")
+	seen[PresentationKit.ANIM_RING_FALL] = true
 	row.health = 0.0
 	assert_eq(FighterAnimationSelector.select(row, true, true), PresentationKit.ANIM_DEATH, "death outranks everything")
 	seen[PresentationKit.ANIM_DEATH] = true
 	for semantic in PresentationKit.ANIM_SEMANTICS:
 		assert_true(seen.has(semantic), "%s is reachable" % semantic)
+
+
+## Every terminal's mandatory beat — a death's collapse, release and fade, a
+## run-through's whole shared timeline, a ring fall's release and fade — plays
+## out inside the decided round (post-round freedom plus the result) on the
+## authored Wolf: the next intro or the winner's showcase never cuts one off
+## (Phase 14).
+func test_every_terminal_beat_fits_before_the_next_transition() -> void:
+	var rules := StandardDuelRules.create()
+	var window := float(rules.post_round_free_ticks + rules.result_ticks) * SimulationTimebase.TICK_SECONDS
+	var kit := RiposteKits.build_catalog().resolve(ContentIds.FIGHTER_DUELIST, PresentationKit.PRIMITIVE_FIGHTER)
+	assert_true(kit.death != null, "fixture: the Wolf has an authored death profile")
+	var fade := FighterPresentation3D.TERMINAL_FADE_MAX
+	var longest := 0.0
+	for family: DeathPresentationProfile.Family in [DeathPresentationProfile.Family.SLASH, DeathPresentationProfile.Family.STAB]:
+		for key in 8:
+			var spec := kit.death_spec(family, key)
+			var beat := maxf(spec.weapon_release_time + fade, spec.collapse_delay + FighterPresentation3D.DEATH_SECONDS + fade)
+			if spec.finisher != null:
+				beat = maxf(beat, spec.finisher.end)
+			assert_true(beat < window, "%s death, key %d: its beat (%.2f s) fits the decided round (%.2f s)" % [spec.style, key, beat, window])
+			longest = maxf(longest, beat)
+	var fall := WeaponDropRequest.RING_OUT_DELAY_MAX + fade
+	assert_true(fall < window, "a ring fall's release and fade (%.2f s) fit too" % fall)
+	assert_true(longest > 0.5, "fixture: the beats measured are real deaths (longest %.2f s)" % longest)
 
 
 ## The striker of a killing thrust holds the run-through: the lunge outranks
@@ -569,14 +644,20 @@ func test_a_killing_thrust_holds_the_striker_in_the_run_through() -> void:
 func test_a_killing_blow_drops_the_victims_sword_into_the_world() -> void:
 	var mount := _mount()
 	mount.state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
-	mount.state.fighter(1).health = 0.0
-	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _body(40.0))
+	DuelFixture.kill(mount.state.fighter(1))
+	var events := _body(40.0)
+	var release := mount.presenter.duel_kits().combatant(1).fighter.death_spec(DeathPresentationProfile.Family.SLASH, CombatFeedbackDirector.variant_key(events[0])).weapon_release_time
+	assert_true(release > 0.0, "fixture: the victim's death style lets go after a beat (%.2f s)" % release)
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), events)
 	mount.presenter.render(1.0, 0.0)
 	assert_true(mount.presenter.dropped_weapons().is_empty(), "the hand has not let go yet")
-	mount.presenter.render(1.0, WeaponDropRequest.DEATH_DELAY + 0.01)
+	mount.presenter.render(1.0, 1.0, release * 0.5)
+	assert_true(mount.presenter.dropped_weapons().is_empty(), "real time alone does not release it: the beat runs on presentation-scaled time")
+	mount.presenter.render(1.0, 0.0, release * 0.5 + 0.01)
 	var dropped := mount.presenter.dropped_weapons()
 	assert_eq(dropped.size(), 1, "then the dead fighter's sword is in the world")
 	assert_true(dropped[0].is_inside_tree(), "as a live presentation body")
+	assert_near(dropped[0].mass, _rules.combatant(0).weapon.mass, 1e-6, "weighing what the simulated sword weighs")
 	assert_true(mount.presenter.fighter_proxy(1).is_weapon_dropped(), "out of the victim's hands")
 	assert_false(mount.presenter.fighter_proxy(0).is_weapon_dropped(), "while the striker keeps theirs")
 	var basis := dropped[0].global_transform.basis
@@ -590,6 +671,136 @@ func test_a_killing_blow_drops_the_victims_sword_into_the_world() -> void:
 	mount.presenter.render(0.0, 1.0 / 60.0)
 	assert_true(mount.presenter.dropped_weapons().is_empty(), "the next round clears the floor")
 	assert_false(mount.presenter.fighter_proxy(1).is_weapon_dropped(), "and puts the sword back in hand")
+	mount.dispose()
+
+
+## The same terminal tick, rendered across different frame partitions, comes out
+## the same: one death, one released sword. 0.06 + 0.06 + 0.01 and 0.13 cross
+## the release beat at different frames but reach the same discrete outcome.
+func test_frame_partitions_never_change_the_discrete_terminal_outcome() -> void:
+	var outcomes: Array[String] = []
+	for partition: Array in [[0.06, 0.06, 0.01], [0.13], [0.01, 0.01, 0.01, 0.1]]:
+		var mount := _mount()
+		mount.state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
+		DuelFixture.kill(mount.state.fighter(1))
+		var events := _body(40.0)
+		var release := mount.presenter.duel_kits().combatant(1).fighter.death_spec(DeathPresentationProfile.Family.SLASH, CombatFeedbackDirector.variant_key(events[0])).weapon_release_time
+		assert_true(release <= 0.13, "fixture: the release beat falls inside the partitioned span (%.2f s)" % release)
+		mount.presenter.push(SnapshotProjector.project(mount.state, _rules), events)
+		mount.presenter.push(SnapshotProjector.project(mount.state, _rules), events)
+		for step: float in partition:
+			mount.presenter.render(1.0, step, step)
+		outcomes.append("deaths=%s drops=%d released=%s" % [mount.presenter.has_death_started(1), mount.presenter.dropped_weapons().size(), mount.presenter.has_drop_released(1)])
+		mount.dispose()
+	assert_eq(outcomes[0], "deaths=true drops=1 released=true", "one death and exactly one sword, even with the killing tick pushed twice")
+	assert_eq(outcomes[1], outcomes[0], "a single 0.13 s frame agrees with 0.06 + 0.06 + 0.01")
+	assert_eq(outcomes[2], outcomes[0], "and so does a run of tiny frames")
+
+
+## A real same-tick kill and ring-out, produced by the solver: the victim is cut
+## and carried over the edge in one tick. Which presentation plays is the
+## simulation's chronological reading (COMBAT-014), never the order the requests
+## arrive in — reversing the tick's events changes nothing (PRES-TERMINAL-001).
+func test_a_same_tick_kill_and_ring_out_present_the_authoritative_cause() -> void:
+	## Found by searching the solver on the revolute pivot, so the scene keeps it:
+	## the presenter's handling of the tick is the subject, not the attack path.
+	var rules := DuelFixture.revolute_rules()
+	## Found by searching the solver: a tap from `gap` metres, the target `inset`
+	## inside the edge drifting out at `v`. One cut lands first, one fall does.
+	var cases := [
+		{"gap": 0.90, "inset": 0.32, "v": 4.5, "cause": FighterState.Terminal.KILLED},
+		{"gap": 0.90, "inset": 0.25, "v": 4.0, "cause": FighterState.Terminal.RING_OUT},
+	]
+	for case: Dictionary in cases:
+		var runner := SimRunner.create(rules, 7)
+		runner.skip_intro()
+		var a := runner.state.fighter(0)
+		var b := runner.state.fighter(1)
+		DuelFixture.place(b, rules.platform_radius - float(case["inset"]), 0.0, PI)
+		DuelFixture.place(a, b.x - float(case["gap"]), 0.0, 0.0)
+		a.duel_forward_x = 1.0
+		a.duel_forward_y = 0.0
+		b.duel_forward_x = -1.0
+		b.duel_forward_y = 0.0
+		b.health = 1.0
+		b.vx = float(case["v"])
+		var before := SnapshotProjector.project(runner.state, rules)
+		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 0.0, true, true), PlayerCommand.idle(runner.state.tick))
+		var tick_events: Array[DuelEvent] = []
+		while runner.state.phase == MatchPhase.Id.ROUND_ACTIVE and runner.state.tick < 200:
+			var count := runner.events.size()
+			runner.idle(1)
+			tick_events = runner.events.slice(count)
+		var killed := runner.first(DuelEventTypes.FIGHTER_KILLED)
+		var fell := runner.first(DuelEventTypes.RING_OUT)
+		assert_true(killed != null and fell != null and killed.tick == fell.tick, "fixture: the solver killed and dropped the target in one tick")
+		assert_true(runner.is_sound(), "fixture: every tick was a legal state (%s)" % runner.violation_summary())
+		var kill_first: bool = case["cause"] == FighterState.Terminal.KILLED
+		var ordered := b.lethal_fraction < b.support_lost_fraction if kill_first else b.support_lost_fraction < b.lethal_fraction
+		assert_true(ordered, "fixture: still %s-first within the tick (lethal %.3f, edge %.3f)" % ["kill" if kill_first else "fall", b.lethal_fraction, b.support_lost_fraction])
+		assert_eq(b.terminal_kind(), case["cause"], "the solver's terminal reading follows that order")
+		var reversed := tick_events.duplicate()
+		reversed.reverse()
+		var seen: Array[String] = []
+		for events: Array in [tick_events, reversed]:
+			var mount := _mount(PresentationOptions.new(), null, runner.state)
+			var typed: Array[DuelEvent] = []
+			typed.assign(events)
+			mount.presenter.push(before, _no_events())
+			mount.presenter.push(SnapshotProjector.project(runner.state, rules), typed)
+			mount.presenter.render(1.0, 1.0 / 60.0)
+			var proxy := mount.presenter.fighter_proxy(1)
+			seen.append("death=%s fall=%s drop=%s" % [mount.presenter.has_death_started(1), proxy.has_fall_request(), mount.presenter.is_drop_pending(1) or mount.presenter.has_drop_released(1)])
+			mount.dispose()
+		var expected := "death=true fall=false drop=true" if case["cause"] == FighterState.Terminal.KILLED else "death=false fall=true drop=true"
+		assert_eq(seen[0], expected, "the authoritative cause alone is presented, with one sword release")
+		assert_eq(seen[1], seen[0], "whatever order the tick's events arrive in")
+
+
+## One round over, every terminal latch is cleared in one go: the death and the
+## finisher, the fall, the drop bookkeeping, the hidden sword and eased grip,
+## the tumbling prop, and the held one-shot clip.
+func test_a_new_round_clears_every_terminal_latch() -> void:
+	var mount := _mount()
+	mount.state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
+	DuelFixture.kill(mount.state.fighter(1))
+	mount.state.fighter(0).lose_support(0.5)
+	var events := _events(DuelEventTypes.BODY_HIT, 0, 1, {
+		DuelEventKeys.X: 1.0, DuelEventKeys.Y: 0.0, DuelEventKeys.DAMAGE: 100.0, DuelEventKeys.QUALITY: 1.0,
+		DuelEventKeys.GRADE: SwingSemantics.grade_label(SwingSemantics.Grade.HEAVY), DuelEventKeys.CONTACT_KIND: "thrust",
+		DuelEventKeys.NORMAL_X: 1.0, DuelEventKeys.NORMAL_Y: 0.0, DuelEventKeys.STRIKE_X: 0.0, DuelEventKeys.STRIKE_Y: 1.0, DuelEventKeys.PUSH: 2.0,
+	})
+	events.append(DuelEvent.create(DuelEventTypes.RING_OUT, 1, 0, DuelEvent.NONE, {
+		DuelEventKeys.POSITION_X: 0.0, DuelEventKeys.POSITION_Y: 1.0, DuelEventKeys.VELOCITY_X: 0.0, DuelEventKeys.VELOCITY_Y: 2.0, DuelEventKeys.TOI: 0.5,
+	}))
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), events)
+	## Past the stab victim's release on the shared timeline (0.72 s), inside
+	## the striker's hold (0.8 s).
+	for _i in 23:
+		mount.presenter.render(1.0, 1.0 / 30.0)
+	var victim := mount.presenter.fighter_proxy(1)
+	var faller := mount.presenter.fighter_proxy(0)
+	assert_true(mount.presenter.has_death_started(1), "fixture: the victim's death started")
+	assert_true(faller.is_finishing(), "fixture: the striker still holds the run-through")
+	assert_true(faller.has_fall_request(), "fixture: the other fighter is falling")
+	assert_true(victim.is_weapon_dropped() and faller.is_weapon_dropped(), "fixture: both swords left the hands")
+	assert_eq(mount.presenter.dropped_weapons().size(), 2, "fixture: two props are tumbling")
+	DuelSetup.reset_round(mount.state, _rules)
+	mount.state.set_phase(MatchPhase.Id.ROUND_INTRO)
+	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _no_events())
+	mount.presenter.render(0.0, 1.0 / 60.0)
+	for slot in 2:
+		var proxy := mount.presenter.fighter_proxy(slot)
+		assert_false(mount.presenter.has_death_started(slot), "slot %d: the death latch is clear" % slot)
+		assert_false(mount.presenter.is_drop_pending(slot) or mount.presenter.has_drop_released(slot), "slot %d: the drop bookkeeping is clear" % slot)
+		assert_false(proxy.is_finishing(), "slot %d: no finisher hold" % slot)
+		assert_false(proxy.has_fall_request(), "slot %d: no fall trajectory" % slot)
+		assert_false(proxy.is_weapon_dropped(), "slot %d: the sword is back in hand" % slot)
+		assert_true(proxy.sword_carriage().visible, "slot %d: visibly" % slot)
+		if proxy.rig() != null:
+			assert_near(proxy.rig().grip_influence(), 1.0, 1e-6, "slot %d: the hands grip again" % slot)
+		assert_ne(proxy.playing_clip(), proxy.combatant_kit().fighter.clip_for(PresentationKit.ANIM_DEATH), "slot %d: the death clip is not held" % slot)
+	assert_true(mount.presenter.dropped_weapons().is_empty(), "the floor is clear")
 	mount.dispose()
 
 
@@ -634,7 +845,7 @@ func test_the_debug_vectors_follow_the_simulated_swing_direction() -> void:
 	var vectors := mount.presenter.debug_vectors()
 	vectors.visible = true
 	var fighter := mount.state.fighter(0)
-	ContactFixture.arm(fighter, 0.0, 0.0, 0.0, 0.0, 9.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.weapon)
+	ContactFixture.arm(fighter, 0.0, 0.0, 0.0, 0.0, 9.0, CombatPhase.Id.ACTIVE_THREAT, 0.8, _rules.combatant(0).weapon)
 	var forward := SnapshotProjector.project(mount.state, _rules)
 	assert_eq(forward.fighter(0).swing_dir, 1.0, "precondition: swinging one way")
 	mount.presenter.push(forward, ([] as Array[DuelEvent]))
@@ -772,20 +983,80 @@ func test_variants_are_picked_deterministically_and_layers_play_with_their_cue()
 	assert_eq(first.count("tail"), 6, "the layer follows every strong clash")
 
 
-func test_a_bind_grinds_for_as_long_as_the_snapshot_says_and_never_freezes() -> void:
+## Hold one sword point on the mount's state as the held solver would leave it:
+## `age` ticks old, solved with tangent impulse `jt` while still sliding at
+## `slip` (a hold record at the same place carries the slip reading).
+func _hold_point(mount: Mount, age: int, jt: float, slip: float, id: int = 1) -> PresentationSnapshot:
+	var contact: SwordContactSet = mount.state.blade_contact
+	contact.set_phase(SwordContactSet.Phase.CONTACTING)
+	contact.record_point(0, SwordContactSet.Feature.BLADE, SwordContactSet.Feature.BLADE, 1.0, 0.5, 0.5, 0.5)
+	contact.age[0] = age
+	contact.contact_id[0] = id
+	contact.tangent_impulse[0] = jt
+	contact.hold_active[0] = 1
+	contact.hold_feature_a[0] = SwordContactSet.Feature.BLADE
+	contact.hold_feature_b[0] = SwordContactSet.Feature.BLADE
+	contact.hold_slip[0] = slip
+	return SnapshotProjector.project(mount.state, _rules)
+
+
+## A held contact scrapes as hard as friction works there (7C, ContactScrape):
+## `|J_t|·v_t` per tick, continuously — a blade pressed still is silent, a
+## light slide quiet, a hard drag loud; a first impact is a clash, never a
+## scrape. One contact keeps one take for as long as it lasts, a new contact a
+## new one, and the scrape lets go the tick the swords part. Never a hitstop.
+func test_a_held_contact_scrapes_as_hard_as_friction_works() -> void:
 	var mount := _mount()
 	var audio := mount.presenter.audio()
-	mount.state.fighter(0).weapon.phase = CombatPhase.Id.BIND
-	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), _events(DuelEventTypes.BIND_STARTED, 0, 1, {DuelEventKeys.X: 0.0, DuelEventKeys.Y: 0.0}))
-	assert_true(audio.is_bind_held(0), "the grind starts with the bind")
-	assert_eq(mount.hitstops.size(), 0, "and a bind never freezes the frame")
 	var none: Array[DuelEvent] = []
+	mount.presenter.push(_hold_point(mount, 0, 0.2, 1.5), none)
+	assert_false(audio.is_bind_held(0), "a point solved for the first time is a clash, not a scrape")
+	mount.presenter.push(_hold_point(mount, 3, 0.2, 0.0), none)
+	assert_true(audio.is_bind_held(0), "a held point keeps the scrape's voice")
+	assert_true(audio.bind_volume_db(0) < -60.0, "but pressed still it does no friction work, and is silent (%.1f dB)" % audio.bind_volume_db(0))
+	mount.presenter.push(_hold_point(mount, 4, 0.05, 0.4), none)
+	var light := audio.bind_volume_db(0)
+	mount.presenter.push(_hold_point(mount, 5, 0.3, 1.5), none)
+	var hard := audio.bind_volume_db(0)
+	assert_true(light > -60.0, "a light slide scrapes (%.1f dB)" % light)
+	assert_true(hard > light + 6.0, "a hard drag scrapes clearly louder (%.1f vs %.1f dB)" % [hard, light])
+	assert_eq(audio.last_cue, PresentationKit.CUE_BIND, "on its own sound")
+	assert_eq(audio.bind_key(0), 1, "keyed by the contact it belongs to")
+	var history := audio.history.size()
+	mount.presenter.push(_hold_point(mount, 6, 0.3, 1.5), none)
+	assert_eq(audio.history.size(), history, "the same contact never re-triggers its take")
+	mount.presenter.push(_hold_point(mount, 1, 0.3, 1.5, 2), none)
+	assert_eq(audio.bind_key(0), 2, "a new contact starts its own take")
+	assert_eq(audio.history.size(), history + 1, "once")
+	assert_eq(mount.hitstops.size(), 0, "and a held contact never freezes the frame")
+	mount.state.blade_contact.begin_search()
+	mount.state.blade_contact.set_phase(SwordContactSet.Phase.SEPARATING)
 	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
-	assert_true(audio.is_bind_held(0), "it holds while the blades stay pinned")
-	mount.state.fighter(0).weapon.phase = CombatPhase.Id.NEUTRAL
-	mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
-	assert_false(audio.is_bind_held(0), "and lets go the tick they part")
+	assert_false(audio.is_bind_held(0), "and the scrape lets go the tick no point is held")
 	mount.dispose()
+
+
+## Grind sparks are thrown at a rate set by the same friction work: none from a
+## blade pressed still, more from a harder drag, the same spark budget each
+## tick at any charge — and with particles off the scrape still sounds.
+func test_grind_sparks_follow_friction_work_and_reduced_visuals_keep_the_sound() -> void:
+	var counts: Array[int] = []
+	for work: Array in [[0.3, 0.0], [0.05, 0.4], [0.3, 1.5]]:
+		var mount := _mount()
+		var vfx: VfxDirector = mount.presenter.vfx()
+		var before := vfx.effect_count()
+		for tick in 20:
+			mount.presenter.push(_hold_point(mount, 2 + tick, work[0], work[1]), [] as Array[DuelEvent])
+		counts.append(vfx.effect_count() - before)
+		mount.dispose()
+	assert_eq(counts[0], 0, "a blade pressed still throws no sparks")
+	assert_true(counts[2] > counts[1], "a harder drag throws more than a light slide (%d vs %d)" % [counts[2], counts[1]])
+	var reduced := PresentationOptions.new()
+	reduced.particle_intensity = 0.0
+	var quiet := _mount(reduced)
+	quiet.presenter.push(_hold_point(quiet, 3, 0.3, 1.5), [] as Array[DuelEvent])
+	assert_true(quiet.presenter.audio().is_bind_held(0) and quiet.presenter.audio().bind_volume_db(0) > -20.0, "with particles off, the scrape is still heard")
+	quiet.dispose()
 
 
 func test_every_announcer_line_is_captioned_even_when_silent() -> void:

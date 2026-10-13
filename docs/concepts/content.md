@@ -1,11 +1,11 @@
 # Content
 
-> See also: [spec/invariants.md](../../spec/invariants.md) — CONTENT-001, CONTENT-002, PHYS-005, PHYS-006, SIM-001
+> See also: [spec/invariants.md](../../spec/invariants.md) — CONTENT-001, CONTENT-002, COMBATANT-GENERIC-001, LOADOUT-001, PHYS-005, PHYS-006, SIM-001
 > See also: [docs/concepts/combat.md](./combat.md), [docs/concepts/simulation.md](./simulation.md)
 > See also: [examples/catalog-authoring.md](../../examples/catalog-authoring.md) — a worked scaled fighter and weapon
 > Source: `game/src/domain/rules/`, authored values in `game/content/rules/`
 
-Fighters, weapons, and arenas are **data**. A greatsword is another `WeaponDefinition`, not new combat code; a heavier duelist is another `FighterDefinition`, not a special case in the solver.
+Fighters, weapons, their handling, and arenas are **data**. A greatsword is another `WeaponDefinition`, not new combat code; a heavier duelist is another `FighterDefinition`, not a special case in the solver; the heavier duelist holding the greatsword is a `WeaponHandlingProfile` for that pair. The simulation never sees any of them by name — only the `CombatantPhysicsSpec` each slot resolves to.
 
 ## Three kinds of value
 
@@ -23,15 +23,27 @@ Derived values are functions, not fields. `move_accel()` is `locomotion_force / 
 
 ## Catalogs are pure functions
 
-Definitions come from pure, id-keyed catalog functions — `FighterCatalog.of(id)` and `WeaponCatalog.of(id)`. They are **not** Godot `Resource`s: the domain must stay free of engine types (SIM-001), and a `Resource` is an editable, shareable, mutable object — exactly the thing a definition must not be.
+Definitions come from pure, id-keyed catalog functions — `FighterCatalog.of(id)`, `WeaponCatalog.of(id)` and `HandlingCatalog.of(fighter, weapon)` — and `LoadoutCatalog.compile(fighter_id, weapon_id)` assembles the three into one `CombatantPhysicsSpec`. They are **not** Godot `Resource`s: the domain must stay free of engine types (SIM-001), and a `Resource` is an editable, shareable, mutable object — exactly the thing a definition must not be.
 
 Each call returns a fresh object, so tuning one match can never reach into another. An id nobody ships yields nothing rather than a plausible substitute, and `DuelRules.is_valid()` then refuses the match — a typo cannot silently become a different duel.
 
-A rule set _selects_ its fighter and weapon by id and tunes the arena around them; it does not author them. That is what makes "same rules, different duelist" a one-line change in `standard_duel_rules.gd` instead of a fork of it.
+A rule set _selects_ its two combatants by id (`StandardDuelRules.with_combatants`) and tunes the arena around them; it does not author them. Each slot is compiled on its own. That is what makes "same rules, different duelist" a one-line change in `standard_duel_rules.gd` instead of a fork of it.
 
-## An entry is a size, not a column of numbers
+## Character, weapon, handling (LOADOUT-001)
 
-Catalog entries are written as a **scale** plus the baseline quantities, and the scaling laws produce the rest. Ask for `FighterCatalog.duelist_at(1.5)` and geometry grows linearly, mass cubically, force quadratically, torque cubically; the accelerations follow from `a = F/m` and `α = τ/I`. Nobody hand-writes "and this one accelerates a bit less", and no authored speed penalty exists anywhere.
+Three independently authored pieces meet only in `LoadoutCatalog`:
+
+- the **character** (`FighterDefinition`) — body and actuators; it knows no weapon;
+- the **weapon** (`WeaponDefinition`) — the object; it knows no wielder;
+- the **handling** (`WeaponHandlingProfile`) — how this body carries this weapon: the hilt track `C(θ)` and its carriage.
+
+A pair with no authored handling yields null and the match fails closed; it never borrows another pair's track or falls back to the reference duelist. `CombatantPhysicsSpec.problem()` validates the whole loadout (each part, the pairing ids, the hilt at the grip, nothing of the held sword inside the torso), and `fingerprint()` hashes every resolved value so a replay header can pin it. Content is authored as GDScript catalogs today; editor `Resource` authoring would compile through the same seam into the same immutable spec, never be read by the simulation directly.
+
+## A shipped entry states its facts; a prototype is a size
+
+A shipped fighter states its physical facts — height, mass, push and hurt geometry, hands, the lying body — and three actuator scales relative to the reference duelist (`strength_scale`, `traction_scale`, `turn_support_scale`, Wolf 1.0 each), which `FighterCatalog.resolve_actuators` turns into newtons and newton-metres. Strength is never inferred from size, and the simulation never reads a scale.
+
+For scaling proofs and quick prototypes, `FighterCatalog.prototype_at(1.5)` still produces a whole build from a size: geometry grows linearly, mass cubically, force quadratically, torque cubically; the accelerations follow from `a = F/m` and `α = τ/I`. Nobody hand-writes "and this one accelerates a bit less", and no authored speed penalty exists anywhere.
 
 Only the physical frame scales. Health, speeds, commitment, stability, and the burst input windows are decisions about how a fighter _fights_ and stay fixed: scale changes physical inputs, and the physical equations produce the gameplay outputs.
 
@@ -45,15 +57,15 @@ Motor torques do not scale with the geometry either. They are authored against t
 
 Authored in three groups, deliberately kept apart:
 
-- **Build** — `height`, `mass`, `body_radius`, `body_inertia_coefficient`. Size and mass are independent (PHYS-005): a lean duelist and a heavy one of the same height are both legitimate, and neither value is ever derived from the other at runtime.
-- **Strength** — `locomotion_force`, `braking_force`, `burst_force`, `turn_torque`, `weapon_torque_scale`. Forces and torques, never accelerations. This is the separation that makes mass cost something.
+- **Body physics** — `height`, `mass`, `push_radius`, `hurt_radius`, hands, `body_inertia_coefficient`, `lying_half_length` / `lying_radius`. Size and mass are independent (PHYS-005): a lean duelist and a heavy one of the same height are both legitimate, and neither value is ever derived from the other at runtime.
+- **Actuators** — `locomotion_force`, `braking_force`, `burst_force`, `turn_torque`, `weapon_torque_scale`, and the speed caps. Forces and torques, never accelerations; resolved from authored scales. This is the separation that makes mass cost something.
 - **Semantics** — speeds, commitment penalties, stability, stagger, and the burst input windows. These are the fighter's _behaviour_ and are not physical magnitudes.
 
 Timing is deliberately absent from the physical groups. Size and mass must not reach the input or decision layers: a big fighter is not a laggy one, and a small fighter does not get a wider tap window.
 
 ## WeaponDefinition
 
-- **Geometry** — `hilt_radius`, `tip_radius`, `blade_radius`. The pivot is the pommel, so `tip_radius` is both the overall length and the effective rotational length. (A real `pivot_offset` is the natural future extension; at MVP it is zero.)
+- **Geometry** — `hilt_radius`, `tip_radius`, `blade_radius`. Every radius is measured from the blade's origin, the pommel, so `tip_radius` is both the overall length and the effective rotational length. (An origin offset is the natural future extension; at MVP it is zero.)
 - **Reach is the wielder's grip plus the blade.** `hilt_radius` is the holder's `FighterDefinition.grip_radius` (the baseline duelist's 0.25 m, `PhysicalBaseline.GRIP_RADIUS_M`), and `tip_radius` adds the weapon's blade. A rule set mounts its weapon at its fighter's grip (`WeaponCatalog.of(id, fighter.grip_radius)`) and `DuelRules.is_valid()` refuses one mounted for a different grip. A longer-armed fighter reaches further with the same sword; no mesh measurement ever decides it. For the baseline the numbers are bit-identical to before (rules version 20, golden replay hashes unchanged).
 - **Mass distribution** — `mass`, `inertia_coefficient`. Mass is measured; the coefficient is where balance lives.
 - **Motor** — torques, not accelerations. Speeds stay authored because they are the arm's limit, not the blade's.
@@ -69,14 +81,17 @@ Definitions expose normalized ratios against the baseline (`mass_ratio()`, `leng
 
 Every definition validates before a match can start: positive physical magnitudes, a blade no longer than the weapon, a guard limit wider than the canonical guard, and a positive moment of inertia. Invalid content fails closed rather than producing a duel with a weightless sword.
 
-| Concept                     | Code                                          |
-| --------------------------- | --------------------------------------------- |
-| Physical baseline           | `game/src/domain/rules/physical_baseline.gd`  |
-| Fighter definition          | `game/src/domain/rules/fighter_definition.gd` |
-| Weapon definition           | `game/src/domain/rules/weapon_definition.gd`  |
-| Combat tuning               | `game/src/domain/rules/combat_tuning.gd`      |
-| Fighter catalog             | `game/content/rules/fighter_catalog.gd`       |
-| Weapon catalog              | `game/content/rules/weapon_catalog.gd`        |
-| Arena, rounds, combat       | `game/content/rules/standard_duel_rules.gd`   |
-| Baseline and scaling proofs | `game/tests/domain/test_scaling.gd`           |
-| Content validity proofs     | `game/tests/domain/test_rules.gd`             |
+| Concept                     | Code                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Physical baseline           | `game/src/domain/rules/physical_baseline.gd`                                    |
+| Fighter definition          | `game/src/domain/rules/fighter_definition.gd`                                   |
+| Weapon definition           | `game/src/domain/rules/weapon_definition.gd`                                    |
+| Combat tuning               | `game/src/domain/rules/combat_tuning.gd`                                        |
+| Fighter catalog             | `game/content/rules/fighter_catalog.gd`                                         |
+| Weapon catalog              | `game/content/rules/weapon_catalog.gd`                                          |
+| Handling catalog            | `game/content/rules/handling_catalog.gd`                                        |
+| Loadout compile             | `game/content/rules/loadout_catalog.gd`                                         |
+| Combatant spec, handling    | `game/src/domain/rules/combatant_physics_spec.gd`, `weapon_handling_profile.gd` |
+| Arena, rounds, combat       | `game/content/rules/standard_duel_rules.gd`                                     |
+| Baseline and scaling proofs | `game/tests/domain/test_scaling.gd`                                             |
+| Content validity proofs     | `game/tests/domain/test_rules.gd`                                               |

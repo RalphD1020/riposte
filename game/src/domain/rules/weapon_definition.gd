@@ -7,20 +7,36 @@ extends RefCounted
 ## here are neutral. Units: meters, seconds, radians, kg.
 ##
 ## Angles are relative to the fighter's facing; positive is counter-clockwise
-## (the fighter's left). The pivot is the fighter center.
+## (the fighter's left). Blade radii are measured from the origin (pommel).
+## How a wielder carries the weapon — the hilt track and its carriage — is not
+## the object's: it is the fighter ↔ weapon pairing's
+## (`WeaponHandlingProfile`, LOADOUT-001). Sword geometry is only ever built
+## by `WeaponKinematics`.
 ##
 ## See also: /docs/concepts/combat.md
 ## Source: game/content/rules/standard_duel_rules.gd
 
 var id: StringName = &""
 
-## Geometry. The blade segment spans hilt_radius → tip_radius from the pivot,
+## Geometry. The blade segment spans hilt_radius → tip_radius from the origin,
 ## which sits at the pommel, so `tip_radius` *is* the weapon's overall length
 ## and the effective rotational length. Geometry scales linearly with weapon
 ## size; it is never a function of mass (PHYS-005).
 var hilt_radius: float = 0.0
 var tip_radius: float = 0.0
 var blade_radius: float = 0.0
+## The crossguard (GUARD-CONTACT-001): a rigid bar across the blade, centred
+## `guard_centre_radius` from the origin, reaching `guard_half_span` either side
+## of the blade, `guard_radius` thick. A collidable sword feature exactly like
+## the blade, only of another material and never a cutting edge. Zero span is
+## a sword with no guard.
+var guard_centre_radius: float = 0.0
+var guard_half_span: float = 0.0
+var guard_radius: float = 0.0
+## The handle — pommel to guard centre, as thick as the sword's own grip — is
+## the third collidable feature (HILT). Hands are not collision. Zero makes
+## the handle non-collidable.
+var handle_radius: float = 0.0
 ## Mass is a **measured fact** about the object, authored directly. It is
 ## never generated from length at runtime: a longer sword is usually a thinner
 ## one, so a cubic rule would quietly invent a crowbar.
@@ -29,6 +45,25 @@ var mass: float = 0.0
 ## pivoting about its own end is 1/3; mass carried further out authors more,
 ## a pommel-weighted weapon less. Balance is content, not hard-wired geometry.
 var inertia_coefficient: float = 0.0
+## The authored mass distribution these scalars are derived from
+## (EMERGENT-COMBAT-001, `apply_mass_profile`). When present, `mass`,
+## `center_of_mass_radius` and `inertia_coefficient` MUST agree with it to
+## `MASS_PROFILE_TOLERANCE`, so nothing may overwrite a derived scalar after
+## the fact and leave the distribution describing a different sword.
+var mass_profile: WeaponMassProfile = null
+## Derived scalars agree with their profile to rounding; the tolerance only
+## absorbs floating-point summation order.
+const MASS_PROFILE_TOLERANCE := 1.0e-9
+## Distance (m) from the origin down the blade to the centre of mass (the
+## balance point). Used with a moving origin, where the path's own motion adds
+## `m·(|P′|² + 2·d_c·P′·perp(û))` to the weapon coordinate's inertia.
+var center_of_mass_radius: float = 0.0
+## Distance (m) from the origin down the blade to each grip station: the off
+## hand on the pommel side, the dominant hand on the guard side, always in that
+## order. Where the handle is held is the handle's geometry; how the arms then
+## carry it is the handling's.
+var offhand_grip_radius: float = 0.0
+var dominant_grip_radius: float = 0.0
 
 ## Guard. The canonical guards are ±guard_angle and |angle| never exceeds
 ## guard_limit, but ±guard_angle is a *reference*, not a resting position: the
@@ -75,21 +110,16 @@ var control_speed: float = 0.0
 ## Commitment (COMBAT §20): K = (tap + (1 - tap) × C^1.25) × phase factor.
 var tap_commitment: float = 0.0
 
-## Recovery (COMBAT §56): base + commit×K + overswing + displacement + facing + balance.
-var recovery_base_ticks: int = 0
-var recovery_commit_ticks: float = 0.0
-var recovery_overswing_ticks_per_rad: float = 0.0
-var recovery_displacement_ticks_per_speed: float = 0.0
-var recovery_facing_ticks_per_rad: float = 0.0
-var recovery_balance_ticks: float = 0.0
-var recovery_max_ticks: int = 0
+## Recovery has no authored duration (RECOVERY-001, rules 44): it ends when the
+## universal floor (`CombatTuning.recovery_min_ticks`) has passed and the blade
+## is back under `control_speed`, arrested by this weapon's own brake torque.
+## How long that takes is the weapon's physics, not a table.
 
-## Blade contact (COMBAT §40, §45).
+## Blade contact (COMBAT §40, §45). `restitution` applies to a new contact
+## closing at least `restitution_threshold_speed` (m/s); a slower one is
+## inelastic, so slow and resting contacts never bounce (RIGID-CONTACT-002).
 var restitution: float = 0.0
-var deflect_fraction: float = 0.0
-var bind_speed: float = 0.0
-var bind_ticks: int = 0
-var bind_loser_recovery_ticks: int = 0
+var restitution_threshold_speed: float = 0.0
 
 ## Body strike quality (COMBAT §34–§39, §51).
 var reference_closing_speed: float = 0.0
@@ -97,15 +127,11 @@ var reference_closing_speed: float = 0.0
 var efficiency_fractions: PackedFloat64Array = PackedFloat64Array()
 var efficiency_values: PackedFloat64Array = PackedFloat64Array()
 var edge_floor: float = 0.0
-## Stagger and swing arrest read *impulse*, not damage quality (PHYS-004).
-## `stagger_impulse` is the stagger pressure a hit must carry; the arrest
-## thresholds are normalized impulse.
+## Stagger reads *impulse*, not damage quality (PHYS-004): `stagger_impulse`
+## is the stagger pressure a hit must carry.
 var stagger_impulse: float = 0.0
 var stagger_base_ticks: int = 0
 var stagger_scale_ticks: float = 0.0
-var swing_stop_base: float = 0.0
-var swing_stop_scale: float = 0.0
-var swing_end_impulse: float = 0.0
 
 ## Emergent thrust (COMBAT-010). A qualifying thrust is a contact
 ## classification — never an input, attack state, or animation — derived at
@@ -127,8 +153,16 @@ func is_valid() -> bool:
 		tip_radius > hilt_radius
 		and hilt_radius >= 0.0
 		and blade_radius > 0.0
+		and guard_half_span >= 0.0
+		and handle_radius >= 0.0
+		and (guard_half_span == 0.0 or (guard_radius > 0.0 and guard_centre_radius > dominant_grip_radius and guard_centre_radius <= hilt_radius))
 		and mass > 0.0
 		and inertia_coefficient > 0.0
+		and center_of_mass_radius > 0.0
+		and center_of_mass_radius < tip_radius
+		and offhand_grip_radius >= 0.0
+		and offhand_grip_radius < dominant_grip_radius
+		and dominant_grip_radius < hilt_radius
 		and guard_limit > guard_angle
 		and max_arc > min_arc
 		and min_arc > 0.0
@@ -145,18 +179,22 @@ func is_valid() -> bool:
 		and windup_speed > 0.0
 		and windup_torque > 0.0
 		and hold_torque > 0.0
+		and restitution >= 0.0
+		and restitution <= 1.0
+		and restitution_threshold_speed > 0.0
 		and reference_closing_speed > 0.0
 		and stagger_impulse > 0.0
-		and swing_end_impulse > 0.0
 		and efficiency_fractions.size() == efficiency_values.size()
 		and not efficiency_fractions.is_empty()
+		and _efficiency_is_a_loss()
 		and tip_region_start > 0.0
 		and tip_region_start <= 1.0
 		and thrust_efficiency >= 0.0
+		and (mass_profile == null or (mass_profile.is_valid() and mass_profile.matches(mass, center_of_mass_radius, inertia_coefficient, tip_radius, MASS_PROFILE_TOLERANCE)))
 	)
 
 
-## Overall length from the pivot, which is also the effective rotational
+## Overall length from the origin, which is also the effective rotational
 ## length in `I = k·m·L²`.
 func length() -> float:
 	return tip_radius
@@ -164,6 +202,16 @@ func length() -> float:
 
 func blade_length() -> float:
 	return tip_radius - hilt_radius
+
+
+## Derive `mass`, `center_of_mass_radius` and `inertia_coefficient` from
+## `profile` and keep it as their source. Geometry (`tip_radius`) must be set
+## first: `k` is the profile's inertia about the origin over `m·L²`.
+func apply_mass_profile(profile: WeaponMassProfile) -> void:
+	mass_profile = profile
+	mass = profile.total_mass()
+	center_of_mass_radius = profile.center_of_mass_radius()
+	inertia_coefficient = profile.inertia_coefficient(tip_radius)
 
 
 ## Precompute hook for immutable definitions. Currently a no-op: the public
@@ -174,14 +222,26 @@ func precompute() -> void:
 	pass
 
 
-## Moment of inertia about the fighter's pivot: **`I = k · m · L²`**
+## Restitution of a new blade contact closing at `closing` (m/s).
+func restitution_at(closing: float) -> float:
+	return restitution if closing >= restitution_threshold_speed else 0.0
+
+
+## Distance (m) from the origin down the blade to the middle of the two hands:
+## the point the sword turns about when it is held.
+func hand_centre_radius() -> float:
+	return (offhand_grip_radius + dominant_grip_radius) * 0.5
+
+
+## Moment of inertia about the fighter's origin: **`I = k · m · L²`**
 ## (PHYS-006). Length enters squared and mass linearly, which is why a longer
 ## weapon punishes far harder than a heavier one of the same length.
 ##
-## This is the one place the weapon's resistance to being turned is defined.
-## The motor divides torque by it, and blade contact divides impulse by it, so
-## a heavier or longer blade is harder both to swing and to displace — for
-## free, with no second set of authored accelerations to keep in sync.
+## This is the sword's own moment about its origin, the first term of the
+## weapon coordinate's inertia. The coordinate's whole inertia at a pose —
+## the hilt track's motion and the hands on the grip included — is
+## `WeaponKinematics.motor_inertia`, and the motor and every contact divide by
+## that one quantity (UNIFIED-MASS-001), never by this alone.
 func moment_of_inertia() -> float:
 	return inertia_coefficient * mass * tip_radius * tip_radius
 
@@ -207,29 +267,33 @@ func achievable_swing_speed(charge: float, readiness_value: float) -> float:
 	return swing_speed(charge) * SimMath.mix(readiness_floor, 1.0, SimMath.clamp01(readiness_value))
 
 
-## Angular acceleration available to drive a swing, `α = τ / I`.
+## Angular acceleration available to drive a swing, `α = τ / M_θ`.
 ##
 ## `drive` is the wielder's `weapon_torque_scale`: the same sword in a
 ## stronger arm accelerates faster because more torque is applied to it, not
 ## because the object changed (COMBAT §27). Every motor accel takes it, so a
-## wielder can never affect one phase of a swing and not another.
-func swing_accel(charge: float, drive: float) -> float:
-	return drive * SimMath.mix(swing_torque_tap, swing_torque_full, charge) / moment_of_inertia()
+## wielder can never affect one phase of a swing and not another. `inertia` is
+## the weapon coordinate's inertia at the current pose
+## (`WeaponKinematics.motor_inertia`) — the same one every contact uses
+## (UNIFIED-MASS-001); there is no default, so no caller can quietly fall back
+## to the sword's bare moment.
+func swing_accel(charge: float, drive: float, inertia: float) -> float:
+	return drive * SimMath.mix(swing_torque_tap, swing_torque_full, charge) / inertia
 
 
 ## Angular acceleration available to arrest a swing.
-func brake_accel(charge: float, drive: float) -> float:
-	return drive * SimMath.mix(brake_torque_tap, brake_torque_full, charge) / moment_of_inertia()
+func brake_accel(charge: float, drive: float, inertia: float) -> float:
+	return drive * SimMath.mix(brake_torque_tap, brake_torque_full, charge) / inertia
 
 
 ## Angular acceleration available to wind the blade back.
-func windup_accel(drive: float) -> float:
-	return drive * windup_torque / moment_of_inertia()
+func windup_accel(drive: float, inertia: float) -> float:
+	return drive * windup_torque / inertia
 
 
 ## Angular acceleration that settles an idle or bound blade.
-func hold_accel(drive: float) -> float:
-	return drive * hold_torque / moment_of_inertia()
+func hold_accel(drive: float, inertia: float) -> float:
+	return drive * hold_torque / inertia
 
 
 ## Arc = min_arc + (max_arc - min_arc) × charge (COMBAT §18). Equivalently
@@ -259,15 +323,29 @@ func earned_charge(earned_windback: float) -> float:
 ## Upper bound on the ticks a hold can still be earning charge: the longest
 ## traverse the motor can make, plus the time to reach top speed. Automated
 ## controllers use it as a release valve so they cannot hold a pinned blade
-## forever; the physics never consults it.
-func windback_limit_ticks(drive: float) -> int:
+## forever; the physics never consults it. `inertia` must bound the weapon
+## coordinate's inertia from above (`WeaponKinematics.peak_motor_inertia`), so
+## the ramp is never undercounted.
+func windback_limit_ticks(drive: float, inertia: float) -> int:
 	var travel := (guard_limit + guard_limit) / windup_speed
-	var ramp := windup_speed / windup_accel(drive)
+	var ramp := windup_speed / windup_accel(drive, inertia)
 	return ceili((travel + ramp) * float(SimulationTimebase.TICK_RATE))
 
 
+## Cut efficiency at a blade fraction: a loss the rigid model leaves out
+## (vibration, a poor bite), in (0, 1] — it can never add energy
+## (IMPACT-PHYSICS-001).
 func efficiency(blade_fraction: float) -> float:
 	return SimMath.piecewise(efficiency_fractions, efficiency_values, blade_fraction)
+
+
+func _efficiency_is_a_loss() -> bool:
+	for index in efficiency_values.size():
+		if not (efficiency_values[index] > 0.0 and efficiency_values[index] <= 1.0):
+			return false
+		if index > 0 and not (efficiency_fractions[index] > efficiency_fractions[index - 1]):
+			return false
+	return true
 
 
 ## Normalized diagnostics against the baseline bastard sword (COMBAT §33).

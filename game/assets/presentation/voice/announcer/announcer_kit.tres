@@ -1,13 +1,19 @@
 [gd_resource type="Resource" script_class="AnnouncerKit" format=3]
 
-[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/duel_01.mp3" id="1_lsa76"]
-[ext_resource type="Script" path="res://src/presentation/kit/announcer_kit.gd" id="2_jqx4x"]
-[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/duel_sting_01.mp3" id="3_pp3nn"]
-[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/versus_01.mp3" id="4_b7vkr"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/fight_01.mp3" id="1_ks1nb"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/match_1_01.mp3" id="2_u76cj"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/match_2_01.mp3" id="3_6b10a"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/match_3_01.mp3" id="4_tfqc0"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/match_4_01.mp3" id="5_a4ptv"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/match_5_01.mp3" id="6_tsath"]
+[ext_resource type="Script" path="res://src/presentation/kit/announcer_kit.gd" id="7_gr2v6"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/duel_sting_01.mp3" id="8_u7awf"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/versus_01.mp3" id="9_skwoi"]
 
 [resource]
-script = ExtResource("2_jqx4x")
+script = ExtResource("7_gr2v6")
 announcer_id = &"announcer.deep"
-versus = ExtResource("4_b7vkr")
-duel = ExtResource("1_lsa76")
-sting = ExtResource("3_pp3nn")
+versus = ExtResource("9_skwoi")
+sting = ExtResource("8_u7awf")
+match_numbers = Array[AudioStream]([ExtResource("2_u76cj"), ExtResource("3_6b10a"), ExtResource("4_tfqc0"), ExtResource("5_a4ptv"), ExtResource("6_tsath")])
+fight = ExtResource("1_ks1nb")

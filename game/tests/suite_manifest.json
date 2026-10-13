@@ -1,0 +1,550 @@
+{
+  "about": "TEST-TIER-001. Every behavioral suite: its tier, its runtime budget, and which code owns it. One source for the harness (tests/harness/headless_runner.gd), test:changed and test:focused (scripts/godot.mjs). Tiers: fast/focused/gate run in `pnpm test`; balance, accept and ship each run only when asked for. Budgets are 1.5x the measured time (2 s floor) of the last full gate, never targets to tune toward; a suite over budget is reported, not failed.",
+  "suites": [
+    {
+      "name": "HARNESS",
+      "path": "res://tests/harness/test_harness.gd",
+      "tier": "fast",
+      "budget_ms": 10000
+    },
+    {
+      "name": "MATH",
+      "path": "res://tests/domain/test_math.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "CMD",
+      "path": "res://tests/domain/test_command.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "RULES",
+      "path": "res://tests/domain/test_rules.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "SCALING",
+      "path": "res://tests/domain/test_scaling.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "INVARIANT",
+      "path": "res://tests/domain/test_invariants.gd",
+      "tier": "fast",
+      "budget_ms": 4000
+    },
+    {
+      "name": "SIDE",
+      "path": "res://tests/domain/test_side.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "STAMINA",
+      "path": "res://tests/domain/test_stamina.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "FUZZ",
+      "path": "res://tests/domain/test_fuzz.gd",
+      "tier": "gate",
+      "budget_ms": 21000
+    },
+    {
+      "name": "MOVE",
+      "path": "res://tests/domain/test_movement.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "FACE",
+      "path": "res://tests/domain/test_facing.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "ATTACK",
+      "path": "res://tests/domain/test_attack.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "BURST",
+      "path": "res://tests/domain/test_burst.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "COMMIT",
+      "path": "res://tests/domain/test_commitment.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "KINEMATICS",
+      "path": "res://tests/domain/test_kinematics.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "SHAPE",
+      "path": "res://tests/domain/test_shape.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "MANIFOLD",
+      "path": "res://tests/domain/test_manifold.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "IMPACT",
+      "path": "res://tests/domain/test_impact.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "FRICTION",
+      "path": "res://tests/domain/test_friction.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "GUARD",
+      "path": "res://tests/domain/test_guard.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "TWO-POINT",
+      "path": "res://tests/domain/test_two_point.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "COLLIDE",
+      "path": "res://tests/domain/test_collision.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "BODY-PUSH",
+      "path": "res://tests/domain/test_body_push.gd",
+      "tier": "focused",
+      "budget_ms": 55000
+    },
+    {
+      "name": "CONTACT",
+      "path": "res://tests/domain/test_contact.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "CONTACT-INTEGRITY",
+      "path": "res://tests/domain/test_contact_integrity.gd",
+      "tier": "focused",
+      "budget_ms": 36000
+    },
+    {
+      "name": "DAMAGE",
+      "path": "res://tests/domain/test_damage.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "POINT",
+      "path": "res://tests/domain/test_point_strike.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "LETHAL",
+      "path": "res://tests/domain/test_lethality.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "SEMANTICS",
+      "path": "res://tests/domain/test_semantics.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "ROUND",
+      "path": "res://tests/domain/test_round.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "FALLEN",
+      "path": "res://tests/domain/test_fallen.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "REPLAY",
+      "path": "res://tests/domain/test_replay.gd",
+      "tier": "gate",
+      "budget_ms": 96000
+    },
+    {
+      "name": "SYM",
+      "path": "res://tests/domain/test_symmetry.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "GENERIC",
+      "path": "res://tests/domain/test_generic.gd",
+      "tier": "focused",
+      "budget_ms": 12000
+    },
+    {
+      "name": "CONDITION",
+      "path": "res://tests/domain/test_condition.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "MOTION-COMMIT",
+      "path": "res://tests/domain/test_motion_commit.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "INPUT",
+      "path": "res://tests/application/test_input.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "DRIVER",
+      "path": "res://tests/application/test_driver.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "SETTINGS",
+      "path": "res://tests/application/test_settings.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "TUTORIAL",
+      "path": "res://tests/application/test_tutorial.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "SESSION",
+      "path": "res://tests/application/test_session.gd",
+      "tier": "focused",
+      "budget_ms": 119000
+    },
+    {
+      "name": "CPU",
+      "path": "res://tests/application/test_cpu.gd",
+      "tier": "focused",
+      "budget_ms": 229000
+    },
+    {
+      "name": "CPU-BALANCE",
+      "path": "res://tests/application/test_cpu_balance.gd",
+      "tier": "balance",
+      "budget_ms": 180000
+    },
+    {
+      "name": "CPU-ACCEPT",
+      "path": "res://tests/application/test_cpu_accept.gd",
+      "tier": "accept",
+      "budget_ms": 900000
+    },
+    {
+      "name": "EDGE-SAFETY",
+      "path": "res://tests/application/test_edge_safety.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-THEME",
+      "path": "res://tests/presentation/test_theme.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-KIT",
+      "path": "res://tests/presentation/test_kits.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-SNAPSHOT",
+      "path": "res://tests/presentation/test_snapshot.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-CAMERA",
+      "path": "res://tests/presentation/test_camera.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-FEEDBACK",
+      "path": "res://tests/presentation/test_feedback.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-PRESENTER",
+      "path": "res://tests/presentation/test_presenter.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-CONTACT",
+      "path": "res://tests/presentation/test_contact_presentation.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-READABILITY",
+      "path": "res://tests/presentation/test_readability.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-RIG",
+      "path": "res://tests/presentation/test_rig.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-VICTORY",
+      "path": "res://tests/presentation/test_victory.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-INTRO",
+      "path": "res://tests/presentation/test_intro.gd",
+      "tier": "focused",
+      "budget_ms": 7000
+    },
+    {
+      "name": "PRES-HUD",
+      "path": "res://tests/presentation/test_hud.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "APP-SHELL",
+      "path": "res://tests/application/test_app_shell.gd",
+      "tier": "focused",
+      "budget_ms": 2000
+    },
+    {
+      "name": "APP-E2E",
+      "path": "res://tests/application/test_app_e2e.gd",
+      "tier": "gate",
+      "budget_ms": 46000
+    },
+    {
+      "name": "FULL-E2E",
+      "path": "res://tests/application/test_full_e2e.gd",
+      "tier": "gate",
+      "budget_ms": 118000
+    },
+    {
+      "name": "CONTACT-INTEGRITY-SHIP",
+      "path": "res://tests/domain/test_contact_ship.gd",
+      "tier": "ship",
+      "budget_ms": 900000
+    }
+  ],
+  "areas": {
+    "core": {
+      "paths": [
+        "src/domain/math/",
+        "src/domain/rules/",
+        "src/domain/state/",
+        "src/domain/replay/",
+        "src/domain/events/",
+        "src/domain/commands/",
+        "src/domain/match/",
+        "src/domain/clock/",
+        "src/domain/rng/"
+      ],
+      "suites": [
+        "MATH",
+        "CMD",
+        "RULES",
+        "SCALING",
+        "INVARIANT",
+        "FUZZ",
+        "SIDE",
+        "ROUND",
+        "FALLEN"
+      ]
+    },
+    "rules": {
+      "paths": ["content/rules/"],
+      "suites": [
+        "RULES",
+        "SCALING",
+        "MOVE",
+        "MOTION-COMMIT",
+        "CONTACT",
+        "KINEMATICS",
+        "GENERIC"
+      ]
+    },
+    "movement": {
+      "paths": [
+        "src/domain/combat/movement_system.gd",
+        "src/domain/combat/facing_system.gd",
+        "src/domain/combat/commitment_model.gd",
+        "src/domain/combat/directional_tap_recognizer.gd",
+        "src/domain/combat/condition_model.gd",
+        "src/domain/combat/condition_state.gd",
+        "src/domain/combat/fighter_condition.gd",
+        "src/domain/combat/arena_constraints.gd",
+        "src/domain/combat/stamina_model.gd",
+        "src/domain/combat/duel_geometry.gd"
+      ],
+      "suites": [
+        "MOVE",
+        "FACE",
+        "BURST",
+        "COMMIT",
+        "MOTION-COMMIT",
+        "SYM",
+        "SIDE",
+        "CONDITION",
+        "STAMINA",
+        "EDGE-SAFETY"
+      ]
+    },
+    "weapon": {
+      "paths": [
+        "src/domain/combat/weapon_",
+        "src/domain/combat/blade_pose.gd",
+        "src/domain/combat/swing_semantics.gd",
+        "src/domain/combat/sword_contact_geometry.gd",
+        "src/domain/combat/fighter_pose.gd"
+      ],
+      "suites": [
+        "KINEMATICS",
+        "SHAPE",
+        "ATTACK",
+        "COLLIDE",
+        "POINT",
+        "SEMANTICS",
+        "GUARD"
+      ]
+    },
+    "contact": {
+      "paths": [
+        "src/domain/combat/contact_",
+        "src/domain/combat/rigid_contact_solver.gd",
+        "src/domain/combat/sword_contact_solver.gd",
+        "src/domain/combat/collision_system.gd",
+        "src/domain/combat/impact_",
+        "src/domain/combat/damage_model.gd",
+        "src/domain/combat/structural_coupling.gd",
+        "src/domain/combat/strike_result.gd",
+        "src/domain/combat/fallen_body_system.gd",
+        "src/domain/combat/fighter_tick_scratch.gd"
+      ],
+      "suites": [
+        "CONTACT",
+        "MANIFOLD",
+        "FRICTION",
+        "GUARD",
+        "TWO-POINT",
+        "IMPACT",
+        "BODY-PUSH",
+        "DAMAGE",
+        "LETHAL",
+        "CONTACT-INTEGRITY",
+        "GENERIC",
+        "FALLEN"
+      ]
+    },
+    "threat": {
+      "paths": [
+        "src/domain/combat/initiative_model.gd",
+        "src/domain/combat/threat_estimate.gd",
+        "src/domain/combat/exposure_model.gd"
+      ],
+      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT"]
+    },
+    "cpu": {
+      "paths": ["src/application/cpu/"],
+      "suites": ["CPU", "EDGE-SAFETY"]
+    },
+    "app": {
+      "paths": [
+        "src/application/app/",
+        "src/application/clock/",
+        "src/application/controllers/",
+        "src/application/diagnostics/",
+        "src/application/input/",
+        "src/application/match/",
+        "src/application/settings/",
+        "src/application/telemetry/",
+        "src/application/tutorial/",
+        "src/main/",
+        "project.godot",
+        "export_presets.cfg"
+      ],
+      "suites": [
+        "INPUT",
+        "DRIVER",
+        "SETTINGS",
+        "TUTORIAL",
+        "SESSION",
+        "APP-SHELL"
+      ]
+    },
+    "presentation": {
+      "paths": ["src/presentation/", "assets/", "content/presentation/"],
+      "suites": [
+        "PRES-THEME",
+        "PRES-KIT",
+        "PRES-SNAPSHOT",
+        "PRES-CAMERA",
+        "PRES-FEEDBACK",
+        "PRES-PRESENTER",
+        "PRES-CONTACT",
+        "PRES-READABILITY",
+        "PRES-RIG",
+        "PRES-VICTORY",
+        "PRES-INTRO",
+        "PRES-HUD"
+      ]
+    },
+    "content": {
+      "paths": ["content/"],
+      "suites": ["RULES", "PRES-KIT", "GENERIC"]
+    },
+    "harness": {
+      "paths": ["tests/harness/", "tests/suite_manifest.json", "scripts/"],
+      "suites": ["HARNESS", "MATH"]
+    },
+    "e2e": {
+      "paths": [],
+      "suites": ["APP-E2E", "FULL-E2E"]
+    },
+    "fast": {
+      "paths": [],
+      "suites": []
+    }
+  }
+}

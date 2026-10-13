@@ -32,7 +32,7 @@ static func new_state(rules: DuelRules, seed_value: int) -> MatchState:
 
 static func reset_round(state: MatchState, rules: DuelRules) -> void:
 	for slot in 2:
-		reset_fighter(state.fighters[slot], rules)
+		reset_fighter(state.fighters[slot], rules.combatant(slot), rules)
 	state.blade_contact.reset()
 	for wbc in state.weapon_body_contacts:
 		wbc.reset()
@@ -42,7 +42,7 @@ static func reset_round(state: MatchState, rules: DuelRules) -> void:
 	state.end_reason = &""
 
 
-static func reset_fighter(fighter: FighterState, rules: DuelRules) -> void:
+static func reset_fighter(fighter: FighterState, spec: CombatantPhysicsSpec, rules: DuelRules) -> void:
 	## Cardinal spawns on the locked north-south axis, from the fighter's own
 	## side rather than its slot (SIDE-001).
 	fighter.x = 0.0
@@ -53,16 +53,17 @@ static func reset_fighter(fighter: FighterState, rules: DuelRules) -> void:
 	fighter.ay = 0.0
 	fighter.facing = DuelSide.facing(fighter.side)
 	fighter.turn_rate = 0.0
-	## Seeded facing the opponent, so the very first tick of footwork already
-	## has a meaningful duel axis instead of a default one.
+	## Seeded to the opening heading, the frame the first tick of footwork uses.
 	fighter.duel_forward_x = SimMath.cosine(fighter.facing)
 	fighter.duel_forward_y = SimMath.sine(fighter.facing)
-	fighter.health = rules.fighter.max_health
-	fighter.stamina = rules.fighter.base_stamina
+	fighter.health = spec.fighter.max_health
+	fighter.stamina = spec.fighter.base_stamina
 	fighter.stability = 1.0
 	fighter.stagger_left = 0
 	fighter.lethal_fraction = FighterState.ALIVE
 	fighter.is_falling = false
-	fighter.weapon.reset(-rules.weapon.guard_angle)
+	fighter.support_lost_fraction = FighterState.SUPPORTED
+	fighter.fallen.reset()
+	fighter.weapon.reset(-spec.weapon.guard_angle)
 	fighter.gesture.reset()
 	fighter.clear_attack_input()

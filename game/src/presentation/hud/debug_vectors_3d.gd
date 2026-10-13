@@ -24,9 +24,14 @@ const TIP_SCALE := 0.06
 const BODY_HEIGHT := 0.12
 ## Half-length of the cross marking the sweet region.
 const SWEET_MARK := 0.07
+## Angular step (rad) the tip's locus is drawn at, and how faint the 270°
+## control domain is beside the swing actually in flight.
+const ARC_STEP := PI / 48.0
+const DOMAIN_ALPHA := 0.25
 
 var _lines := ImmediateMesh.new()
 var _blade_height: float = 1.0
+var _pose := BladePose.new()
 
 
 static func create(blade_height: float) -> DebugVectors3D:
@@ -40,6 +45,7 @@ static func create(blade_height: float) -> DebugVectors3D:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.vertex_color_use_as_albedo = true
 	material.no_depth_test = true
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	vectors.material_override = material
 	return vectors
 
@@ -68,20 +74,46 @@ func _rebuild(snapshot: PresentationSnapshot) -> void:
 		## Where the body is going, at a scale where a walk and a dash are
 		## visibly different lengths.
 		_segment(body, body + Vector3(row.vx, 0.0, -row.vy) * VELOCITY_SCALE, RiposteTheme.SPARK)
-		var hilt := ArenaTransform.to_world(row.x, row.y, _blade_height)
-		var tip := ArenaTransform.to_world(
-			row.x + row.tip_radius * cos(row.weapon_angle), row.y + row.tip_radius * sin(row.weapon_angle), _blade_height
-		)
-		## The tip's own travel: perpendicular to the blade, signed by which
-		## way it is swinging. This is the vector that decides everything at
-		## contact, and the one players most often guess wrong.
-		var along := (tip - hilt).normalized()
-		var across := along.rotated(Vector3.UP, PI * 0.5) * row.swing_dir
-		_segment(tip, tip + across * row.tip_speed * TIP_SCALE, RiposteTheme.CRITICAL)
+		## The authoritative blade, posed where collision has it.
+		WeaponKinematics.pose_at(row.x, row.y, row.facing, row.weapon_angle, row.combatant_spec, _pose)
+		var hilt := ArenaTransform.to_world(_pose.point_x(row.hilt_radius), _pose.point_y(row.hilt_radius), _blade_height)
+		var tip := ArenaTransform.to_world(_pose.point_x(row.tip_radius), _pose.point_y(row.tip_radius), _blade_height)
+		## The tip's own travel — rotation, footwork and the carriage's slide
+		## along the orbit together. This is the vector that decides
+		## everything at contact, and the one players most often guess wrong.
+		_segment(tip, tip + Vector3(row.tip_vx, 0.0, -row.tip_vy) * TIP_SCALE, RiposteTheme.CRITICAL)
 		## And the percussion band, as a cross on the blade itself.
+		var along := (tip - hilt).normalized()
+		var across := along.rotated(Vector3.UP, PI * 0.5)
 		var mid := hilt.lerp(tip, (SwingSemantics.SWEET_REGION_MIN + SwingSemantics.SWEET_REGION_MAX) * 0.5)
 		_segment(mid - across * SWEET_MARK, mid + across * SWEET_MARK, RiposteTheme.BODY_IMPACT)
+		## Where the tip could be at this heading — the 270° control domain,
+		## coverage and never a hitbox (SLASH-SHAPE-001) — faintly; and the
+		## swing actually in flight, from here to its committed end, strongly:
+		## the immediate threat.
+		var limit := row.weapon_definition.guard_limit
+		var faint := RiposteTheme.SPARK
+		faint.a = DOMAIN_ALPHA
+		_tip_arc(row, -limit, limit, faint)
+		if CombatPhase.is_swinging(row.phase):
+			_tip_arc(row, row.weapon_angle, row.swing_end, RiposteTheme.CRITICAL)
 	_lines.surface_end()
+
+
+## The authoritative tip's locus as θ runs from `from` to `to` at the row's
+## current position and heading, as line segments.
+func _tip_arc(row: PresentationFighter, from: float, to: float, color: Color) -> void:
+	var steps := maxi(ceili(absf(to - from) / ARC_STEP), 1)
+	var previous := _tip_at(row, from)
+	for k in range(1, steps + 1):
+		var next := _tip_at(row, lerpf(from, to, float(k) / float(steps)))
+		_segment(previous, next, color)
+		previous = next
+
+
+func _tip_at(row: PresentationFighter, angle: float) -> Vector3:
+	WeaponKinematics.pose_at(row.x, row.y, row.facing, angle, row.combatant_spec, _pose)
+	return ArenaTransform.to_world(_pose.point_x(row.tip_radius), _pose.point_y(row.tip_radius), _blade_height)
 
 
 func _segment(from: Vector3, to: Vector3, color: Color) -> void:

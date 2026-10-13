@@ -38,6 +38,9 @@ const ANIM_HURT := &"HURT"
 const ANIM_STAGGER := &"STAGGER"
 const ANIM_CRITICAL := &"CRITICAL"
 const ANIM_DEATH := &"DEATH"
+## Over the edge, alive: the flailing fall. Its variant comes from the death
+## profile (`ring_fall_clip`); a kit may also map one generic clip here.
+const ANIM_RING_FALL := &"RING_FALL"
 ## Every semantic the proxy will ever ask for. A kit that maps a clip to
 ## anything else has authored a clip nobody plays, which is the kind of mistake
 ## that looks like a broken rig for an afternoon.
@@ -59,6 +62,7 @@ const ANIM_SEMANTICS: Array[StringName] = [
 	ANIM_STAGGER,
 	ANIM_CRITICAL,
 	ANIM_DEATH,
+	ANIM_RING_FALL,
 ]
 ## Semantics that loop while their state holds; every other clip plays once.
 const LOOPING_SEMANTICS: Array[StringName] = [
@@ -67,6 +71,9 @@ const LOOPING_SEMANTICS: Array[StringName] = [
 
 ## Audio cues the presenter may request.
 const CUE_SWING := &"swing"
+## A swing that met nothing and ran on into its overswing: the hollow
+## follow-through. A kit without its own take plays the swing take, lower.
+const CUE_WHIFF := &"whiff"
 const CUE_CHARGE := &"charge"
 const CUE_BLADE_LIGHT := &"blade.light"
 const CUE_BLADE_SOLID := &"blade.solid"
@@ -124,6 +131,10 @@ const VFX_IMPACT := &"impact"
 @export var blade_height: float = 1.0
 ## Animation semantic → clip name in the scene's AnimationPlayer.
 @export var animation_clips: Dictionary = {}
+## Ground speed (m/s) at which the gait clips play at their authored rate.
+## Locomotion plays at actual speed over this (clamped), so a fighter slowed
+## by a charge steps slower instead of gliding (PRES-LOCO-001).
+@export var gait_reference_speed: float = 2.4
 ## Audio cue → AudioStream, or an Array of AudioStream variants. Missing cues
 ## are silent. Variants are picked deterministically from the event, so a
 ## replay hears the same takes in the same order.
@@ -146,6 +157,12 @@ const VFX_IMPACT := &"impact"
 ## Fighter kits: how this identity is announced and introduced. Optional.
 @export var voice: FighterVoiceKit
 @export var intro: FighterIntroProfile
+## Fighter kits: how this identity is shown when it wins a set. Optional; a
+## fighter without one still wins, with the results card alone.
+@export var victory: FighterVictoryProfile
+## Fighter kits: the bladed fighting stance the body stands in against the
+## combat frame (PRES-STANCE-001). Optional; null stands square.
+@export var stance: FighterStanceProfile
 ## Fighter kits: DEFAULT/ALTERNATE material sets for the Wolf-vs-Wolf mirror.
 ## Optional; a skin's colorway overrides this one.
 @export var colorway: SkinColorwayProfile
@@ -159,14 +176,25 @@ const VFX_IMPACT := &"impact"
 ## authored profile falls back to the built-in spread, so every fighter dies
 ## with character even before deaths are authored.
 func death_style(family: DeathPresentationProfile.Family, key: int) -> StringName:
+	return death_spec(family, key).style
+
+
+## The whole death for a killing blow (style, clip, timings), resolved once.
+func death_spec(family: DeathPresentationProfile.Family, key: int) -> DeathStyleSpec:
 	var profile := death if death != null else DeathPresentationProfile.new()
-	return profile.style_for(family, key)
+	return profile.resolve(family, key)
 
 
 ## The authored clip for a death style, or empty when the kit has none for it
 ## (the caller then falls back to the generic DEATH clip).
 func death_clip(style: StringName) -> StringName:
 	return death.clip_for(style) if death != null else &""
+
+
+## The authored ring-fall flail for a fall with event `key`, or empty when the
+## kit has none (the generic RING_FALL clip, then the procedural tilt).
+func ring_fall_clip(key: int) -> StringName:
+	return death.ring_fall_clip(key) if death != null else &""
 
 
 ## The authored run-through the striker of a killing thrust holds, or empty.

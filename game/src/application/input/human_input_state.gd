@@ -7,11 +7,21 @@ extends RefCounted
 ## accumulate until the next tick consumes them, so a tap shorter than a frame
 ## still reaches the simulation.
 ##
+## Charge can be held or toggled (COMBAT-READABILITY-001, an input
+## accessibility choice): with `toggle_charge`, one press begins the charge
+## and the next releases it, so no hold is ever required. Both modes emit the
+## same press and release edges, so the simulation cannot tell them apart.
+##
 ## See also: /docs/concepts/controls.md
 
 const SOURCE_POINTER := &"pointer"
 const SOURCE_KEY := &"key"
 const SOURCE_TOUCH := &"touch"
+## The held source a toggled charge stands for.
+const SOURCE_TOGGLE := &"toggle"
+
+## One press starts the charge, the next releases it.
+var toggle_charge: bool = false
 
 var _key_x: float = 0.0
 var _key_y: float = 0.0
@@ -36,6 +46,9 @@ func set_touch_axis(x: float, y: float, active: bool) -> void:
 
 
 func attack_down(source: StringName) -> void:
+	if toggle_charge:
+		_toggle()
+		return
 	if _held_sources.has(source):
 		return
 	if _held_sources.is_empty():
@@ -44,6 +57,8 @@ func attack_down(source: StringName) -> void:
 
 
 func attack_up(source: StringName) -> void:
+	if toggle_charge:
+		return
 	if not _held_sources.has(source):
 		return
 	_held_sources.erase(source)
@@ -53,6 +68,16 @@ func attack_up(source: StringName) -> void:
 
 func is_attack_held() -> bool:
 	return not _held_sources.is_empty()
+
+
+## A toggled press: begin the charge, or release the one already begun.
+func _toggle() -> void:
+	if _held_sources.has(SOURCE_TOGGLE):
+		_held_sources.erase(SOURCE_TOGGLE)
+		_released = true
+		return
+	_held_sources[SOURCE_TOGGLE] = true
+	_pressed = true
 
 
 ## Focus loss, touch cancel, or pause: drop everything without attacking.

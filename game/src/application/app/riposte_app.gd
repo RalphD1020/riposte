@@ -13,6 +13,7 @@ extends Node
 
 var settings: PlayerSettings = PlayerSettings.new()
 var telemetry: TelemetrySink = TelemetrySink.new()
+var monitors: SimulationMonitors = SimulationMonitors.new()
 var kit_catalog: PresentationKitCatalog
 var ui_feedback: UiFeedback
 var router: ScreenRouter
@@ -26,9 +27,15 @@ var settings_path: String = PlayerSettings.PATH
 var seed_override: int = 0
 var _ui_root: Control
 var _seeds: RandomNumberGenerator = RandomNumberGenerator.new()
-## A set is one Quick Play session: its first match is introduced, its
-## rematches and rounds never are.
-var _set_intro_due: bool = false
+## The set in progress: one match. Quick Play and every Rematch open a new one,
+## so each is introduced once and its winner showcased once (PRES-INTRO-001,
+## PRES-VICTORY-001); rounds inside it never are.
+var current_set: MatchSet
+var _next_set_id: int = 0
+## Test seam, like `seed_override`: when set, composes the session instead of
+## `MatchComposer.compose(config, human, telemetry)` — so a scenario can stand a
+## scripted opponent opposite the real human pipeline. Production never sets it.
+var compose_session: Callable
 
 
 func attach(mount: Node3D, rig: DuelCameraRig, ui_root: Control) -> void:
@@ -47,6 +54,7 @@ func _ready() -> void:
 		_seeds.randomize()
 	settings.load_from(settings_path)
 	settings.apply_audio()
+	settings.apply_bindings()
 	_apply_display_mode(false)
 	kit_catalog = RiposteKits.build_catalog(OS.is_debug_build())
 	ui_feedback = UiFeedback.new()
@@ -64,7 +72,12 @@ func _ready() -> void:
 	window.size_changed.connect(_on_window_resized)
 	UiScale.apply(window)
 	telemetry.record_product(ProductEvents.GAME_LOADED)
+	monitors.install()
 	router.show_screen(AppScreen.Id.MAIN_MENU)
+
+
+func _exit_tree() -> void:
+	monitors.uninstall()
 
 
 func go_to(screen: AppScreen.Id) -> void:
@@ -77,15 +90,17 @@ func current_screen() -> Control:
 
 func start_quick_play() -> void:
 	telemetry.record_product(ProductEvents.QUICK_PLAY_CLICKED, {ProductEvents.PROP_DIFFICULTY: int(settings.difficulty)})
-	_set_intro_due = true
 	_start(MatchConfig.quick_play(settings.difficulty, _seeds.randi()))
 
 
 ## True exactly once per set; asking clears it.
-func consume_set_intro() -> bool:
-	var due := _set_intro_due
-	_set_intro_due = false
-	return due
+func claim_set_intro() -> bool:
+	return current_set != null and current_set.claim_intro()
+
+
+## True exactly once per set whose winner is showcased; asking clears it.
+func claim_set_victory() -> bool:
+	return current_set != null and current_set.claim_victory()
 
 
 func start_training() -> void:
@@ -93,13 +108,33 @@ func start_training() -> void:
 	_start(MatchConfig.training(_seeds.randi()))
 
 
+## A rematch is a new set: fresh session, fresh seed, introduced again.
 func rematch() -> void:
 	telemetry.record_product(ProductEvents.REMATCH_CLICKED)
-	_set_intro_due = false
 	if match_config == null:
 		start_quick_play()
 		return
 	_start(match_config.rematch(_seeds.randi()))
+
+
+## The match's presentation kits, resolved once for the duel and again for its
+## results: rules decide identity, settings decide the local player's skin.
+func resolve_kits(config: MatchConfig) -> DuelKits:
+	var kits := DuelKits.resolve(kit_catalog, config.rules, fighter_skins(), weapon_skins())
+	if kits.is_complete():
+		kits.match_loadout = RiposteKits.match_loadout(kits.arena)
+	return kits
+
+
+## The session for `config`, through the test seam when one is installed.
+func compose(config: MatchConfig, human: HumanController) -> MatchSession:
+	var session: MatchSession
+	if compose_session.is_valid():
+		session = compose_session.call(config, human, telemetry) as MatchSession
+	else:
+		session = MatchComposer.compose(config, human, telemetry)
+	monitors.session = session
+	return session
 
 
 func finish_match(session: MatchSession) -> void:
@@ -143,6 +178,7 @@ func set_fullscreen(on: bool) -> void:
 func save_settings() -> void:
 	settings.save_to(settings_path)
 	settings.apply_audio()
+	settings.apply_bindings()
 
 
 func presentation_options() -> PresentationOptions:
@@ -157,6 +193,8 @@ func presentation_options() -> PresentationOptions:
 	options.haptics = settings.haptics
 	options.touch_layout = touch_layout()
 	options.captions = settings.captions
+	options.sound_captions = settings.sound_captions
+	options.contact_highlight = settings.contact_highlight
 	options.particle_intensity = settings.particle_intensity
 	return options
 
@@ -189,6 +227,10 @@ func safe_insets() -> Vector4:
 func _start(config: MatchConfig) -> void:
 	match_config = config
 	last_session = null
+	_next_set_id += 1
+	## Training is practice, not a set: no introduction, no showcase.
+	var shown := config.mode == MatchConfig.Mode.QUICK_PLAY_CPU
+	current_set = MatchSet.open(_next_set_id, shown, shown)
 	go_to(AppScreen.Id.MATCH)
 
 

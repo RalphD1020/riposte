@@ -19,7 +19,9 @@ var slow_motion_requests: Array[SlowMotionRequest] = []
 var death_requests: Array[DeathPresentationRequest] = []
 ## Ring-outs: one per fighter that crossed the edge this tick.
 var fall_requests: Array[FallPresentationRequest] = []
-## Swords leaving the hands: one per killing blow or ring-out this tick.
+## Swords leaving the hands over the edge: one per ring-out this tick. A
+## killing blow's release is timed by its death style, so the presenter queues
+## it with the death.
 var weapon_drop_requests: Array[WeaponDropRequest] = []
 
 

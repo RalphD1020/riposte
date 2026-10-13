@@ -45,7 +45,6 @@ Only information available to the player/CPU at decision time. Corresponds to `C
 | `perceived_distance` | float | m           | Derived from sighting                 |
 | `initiative`         | float | seconds     | TacticalAssessment                    |
 | `measure_quality`    | float | [0, 1]      | TacticalAssessment                    |
-| `stamina_depletion`  | float | [0, 1]      | TacticalAssessment                    |
 | `tempo_opportunity`  | float | [0, 1]      | TacticalAssessment                    |
 | `arena_pressure`     | float | [-1, 1]     | TacticalAssessment                    |
 
@@ -89,7 +88,6 @@ Structured sidecar emitted per CPU decision. Fixed typed fields, never dictionar
 | `chosen_attack`           | Attack enum        | Selected attack intent                                            |
 | `measure_quality`         | float              | From TacticalAssessment                                           |
 | `initiative`              | float              | From TacticalAssessment                                           |
-| `stamina_depletion`       | float              | From TacticalAssessment                                           |
 | `tempo_opportunity`       | float              | From TacticalAssessment                                           |
 | `arena_pressure`          | float              | From TacticalAssessment                                           |
 | `burst_started`           | bool               | Whether a burst gesture was launched                              |

@@ -23,13 +23,13 @@ Dependency direction: application → presentation → domain; content is data a
 
 ### Canonical tick order
 
-"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **9**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
+"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **13**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
 
 ```text
  1. guard: a finished match accepts no further steps
  2. dispatch on match phase
  3. ROUND_ACTIVE: advance phase and round counters
- 4. freeze capability for both fighters (from start-of-tick stamina)
+ 4. freeze condition for both fighters (from start-of-tick health only, CONDITION-001)
  5. capture start poses for both fighters
  6. consume attack input edges for both fighters
  7. compute tracking multipliers from start-of-tick state
@@ -38,11 +38,17 @@ Dependency direction: application → presentation → domain; content is data a
 10. arena boundary confinement only (no body separation — that shares the TOI loop)
 11. capture finish poses for both fighters
 12. bind upkeep
-13. unified chronological contact loop: detect earliest TOI among blade↔blade,
-    blade→body, tip→body, body↔body, arena boundary; seek to impact; resolve
-    according to interaction type (PHYS-008); carry remainder; post-carry
-    support-loss check: any living non-falling fighter past platform_radius
-    is marked falling and emits RING_OUT
+13. contacts (RIGID-CONTACT-001, COMBAT-007):
+    a. persisted contacts touching at the start remove their closing speed
+       (velocity stage), then the tick is carried again from those velocities
+    b. unified chronological contact loop: detect earliest TOI among blade↔blade,
+       blade→body, tip→body, body↔body, persisted pairs driven past the slop;
+       seek to impact; resolve according to interaction type (PHYS-008); carry
+       remainder (once the re-hold budget is spent, in sweep substeps with each
+       substep's overlap pushed out — CONTACT-FALLBACK-001); post-carry support-loss check: any living non-falling fighter
+       past platform_radius is marked falling and emits RING_OUT
+    c. persisted overlap beyond contact_slop pushed out at position level
+       (velocities untouched), then the same support-loss check
 14. stamina step: drain from scratch work, recovery if below threshold,
     apply contact shock, clamp
 15. contact pair lifecycle upkeep (blade + weapon-body)
@@ -54,19 +60,30 @@ Dependency direction: application → presentation → domain; content is data a
 Step 12 is itself a bounded loop rather than a single pass, because contacts inside one tick are ordered in time and the later ones depend on the earlier ones (COMBAT-007). All contact types share the same chronology:
 
 ```text
-loop at most max_contacts_per_tick times:
-    find the earliest contact among blade↔blade, blade→body, body↔body
+hold persisted contacts touching at the start (velocity stage); re-carry the tick
+loop until max_contacts_per_tick new contacts (holds spend HOLDS_PER_TICK):
+    find the earliest contact among blade↔blade, blade→body, body↔body,
+        and persisted pairs driven past twice the slop
     if none: stop
     seek both fighters to that time of impact
     resolve the contact according to its interaction type:
         blade↔blade → bilateral rigid impulse (changes both weapons)
-        blade/tip→body → conditional coupling (PHYS-008: body receives damage/push;
-                          non-stabbing contacts deflect the blade via reduced-mass
-                          angular impulse; stabbing-angle contacts penetrate freely)
+        blade/tip→body → one contact impulse (PHYS-008: body receives damage/push;
+                          the blade reacts through its lever, J·c/M_θ — a centred
+                          point has c ≈ 0 and drives through)
         body↔body → inverse-mass impulse (changes body velocities, never weapons)
+        persisted pair → normal constraint (closing removed, no event)
+    re-hold every held contact from the post-resolution velocities
+        (a hold that arrested a driven cut ends it — phase only, nothing moves)
     carry the remainder of the tick forward from the post-resolution state
+        (budget spent: in sweep substeps, each substep's overlap pushed out)
     the impact pose becomes the new start; the carried pose the new finish
+push persisted overlap back to contact_slop (position stage)
 ```
+
+A contact is reported on the substep it comes into touch, never on every substep it stays touching: a held contact is already a constraint, and re-reporting it only spends the budget. Bodies meet at most once a tick; overlap left later in the tick is separated where each remainder is carried. Before this rule, pressed bodies re-reported every substep, exhausted the budget, and the unswept rest of the tick let a blade pass straight through a held contact. The re-hold budget itself is a fixed bound (`HOLDS_PER_TICK`), never raised to make a counter read zero; a tick that spends it carries its remainder in the sweep's own substeps with the position stage after each (CONTACT-FALLBACK-001), so the pair keeps its last non-penetrating side, only the advance along the normal is cancelled, tangent slide, θ̇ and every other motion carry on, and the next tick starts with the full budget. On 70 adversarial storms it holds the worst held overlap at the slop (2.3 mm, against 3.45 cm unbounded); the ship corpus never reaches it.
+
+The position stage solves its rows together. A sword pinned between the opponent's blade and torso (typically at the opponent's guard end; since rules 35 the crossguard and handle collide too, the hands never) has two rows pushing it in opposite directions; corrected one after the other each undoes the other, and only the opponent's weapon rotation — the one motion that separates them — makes progress. Solved as one small complementarity problem (at most four rows — the blades, each sword on the other's torso, and the two bodies — fixed-order active-set enumeration) the correction goes straight to that rotation, bounded per pass so nothing teleports. The bodies are a row because a Long Guard blade that starts past the opponent's centre pushes that torso back toward its wielder: cleared on its own, the overlap would drive the bodies into each other. A separated body pair rests 1 nm outside touching, the same rule as held swords resting at the slop below their re-hold line: detection at exactly touching must never be decided by rounding.
 
 ### Totality
 
@@ -102,9 +119,19 @@ Failing closed deliberately does not repair the offending value: silently resett
 
 The claim is scoped to **one build**: same build, same rules, same seed, same commands, same duel — bit for bit, hash included. Not "the same on every platform". `SimMath` exists to remove the engine's own drift (libm and FMA differ, and `lerp` is not the same function everywhere), and it does, but the double-precision result of a transcendental is still the platform's C library. Claiming cross-platform identity would be claiming something no gate here can check, and a determinism guarantee nobody verifies is worse than a narrower one that is true. Server-authoritative play, when it arrives, is what makes the stronger claim both necessary and testable.
 
+There are three levels of the promise, and only the first is made:
+
+| Level | Promise                                                              | Status                                                                                                                                                     |
+| ----- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A     | Same inputs, same build, same platform → bit-identical duel and hash | **Shipped.** REPLAY, FUZZ and the per-tick hash tests prove it every run.                                                                                  |
+| B     | Bit-identical across operating systems, CPUs, and the Web export     | Not claimed. Decided with networking; needs a cross-platform gate before it can be.                                                                        |
+| C     | Lockstep or rollback netcode over two peers' simulations             | Not claimed. A fixed tick does not imply it, and server-authoritative play may need neither B nor C — only the server's simulation has to be the true one. |
+
 ## Match flow
 
-`MatchPhase`: `ROUND_INTRO → ROUND_ACTIVE → ROUND_RESULT → … → MATCH_ENDED`. A round ends on a kill, a trade, or timeout (more health wins). A trade is two deaths in the same tick, and it is decided by which blade arrived first: `FighterState.lethal_fraction` records the sub-tick instant of each death, the fighter who fell later takes the round as `REASON_TRADE_FIRST_CONTACT`, and only an exact tie is a draw (`REASON_DOUBLE_KILL`). Slot number, attacker role, and remaining health are deliberately not consulted — any of them would make the arena asymmetric. `rounds_to_win` decides the match. During `ROUND_RESULT` bodies settle and nothing new can happen.
+`MatchPhase`: `ROUND_INTRO → ROUND_ACTIVE → ROUND_RESULT → … → MATCH_ENDED`. A round ends on a kill, a trade, or timeout (more health wins). A trade is two deaths in the same tick, and it is decided by which blade arrived first: `FighterState.lethal_fraction` records the sub-tick instant of each death, the fighter who fell later takes the round as `REASON_TRADE_FIRST_CONTACT`, and only an exact tie is a draw (`REASON_DOUBLE_KILL`). Slot number, attacker role, and remaining health are deliberately not consulted — any of them would make the arena asymmetric. A ring-out is ordered the same way (COMBAT-014): every `RING_OUT` records `support_lost_fraction`, the sub-tick instant the centre crossed the edge, and `FighterState.terminal_kind()` / `terminal_time()` read a fighter's way out as whichever of the lethal blow and the lost footing came first. When both fighters left the round in one tick, the one who left later wins and the reason is the loser's way out (`REASON_RING_OUT`, or a kill reason); a fighter who crossed the edge and then landed a kill later in the tick was already out, and a dead fighter never wins by an opponent's later fall. `rounds_to_win` decides the match; a set is one match.
+
+A decided round is not a cutscene. `POST_ROUND_FREE` and `ROUND_RESULT` run one shared step, and one gate, `DuelSimulation.accepts_gameplay_input`, keeps the round's winner — alive, on the platform — in full control until exactly the next `ROUND_INTRO` or the end of the match; the loser's commands are ignored. The killed fighter is a **body** (FALLEN-BODY-001): thrown along the killing impulse, lying once its collapse is over as a capsule through its centre of mass, sliding on ground friction rather than braking, pushed and turned about its centre of mass by the winner's push circle through the same kind of contact impulse as every other collision, and — pushed over the rim — a post-round corpse fall that changes nothing about the result. Nothing in the decided round can change who won.
 
 ## Sessions and controllers
 

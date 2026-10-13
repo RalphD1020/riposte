@@ -17,9 +17,10 @@ var round_winner: int = MatchPhase.NO_WINNER
 var match_winner: int = MatchPhase.NO_WINNER
 var end_reason: StringName = &""
 var fighters: Array[FighterState] = []
-## Lifecycle of the blade-on-blade pair. MVP-0 has exactly one pair; adding a
-## shield or a second weapon adds instances here, not new booleans.
-var blade_contact := ContactPairState.new()
+## The blade-on-blade contact manifold: lifecycle and touching points. MVP-0
+## has exactly one weapon pair; a shield or a second weapon adds instances
+## here, not new booleans.
+var blade_contact := SwordContactSet.new()
 ## Lifecycle of weapon→body contacts, one per attacker (COMBAT-007, PHYS-008).
 ## weapon_body_contacts[i] tracks whether attacker i's blade is currently
 ## inside the opponent's body volume.

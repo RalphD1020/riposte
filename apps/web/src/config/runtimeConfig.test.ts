@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SitePath } from "@/content/site";
 import {
   DEFAULT_LOCAL_PLAY_URL,
   HOSTED_PLAY_PATH,
@@ -129,18 +130,33 @@ describe("the hosting contract in next.config.ts", () => {
       ?.headers.find((header) => header.key === key)?.value;
   }
 
-  it("rewrites /play to the path this module resolves", () => {
+  it("names the same paths this module resolves", () => {
     expect(source).toContain(`const HOSTED_PLAY_PATH = "${HOSTED_PLAY_PATH}"`);
+    expect(source).toContain(`const SITE_PLAY_PATH = "${SitePath.play}"`);
   });
 
   /**
-   * A bare rewrite array is `afterFiles`, which loses to the `/play` page
-   * that exists as the fallback — so the rewrite would silently never fire.
-   * Whether it is populated depends on a staged artifact, which a test must
-   * not require; that it is in the right bucket does not.
+   * Whether an export is staged is read from this checkout, exactly as the
+   * config reads it, so the case that runs is the one this deployment would
+   * serve. A rewrite would keep the address at `/play`: the shell's relative
+   * engine files would then 404 and the page would carry the site policy,
+   * which refuses WebAssembly — so the game would never boot.
    */
-  it("puts the rewrite before the page it is meant to replace", () => {
-    expect(source).toContain("beforeFiles: hasStagedGame");
+  it("sends /play to the staged shell's own URL, and only when staged", async () => {
+    const staged = existsSync(`./public${HOSTED_PLAY_PATH}`);
+    const config = (await import("../../next.config")).default;
+    expect(await config.redirects?.()).toEqual(
+      staged
+        ? [
+            {
+              source: SitePath.play,
+              destination: HOSTED_PLAY_PATH,
+              permanent: false,
+            },
+          ]
+        : [],
+    );
+    expect(config.rewrites).toBeUndefined();
   });
 
   it("grants wasm and worker capabilities to /game and to nothing else", async () => {

@@ -10,7 +10,7 @@
     ],
     "max": [
       0.144,
-      0.0285,
+      0.012,
       0.0243
     ]
   },
@@ -32,6 +32,6 @@
     "spine_iron",
     "steel"
   ],
-  "triangle_count": 206,
+  "triangle_count": 182,
   "color_targets": []
 }

@@ -13,6 +13,8 @@
  *   SeededRng, no output, no signals, no await.
  * - Physics drives classification: `GuardRegion` is a description of the
  *   blade, so it may not appear in `src/domain/combat` or `src/domain/match`.
+ * - WEAPON-PATH-001 sword geometry (`centre + û·radius`) is built only by
+ *   `WeaponKinematics`.
  * - PRES-001 `src/presentation` never drives the simulation, never names an
  *   application class, and contains no content identities (kits own
  *   identity). Layer bans are derived from each layer's `class_name`s.
@@ -270,6 +272,106 @@ const CLASSIFICATION_RULES = [
 ];
 scanCode("src/domain/combat", CLASSIFICATION_RULES);
 scanCode("src/domain/match", CLASSIFICATION_RULES);
+
+// --- COMBATANT-GENERIC-001: the simulation knows no fighter --------------------
+// Every fighter is a FighterState driven by its own CombatantPhysicsSpec,
+// found through the match context (`rules.spec_of(fighter)` /
+// `rules.combatant(slot)`) or passed in. No system may reach for "the"
+// fighter or weapon, a content catalog, or a reference identity: that is how
+// the reference duelist quietly becomes physics infrastructure.
+const COMBATANT_GENERIC_RULES = [
+  {
+    id: "shared-loadout",
+    pattern: /\brules\.(fighter|weapon)\b/,
+    reason:
+      "there is no shared fighter or weapon; read rules.spec_of(fighter) / rules.combatant(slot) (COMBATANT-GENERIC-001)",
+  },
+  {
+    id: "content-lookup",
+    pattern:
+      /\b(FighterCatalog|WeaponCatalog|HandlingCatalog|LoadoutCatalog|StandardDuelRules|ContentIds|PhysicalBaseline)\b/,
+    reason:
+      "simulation systems receive resolved specs; they never look up content or the reference baseline (COMBATANT-GENERIC-001)",
+  },
+  {
+    id: "identity",
+    pattern: /wolf|duelist|bastard/i,
+    strings: true,
+    reason:
+      "simulation systems must not name a character or weapon identity (COMBATANT-GENERIC-001)",
+  },
+];
+scanCode("src/domain/combat", COMBATANT_GENERIC_RULES);
+scanCode("src/domain/match", COMBATANT_GENERIC_RULES);
+scanCode("src/domain/state", COMBATANT_GENERIC_RULES);
+scanCode("src/domain/replay", COMBATANT_GENERIC_RULES);
+scanCode("src", [COMBATANT_GENERIC_RULES[0]]);
+scanCode("tools", [COMBATANT_GENERIC_RULES[0]]);
+
+// --- WHIFF-001: a whiff is a label, never a mechanic ---------------------------
+// ATTACK_WHIFFED is derived after physics produced a miss. Nothing in the
+// domain or the CPU may react to it, and `attack_contacted` exists only to
+// emit it exactly once — so only its writers and the one emitter may name it.
+const WHIFF_RULES = [
+  {
+    id: "whiff-event",
+    pattern: /\bATTACK_WHIFFED\b/,
+    reason:
+      "a whiff is a label for presentation and telemetry; the simulation and the CPU never read it (WHIFF-001)",
+  },
+  {
+    id: "attack-contacted",
+    pattern: /\battack_contacted\b/,
+    reason:
+      "attack_contacted only gates the whiff label; physics must not read it (WHIFF-001)",
+  },
+];
+const WHIFF_ALLOW = new Set([
+  "src/domain/events/duel_event_types.gd:whiff-event",
+  "src/domain/combat/weapon_system.gd:whiff-event",
+  "src/domain/combat/weapon_system.gd:attack-contacted",
+  "src/domain/combat/contact_resolver.gd:attack-contacted",
+  "src/domain/state/weapon_state.gd:attack-contacted",
+  "src/domain/replay/state_hasher.gd:attack-contacted",
+]);
+scanCode("src/domain", WHIFF_RULES, { allow: WHIFF_ALLOW });
+scanCode("src/application", WHIFF_RULES);
+
+// --- COMMITMENT-001: no authored movement or outcome rules ---------------------
+// Every commitment, push and punish behaviour already has a physical quantity
+// that produces it. These names are how an authored shortcut usually arrives.
+const COMMITMENT_RULES = [
+  {
+    id: "authored-commitment",
+    pattern:
+      /\b\w*(dash_push|backpedal|plant(ed)?_(bonus|state|damage)|whiff_(penalty|stun|recovery)|counter_(window|damage|bonus)|angle_advantage|parry_commit|running_attack|forward_attack_(bonus|penalty|damage|force)|attack_force_bonus|sidestep_(success|evade))\w*\b/i,
+    reason:
+      "commitment, pushes and punishes come from momentum, force, braking and contact — never an authored bonus, penalty, window or state (COMMITMENT-001)",
+  },
+];
+scanCode("src/domain", COMMITMENT_RULES);
+scanCode("src/application", COMMITMENT_RULES);
+scanCode("content", COMMITMENT_RULES);
+
+// --- WEAPON-PATH-001: sword geometry has one home -----------------------------
+// `centre + û·radius` is how the old revolute pivot leaked into every system;
+// a moving pivot makes each such copy wrong. Pose the blade with
+// WeaponKinematics (BladePose.point_x/point_y) instead.
+const SWORD_GEOMETRY_RULES = [
+  {
+    id: "sword-geometry",
+    pattern:
+      /(?:\b(?:x|y)\s*\+[^\n]*\*\s*(?:_?rules\.)?weapon\.(?:tip|hilt)_radius)|(?:\b(?:cos|sin|cosine|sine)\([^)]*\)\s*\*\s*[\w.]*(?:tip|hilt)_radius)|(?:(?:tip|hilt)_radius\s*\*\s*(?:SimMath\.)?(?:cos|sin|cosine|sine)\()/,
+    reason:
+      "sword geometry is built only by WeaponKinematics (WEAPON-PATH-001); pose the blade there",
+  },
+];
+const SWORD_GEOMETRY_ALLOW = new Set([
+  "src/domain/combat/weapon_kinematics.gd:sword-geometry",
+]);
+scanCode("src/domain", SWORD_GEOMETRY_RULES, { allow: SWORD_GEOMETRY_ALLOW });
+scanCode("src/application", SWORD_GEOMETRY_RULES);
+scanCode("src/presentation/snapshot", SWORD_GEOMETRY_RULES);
 
 // --- PRES-001 ----------------------------------------------------------------
 scanCode("src/presentation", [

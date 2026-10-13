@@ -1,6 +1,6 @@
 /**
  * Play control. Always a plain anchor to `/play` — a full navigation, not a
- * client-side route change, because on the server build `/play` is a rewrite
+ * client-side route change, because on the server build `/play` is a redirect
  * to the staged export and a router transition would never reach it.
  *
  * `/play` resolves the destination; this component never inspects hosts or

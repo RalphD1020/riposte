@@ -76,7 +76,7 @@ describe("PlayGateway", () => {
   });
 
   /**
-   * The static export has no rewrites, so this hop is how `/play` reaches the
+   * The static export has no redirects, so this hop is how `/play` reaches the
    * export staged on the same origin.
    */
   it("navigates to the staged export on this origin", () => {

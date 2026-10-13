@@ -22,6 +22,37 @@ func test_any_source_holds_the_one_button() -> void:
 	assert_true(input.consume(3).attack_released, "released when the last source lets go")
 
 
+## COMBAT-READABILITY-001: toggle charge is an input accessibility choice, not
+## a rule. Tap to begin and tap to swing produces exactly the press and release
+## edges a hold produces, tick for tick, so the simulation cannot tell them
+## apart; and no hold is ever needed.
+func test_toggle_charge_emits_the_same_commands_as_holding() -> void:
+	var held := HumanInputState.new()
+	var toggled := HumanInputState.new()
+	toggled.toggle_charge = true
+	assert_false(held.toggle_charge, "fixture: holding is the default")
+	var hold_stream: Array[PlayerCommand] = []
+	var toggle_stream: Array[PlayerCommand] = []
+	for tick in 12:
+		if tick == 2:
+			held.attack_down(HumanInputState.SOURCE_KEY)
+			toggled.attack_down(HumanInputState.SOURCE_KEY)
+			toggled.attack_up(HumanInputState.SOURCE_KEY)
+		if tick == 8:
+			held.attack_up(HumanInputState.SOURCE_KEY)
+			toggled.attack_down(HumanInputState.SOURCE_TOUCH)
+			toggled.attack_up(HumanInputState.SOURCE_TOUCH)
+		if tick > 2 and tick < 8:
+			assert_true(toggled.is_attack_held(), "tick %d: the toggled charge holds with nothing pressed" % tick)
+		hold_stream.append(held.consume(tick))
+		toggle_stream.append(toggled.consume(tick))
+	for tick in 12:
+		var h := hold_stream[tick]
+		var t := toggle_stream[tick]
+		assert_eq([t.attack_pressed, t.attack_released, t.attack_cancel], [h.attack_pressed, h.attack_released, h.attack_cancel], "tick %d: the same command edges" % tick)
+	assert_false(toggled.is_attack_held(), "the second tap released the charge")
+
+
 func test_edges_are_consumed_once_and_sub_frame_taps_survive() -> void:
 	var input := HumanInputState.new()
 	input.attack_down(HumanInputState.SOURCE_TOUCH)

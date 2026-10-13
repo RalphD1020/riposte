@@ -36,12 +36,20 @@ static func create() -> DebugOverlay:
 ## than anyone intended. Seeing `I` and `α = τ/I` beside the mass and torque
 ## they came from is what makes that visible instead of mysterious.
 ##
-## Captured once, since definitions are immutable for the life of the match.
-func describe(fighter: FighterDefinition, weapon: WeaponDefinition) -> void:
-	_profile = PackedStringArray([
+## Captured once per combatant, since each loadout is immutable for the life
+## of the match and the two need not be the same.
+func describe(combatants: Array[CombatantPhysicsSpec]) -> void:
+	_profile = PackedStringArray()
+	for slot in combatants.size():
+		_profile.append_array(_describe_one(slot, combatants[slot].fighter, combatants[slot].weapon))
+
+
+func _describe_one(slot: int, fighter: FighterDefinition, weapon: WeaponDefinition) -> PackedStringArray:
+	return PackedStringArray([
 		(
-			"body %.2f m · %.1f kg (×%.2f) · I %.2f kg·m² · move %.0f N (%.1f m/s²) · turn %.0f N·m (%.1f rad/s²)"
+			"P%d body %.2f m · %.1f kg (×%.2f) · I %.2f kg·m² · move %.0f N (%.1f m/s²) · turn %.0f N·m (%.1f rad/s²)"
 			% [
+				slot,
 				fighter.height,
 				fighter.mass,
 				fighter.mass_ratio(),
@@ -53,8 +61,9 @@ func describe(fighter: FighterDefinition, weapon: WeaponDefinition) -> void:
 			]
 		),
 		(
-			"blade %.2f m · %.2f kg (×%.2f) · I %.2f kg·m² (×%.2f) · swing %.0f N·m · tip %.1f m/s"
+			"P%d blade %.2f m · %.2f kg (×%.2f) · I %.2f kg·m² (×%.2f) · swing %.0f N·m · tip %.1f m/s"
 			% [
+				slot,
 				weapon.length(),
 				weapon.mass,
 				weapon.mass_ratio(),
@@ -75,9 +84,7 @@ func observe(events: Array[DuelEvent]) -> void:
 			DuelEventTypes.BODY_HIT:
 				_last_contact = "body %.1f dmg · quality %.2f · exposure %.2f" % [event.number(DuelEventKeys.DAMAGE), event.number(DuelEventKeys.QUALITY), event.number(DuelEventKeys.EXPOSURE)]
 			DuelEventTypes.PARRY:
-				_last_contact = "parry · margin %.2f s" % event.number(DuelEventKeys.MARGIN)
-			DuelEventTypes.BIND_STARTED:
-				_last_contact = "bind"
+				_last_contact = "parry · riposte advantage %+.2f s" % event.number(DuelEventKeys.MARGIN)
 
 
 func update(snapshot: PresentationSnapshot, fps: float) -> void:
@@ -87,13 +94,16 @@ func update(snapshot: PresentationSnapshot, fps: float) -> void:
 	lines.append("tick %d · %d fps" % [snapshot.tick, roundi(fps)])
 	lines.append("distance %.2f m · closing %.2f m/s · orbit %.2f rad/s" % [snapshot.distance, snapshot.closing_speed, snapshot.orbit_rate])
 	for fighter in snapshot.fighters:
-		lines.append("P%d %s · charge %.2f · commit %.2f · stability %.2f · threat %.2f s" % [
+		lines.append("P%d %s · charge %.2f · commit %.2f · stability %.2f · threat %.2f s · condition F %.2f S %.2f T %.2f" % [
 			fighter.slot,
 			CombatPhase.label(fighter.phase),
 			fighter.charge,
 			fighter.commitment,
 			fighter.stability,
 			fighter.threat_time,
+			fighter.force_scale,
+			fighter.speed_scale,
+			fighter.tracking_scale,
 		])
 	lines.append("last contact: %s" % _last_contact)
 	_label.text = "\n".join(lines)

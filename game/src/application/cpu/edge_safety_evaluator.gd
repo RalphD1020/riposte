@@ -6,7 +6,7 @@ extends RefCounted
 ## the platform edge over a dynamic prediction horizon.
 ##
 ## Uses the real motor laws: locomotion_force/mass, burst_force/mass,
-## burst_speed, capability scaling from stamina/health. The rollout is a
+## burst_speed, each scaled by the fighter's own condition (CONDITION-001). The rollout is a
 ## lightweight position/velocity integration — the same equations as
 ## MovementSystem.step, without mutating authoritative state.
 ##
@@ -32,12 +32,12 @@ static func evaluate_walk(
 	fighter: FighterState,
 	intent_x: float, intent_y: float,
 	rules: DuelRules,
-	capability: float,
+	condition: ConditionState,
 ) -> EdgeSafetyResult:
-	var def := rules.fighter
+	var def := rules.spec_of(fighter).fighter
 	var dt := SimulationTimebase.TICK_SECONDS
-	var fx := fighter.duel_forward_x
-	var fy := fighter.duel_forward_y
+	var fx := SimMath.cosine(fighter.facing)
+	var fy := SimMath.sine(fighter.facing)
 	var world := DuelGeometry.to_world(intent_x, intent_y, fx, fy)
 	var ix := world[0]
 	var iy := world[1]
@@ -46,12 +46,12 @@ static func evaluate_walk(
 		ix /= mag
 		iy /= mag
 		mag = 1.0
-	var dir_mult := _direction_multiplier(ix, iy, mag, fighter.facing, def)
-	var top_speed := def.max_speed * dir_mult
+	var dir_mult := MovementSystem.stride_multiplier(intent_x, intent_y, def)
+	var top_speed := def.max_speed * condition.speed_scale * dir_mult
 	var target_vx := ix * top_speed
 	var target_vy := iy * top_speed
-	var move_accel := def.move_accel() * capability
-	var brake_accel := def.brake_accel() * capability
+	var move_accel := def.move_accel() * condition.force_scale
+	var brake_accel := def.brake_accel() * condition.force_scale
 	return _rollout(
 		fighter.x, fighter.y, fighter.vx, fighter.vy,
 		target_vx, target_vy, move_accel, brake_accel,
@@ -66,14 +66,14 @@ static func evaluate_burst(
 	fighter: FighterState,
 	burst_kind: MovementGestureState.BurstKind,
 	rules: DuelRules,
-	capability: float,
+	condition: ConditionState,
 ) -> EdgeSafetyResult:
-	var def := rules.fighter
+	var def := rules.spec_of(fighter).fighter
 	var dt := SimulationTimebase.TICK_SECONDS
 	var heading := DirectionalTapRecognizer.heading(fighter, burst_kind)
-	var burst_speed := def.burst_speed(burst_kind)
-	var burst_accel := def.burst_accel() * capability
-	var brake_accel := def.brake_accel() * capability
+	var burst_speed := def.burst_speed(burst_kind) * condition.speed_scale
+	var burst_accel := def.burst_accel() * condition.force_scale
+	var brake_accel := def.brake_accel() * condition.force_scale
 	var ticks := def.burst_ticks
 	var target_vx := heading[0] * burst_speed
 	var target_vy := heading[1] * burst_speed
@@ -140,12 +140,3 @@ static func _radial_outward_speed(px: float, py: float, vx: float, vy: float) ->
 		return 0.0
 	return (px * vx + py * vy) / r
 
-
-## Direction multiplier matching MovementSystem's forward/lateral/backward blend.
-static func _direction_multiplier(ix: float, iy: float, mag: float, facing: float, def: FighterDefinition) -> float:
-	if mag <= 0.0:
-		return 1.0
-	var alignment := (ix * SimMath.cosine(facing) + iy * SimMath.sine(facing)) / mag
-	if alignment >= 0.0:
-		return SimMath.mix(def.speed_lateral, def.speed_forward, alignment)
-	return SimMath.mix(def.speed_lateral, def.speed_backward, -alignment)

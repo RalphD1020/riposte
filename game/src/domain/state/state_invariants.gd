@@ -29,6 +29,7 @@ const TICK_NEGATIVE := &"tick_negative"
 const PHASE_TICKS_NEGATIVE := &"phase_ticks_negative"
 const SCORE_NEGATIVE := &"score_negative"
 const FIGHTER_COUNT := &"fighter_count"
+const SLOT_MISMATCH := &"slot_mismatch"
 const POSITION_NOT_FINITE := &"position_not_finite"
 const VELOCITY_NOT_FINITE := &"velocity_not_finite"
 const FACING_NOT_FINITE := &"facing_not_finite"
@@ -52,8 +53,11 @@ const BURST_TOO_LONG := &"burst_too_long"
 const BURST_MODE_MISMATCH := &"burst_mode_mismatch"
 const BURST_HEADING_DEGENERATE := &"burst_heading_degenerate"
 const DEATH_TIME_MISMATCH := &"death_time_mismatch"
+const FALLEN_ALIVE := &"fallen_alive"
+const FALLEN_NOT_FINITE := &"fallen_not_finite"
 const DEATH_TIME_RANGE := &"death_time_range"
-const CONTACT_PAIR_STUCK := &"contact_pair_stuck"
+const SUPPORT_TIME_MISMATCH := &"support_time_mismatch"
+const SUPPORT_TIME_RANGE := &"support_time_range"
 const BODY_SPEED_IMPOSSIBLE := &"body_speed_impossible"
 const WEAPON_SPEED_IMPOSSIBLE := &"weapon_speed_impossible"
 const ARENA_ESCAPE := &"arena_escape"
@@ -70,6 +74,11 @@ static func check(state: MatchState, rules: DuelRules) -> StringName:
 		return SCORE_NEGATIVE
 	if state.fighters.size() != 2:
 		return FIGHTER_COUNT
+	## Each fighter's slot is its index: it is how every system finds that
+	## fighter's own physics (`DuelRules.spec_of`), so a mislabelled slot would
+	## quietly drive one fighter with the other's body (COMBATANT-GENERIC-001).
+	if state.fighter(0).slot != 0 or state.fighter(1).slot != 1:
+		return SLOT_MISMATCH
 	## A duel has exactly one fighter per end (SIDE-001). Two Lights would put
 	## both spawns in the same place and leave the camera with no honest
 	## answer about who is at the bottom of the screen.
@@ -89,7 +98,7 @@ static func check(state: MatchState, rules: DuelRules) -> StringName:
 	var body_contact_violation := check_body_contact(state)
 	if body_contact_violation != OK:
 		return body_contact_violation
-	return check_contact(state, rules)
+	return check_contact(state)
 
 
 ## Body-body lifecycle: ticks_in_contact must be zero when SEPARATED and
@@ -109,23 +118,17 @@ static func check_body_contact(state: MatchState) -> StringName:
 	return OK
 
 
-## The contact lifecycle has to stay escapable. A pair parked in `BOUND` past
-## its escape bound means the fail-safe in `ContactResolver.update_bind` did
-## not fire, which is exactly the unrecoverable bind the design forbids.
-##
-## A one-sided bind is deliberately *not* checked here: killing or staggering
-## a bound fighter legitimately leaves the other holding a bind for one tick,
-## and `update_bind` releases it in-band on the next.
-static func check_contact(state: MatchState, rules: DuelRules) -> StringName:
-	var pair := state.blade_contact
-	if pair.phase_ticks < 0:
+## The blade-contact lifecycle carries no timer that could strand it: a pair
+## leaves contact only by physically coming apart (RIGID-CONTACT-002).
+static func check_contact(state: MatchState) -> StringName:
+	if state.blade_contact.phase_ticks < 0:
 		return COUNTER_NEGATIVE
-	if pair.is_bound() and pair.phase_ticks > rules.combat.bind_escape_ticks:
-		return CONTACT_PAIR_STUCK
 	return OK
 
 
 static func check_fighter(fighter: FighterState, rules: DuelRules) -> StringName:
+	var spec := rules.spec_of(fighter)
+	var body := spec.fighter
 	if not (is_finite(fighter.x) and is_finite(fighter.y)):
 		return POSITION_NOT_FINITE
 	if not (is_finite(fighter.vx) and is_finite(fighter.vy) and is_finite(fighter.ax) and is_finite(fighter.ay)):
@@ -136,17 +139,17 @@ static func check_fighter(fighter: FighterState, rules: DuelRules) -> StringName
 	## degenerate value would quietly scale or erase a fighter's movement.
 	if absf(SimMath.length(fighter.duel_forward_x, fighter.duel_forward_y) - 1.0) > BOUND_SLACK:
 		return DUEL_BASIS_DEGENERATE
-	if fighter.health < -BOUND_SLACK or fighter.health > rules.fighter.max_health + BOUND_SLACK:
+	if fighter.health < -BOUND_SLACK or fighter.health > body.max_health + BOUND_SLACK:
 		return HEALTH_RANGE
 	if not is_finite(fighter.stamina) or fighter.stamina < -BOUND_SLACK:
 		return STAMINA_NOT_FINITE
 	var stamina_max := StaminaModel.max_for_health(
-		fighter.health, rules.fighter.max_health, rules.fighter.base_stamina, rules.combat
+		fighter.health, body.max_health, body.base_stamina, rules.combat
 	)
 	if fighter.stamina > stamina_max + BOUND_SLACK:
 		return STAMINA_OVER_MAX
 	if (
-		fighter.stability < rules.fighter.stability_floor - BOUND_SLACK
+		fighter.stability < body.stability_floor - BOUND_SLACK
 		or fighter.stability > 1.0 + BOUND_SLACK
 	):
 		return STABILITY_RANGE
@@ -162,14 +165,26 @@ static func check_fighter(fighter: FighterState, rules: DuelRules) -> StringName
 		return DEATH_TIME_MISMATCH
 	if not fighter.is_alive() and (fighter.lethal_fraction < 0.0 or fighter.lethal_fraction > 1.0):
 		return DEATH_TIME_RANGE
-	var gesture_violation := check_gesture(fighter.gesture, rules.fighter)
+	## A fallen fighter knows when they lost the edge, because a same-tick kill
+	## and ring-out are ordered by it (COMBAT-014).
+	if fighter.is_falling != (fighter.support_lost_fraction != FighterState.SUPPORTED):
+		return SUPPORT_TIME_MISMATCH
+	if fighter.is_falling and (fighter.support_lost_fraction < 0.0 or fighter.support_lost_fraction > 1.0):
+		return SUPPORT_TIME_RANGE
+	## Only the dead are bodies (FallenBodyState), and a body's pose is finite.
+	var fallen := fighter.fallen
+	if fallen.active and fighter.is_alive():
+		return FALLEN_ALIVE
+	if not (is_finite(fallen.yaw) and is_finite(fallen.spin)) or fallen.settle_left < 0:
+		return FALLEN_NOT_FINITE
+	var gesture_violation := check_gesture(fighter.gesture, body)
 	if gesture_violation != OK:
 		return gesture_violation
 	if not SimulationGuardrails.validate_capacity(fighter, rules):
-		if fighter.speed() > maxf(rules.fighter.max_speed, maxf(rules.fighter.burst_speed_axial, rules.fighter.burst_speed_lateral)) * SimulationGuardrails.CAPACITY_SAFETY_FACTOR:
+		if fighter.speed() > SimulationGuardrails.max_body_speed(body) * SimulationGuardrails.CAPACITY_SAFETY_FACTOR:
 			return BODY_SPEED_IMPOSSIBLE
 		return WEAPON_SPEED_IMPOSSIBLE
-	return check_weapon(fighter.weapon, rules.weapon)
+	return check_weapon(fighter.weapon, spec.weapon)
 
 
 ## A burst is a bounded push in a frozen heading. Mode and counter have to
@@ -198,6 +213,7 @@ static func check_weapon(weapon: WeaponState, definition: WeaponDefinition) -> S
 	if not (
 		is_finite(weapon.angle)
 		and is_finite(weapon.speed)
+		and is_finite(weapon.motor_torque)
 		and is_finite(weapon.swing_start)
 		and is_finite(weapon.swing_end)
 		and is_finite(weapon.hold_start_angle)
@@ -220,7 +236,7 @@ static func check_weapon(weapon: WeaponState, definition: WeaponDefinition) -> S
 		return SWING_DIRECTION
 	if weapon.stable_side != 1.0 and weapon.stable_side != -1.0:
 		return STABLE_SIDE
-	if weapon.phase_ticks < 0 or weapon.recovery_left < 0 or weapon.bind_left < 0:
+	if weapon.phase_ticks < 0 or weapon.recovery_left < 0:
 		return COUNTER_NEGATIVE
 	return OK
 

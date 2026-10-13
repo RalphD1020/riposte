@@ -31,6 +31,22 @@ static func hash_state(state: MatchState) -> String:
 		state.body_contact.last_constraint_normal_x,
 		state.body_contact.last_constraint_normal_y,
 	])
+	## Warm-start impulses are carried into the next tick's solve, so they are
+	## state (RIGID-CONTACT-003).
+	var manifold := state.blade_contact
+	## So is contact identity (CONTACT-IDENTITY-001): which hold record a row
+	## matches reads its feature coordinates, and a point's id and age carry.
+	## The hold record is compact, so its length and its entries are all of it.
+	var held := manifold.hold_count()
+	ints.append_array(PackedInt64Array([manifold.point_count, manifold.next_contact_id, held]))
+	for i in held:
+		ints.append_array(PackedInt64Array([manifold.hold_active[i], manifold.hold_feature_a[i], manifold.hold_feature_b[i]]))
+		floats.append_array(PackedFloat64Array([manifold.hold_normal[i], manifold.hold_tangent[i], manifold.hold_local_a[i], manifold.hold_local_b[i]]))
+	for i in manifold.point_count:
+		ints.append_array(PackedInt64Array([manifold.contact_id[i], manifold.age[i]]))
+	for lifecycle in state.weapon_body_contacts:
+		ints.append(int(lifecycle.hold_active))
+		floats.append_array(PackedFloat64Array([lifecycle.hold_normal, lifecycle.hold_tangent]))
 	for fighter in state.fighters:
 		var weapon := fighter.weapon
 		floats.append_array(PackedFloat64Array([
@@ -46,6 +62,7 @@ static func hash_state(state: MatchState) -> String:
 			fighter.stability,
 			fighter.stamina,
 			fighter.lethal_fraction,
+			fighter.support_lost_fraction,
 			fighter.duel_forward_x,
 			fighter.duel_forward_y,
 			fighter.gesture.burst_dir_x,
@@ -62,7 +79,10 @@ static func hash_state(state: MatchState) -> String:
 			weapon.swing_end,
 			weapon.swing_charge,
 			weapon.commitment,
+			weapon.motor_torque,
 			weapon.recovery_commitment,
+			fighter.fallen.yaw,
+			fighter.fallen.spin,
 		]))
 		var gesture := fighter.gesture
 		ints.append_array(PackedInt64Array([
@@ -86,11 +106,12 @@ static func hash_state(state: MatchState) -> String:
 			int(fighter.is_falling),
 			weapon.phase,
 			weapon.phase_ticks,
-			int(weapon.swing_hit),
-			int(weapon.swing_contact),
+			int(weapon.attack_contacted),
 			weapon.recovery_ticks,
 			weapon.recovery_left,
-			weapon.bind_left,
+			int(fighter.fallen.active),
+			fighter.fallen.settle_left,
+			int(fighter.fallen.over_edge),
 		]))
 	var reason := String(state.end_reason).to_utf8_buffer()
 	ints.append(reason.size())

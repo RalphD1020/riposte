@@ -8,7 +8,7 @@
  * @see ../docs/reference/tooling.md
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -310,13 +310,71 @@ export function classifyGodotTestOutcome({ riposte, status, issues } = {}) {
   return "PASS";
 }
 
+/**
+ * Run Godot with a progress guard instead of a whole-run budget: the process
+ * is killed only when it writes nothing for `idleTimeout` ms. A suite prints
+ * when it finishes, so a long but progressing run is never cut off, and a
+ * genuine hang still is. Output streams through as it arrives.
+ */
+export function spawnGodotWatched(args, options = {}) {
+  const resolved = options.resolved ?? resolveGodot();
+  const idleTimeout = options.idleTimeout ?? 120_000;
+  return new Promise((resolvePromise) => {
+    const child = spawn(resolved.binary, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      shell: false,
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let timer = null;
+    const arm = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, idleTimeout);
+    };
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      process.stdout.write(chunk);
+      arm();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      process.stderr.write(chunk);
+      arm();
+    });
+    arm();
+    child.on("close", (status) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        const reason = `\nGodot made no progress for ${idleTimeout} ms; killed.\n`;
+        stderr += reason;
+        process.stderr.write(reason);
+      }
+      resolvePromise({
+        status: timedOut ? 1 : status,
+        stdout,
+        stderr,
+        text: `${stdout}\n${stderr}`,
+        resolved,
+        timed_out: timedOut,
+      });
+    });
+  });
+}
+
 export function spawnGodot(args, options = {}) {
   const resolved = options.resolved ?? resolveGodot();
   const timeout = options.timeout ?? 120_000;
   const result = spawnSync(resolved.binary, args, {
     cwd: options.cwd,
     encoding: "utf8",
-    env: process.env,
+    env: options.env ?? process.env,
     shell: false,
     timeout,
   });

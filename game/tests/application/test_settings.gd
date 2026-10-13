@@ -28,6 +28,9 @@ func test_defaults_are_safe() -> void:
 	assert_eq(settings.control_opacity, PlayerSettings.ControlOpacity.MEDIUM, "medium opacity")
 	assert_eq(settings.trail_strength, PlayerSettings.TrailStrength.FULL, "the blade reads fully by default")
 	assert_eq(settings.sweet_spot, PlayerSettings.SweetSpot.STANDARD, "standard sweet-spot emphasis by default")
+	assert_false(settings.sound_captions, "sound captions are opt-in")
+	assert_false(settings.contact_highlight, "and so is the contact highlight")
+	assert_true(settings.bindings.is_default(), "the authored key bindings")
 
 
 func test_every_field_round_trips() -> void:
@@ -48,6 +51,9 @@ func test_every_field_round_trips() -> void:
 	saved.control_opacity = PlayerSettings.ControlOpacity.HIGH
 	saved.haptics = false
 	saved.difficulty = MatchConfig.Difficulty.HARD
+	saved.sound_captions = true
+	saved.contact_highlight = true
+	assert_true(saved.bindings.bind(InputActions.ATTACK, 1, KEY_J), "fixture: attack rebound")
 	assert_true(saved.save_to(PATH), "saved")
 	var loaded := PlayerSettings.new()
 	loaded.load_from(PATH)
@@ -64,6 +70,9 @@ func test_every_field_round_trips() -> void:
 	assert_eq(loaded.control_opacity, PlayerSettings.ControlOpacity.HIGH, "opacity")
 	assert_false(loaded.haptics, "haptics")
 	assert_eq(loaded.difficulty, MatchConfig.Difficulty.HARD, "difficulty remembered")
+	assert_true(loaded.sound_captions and loaded.contact_highlight, "sound captions and the contact highlight")
+	assert_eq(loaded.bindings.code(InputActions.ATTACK, 1), KEY_J, "a rebound key")
+	assert_eq(loaded.bindings.code(InputActions.ATTACK, 0), -MOUSE_BUTTON_LEFT, "beside the binding it kept")
 	_cleanup()
 
 
@@ -199,3 +208,99 @@ func test_presentation_settings_do_not_affect_authoritative_hashes() -> void:
 	for _i in 60:
 		runner2.push(PlayerCommand.idle(runner2.state.tick), PlayerCommand.idle(runner2.state.tick))
 	assert_eq(StateHasher.hash_state(runner2.state), base_hash, "settings are presentation-only and do not affect authoritative state")
+
+
+static func _codes(values: Array[int]) -> PackedInt64Array:
+	return PackedInt64Array(values)
+
+
+static func _key(physical: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.physical_keycode = physical
+	event.pressed = true
+	return event
+
+
+## The defaults are the actions authored in project.godot, read rather than
+## repeated: both movement keys, the mouse and Space for attack.
+func test_bindings_default_to_the_authored_actions() -> void:
+	var bindings := KeyBindings.new()
+	assert_eq(bindings.codes(InputActions.MOVE_UP), _codes([KEY_W, KEY_UP]), "move up: W and Up")
+	assert_eq(bindings.codes(InputActions.ATTACK), _codes([-MOUSE_BUTTON_LEFT, KEY_SPACE]), "attack: the left mouse button and Space")
+	assert_eq(bindings.codes(InputActions.PAUSE), _codes([KEY_ESCAPE, 0]), "pause: Escape, one slot free")
+	for action in KeyBindings.ACTIONS:
+		var authored: Array = (ProjectSettings.get_setting("input/%s" % action) as Dictionary)["events"]
+		var bound := 0
+		for code in bindings.codes(action):
+			if code != 0:
+				bound += 1
+				assert_true(KeyBindings.event_for(code).is_action(action, true), "%s: %s triggers it" % [action, AppCopy.binding_label(code)])
+		assert_eq(bound, authored.size(), "%s: every authored event and nothing else" % action)
+
+
+## Binding an input another action uses swaps the two, so no input ever does
+## two things; a swap that would leave an action with nothing is refused.
+func test_binding_a_used_input_swaps_and_never_strands_an_action() -> void:
+	var bindings := KeyBindings.new()
+	assert_eq(bindings.code(InputActions.MOVE_DOWN, 0), KEY_S, "fixture: S moves down")
+	assert_true(bindings.bind(InputActions.MOVE_UP, 0, KEY_S), "S bound to move up")
+	assert_eq(bindings.code(InputActions.MOVE_UP, 0), KEY_S, "move up takes S")
+	assert_eq(bindings.code(InputActions.MOVE_DOWN, 0), KEY_W, "move down takes the W it gave up")
+	assert_eq(bindings.owner_of(KEY_S), Vector2i(KeyBindings.ACTIONS.find(InputActions.MOVE_UP), 0), "S has one owner")
+	assert_true(bindings.bind(InputActions.ATTACK, 1, -MOUSE_BUTTON_LEFT), "swapping an action's own two slots is fine")
+	assert_eq(bindings.codes(InputActions.ATTACK), _codes([KEY_SPACE, -MOUSE_BUTTON_LEFT]), "the attack slots trade places")
+	assert_eq(bindings.codes(InputActions.DASH_MODIFIER), _codes([KEY_SHIFT, 0]), "fixture: dash has a free slot")
+	var pause_before := bindings.codes(InputActions.PAUSE)
+	assert_false(bindings.bind(InputActions.DASH_MODIFIER, 1, KEY_ESCAPE), "taking pause's only key for dash's free slot is refused")
+	assert_eq(bindings.codes(InputActions.PAUSE), pause_before, "pause keeps its key")
+	assert_eq(bindings.codes(InputActions.DASH_MODIFIER), _codes([KEY_SHIFT, 0]), "dash is unchanged")
+	assert_true(bindings.bind(InputActions.DASH_MODIFIER, 0, KEY_ESCAPE), "but a full swap is allowed")
+	assert_eq(bindings.codes(InputActions.PAUSE), _codes([KEY_SHIFT, 0]), "pause takes Shift")
+	for invalid: Array in [[&"toggle_debug", 0, KEY_K], [InputActions.ATTACK, 2, KEY_K], [InputActions.ATTACK, 0, 0], [InputActions.ATTACK, 0, -MOUSE_BUTTON_WHEEL_UP]]:
+		assert_false(bindings.bind(invalid[0], invalid[1], invalid[2]), "refused: %s" % str(invalid))
+	bindings.reset()
+	assert_true(bindings.is_default(), "reset restores the authored set")
+
+
+## Bindings drive the InputMap and nothing else: the action fires from the new
+## key and no longer from the old one.
+func test_bindings_drive_the_input_map() -> void:
+	var bindings := KeyBindings.new()
+	assert_true(_key(KEY_SPACE).is_action(InputActions.ATTACK, true), "fixture: Space attacks")
+	assert_true(bindings.bind(InputActions.ATTACK, 1, KEY_J), "J replaces Space")
+	bindings.apply()
+	assert_true(_key(KEY_J).is_action(InputActions.ATTACK, true), "J attacks")
+	assert_false(_key(KEY_SPACE).is_action(InputActions.ATTACK, true), "Space no longer does")
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	assert_true(click.is_action(InputActions.ATTACK, true), "and the kept mouse binding still does")
+	KeyBindings.new().apply()
+	assert_true(_key(KEY_SPACE).is_action(InputActions.ATTACK, true), "the authored set restores Space")
+
+
+## A stored binding set is untrusted: anything unusable falls back to the
+## defaults as a whole, because a partly merged set could double-bind.
+func test_stored_bindings_are_untrusted() -> void:
+	var good := KeyBindings.new()
+	assert_true(good.bind(InputActions.MOVE_LEFT, 1, KEY_J), "fixture: a valid change")
+	var config := ConfigFile.new()
+	good.save_to(config, PlayerSettings.SECTION_BINDINGS)
+	var loaded := KeyBindings.new()
+	loaded.load_from(config, PlayerSettings.SECTION_BINDINGS)
+	assert_eq(loaded.code(InputActions.MOVE_LEFT, 1), KEY_J, "a valid set loads")
+	var hostile: Array = [
+		["duplicated", InputActions.MOVE_RIGHT, _codes([KEY_J, 0])],
+		["wrong size", InputActions.ATTACK, _codes([KEY_SPACE])],
+		["not a key", InputActions.ATTACK, _codes([KEY_SPACE, 999_999_999])],
+		["wheel", InputActions.ATTACK, _codes([KEY_SPACE, -MOUSE_BUTTON_WHEEL_DOWN])],
+		["empty", InputActions.PAUSE, _codes([0, 0])],
+		["wrong type", InputActions.PAUSE, "Escape"],
+	]
+	for case: Array in hostile:
+		var file := ConfigFile.new()
+		good.save_to(file, PlayerSettings.SECTION_BINDINGS)
+		file.set_value(PlayerSettings.SECTION_BINDINGS, String(case[1]), case[2])
+		var read := KeyBindings.new()
+		read.load_from(file, PlayerSettings.SECTION_BINDINGS)
+		assert_true(read.is_default(), "%s: the authored set, not a partial merge" % case[0])

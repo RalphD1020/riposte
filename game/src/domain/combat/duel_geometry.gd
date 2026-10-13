@@ -12,12 +12,18 @@ static func distance(a: FighterState, b: FighterState) -> float:
 	return SimMath.length(b.x - a.x, b.y - a.y)
 
 
-## World bearing from `from` toward `to`.
+## World bearing from `from` toward `to` — the target bearing τ (HEADING-001):
+## exactly where the opponent is, never smoothed. A fighter's combat heading φ
+## is `FighterState.facing`, the fixed-tick state that centres the 270° weapon
+## range and catches τ at the authority commitment leaves
+## (`CommitmentModel.turn_torque_share`). The weapon frame hangs on φ, never on τ,
+## which is what lets a side-step out-angle a committed attack.
 static func bearing(from: FighterState, to: FighterState) -> float:
 	return SimMath.arctan2(to.y - from.y, to.x - from.x)
 
 
-## Signed angle from `from`'s facing to `to` (0 = dead ahead, ±PI = behind).
+## Signed angle from `from`'s combat heading to the target bearing (0 = dead
+## ahead, ±PI = behind): the heading's target error.
 static func facing_error(from: FighterState, to: FighterState) -> float:
 	return SimMath.wrap_angle(bearing(from, to) - from.facing)
 
@@ -56,8 +62,13 @@ static func closing_speed(a: FighterState, b: FighterState) -> float:
 ## last known heading is returned, so footwork at zero separation stays
 ## continuous instead of snapping.
 static func duel_basis(fighter: FighterState, opponent: FighterState, fallback_x: float, fallback_y: float) -> PackedFloat64Array:
-	var dx := opponent.x - fighter.x
-	var dy := opponent.y - fighter.y
+	return duel_basis_to(fighter, opponent.x, opponent.y, fallback_x, fallback_y)
+
+
+## `duel_basis` toward an opponent at (`opponent_x`, `opponent_y`).
+static func duel_basis_to(fighter: FighterState, opponent_x: float, opponent_y: float, fallback_x: float, fallback_y: float) -> PackedFloat64Array:
+	var dx := opponent_x - fighter.x
+	var dy := opponent_y - fighter.y
 	var length := SimMath.length(dx, dy)
 	if length <= SimMath.EPSILON:
 		return PackedFloat64Array([fallback_x, fallback_y])

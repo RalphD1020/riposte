@@ -21,14 +21,17 @@ func _init(backends: Array[DeathPresentationBackend]) -> void:
 	_backends = backends
 
 
-func present(request: DeathPresentationRequest) -> void:
+## True when this request started a death; false for a repeat of one already
+## started this round (or when no backend could carry it).
+func present(request: DeathPresentationRequest) -> bool:
 	if _started.has(request.slot):
-		return
+		return false
 	for backend in _backends:
 		if backend.is_available(request):
 			_started[request.slot] = true
 			backend.start(request)
-			return
+			return true
+	return false
 
 
 func has_started(slot: int) -> bool:

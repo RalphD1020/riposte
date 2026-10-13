@@ -18,6 +18,7 @@ sys.path.insert(0, HERE)
 
 import bpy  # noqa: E402
 
+import glb_compact  # noqa: E402
 import validate_assets  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -47,7 +48,14 @@ def _export_kwargs(path, kind):
         "export_animation_mode": "ACTIONS",
         "export_skins": kind == "fighter",
         "export_force_sampling": True,
-        "export_frame_step": 1,
+        ## 30 Hz keys, linearly interpolated: the rigid block rig reads the
+        ## same, and the fast sword motion is procedural (carriage, IK), not
+        ## clip keys. Keeps the fighter under the integrity size limit.
+        "export_frame_step": 2,
+        ## Drop sampled keys a held pose repeats (lossless for linear
+        ## interpolation), so holds — a stab's impaled beat, a victory's load —
+        ## cost nothing and the fighter stays under the integrity size limit.
+        "export_optimize_animation_size": True,
         "export_def_bones": False,
         "export_reset_pose_bones": True,
         "export_image_format": "NONE",
@@ -71,6 +79,10 @@ def main():
         out_path = os.path.join(OUT, output)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         bpy.ops.export_scene.gltf(**_export_kwargs(out_path, kind))
+        ## Rest-only channels (every scale track, every bone a clip leaves
+        ## alone) cost glTF JSON and nothing else: Godot poses an untracked
+        ## bone at rest.
+        glb_compact.compact(out_path)
         with open(os.path.splitext(out_path)[0] + ".manifest.json", "w", encoding="utf-8", newline="\n") as handle:
             json.dump(validate_assets.manifest(asset_id, kind), handle, indent=2)
             handle.write("\n")

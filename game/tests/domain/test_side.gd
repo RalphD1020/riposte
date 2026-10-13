@@ -133,7 +133,7 @@ func test_duel_axes_mean_the_same_thing_at_both_ends() -> void:
 		var them := state.opponent_of(slot)
 		var before := SimMath.length(them.x - me.x, them.y - me.y)
 		for tick in 20:
-			MovementSystem.step(me, them, 0.0, 1.0, tick, rules.fighter)
+			MovementSystem.step(me, 0.0, 1.0, tick, rules.combatant(0).fighter)
 		var after := SimMath.length(them.x - me.x, them.y - me.y)
 		assert_true(after < before, "pushing forward closes the measure from the %s end" % DuelSide.label(me.side))
 
@@ -157,7 +157,7 @@ func test_swapping_ends_leaves_the_duel_unchanged() -> void:
 		var tick := 0
 		for deflection in scripted:
 			for slot in 2:
-				MovementSystem.step(state.fighter(slot), state.opponent_of(slot), 0.3, deflection, tick, rules.fighter)
+				MovementSystem.step(state.fighter(slot), 0.3, deflection, tick, rules.combatant(0).fighter)
 			measures.append(DuelGeometry.distance(state.fighter(0), state.fighter(1)))
 			tick += 1
 		histories.append(measures)
@@ -178,7 +178,7 @@ func test_orbiting_is_mirror_opposite_in_world_space() -> void:
 		var me := state.fighter(slot)
 		var start := me.x
 		for tick in 20:
-			MovementSystem.step(me, state.opponent_of(slot), 1.0, 0.0, tick, rules.fighter)
+			MovementSystem.step(me, 1.0, 0.0, tick, rules.combatant(0).fighter)
 		displacement[slot] = me.x - start
 	assert_true(absf(displacement[0]) > 0.1, "precondition: both actually moved")
 	assert_true(absf(displacement[1]) > 0.1, "precondition: measurably")

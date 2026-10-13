@@ -5,9 +5,11 @@
 [ext_resource type="PackedScene" path="res://assets/presentation/fighters/duelist/wolf_wrapper.tscn" id="2_scene"]
 [ext_resource type="Script" path="res://src/presentation/kit/fighter_intro_profile.gd" id="3_intro"]
 [ext_resource type="Resource" path="res://assets/presentation/colorways/wolf_alternate.tres" id="4_colorway"]
-[ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_death.tres" id="7_death"]
 [ext_resource type="Script" path="res://src/presentation/kit/fighter_voice_kit.gd" id="5_lf1ie"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/wolf_01.mp3" id="6_tugdl"]
+[ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_death.tres" id="7_death"]
+[ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_victory.tres" id="8_victory"]
+[ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_stance.tres" id="9_stance"]
 
 [sub_resource type="Resource" id="Resource_intro"]
 script = ExtResource("3_intro")
@@ -17,7 +19,7 @@ spoken_override_first_slot = "Wold."
 spoken_override_first_slot_line = ExtResource("2_s8801")
 intro_clip = &"flourish"
 
-[sub_resource type="Resource" id="Resource_4j084"]
+[sub_resource type="Resource" id="Resource_0pagn"]
 script = ExtResource("5_lf1ie")
 voice_id = &"voice.announcer.deep"
 spoken_name = ExtResource("6_tugdl")
@@ -44,11 +46,14 @@ animation_clips = {
 &"ORBIT_RIGHT": &"orbit_ccw",
 &"OVERSWING": &"overswing",
 &"RECOVERY": &"recovery",
+&"RING_FALL": &"ring_fall_a",
 &"STAGGER": &"stagger",
 &"SWING": &"swing_support"
 }
 vfx_cues = PackedStringArray()
-voice = SubResource("Resource_4j084")
+voice = SubResource("Resource_0pagn")
 intro = SubResource("Resource_intro")
+victory = ExtResource("8_victory")
+stance = ExtResource("9_stance")
 colorway = ExtResource("4_colorway")
 death = ExtResource("7_death")

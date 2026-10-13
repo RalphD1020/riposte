@@ -26,6 +26,13 @@ func _weapon() -> WeaponDefinition:
 	return WeaponCatalog.bastard_sword()
 
 
+## The weapon coordinate's inertia in Long Guard, held by the baseline duelist
+## — the one the motor and every contact divide by (UNIFIED-MASS-001).
+func _inertia(weapon: WeaponDefinition) -> float:
+	var fighter := _fighter()
+	return WeaponKinematics.motor_inertia(CombatantPhysicsSpec.compile(fighter, weapon, HandlingCatalog.of(fighter, weapon)), 0.0)
+
+
 # ── BASELINE-PHYSICS ────────────────────────────────────────────────────────
 
 
@@ -37,7 +44,7 @@ func test_shipped_content_sits_exactly_on_the_baseline() -> void:
 	var weapon := _weapon()
 	assert_near(fighter.height, PhysicalBaseline.FIGHTER_HEIGHT_M, 1e-12, "1.75 m tall")
 	assert_near(fighter.mass, PhysicalBaseline.FIGHTER_MASS_KG, 1e-12, "80 kg")
-	assert_near(fighter.body_radius, PhysicalBaseline.FIGHTER_RADIUS_M, 1e-12, "0.27 m footprint")
+	assert_near(fighter.push_radius, PhysicalBaseline.FIGHTER_RADIUS_M, 1e-12, "0.27 m footprint")
 	assert_near(weapon.length(), PhysicalBaseline.SWORD_LENGTH_M, 1e-12, "1.22 m sword")
 	assert_near(weapon.blade_length(), PhysicalBaseline.SWORD_BLADE_M, 1e-9, "0.97 m blade")
 	assert_near(weapon.mass, PhysicalBaseline.SWORD_MASS_KG, 1e-12, "1.60 kg")
@@ -97,8 +104,8 @@ func test_content_is_selected_by_identity_and_fails_closed() -> void:
 	assert_true(FighterCatalog.of(&"fighter.nobody") == null, "an unknown fighter id yields nothing")
 	assert_true(WeaponCatalog.of(&"weapon.nothing") == null, "and so does an unknown weapon id")
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.fighter.id, ContentIds.FIGHTER_DUELIST, "the standard rules select the duelist by id")
-	assert_eq(rules.weapon.id, ContentIds.WEAPON_BASTARD_SWORD, "and the bastard sword")
+	assert_eq(rules.combatant(0).fighter.id, ContentIds.FIGHTER_DUELIST, "the standard rules select the duelist by id")
+	assert_eq(rules.combatant(0).weapon.id, ContentIds.WEAPON_BASTARD_SWORD, "and the bastard sword")
 
 
 func test_each_catalog_entry_is_a_fresh_object() -> void:
@@ -115,14 +122,14 @@ func test_each_catalog_entry_is_a_fresh_object() -> void:
 	assert_near(WeaponCatalog.bastard_sword().mass, PhysicalBaseline.SWORD_MASS_KG, 1e-12, "same for weapons")
 
 
-func test_a_catalog_entry_is_a_size_not_a_column_of_numbers() -> void:
-	## The payoff of authoring content as a scale: ask for a bigger duelist
-	## and every physical quantity moves by its own law, with nobody writing
-	## a second set of magic numbers.
+func test_the_prototype_generator_scales_by_the_content_laws() -> void:
+	## The prototype generator (`prototype_at`, never how a shipped fighter is
+	## defined): ask for a bigger duelist and every physical quantity moves by
+	## its own law, with nobody writing a second set of magic numbers.
 	var base := FighterCatalog.duelist()
-	var big := FighterCatalog.duelist_at(1.5)
+	var big := FighterCatalog.prototype_at(1.5)
 	assert_near(big.height, base.height * 1.5, 1e-9, "geometry is linear")
-	assert_near(big.body_radius, base.body_radius * 1.5, 1e-9, "all of it")
+	assert_near(big.push_radius, base.push_radius * 1.5, 1e-9, "all of it")
 	assert_near(big.mass, base.mass * 1.5 * 1.5 * 1.5, 1e-9, "mass is volumetric by default")
 	assert_near(big.locomotion_force, base.locomotion_force * 1.5 * 1.5, 1e-9, "force is structural")
 	assert_near(big.turn_torque, base.turn_torque * 1.5 * 1.5 * 1.5, 1e-9, "torque is force times a lever")
@@ -133,7 +140,7 @@ func test_a_catalog_entry_is_a_size_not_a_column_of_numbers() -> void:
 	## Bigger drives the same sword faster, and turns its own body slower.
 	var sword := WeaponCatalog.bastard_sword()
 	assert_true(
-		sword.swing_accel(1.0, big.weapon_torque_scale) > sword.swing_accel(1.0, base.weapon_torque_scale),
+		sword.swing_accel(1.0, big.weapon_torque_scale, _inertia(sword)) > sword.swing_accel(1.0, base.weapon_torque_scale, _inertia(sword)),
 		"the same sword accelerates faster in the larger arm"
 	)
 	assert_true(big.turn_accel() < base.turn_accel(), "while the larger body turns more slowly")
@@ -143,8 +150,8 @@ func test_volumetric_mass_is_a_default_that_content_overrides() -> void:
 	## Same height, different build. Volumetric mass is a starting guess about
 	## uniform density, not a law, so a lean duelist is authored by assigning
 	## mass — and the accelerations follow from `a = F/m` on their own.
-	var standard := FighterCatalog.duelist_at(1.3)
-	var lean := FighterCatalog.duelist_at(1.3)
+	var standard := FighterCatalog.prototype_at(1.3)
+	var lean := FighterCatalog.prototype_at(1.3)
 	lean.mass = standard.mass * 0.8
 	assert_near(lean.height, standard.height, 1e-12, "the override did not touch geometry")
 	assert_near(lean.locomotion_force, standard.locomotion_force, 1e-12, "or strength")
@@ -170,7 +177,7 @@ func test_reach_is_the_wielders_grip_plus_the_blade() -> void:
 	## Grip belongs to the fighter: the same sword in longer arms reaches
 	## further, and nothing about the sword itself changed.
 	var base := FighterCatalog.duelist()
-	var long_arms := FighterCatalog.duelist_at(1.2)
+	var long_arms := FighterCatalog.prototype_at(1.2)
 	assert_near(base.grip_radius, PhysicalBaseline.GRIP_RADIUS_M, 1e-12, "precondition: the duelist holds at the baseline grip")
 	assert_true(long_arms.grip_radius > base.grip_radius, "precondition: a bigger duelist has a longer grip")
 	var held := WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, base.grip_radius)
@@ -179,9 +186,9 @@ func test_reach_is_the_wielders_grip_plus_the_blade() -> void:
 	assert_near(held_long.blade_length(), held.blade_length(), 1e-12, "the blade is the same blade")
 	assert_near(held_long.length() - held.length(), long_arms.grip_radius - base.grip_radius, 1e-12, "only the grip added reach")
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.weapon.hilt_radius, rules.fighter.grip_radius, "standard rules mount the sword at the duelist's grip")
+	assert_eq(rules.combatant(0).weapon.hilt_radius, rules.combatant(0).fighter.grip_radius, "standard rules mount the sword at the duelist's grip")
 	assert_true(rules.is_valid(), "precondition: and validate")
-	rules.weapon = held_long
+	rules.combatant(0).weapon = held_long
 	assert_false(rules.is_valid(), "a weapon mounted for a different grip is refused")
 
 
@@ -214,7 +221,7 @@ func test_mass_and_size_are_independent_facts() -> void:
 	var heavy := _fighter()
 	heavy.mass = lean.mass * 1.4
 	assert_near(heavy.height, lean.height, 1e-12, "mass did not change height")
-	assert_near(heavy.body_radius, lean.body_radius, 1e-12, "or footprint")
+	assert_near(heavy.push_radius, lean.push_radius, 1e-12, "or footprint")
 	var tall := _fighter()
 	tall.height = lean.height * 1.2
 	assert_near(tall.mass, lean.mass, 1e-12, "and height did not change mass")
@@ -226,7 +233,7 @@ func test_a_wider_body_turns_more_reluctantly() -> void:
 	## may be ignored.
 	var base := _fighter()
 	var wide := _fighter()
-	wide.body_radius = base.body_radius * 1.3
+	wide.push_radius = base.push_radius * 1.3
 	var heavy := _fighter()
 	heavy.mass = base.mass * 1.3
 	assert_true(wide.moment_of_inertia() > base.moment_of_inertia(), "a wider body has more rotational inertia")
@@ -247,12 +254,12 @@ func test_more_turn_torque_turns_faster() -> void:
 
 func test_a_fighter_must_be_physically_possible() -> void:
 	assert_true(_fighter().is_valid(), "precondition: the baseline duelist is valid")
-	for mutation in PackedStringArray(["height", "mass", "body_radius", "locomotion_force", "weapon_torque_scale", "body_inertia_coefficient"]):
+	for mutation in PackedStringArray(["height", "mass", "push_radius", "locomotion_force", "weapon_torque_scale", "body_inertia_coefficient"]):
 		var broken := _fighter()
 		broken.set(mutation, 0.0)
 		assert_false(broken.is_valid(), "a fighter with no %s is impossible" % mutation)
 	var wider_than_tall := _fighter()
-	wider_than_tall.body_radius = wider_than_tall.height
+	wider_than_tall.push_radius = wider_than_tall.height
 	assert_false(wider_than_tall.is_valid(), "a footprint as wide as the body is tall is impossible")
 	var unstoppable := _fighter()
 	unstoppable.braking_force = unstoppable.locomotion_force * 0.5
@@ -267,9 +274,9 @@ func test_a_heavier_blade_is_harder_to_swing() -> void:
 	var heavy := _weapon()
 	heavy.mass = light.mass * 2.0
 	assert_near(heavy.moment_of_inertia(), light.moment_of_inertia() * 2.0, 1e-9, "mass enters inertia linearly")
-	assert_true(heavy.swing_accel(1.0, 1.0) < light.swing_accel(1.0, 1.0), "so the same torque drives it less")
-	assert_true(heavy.brake_accel(1.0, 1.0) < light.brake_accel(1.0, 1.0), "and arrests it less")
-	assert_true(heavy.windup_accel(1.0) < light.windup_accel(1.0), "and winds it back less")
+	assert_true(heavy.swing_accel(1.0, 1.0, _inertia(heavy)) < light.swing_accel(1.0, 1.0, _inertia(light)), "so the same torque drives it less")
+	assert_true(heavy.brake_accel(1.0, 1.0, _inertia(heavy)) < light.brake_accel(1.0, 1.0, _inertia(light)), "and arrests it less")
+	assert_true(heavy.windup_accel(1.0, _inertia(heavy)) < light.windup_accel(1.0, _inertia(light)), "and winds it back less")
 
 
 func test_a_longer_blade_is_much_harder_to_swing() -> void:
@@ -294,11 +301,11 @@ func test_torque_and_inertia_are_the_only_inputs_to_angular_acceleration() -> vo
 	## No weapon may author an angular acceleration beside its inertia: the
 	## two would drift apart and the blade would stop obeying its own mass.
 	var weapon := _weapon()
-	var inertia := weapon.moment_of_inertia()
-	assert_near(weapon.swing_accel(0.0, 1.0), weapon.swing_torque_tap / inertia, 1e-12, "α = τ / I")
+	var inertia := _inertia(weapon)
+	assert_near(weapon.swing_accel(0.0, 1.0, inertia), weapon.swing_torque_tap / inertia, 1e-12, "α = τ / M_θ")
 	var torquey := _weapon()
 	torquey.swing_torque_tap = weapon.swing_torque_tap * 3.0
-	assert_near(torquey.swing_accel(0.0, 1.0), weapon.swing_accel(0.0, 1.0) * 3.0, 1e-9, "torque and α are proportional")
+	assert_near(torquey.swing_accel(0.0, 1.0, inertia), weapon.swing_accel(0.0, 1.0, inertia) * 3.0, 1e-9, "torque and α are proportional")
 
 
 func test_the_same_sword_behaves_differently_in_different_hands() -> void:
@@ -308,10 +315,11 @@ func test_the_same_sword_behaves_differently_in_different_hands() -> void:
 	var weapon := _weapon()
 	var baseline_arm := _fighter().weapon_torque_scale
 	var strong := baseline_arm * 1.4
-	assert_near(weapon.swing_accel(0.5, strong), weapon.swing_accel(0.5, baseline_arm) * 1.4, 1e-9, "a stronger arm drives it harder")
-	assert_near(weapon.brake_accel(0.5, strong), weapon.brake_accel(0.5, baseline_arm) * 1.4, 1e-9, "and arrests it harder")
-	assert_near(weapon.windup_accel(strong), weapon.windup_accel(baseline_arm) * 1.4, 1e-9, "and winds it back harder")
-	assert_near(weapon.hold_accel(strong), weapon.hold_accel(baseline_arm) * 1.4, 1e-9, "and settles it harder")
+	var inertia := _inertia(weapon)
+	assert_near(weapon.swing_accel(0.5, strong, inertia), weapon.swing_accel(0.5, baseline_arm, inertia) * 1.4, 1e-9, "a stronger arm drives it harder")
+	assert_near(weapon.brake_accel(0.5, strong, inertia), weapon.brake_accel(0.5, baseline_arm, inertia) * 1.4, 1e-9, "and arrests it harder")
+	assert_near(weapon.windup_accel(strong, inertia), weapon.windup_accel(baseline_arm, inertia) * 1.4, 1e-9, "and winds it back harder")
+	assert_near(weapon.hold_accel(strong, inertia), weapon.hold_accel(baseline_arm, inertia) * 1.4, 1e-9, "and settles it harder")
 	assert_near(weapon.moment_of_inertia(), _weapon().moment_of_inertia(), 1e-12, "the weapon itself is unchanged")
 	assert_near(weapon.mass, PhysicalBaseline.SWORD_MASS_KG, 1e-12, "its mass especially")
 
@@ -342,7 +350,7 @@ func test_an_asymmetric_pairing_differs_only_through_physics() -> void:
 	## Built through the shipping catalog, not by hand, so this proves the
 	## path real content would take rather than a fixture that agrees with it.
 	var small := _fighter()
-	var large := FighterCatalog.duelist_at(1.2)
+	var large := FighterCatalog.prototype_at(1.2)
 	assert_true(large.is_valid(), "precondition: the large build is a legal fighter")
 	assert_true(large.mass > small.mass, "precondition: the large build is heavier")
 	assert_true(large.locomotion_force > small.locomotion_force, "precondition: and stronger")
@@ -357,11 +365,11 @@ func test_an_asymmetric_pairing_differs_only_through_physics() -> void:
 	var light_sword := _weapon()
 	light_sword.mass = heavy_sword.mass * 0.7
 	assert_true(light_sword.moment_of_inertia() < heavy_sword.moment_of_inertia(), "precondition: the light sword turns easier")
-	assert_true(light_sword.swing_accel(1.0, 1.0) > heavy_sword.swing_accel(1.0, 1.0), "so it reaches speed sooner")
+	assert_true(light_sword.swing_accel(1.0, 1.0, _inertia(light_sword)) > heavy_sword.swing_accel(1.0, 1.0, _inertia(heavy_sword)), "so it reaches speed sooner")
 	## And the trade is honest in both directions: the light sword is quicker
 	## to start *and* quicker to be knocked aside, since blade contact divides
 	## impulse by the same inertia.
-	assert_true(light_sword.brake_accel(1.0, 1.0) > heavy_sword.brake_accel(1.0, 1.0), "and is displaced more easily")
+	assert_true(light_sword.brake_accel(1.0, 1.0, _inertia(light_sword)) > heavy_sword.brake_accel(1.0, 1.0, _inertia(heavy_sword)), "and is displaced more easily")
 
 
 func test_scale_never_touches_reaction_or_timing() -> void:
@@ -372,7 +380,7 @@ func test_scale_never_touches_reaction_or_timing() -> void:
 	var large := _fighter()
 	large.height = small.height * 1.5
 	large.mass = small.mass * 2.0
-	large.body_radius = small.body_radius * 1.5
+	large.push_radius = small.push_radius * 1.5
 	assert_eq(large.tap_window_ticks, small.tap_window_ticks, "tap window is unchanged by size")
 	assert_eq(large.double_tap_window_ticks, small.double_tap_window_ticks, "so is the double-tap window")
 	assert_eq(large.burst_ticks, small.burst_ticks, "and the burst duration")
