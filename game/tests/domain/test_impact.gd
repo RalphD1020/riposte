@@ -264,11 +264,11 @@ func test_the_sword_contact_gradient_is_the_mechanics() -> void:
 	var at_cop := 1.0 - (percussion - grip) / arm
 	assert_near(at_hands, 1.0, 1e-12, "a strike at the hands reacts fully into the grip")
 	assert_near(at_cop, 0.0, 1e-12, "the derived centre of percussion reacts into the hands not at all")
-	## The injury calibration is a pinned physical constant (rules 42), and the
-	## reference strike measured on today's mechanics is its witness: the two
-	## stay close, so "1.0" still means about that strike.
+	## The injury calibration is a pinned physical constant (rules 42, re-seeded
+	## at 49), and the reference strike measured on today's mechanics is its
+	## witness: it stays close to the pinned number of reference-quality wounds.
 	var witness := ContactMechanics.reference_severity(_rules.combatant(0), _rules.combatant(0), _rules.combat)
-	assert_between(_rules.combat.reference_severity / witness, 0.9, 1.1, "and the reference strike on these mechanics is its witness (pinned %.2f J vs %.2f J)" % [_rules.combat.reference_severity, witness])
+	assert_between(witness / _rules.combat.reference_severity / StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 0.9, 1.1, "and the reference strike on these mechanics is its witness (%.2f J against a %.2f J wound)" % [witness, _rules.combat.reference_severity])
 
 
 func _gradient(step: float, angle: float = 0.0, spin: float = SPIN) -> Dictionary:

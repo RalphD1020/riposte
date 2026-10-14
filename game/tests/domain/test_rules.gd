@@ -37,6 +37,61 @@ func test_arc_grows_ninety_degrees_with_charge() -> void:
 	assert_near(weapon.windback_baseline(deg_to_rad(-100.0)), deg_to_rad(100.0), 1e-12, "an over-displaced hold must beat where it started")
 
 
+## ATTACK-ARC-001: the 270° control domain is not an attack. A full charge
+## commands 180° from the guard limit (−135° → +45°); the blade then sweeps on
+## into its overswing until its own brake stops it, still inside the domain.
+## The left attack is the exact mirror.
+func test_the_control_domain_is_not_the_attack_arc() -> void:
+	var rules := StandardDuelRules.create()
+	var weapon := rules.combatant(0).weapon
+	var domain := weapon.guard_limit * 2.0
+	## ARRANGE: a full charge wound back on each side.
+	var swings := {}
+	for side: float in [-1.0, 1.0]:
+		var rig := WeaponRig.create(rules)
+		rig.fighter.weapon.angle = side * weapon.guard_angle
+		WeaponSystem.update_stable_side(rig.fighter.weapon, weapon)
+		rig.press()
+		rig.hold(600)
+		assert_eq(rig.fighter.weapon.charge, 1.0, "fixture: full charge on side %+.0f" % side)
+		## ACT: release and let the swing run out.
+		rig.release()
+		var start := rig.fighter.weapon.swing_start
+		var finish := rig.fighter.weapon.swing_end
+		var from := rig.angles.size()
+		rig.step_until_phase(CombatPhase.Id.RECOVERY)
+		var reached := start
+		for k in range(from, rig.angles.size()):
+			reached = maxf(reached, rig.angles[k]) if side < 0.0 else minf(reached, rig.angles[k])
+		swings[side] = [start, finish, reached, rig.events_of(DuelEventTypes.ATTACK_RELEASED)[0].number(DuelEventKeys.ARC)]
+	## ASSERT
+	var right: Array = swings[-1.0]
+	var left: Array = swings[1.0]
+	assert_near(rad_to_deg(domain), 270.0, 1e-9, "the control domain spans 270°")
+	assert_near(rad_to_deg(weapon.arc(1.0)), 180.0, 1e-9, "the largest commanded attack is 180°")
+	assert_near(rad_to_deg(right[3]), 180.0, 1e-9, "the released full attack reports 180°")
+	assert_near(rad_to_deg(right[0]), -135.0, 1e-9, "a full right attack starts at the guard limit")
+	assert_near(rad_to_deg(right[1]), 45.0, 1e-9, "and is commanded to +45°")
+	assert_true(right[2] > right[1], "its blade sweeps on past the commanded end into the overswing (%.1f°)" % rad_to_deg(right[2]))
+	assert_true(right[2] <= weapon.guard_limit, "and stays inside the domain")
+	assert_true(right[2] - right[0] < domain, "so no attack sweeps the whole domain")
+	assert_near(left[0], -right[0], 1e-12, "the left attack starts at the mirrored limit")
+	assert_near(left[1], -right[1], 1e-12, "is commanded to the mirrored end")
+	assert_near(left[2], -right[2], 1e-9, "and overswings to the mirrored angle")
+
+
+## The Combat Speed Ledger page is the shipped rules, not a memory of them:
+## its generated table equals what the rules and the motor give today.
+func test_the_speed_ledger_matches_the_rules() -> void:
+	## ARRANGE + ACT
+	var expected := SpeedLedger.table(StandardDuelRules.create())
+	var committed := SpeedLedger.committed()
+	## ASSERT
+	assert_true(not committed.is_empty(), "the ledger page exists with its markers (%s)" % SpeedLedger.DOC)
+	assert_true(expected.contains("| Full attack arc (ATTACK-ARC-001) | ° | 180 |"), "fixture: the generated ledger reads the rules")
+	assert_eq(committed, expected, "the ledger page matches the rules — regenerate with tools/speed_ledger.gd -- --write")
+
+
 func test_inertia_is_mass_times_length_squared() -> void:
 	var weapon := WeaponCatalog.bastard_sword()
 	var expected := weapon.inertia_coefficient * weapon.mass * weapon.length() * weapon.length()
@@ -200,7 +255,7 @@ func test_the_motor_and_every_contact_share_one_weapon_inertia() -> void:
 		w.phase = CombatPhase.Id.LAUNCH
 		w.swing_dir = -1.0 if angle > 0.0 else 1.0
 		w.swing_charge = 0.0
-		w.launch_readiness = 1.0
+		w.launch_preparation = 1.0
 		w.swing_start = angle
 		w.swing_end = angle + w.swing_dir * weapon.arc(0.0)
 		w.speed = 0.0
@@ -247,39 +302,9 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 	assert_true(combat.damage_for(0.9) - combat.damage_for(0.7) > combat.damage_for(0.3) - combat.damage_for(0.1), "top of curve is steeper")
 
 
-func test_fighter_has_base_stamina() -> void:
-	var fighter := FighterCatalog.duelist()
-	assert_true(fighter.base_stamina > 0.0, "the duelist has a positive stamina pool")
-	assert_true(fighter.is_valid(), "the duelist with base_stamina passes validation")
-
-
-func test_base_stamina_required_for_validation() -> void:
-	var rules := StandardDuelRules.create()
-	rules.combatant(0).fighter.base_stamina = 0.0
-	assert_false(rules.is_valid(), "a fighter with zero base_stamina is invalid")
-	rules.combatant(0).fighter.base_stamina = -10.0
-	assert_false(rules.is_valid(), "a fighter with negative base_stamina is invalid")
-
-
-func test_stamina_initialized_at_round_start() -> void:
-	var rules := DuelFixture.rules()
-	var state := DuelFixture.state(rules)
-	for slot in 2:
-		assert_eq(state.fighter(slot).stamina, rules.combatant(0).fighter.base_stamina, "slot %d starts with full stamina" % slot)
-
-
-func test_stamina_enters_the_state_hash() -> void:
-	var rules := DuelFixture.rules()
-	var state := DuelFixture.state(rules)
-	var baseline := StateHasher.hash_state(state)
-	state.fighter(0).stamina -= 1.0
-	var changed := StateHasher.hash_state(state)
-	assert_ne(baseline, changed, "a stamina change is reflected in the state hash")
-
-
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 47, "rules version tracks gameplay-affecting changes (47: combat-frame movement — footwork is expressed in the CombatHeading, the bearing only turns the heading)")
+	assert_eq(rules.version, 49, "rules version tracks gameplay-affecting changes (49: the knife-edge injury re-seed — the reference strike is two reference-quality wounds)")
 
 
 ## IMPACT-PHYSICS-001 (rules 42): the injury calibration is a named physical
@@ -300,12 +325,13 @@ func test_the_injury_calibration_is_a_named_physical_constant() -> void:
 	for degrees in HandlingCatalog.ATTACK_PATH_DEGREES:
 		knots.append(deg_to_rad(degrees))
 	calibrated.combatant(0).handling.attack_path = WeaponAttackPath.from_carriage_knots(knots, PackedFloat64Array([0.63, 0.615, 0.56, 0.45, 0.30]), PackedFloat64Array([0.0, 0.045, 0.13, 0.18, 0.20]))
-	assert_near(ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_CUT_ENERGY_J, 1e-9, "on the rules-39 track the reference strike delivers exactly the pinned energy")
+	assert_near(ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, 1e-9, "on the rules-39 track the reference strike delivers exactly the pinned energy")
 	assert_near(ContactMechanics.reference_impulse(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_STAGGER_IMPULSE_NS, 1e-9, "and the pinned stagger impulse")
+	assert_near(StandardDuelRules.REFERENCE_STRIKE_ENERGY_J / rules.combat.reference_severity, StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 1e-12, "and that strike is the pinned number of reference-quality wounds (rules 49)")
 	var witness := ContactMechanics.reference_severity(rules.combatant(0), rules.combatant(0), rules.combat)
-	assert_ne(witness, StandardDuelRules.REFERENCE_CUT_ENERGY_J, "on today's track the strike delivers a little differently")
+	assert_ne(witness, StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, "on today's track the strike delivers a little differently")
 	assert_eq(calibrated.combat.reference_severity, rules.combat.reference_severity, "yet the calibration is the same constant")
-	assert_between(rules.combat.reference_severity / witness, 0.9, 1.1, "the reference strike on today's mechanics is its witness (%.2f vs %.2f J)" % [rules.combat.reference_severity, witness])
+	assert_between(witness / rules.combat.reference_severity / StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 0.9, 1.1, "the reference strike on today's mechanics is its witness (%.2f J, a %.2f-severity wound)" % [witness, witness / rules.combat.reference_severity])
 	assert_between(rules.combat.reference_impulse / ContactMechanics.reference_impulse(rules.combatant(0), rules.combatant(0), rules.combat), 0.9, 1.1, "and the stagger impulse's")
 	assert_near(rules.combat.reference_thrust_severity, ContactMechanics.reference_thrust_severity(rules.combatant(0), rules.combatant(0), rules.combat), 1e-6, "a point driven straight in does not see the track at all")
 

@@ -36,7 +36,7 @@ extends RefCounted
 
 ## Bump when the meaning or layout of the resolved content changes, so a
 ## replay recorded against another content schema is refused, not reinterpreted.
-const CONTENT_SCHEMA_VERSION := 2
+const CONTENT_SCHEMA_VERSION := 3
 
 var fighter: FighterDefinition
 var weapon: WeaponDefinition

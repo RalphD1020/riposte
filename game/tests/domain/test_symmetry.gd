@@ -59,6 +59,34 @@ func test_mirrored_attacks_produce_mirrored_outcomes() -> void:
 	assert_near(left.state.fighter(0).y, -right.state.fighter(1).y, 1e-6, "point-reflected attacker lateral position")
 
 
+## SYM-STORM-SEPARATING-001. In a point-symmetric re-hold storm (the
+## CONTACT-INTEGRITY storm, before the no-tunnel fallback existed) both blades
+## were carried onto the same guard stop with angles equal to the bit; one
+## landed an ulp past it and lost its outward speed, the other landed exactly
+## on it and kept −1.99 rad/s against the stop for a tick — a whole speed
+## decided by rounding. The stop law is inclusive: landing exactly on the stop
+## ends the outward turn, on either side, and never touches inward speed.
+func test_reaching_the_guard_stop_exactly_ends_the_outward_turn() -> void:
+	## ARRANGE
+	var limit := DuelFixture.rules().combatant(0).weapon.guard_limit
+	var outward := WeaponState.new()
+	var mirrored := WeaponState.new()
+	var inward := WeaponState.new()
+	outward.speed = -1.99
+	mirrored.speed = 1.99
+	inward.speed = 2.0
+	## ACT: each step lands exactly on a stop.
+	WeaponSystem.settle_at_stop(outward, -limit, limit)
+	WeaponSystem.settle_at_stop(mirrored, limit, limit)
+	WeaponSystem.settle_at_stop(inward, -limit, limit)
+	## ASSERT
+	assert_eq(outward.angle, -limit, "the blade rests on the stop")
+	assert_eq(outward.speed, 0.0, "and keeps no outward speed when it lands exactly on it")
+	assert_eq(mirrored.angle, limit, "the mirrored blade rests on the other stop")
+	assert_eq(mirrored.speed, 0.0, "with the same law")
+	assert_eq(inward.speed, 2.0, "inward speed off the stop survives")
+
+
 ## `runner`'s events of `type` strictly before `tick`.
 func _before(runner: SimRunner, type: StringName, tick: int) -> Array[DuelEvent]:
 	var found: Array[DuelEvent] = []

@@ -34,6 +34,8 @@ const IMPULSE_DEVASTATING_MAX := 0.14
 const SPARK_NORMAL_SHARE := 0.4
 ## Parry ring.
 const PARRY_RING_SIZE := 0.8
+## A deflection's tail sits well under the clash it follows (dB).
+const DEFLECTION_TAIL_DB := -10.0
 ## Parry quality: the beat margin (seconds the defender got ahead) read as 0..1
 ## against a clean-parry ceiling. A threshold deflection already reads; a
 ## decisive one is razor-bright. Presentation interpretation, not a measurement.
@@ -132,6 +134,8 @@ static func _classify(event: DuelEvent, snapshot: PresentationSnapshot, weapon_k
 			_on_blade_contact(event, weapon_kit, flash, particles, palette, frame, contact_height)
 		DuelEventTypes.PARRY:
 			_on_parry(event, weapon_kit, flash, particles, palette, frame, contact_height)
+		DuelEventTypes.DEFLECTION:
+			_on_deflection(event, snapshot, frame)
 		DuelEventTypes.BODY_HIT:
 			_on_body_hit(event, snapshot, weapon_kit, flash, particles, palette, frame)
 		DuelEventTypes.BODY_POKE:
@@ -195,6 +199,13 @@ static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, fla
 	var speed := lerpf(profile.spark_speed_min, profile.spark_speed_max, intensity)
 	var tangent := _direction(event, DuelEventKeys.STRIKE_X, DuelEventKeys.STRIKE_Y)
 	var normal := _direction(event, DuelEventKeys.NORMAL_X, DuelEventKeys.NORMAL_Y)
+	## A glancing redirect — the cut not arrested, the swords separating — throws
+	## its sparks the way the solved impulse shoved the cutting blade
+	## (CONTACT-OUTCOME-001): the deflection is read in the steel, never told.
+	if is_glancing_redirect(event):
+		var shove := _direction(event, DuelEventKeys.IMPULSE_X, DuelEventKeys.IMPULSE_Y) * (1.0 if event.actor == 0 else -1.0)
+		if shove.length() > 0.0:
+			tangent = (tangent + shove).normalized()
 	var hot := palette.spark.lerp(palette.spark_hot, intensity)
 	_append_particles(frame, VfxRequest.sparks(world, tangent, hot, roundi(count * (1.0 - SPARK_NORMAL_SHARE)), speed, flash), particles)
 	_append_particles(frame, VfxRequest.sparks(world, normal, hot, roundi(count * SPARK_NORMAL_SHARE), speed, flash), particles)
@@ -202,6 +213,23 @@ static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, fla
 	frame.hitstop_requests.append(HitstopRequest.create(weapon_kit.hitstop_for_clash(intensity)))
 	frame.camera_requests.append(CameraShakeRequest.create(IMPULSE_BLADE_MAX * intensity * 100.0, normal, CameraShakeRequest.Profile.BLADE))
 	frame.fighter_requests.append(FighterCueRequest.haptic(event.actor, FighterCueRequest.Kind.HAPTIC_BLADE))
+
+
+## Whether a blade contact was a glancing redirect: one side cutting, its cut
+## not arrested, and the swords leaving each other after the solve — a reading
+## of the contact outcome the event carries (CONTACT-OUTCOME-001).
+static func is_glancing_redirect(event: DuelEvent) -> bool:
+	if event.actor == DuelEvent.NONE:
+		return false
+	var arrested := bool(event.data.get(DuelEventKeys.ARRESTED_0 if event.actor == 0 else DuelEventKeys.ARRESTED_1, false))
+	return not arrested and event.number(DuelEventKeys.CLOSING_AFTER) < 0.0
+
+
+## A deflection (DEFLECTION-001) is decided when the redirected cut ends having
+## struck nothing: a quiet metal tail where that blade went, the steel's own
+## afterword. Presentation only; nothing reads it back.
+static func _on_deflection(event: DuelEvent, snapshot: PresentationSnapshot, frame: FeedbackFrame) -> void:
+	frame.audio_requests.append(AudioCueRequest.create(PresentationKit.CUE_METAL_TAIL, _fighter_world(snapshot, event.target), DEFLECTION_TAIL_DB, 1.0, AudioCueRequest.KitSource.WEAPON, variant_key(event)))
 
 
 ## The clang's timbre from where the swords met (7C): steel struck near the

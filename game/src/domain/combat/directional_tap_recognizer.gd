@@ -62,6 +62,15 @@ static func _expire(gesture: MovementGestureState, tick: int, definition: Fighte
 		gesture.clear_pending()
 
 
+## The sector `intent` would leave the gesture in from `current` — the same
+## reading `observe` takes, without advancing anything, so a command source can
+## know what its own input is about to type.
+static func sector_of(
+	current: MovementGestureState.Direction, intent_x: float, intent_y: float, definition: FighterDefinition
+) -> MovementGestureState.Direction:
+	return _sector(current, intent_x, intent_y, definition)
+
+
 ## Which cardinal sector the intent is in, with hysteresis: a clear deflection
 ## is needed to enter one and a near-centred stick to leave it. Without the
 ## gap, an intent hovering on a boundary would chatter between sectors and

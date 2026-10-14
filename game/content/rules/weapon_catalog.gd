@@ -101,7 +101,7 @@ static func _semantics(weapon: WeaponDefinition) -> void:
 	## 2° either side of centre; wide enough to swallow numerical noise,
 	## narrow enough that the player never perceives a dead band.
 	weapon.side_deadzone = PI / 90.0
-	weapon.readiness_floor = 0.55
+	weapon.preparation_floor = 0.55
 	weapon.tap_threshold_ticks = 7
 	weapon.buffer_ticks = WeaponDefinition.BUFFER_TICKS_LIMIT
 	## Target swing speeds, linear in charge: a tap 10.5, a half charge 14.25,

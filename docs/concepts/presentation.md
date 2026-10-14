@@ -26,7 +26,7 @@ Accessibility settings (combat FX intensity, flash, shake, motion, trails, high-
 
 Presentation may **exaggerate** a normalized authoritative value; it may never **invent** one, and it may never feed anything back into the simulation. No presentation code recomputes a combat formula. If a quantity is not on `PresentationSnapshot` or an event payload, the trail and the audio do without it.
 
-The snapshot carries what a swing means, so the renderer never has to re-derive it: `tip_speed`, `launch_readiness`, `swing_progress`, `swing_potential`, `commitment`, `stability`, `exposure`, `facing_error`, `stable_side`, `guard_region`, and `burst`. Final strike quality is deliberately absent — it only exists at contact, so it arrives on the `body_hit` payload with its `grade` already named.
+The snapshot carries what a swing means, so the renderer never has to re-derive it: `tip_speed`, `launch_preparation`, `swing_progress`, `swing_potential`, `commitment`, `stability`, `facing_error`, `stable_side`, `guard_region`, and `burst`; `exposure` and `threat_time` — two bounded threat predictions a tick — only when the projection is asked for them (`SnapshotProjector.project(..., threat_readings)`, today the debug overlay); the snapshot says whether it carries them (`has_threat_readings`), and without them both hold neutral defaults that MUST NOT be read as measurements. Final strike quality is deliberately absent — it only exists at contact, so it arrives on the `body_hit` payload with its `grade` already named.
 
 Two consequences worth stating plainly:
 
@@ -80,7 +80,7 @@ Accessibility scales how loudly these cues are drawn and never what they mean. `
 
 ## Combat readability state
 
-`PresentationFighter` carries normalized 0-1 readability scalars computed once per tick by `SnapshotProjector`. Raw quantities that are already 0-1 (charge, commitment, exposure, swing_progress, swing_potential, stability) are not duplicated; additional derived readings are:
+`PresentationFighter` carries normalized 0-1 readability scalars computed once per tick by `SnapshotProjector`. Raw quantities that are already 0-1 (charge, commitment, exposure when projected, swing_progress, swing_potential, stability) are not duplicated; additional derived readings are:
 
 | Field                  | Source                                  | Description                |
 | ---------------------- | --------------------------------------- | -------------------------- |
@@ -183,7 +183,7 @@ The showcase actor is the intro's too. `FighterShowcaseActor` builds through `Co
 
 ## HUD and world
 
-The HUD is ornament over information: mirrored charcoal plates with gold edging and asymmetric corners, sword-point diamond pips, a restrained health rule (no stamina meter — STAMINA-002), and condition repeated as a _shape_ icon plus a word — the body in the world carries it first. Banners slash in and snap out (Reduced Motion keeps the text and drops the slash). Gold is decorative only; every text pair stays a proven `TEXT_PAIRS` combination. Menu buttons get a fast scale pulse and UI sounds through `UiFeedback`.
+The HUD is ornament over information: mirrored charcoal plates with gold edging and asymmetric corners, sword-point diamond pips, a restrained health rule (no fatigue meter — there is no fatigue resource, STAMINA-003), and condition repeated as a _shape_ icon plus a word — the body in the world carries it first. Banners slash in and snap out (Reduced Motion keeps the text and drops the slash). Gold is decorative only; every text pair stays a proven `TEXT_PAIRS` combination. Menu buttons get a fast scale pulse and UI sounds through `UiFeedback`.
 
 The duel space is a lit warm-stone platform over a near-black void, with a warm key, a faint cool rim, an emissive gold warning ring, and braziers on the perimeter. The floor stays a mid stone on purpose: its luminance is where both a light and a dark combatant clear 3:1 (`WORLD_READS`), and an authored fighter's dominant clothing is validated against the same floor at export.
 

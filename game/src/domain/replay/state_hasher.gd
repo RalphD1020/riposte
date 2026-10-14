@@ -8,6 +8,14 @@ extends RefCounted
 ## Implements: /spec/invariants.md#sim-002
 ## See also: /docs/concepts/simulation.md
 
+## Which fields the hash covers, in which order. A schema change that is not a
+## rules change (2: the stamina pool left state, STAMINA-003) moves every hash
+## without changing the game, so recordings name it and are refused across it.
+## (3: a swing's HAND episode, `WeaponState.hand_struck`, DEFENSE-ROLE-001.)
+## (4: a swing's pending deflection, `WeaponState.deflection_pending`,
+## DEFLECTION-001.)
+const LAYOUT_VERSION := 4
+
 
 static func hash_state(state: MatchState) -> String:
 	var ints := PackedInt64Array([
@@ -60,7 +68,6 @@ static func hash_state(state: MatchState) -> String:
 			fighter.turn_rate,
 			fighter.health,
 			fighter.stability,
-			fighter.stamina,
 			fighter.lethal_fraction,
 			fighter.support_lost_fraction,
 			fighter.duel_forward_x,
@@ -74,7 +81,7 @@ static func hash_state(state: MatchState) -> String:
 			weapon.earned_windback,
 			weapon.stable_side,
 			weapon.swing_dir,
-			weapon.launch_readiness,
+			weapon.launch_preparation,
 			weapon.swing_start,
 			weapon.swing_end,
 			weapon.swing_charge,
@@ -107,6 +114,8 @@ static func hash_state(state: MatchState) -> String:
 			weapon.phase,
 			weapon.phase_ticks,
 			int(weapon.attack_contacted),
+			int(weapon.hand_struck),
+			int(weapon.deflection_pending),
 			weapon.recovery_ticks,
 			weapon.recovery_left,
 			int(fighter.fallen.active),

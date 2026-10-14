@@ -35,8 +35,6 @@ const VELOCITY_NOT_FINITE := &"velocity_not_finite"
 const FACING_NOT_FINITE := &"facing_not_finite"
 const WEAPON_NOT_FINITE := &"weapon_not_finite"
 const HEALTH_RANGE := &"health_range"
-const STAMINA_NOT_FINITE := &"stamina_not_finite"
-const STAMINA_OVER_MAX := &"stamina_over_max"
 const STABILITY_RANGE := &"stability_range"
 const ANGLE_OUT_OF_GUARD := &"angle_out_of_guard"
 const CHARGE_RANGE := &"charge_range"
@@ -44,7 +42,7 @@ const WINDBACK_RANGE := &"windback_range"
 const COMMITMENT_RANGE := &"commitment_range"
 const SWING_DIRECTION := &"swing_direction"
 const STABLE_SIDE := &"stable_side"
-const READINESS_RANGE := &"readiness_range"
+const PREPARATION_RANGE := &"PREPARATION_RANGE"
 const COUNTER_NEGATIVE := &"counter_negative"
 const DEATH_PHASE_MISMATCH := &"death_phase_mismatch"
 const SIDE_COLLISION := &"side_collision"
@@ -141,13 +139,6 @@ static func check_fighter(fighter: FighterState, rules: DuelRules) -> StringName
 		return DUEL_BASIS_DEGENERATE
 	if fighter.health < -BOUND_SLACK or fighter.health > body.max_health + BOUND_SLACK:
 		return HEALTH_RANGE
-	if not is_finite(fighter.stamina) or fighter.stamina < -BOUND_SLACK:
-		return STAMINA_NOT_FINITE
-	var stamina_max := StaminaModel.max_for_health(
-		fighter.health, body.max_health, body.base_stamina, rules.combat
-	)
-	if fighter.stamina > stamina_max + BOUND_SLACK:
-		return STAMINA_OVER_MAX
 	if (
 		fighter.stability < body.stability_floor - BOUND_SLACK
 		or fighter.stability > 1.0 + BOUND_SLACK
@@ -230,8 +221,8 @@ static func check_weapon(weapon: WeaponState, definition: WeaponDefinition) -> S
 		return WINDBACK_RANGE
 	if not _unit_range(weapon.commitment) or not _unit_range(weapon.recovery_commitment):
 		return COMMITMENT_RANGE
-	if not _unit_range(weapon.launch_readiness):
-		return READINESS_RANGE
+	if not _unit_range(weapon.launch_preparation):
+		return PREPARATION_RANGE
 	if weapon.swing_dir != 1.0 and weapon.swing_dir != -1.0:
 		return SWING_DIRECTION
 	if weapon.stable_side != 1.0 and weapon.stable_side != -1.0:

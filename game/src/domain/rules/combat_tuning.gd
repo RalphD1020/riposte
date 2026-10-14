@@ -91,32 +91,6 @@ var recovery_min_ticks: int = 0
 var substep_travel: float = 0.0
 var max_substeps: int = 0
 
-## Stamina tuning (STAMINA-001): ceiling, shock, exertion, recovery.
-## `stamina_health_share` is the fraction of the ceiling that tracks health:
-## at full health the ceiling is `base_stamina`; at zero health it falls to
-## `base_stamina × (1 - stamina_health_share)`.
-var stamina_health_share: float = 0.0
-var stamina_shock_rate: float = 0.0
-var stamina_exertion_rate: float = 0.0
-var stamina_recovery_rate: float = 0.0
-var stamina_recovery_effort_ceiling: float = 0.0
-
-## Stamina normalization (STAMINA-001): reference work per tick (joules) for
-## each motor channel. Represents the baseline fighter/weapon at max-power
-## output for one tick. Normalizes raw joules into a [0, ∞) effort signal
-## where 1.0 = a single tick at full motor power.
-var stamina_move_reference_work: float = 0.0
-var stamina_turn_reference_work: float = 0.0
-var stamina_weapon_reference_work: float = 0.0
-
-## Stamina work-type weights. Positive motor work (driving) costs the most
-## stamina; braking costs less (deceleration is still effort but less
-## metabolically expensive); utilization at near-zero velocity (static hold /
-## isometric) costs the least. All >= 0.
-var stamina_drive_weight: float = 0.0
-var stamina_brake_weight: float = 0.0
-var stamina_hold_weight: float = 0.0
-
 ## Body-body collision (COMBAT-007). Fighters are circles; when they overlap
 ## or are about to overlap, the contact loop resolves an inverse-mass impulse
 ## so a heavier fighter is barely displaced while a lighter one absorbs the
@@ -230,18 +204,6 @@ func is_valid() -> bool:
 		and guard_friction >= 0.0
 		and guard_friction <= 1.0
 		and blade_friction <= 1.0
-		and stamina_health_share >= 0.0
-		and stamina_health_share <= 1.0
-		and stamina_shock_rate >= 0.0
-		and stamina_exertion_rate >= 0.0
-		and stamina_recovery_rate >= 0.0
-		and stamina_recovery_effort_ceiling >= 0.0
-		and stamina_move_reference_work > 0.0
-		and stamina_turn_reference_work > 0.0
-		and stamina_weapon_reference_work > 0.0
-		and stamina_drive_weight >= 0.0
-		and stamina_brake_weight >= 0.0
-		and stamina_hold_weight >= 0.0
 		and condition_force_floor >= 0.5
 		and condition_force_floor <= 1.0
 		and condition_speed_floor >= 0.5
@@ -303,13 +265,7 @@ func _all_finite() -> bool:
 		and is_finite(reference_severity) and is_finite(blade_solid_speed)
 		and is_finite(blade_strong_speed)
 		and is_finite(substep_travel)
-		and is_finite(stamina_health_share) and is_finite(stamina_shock_rate)
-		and is_finite(stamina_exertion_rate) and is_finite(stamina_recovery_rate)
-		and is_finite(stamina_recovery_effort_ceiling)
-		and is_finite(stamina_move_reference_work) and is_finite(stamina_turn_reference_work)
-		and is_finite(stamina_weapon_reference_work)
-		and is_finite(stamina_drive_weight) and is_finite(stamina_brake_weight)
-		and is_finite(stamina_hold_weight) 		and is_finite(body_restitution)
+		and is_finite(body_restitution)
 		and is_finite(body_friction) and is_finite(body_contact_separation_epsilon)
 		and is_finite(sword_body_restitution) and is_finite(penetration_resistance_fraction)
 		and is_finite(point_strike_alignment)

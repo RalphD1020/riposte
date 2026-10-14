@@ -31,12 +31,12 @@ var stable_side: float = -1.0
 ## +1 sweeps counter-clockwise (right → left), -1 clockwise (left → right).
 var swing_dir: float = 1.0
 ## Motor authority this swing was launched with, from the release angle
-## (`WeaponDefinition.readiness`). Captured once and never recomputed in
+## (`WeaponDefinition.preparation`). Captured once and never recomputed in
 ## flight: an under-prepared cut must not gain power by crossing centre.
-var launch_readiness: float = 0.0
+var launch_preparation: float = 0.0
 var swing_start: float = 0.0
 var swing_end: float = 0.0
-## The charge this swing was launched with. Like `launch_readiness`, read once
+## The charge this swing was launched with. Like `launch_preparation`, read once
 ## at release and never recomputed in flight.
 var swing_charge: float = 0.0
 ## Whether the current attack has met the opponent with a solved, positive
@@ -45,6 +45,16 @@ var swing_charge: float = 0.0
 ## only so `ATTACK_WHIFFED` is emitted exactly once, and only for a miss;
 ## nothing in the simulation's physics reads it.
 var attack_contacted: bool = false
+## Whether the current swing has already wounded the opponent's hands
+## (HAND-CONTACT-001): one HAND damage episode per swing, however many times
+## the blade meets the grip. Reset at release.
+var hand_struck: bool = false
+## Whether the current attack's first opponent contact was protective steel
+## that took a positive impulse without arresting the cut while the cut was on
+## the line (DEFLECTION-001); cleared by any body or hand strike. It exists
+## only so `DEFLECTION` is emitted once, when the attack ends having struck
+## nothing; nothing in the simulation's physics or the CPU reads it.
+var deflection_pending: bool = false
 ## Commitment K ∈ [0, 1], recomputed every tick (COMBAT §20).
 var commitment: float = 0.0
 ## The torque (N·m, + toward +θ) the weapon motor actually applied last tick:
@@ -74,11 +84,13 @@ func reset(resting_angle: float) -> void:
 	earned_windback = 0.0
 	stable_side = 1.0 if resting_angle > 0.0 else -1.0
 	swing_dir = -stable_side
-	launch_readiness = 0.0
+	launch_preparation = 0.0
 	swing_start = resting_angle
 	swing_end = resting_angle
 	swing_charge = 0.0
 	attack_contacted = false
+	hand_struck = false
+	deflection_pending = false
 	commitment = 0.0
 	motor_torque = 0.0
 	recovery_ticks = 0

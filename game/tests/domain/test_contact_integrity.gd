@@ -323,7 +323,7 @@ func test_the_motors_that_press_a_held_contact_are_bounded() -> void:
 	ContactFixture.arm(swordsman, 0.0, 0.0, 0.0, deg_to_rad(-60.0), 0.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, weapon)
 	ContactFixture.arm(runner.state.fighter(1), 0.0, 6.0, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	swordsman.weapon.swing_dir = 1.0
-	var ceiling := weapon.achievable_swing_speed(1.0, swordsman.weapon.launch_readiness)
+	var ceiling := weapon.achievable_swing_speed(1.0, swordsman.weapon.launch_preparation)
 	runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
 	var one_tick := weapon.swing_accel(1.0, _rules.combatant(0).fighter.weapon_torque_scale, WeaponKinematics.motor_inertia(_rules.combatant(0), deg_to_rad(-60.0))) * dt
 	assert_true(ceiling > 2.0 * one_tick, "fixture: the swing's target speed is several ticks of drive away")
@@ -413,7 +413,7 @@ func test_only_a_hold_that_arrests_a_cut_interrupts_it() -> void:
 		ContactFixture.arm(swordsman, 0.0, 0.0, 0.0, deg_to_rad(-30.0), float(case[0]), CombatPhase.Id.ACTIVE_THREAT, 1.0, weapon)
 		ContactFixture.arm(state.fighter(1), 2.0, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 		swordsman.weapon.swing_dir = 1.0
-		swordsman.weapon.launch_readiness = 1.0
+		swordsman.weapon.launch_preparation = 1.0
 		ContactResolver.interrupt_held_swings(state, _rules, PackedFloat64Array([float(case[1]), 0.0]), PackedByteArray([1, 0]))
 		assert_eq(swordsman.weapon.phase, int(case[2]), String(case[3]))
 		assert_eq(swordsman.weapon.speed, float(case[0]), "and the interrupt moves nothing either way")
@@ -470,7 +470,7 @@ func test_a_contact_that_reverses_a_cut_ends_it() -> void:
 	for i in at:
 		assert_true(CombatPhase.is_swinging(int(rows[i][2])), "fixture tick %d: the cut is live before the clash" % i)
 	assert_eq(int(rows[at][8]), 0, "fixture: no body hit came first")
-	assert_true(bool(clash.data[DuelEventKeys.DEFLECTED_0]), "the clash is reported as deflecting the cut")
+	assert_true(bool(clash.data[DuelEventKeys.ARRESTED_0]), "the clash is reported as arresting the cut")
 	assert_true(float(rows[at][4]) <= 0.0, "the impact reversed it (%.2f → %.2f rad/s)" % [float(rows[at - 1][4]), float(rows[at][4])])
 	assert_eq(int(rows[at][2]), CombatPhase.Id.RECOVERY, "so the cut ends there, in recovery")
 
@@ -641,7 +641,10 @@ func test_beating_a_long_guard_aside_lets_the_body_close() -> void:
 	var weapon := _rules.combatant(0).weapon
 	ContactFixture.arm(state.fighter(0), 0.0, 0.0, PI / 2.0, deg_to_rad(-110.0), 8.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, weapon)
 	state.fighter(0).weapon.swing_dir = 1.0
-	ContactFixture.arm(state.fighter(1), 0.0, 1.9, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	## Clear of the cutter's sword: inside about 2.15 m the Long Guard's point
+	## starts lying through the cutter's handle and hands, wound back at −110°.
+	ContactFixture.arm(state.fighter(1), 0.0, 2.2, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	assert_true(_blades(state).x > 0.0, "fixture: the swords start apart (%.3f m)" % _blades(state).x)
 	var closest := INF
 	var displaced := false
 	for tick in 180:
@@ -726,6 +729,108 @@ func test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored() -> v
 	assert_eq(crossings, 0, "no centreline ever crosses the other")
 	assert_eq(flipped, 0, "the blade stays on the side it met from")
 	assert_true(absf(fallback_swing) > 1.0, "the fallback leaves θ̇ as the contact left it, never zeroed (%.2f rad/s)" % fallback_swing)
-	assert_true(mirror < 1.0e-9, "the duel stays its own exact reflection (%s)" % String.num_scientific(mirror))
+	assert_true(mirror < 1.0e-6, "the duel stays its own reflection to rounding (%s; the suite's mirror standard)" % String.num_scientific(mirror))
 	assert_eq(runner.count(DuelEventTypes.CONTACT_SATURATED), 0, "and the contact loop never saturates")
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+
+# ── PLANAR-BIND-001: a bind is equilibrium, never an authored escape ───────
+
+
+## Ticks each bind branch is followed, and how long the cut runs into the
+## guard before the bind is read (the wedge of the lost-line corpus).
+const BIND_TICKS := 40
+const BIND_SETTLE_TICKS := 10
+
+
+## PLANAR-BIND-001: the crossguard wedge a tap leaves on a Long Guard is a
+## physical equilibrium, and it answers changed forces. Held still by both, it
+## stays bound — no crossing, no hit, every tick sound. Forked into the
+## ordinary inputs a fencer has (the defender stepping back, stepping either
+## way, winding the blade back; either side pressing), every branch moves the
+## contact away from the equilibrium's within the window, and at least one
+## ordinary action takes the swords apart. Nothing is timed: how long a bind
+## lasts is the players', never the solver's.
+func test_a_bind_holds_in_equilibrium_and_answers_changed_forces() -> void:
+	## ARRANGE: the wedge.
+	var wedge := _crossguard_wedge()
+	var start := wedge.state.blade_contact
+	assert_eq(start.phase, SwordContactSet.Phase.CONTACTING, "fixture: the swords are in contact")
+	assert_true(start.point_count > 0, "fixture: with a manifold point")
+	assert_eq(wedge.count(DuelEventTypes.BODY_HIT), 0, "fixture: nobody was hit")
+	## ACT: equilibrium, then every branch from the same state.
+	var still := _bind_trace(wedge, "idle", "idle")
+	var branches := {
+		"defender steps back": ["idle", "back"],
+		"defender steps right": ["idle", "right"],
+		"defender steps left": ["idle", "left"],
+		"defender winds the blade back": ["idle", "wind"],
+		"both press": ["press", "press"],
+		"the cutter presses alone": ["press", "idle"],
+	}
+	var parted := 0
+	## ASSERT
+	assert_false(still["separated"], "held still by both, the bind stays bound")
+	assert_eq(int(still["hits"]), 0, "and nothing crosses into a body")
+	assert_true(still["sound"], "every tick legal")
+	for name: String in branches:
+		var kinds: Array = branches[name]
+		var branch := _bind_trace(wedge, kinds[0], kinds[1])
+		var trace: Array = branch["trace"]
+		var held_still: Array = still["trace"]
+		assert_ne(trace, held_still, "%s: the contact answers the changed force" % name)
+		assert_true(branch["sound"], "%s: every tick legal (no tunnelling, no overlap past the slop)" % name)
+		parted += 1 if branch["separated"] else 0
+	assert_true(parted > 0, "an ordinary action takes the swords apart (%d of %d branches)" % [parted, branches.size()])
+
+
+## A tap thrown into a Long Guard 2.2 m away, followed until it has been
+## stopped crossing it on the guard (the lost-line corpus's wedge).
+func _crossguard_wedge() -> SimRunner:
+	var rules := DuelFixture.rules()
+	var weapon := rules.combatant(0).weapon
+	var runner := SimRunner.create(rules, 1)
+	runner.skip_intro()
+	ContactFixture.arm(runner.state.fighter(0), 0.0, 0.0, PI / 2.0, -weapon.guard_angle - weapon.arc(0.0) * 0.25, weapon.achievable_swing_speed(0.0, 1.0), CombatPhase.Id.ACTIVE_THREAT, 0.0, weapon)
+	runner.state.fighter(0).weapon.swing_dir = 1.0
+	ContactFixture.arm(runner.state.fighter(1), 0.0, 2.2, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	for _i in BIND_TICKS:
+		runner.idle(1)
+		if runner.count(DuelEventTypes.BLADE_CONTACT) > 0:
+			break
+	runner.idle(BIND_SETTLE_TICKS)
+	return runner
+
+
+## Fork `wedge` and drive the cutter (slot 0) and the defender (slot 1) with
+## `cutter` / `defender` for `BIND_TICKS`: the contact's phase, point count,
+## held normal impulse and fractions per tick, whether it ever separated, the
+## body hits and soundness.
+func _bind_trace(wedge: SimRunner, cutter: String, defender: String) -> Dictionary:
+	var fork := StateFork.of(wedge)
+	var trace: Array[String] = []
+	var separated := false
+	for t in BIND_TICKS:
+		var tick := fork.state.tick
+		fork.push(_bind_command(cutter, tick, t), _bind_command(defender, tick, t))
+		var contact := fork.state.blade_contact
+		var held := 0.0
+		for i in contact.hold_count():
+			held += contact.hold_normal[i]
+		trace.append("%d|%d|%.9f|%s" % [contact.phase, contact.point_count, held, str(contact.fraction_a)])
+		separated = separated or contact.phase == SwordContactSet.Phase.SEPARATED
+	return {"trace": trace, "separated": separated, "hits": fork.count(DuelEventTypes.BODY_HIT), "sound": fork.is_sound()}
+
+
+static func _bind_command(kind: String, tick: int, t: int) -> PlayerCommand:
+	match kind:
+		"press":
+			return PlayerCommand.create(tick, 0.0, 0.0, true, true)
+		"wind":
+			return PlayerCommand.create(tick, 0.0, 0.0, t == 0, false)
+		"back":
+			return PlayerCommand.create(tick, 0.0, -1.0)
+		"right":
+			return PlayerCommand.create(tick, 1.0, 0.0)
+		"left":
+			return PlayerCommand.create(tick, -1.0, 0.0)
+	return PlayerCommand.idle(tick)

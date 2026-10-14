@@ -666,3 +666,51 @@ func test_effects_are_pooled_not_reallocated() -> void:
 		vfx.sparks(Vector3.ZERO, Vector3.FORWARD, Color.WHITE, 12, 3.0, 1.0)
 	assert_true(vfx.pooled_node_count() <= VfxDirector.MAX_EFFECTS, "and the pool is capped (%d)" % vfx.pooled_node_count())
 	vfx.queue_free()
+
+
+## A glancing redirect reads in the steel (CONTACT-OUTCOME-001, DEFLECTION-001):
+## the same clash, once arrested and once a glance that leaves the swords
+## separating. The glance throws its tangent sparks toward the way the solved
+## impulse shoved the cutting blade; the arrest keeps them along the strike.
+## The deflection label, when the redirected cut ends having struck nothing,
+## adds only a quiet metal tail — no flash, no shake, nothing for the duel.
+func test_a_glancing_redirect_throws_its_sparks_the_way_the_blade_was_shoved() -> void:
+	## ARRANGE: two contacts differing only in what the solve did.
+	var arrested := _redirect(true, 0.0)
+	var glance := _redirect(false, -1.2)
+	## ACT
+	var held := _frame([arrested] as Array[DuelEvent])
+	var thrown := _frame([glance] as Array[DuelEvent])
+	## ASSERT
+	assert_false(CombatFeedbackDirector.is_glancing_redirect(arrested), "fixture: an arrested cut is no glance")
+	assert_true(CombatFeedbackDirector.is_glancing_redirect(glance), "fixture: an unarrested, separating cut is one")
+	var shove := Vector3(0.0, 0.0, -1.0)
+	assert_true(thrown.vfx_requests[0].direction.dot(shove) > held.vfx_requests[0].direction.dot(shove), "the glance's sparks lean the way the blade was shoved")
+	assert_eq(thrown.audio_requests[0].cue, held.audio_requests[0].cue, "and it rings as the same clash")
+	## PERTURB: the deflection label at the attack's end.
+	var deflection := DuelEvent.create(DuelEventTypes.DEFLECTION, 40, 1, 0, {DuelEventKeys.CHARGE: 0.0})
+	var tail := _frame([deflection] as Array[DuelEvent])
+	assert_eq(tail.audio_requests.size(), 1, "the deflection is one quiet sound")
+	assert_eq(tail.audio_requests[0].cue, PresentationKit.CUE_METAL_TAIL, "a metal tail")
+	assert_true(tail.audio_requests[0].volume_db < 0.0, "under the clash it follows")
+	assert_eq(tail.vfx_requests.size() + tail.camera_requests.size() + tail.hitstop_requests.size(), 0, "no flash, shake or hitstop")
+
+
+## A blade contact cut by fighter 0 along +x; the solved impulse shoved its
+## blade toward +y (world −z); `arrested` and the rows' `closing_after` vary.
+func _redirect(arrested: bool, closing_after: float) -> DuelEvent:
+	return DuelEvent.create(DuelEventTypes.BLADE_CONTACT, 10, 0, 1, {
+		DuelEventKeys.INTENSITY: 0.5,
+		DuelEventKeys.STRIKE_X: 1.0,
+		DuelEventKeys.STRIKE_Y: 0.0,
+		DuelEventKeys.NORMAL_X: 0.0,
+		DuelEventKeys.NORMAL_Y: 1.0,
+		DuelEventKeys.IMPULSE_X: 0.0,
+		DuelEventKeys.IMPULSE_Y: 3.0,
+		DuelEventKeys.ARRESTED_0: arrested,
+		DuelEventKeys.ARRESTED_1: false,
+		DuelEventKeys.CLOSING_AFTER: closing_after,
+		DuelEventKeys.X: 0.0,
+		DuelEventKeys.Y: 0.0,
+		DuelEventKeys.CONTACT_CLASS: ContactResolver.CLASS_SOLID,
+	})

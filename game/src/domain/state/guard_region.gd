@@ -6,7 +6,7 @@ extends RefCounted
 ## *describe* the blade; nothing may use it to *decide* anything.
 ##
 ## Physics drives the classification, never the reverse. The authoritative
-## quantities are continuous — `angle`, `WeaponDefinition.readiness`, and
+## quantities are continuous — `angle`, `WeaponDefinition.preparation`, and
 ## earned wind-back — and `|angle| == guard_angle` is effectively measure-zero
 ## once a collision has disturbed the blade, so a discrete region is the wrong
 ## shape for a rule. Lint forbids this class under `src/domain/combat` and

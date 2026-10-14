@@ -54,7 +54,7 @@ var swing_charge: float = 0.0
 ## Motor authority this swing was launched with, and how far through its
 ## commanded arc the blade physically is. Travel, not elapsed time — a sword
 ## stopped by another sword has stopped progressing (COMBAT-009).
-var launch_readiness: float = 0.0
+var launch_preparation: float = 0.0
 var swing_progress: float = 0.0
 ## How dangerous this part of this swing is, in [0, 1], before anything about
 ## the opponent. Drives trail width and swing audio. It is deliberately *not*
@@ -67,7 +67,8 @@ var stability: float = 1.0
 ## How exposed this fighter currently is, in [0, 1]. Read from their own
 ## physical state, which is what lets vulnerability be shown honestly — a
 ## displaced weapon, a committed swing, a bad angle — rather than as a meter
-## predicting someone else's hit.
+## predicting someone else's hit. Meaningful only when the snapshot
+## `has_threat_readings`; otherwise the neutral default.
 var exposure: float = 0.0
 ## How badly the fighter is out-angled from their opponent (radians), and the
 ## side the blade is committed to. Both diagnostic.
@@ -117,6 +118,8 @@ var tip_vy: float = 0.0
 ## The weapon's authored mass (kg). A dropped sword tumbles as the object the
 ## simulation modelled, never as a second approximate sword.
 var weapon_mass: float = 0.0
+## This fighter's time to threaten its opponent (s, `InitiativeModel`), for the
+## debug overlay; meaningful only when the snapshot `has_threat_readings`.
 var threat_time: float = 0.0
 
 ## ──────────── Combat readability state (Phase 9) ────────────────────────

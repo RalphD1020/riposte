@@ -86,6 +86,10 @@ func _tactics(difficulty: MatchConfig.Difficulty) -> void:
 
 func _report(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty) -> void:
 	var wins := PackedInt32Array([0, 0, 0])
+	## Wins per (profile, slot) — `first` in slot 0, `first` in slot 1, then
+	## `second` likewise. Seeds alternate slots, so a total can hide a slot
+	## bias that a fixed-slot candidate run would show.
+	var side_wins := PackedInt32Array([0, 0, 0, 0])
 	var rounds := PackedInt32Array([0, 0])
 	var hits := PackedInt32Array([0, 0])
 	var parries := PackedInt32Array([0, 0])
@@ -93,12 +97,17 @@ func _report(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty) -> v
 	var attacks := PackedInt32Array([0, 0])
 	var round_ticks := 0
 	var round_count := 0
-	for index in SEEDS.size():
+	## `--paired`: every seed in both slot orders, so a slot effect cannot
+	## hide in which seeds happened to be swapped (I-7). Default: alternate.
+	var paired := OS.get_cmdline_user_args().has("--paired")
+	var duels := SEEDS.size() * (2 if paired else 1)
+	for index in duels:
 		var swap := index % 2 == 1
+		var match_seed: int = SEEDS[index >> 1] if paired else SEEDS[index]
 		var levels: Array[MatchConfig.Difficulty] = [first, second]
 		if swap:
 			levels = [second, first]
-		var session := _session(levels, SEEDS[index])
+		var session := _session(levels, match_seed)
 		var round_start := 0
 		for _tick in MAX_TICKS:
 			if session.is_finished():
@@ -121,15 +130,18 @@ func _report(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty) -> v
 		if winner == MatchPhase.DRAW or winner == MatchPhase.NO_WINNER:
 			wins[2] += 1
 		else:
-			wins[(1 - winner) if swap else winner] += 1
+			var who := (1 - winner) if swap else winner
+			wins[who] += 1
+			side_wins[who * 2 + winner] += 1
 		## One line per duel: the runner's no-output guard reads progress.
-		print("  · %s v %s seed %d: winner %s" % [MatchConfig.difficulty_label(first), MatchConfig.difficulty_label(second), SEEDS[index], str(winner)])
+		print("  · %s v %s seed %d: winner %s" % [MatchConfig.difficulty_label(first), MatchConfig.difficulty_label(second), match_seed, str(winner)])
 	print(
-		"%s vs %s | matches %d-%d (draws %d) | rounds %d-%d | hits %d-%d | parries %d-%d | avg charge %.2f-%.2f | avg round %.1fs"
+		"%s vs %s | matches %d-%d (draws %d) | by slot P1/P2 %d/%d-%d/%d | rounds %d-%d | hits %d-%d | parries %d-%d | avg charge %.2f-%.2f | avg round %.1fs"
 		% [
 			MatchConfig.difficulty_label(first),
 			MatchConfig.difficulty_label(second),
 			wins[0], wins[1], wins[2],
+			side_wins[0], side_wins[1], side_wins[2], side_wins[3],
 			rounds[0], rounds[1],
 			hits[0], hits[1],
 			parries[0], parries[1],
@@ -225,8 +237,4 @@ func _audit(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty) -> vo
 
 
 func _session(levels: Array[MatchConfig.Difficulty], match_seed: int) -> MatchSession:
-	var config := MatchConfig.quick_play(levels[0], match_seed)
-	var controllers: Array[FighterController] = []
-	for slot in 2:
-		controllers.append(CpuController.create(config.rules, CpuProfile.for_difficulty(levels[slot]), match_seed, slot))
-	return MatchSession.create(config, controllers)
+	return CpuLadder.session(levels[0], levels[1], match_seed)

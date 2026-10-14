@@ -599,9 +599,44 @@ static func _feature_radius(feature: int, weapon: WeaponDefinition) -> float:
 	return weapon.blade_radius
 
 
-## The handle collides as the sword's own grip; the hands are not collision.
+## HAND-CONTACT-001: steel keeps its real size. The handle collides as the
+## sword's own grip — never as the fists around it, which are hurt geometry
+## (two discs at the grip markers), not part of the sword.
 func test_the_hilt_is_the_handle_not_the_hands() -> void:
 	var weapon := _rules.combatant(0).weapon
+	var hand := _rules.combatant(0).fighter.hand_radius
 	assert_eq(weapon.handle_radius, PhysicalBaseline.GRIP_HALF_WIDTH_M, "the hilt is the measured grip")
-	assert_true(weapon.handle_radius < PhysicalBaseline.HAND_PROXY_RADIUS_M, "thinner than the fists around it")
+	assert_true(weapon.handle_radius < hand, "thinner than the fists around it")
 	assert_true(SwordContactGeometry.has_feature(SwordContactSet.Feature.HILT, weapon), "and collidable")
+	assert_false(weapon.protects(SwordContactSet.Feature.HILT), "but not steel that defends its wielder")
+	assert_true(weapon.protects(SwordContactSet.Feature.GUARD) and weapon.protects(SwordContactSet.Feature.BLADE), "as the guard and the blade are")
+
+
+## RIGID-CONTACT-001 passivity at a stop: a two-point line contact pressed
+## while fighter 0's sword turns onto its guard stop. The stop is one row of
+## the same LCP as both contact points — one model of the sword — so the
+## solve only ever takes energy out and never sets the sword past its stop,
+## turning either way. (A second, per-row lock on the stop once gave the
+## sword two models in exactly this hold and added energy.)
+func test_a_two_point_hold_on_a_stop_is_passive() -> void:
+	for turning: float in [0.3, -0.3]:
+		## ARRANGE: a held line contact, fighter 0's stop a milliradian away.
+		var rules := DuelFixture.rules()
+		var weapon := rules.combatant(0).weapon
+		var state := _lying_along(rules, 2.0 * weapon.blade_radius - 0.0005)
+		weapon.guard_limit = absf(state.fighter(0).weapon.angle) + 0.001
+		state.blade_contact.begin_search()
+		var geometry := SwordContactGeometry.new()
+		_measure(state, rules, geometry)
+		assert_eq(_record_touching(state, geometry), 2, "fixture: a line contact, two points")
+		## PERTURB: pressed into the line, the sword driven at its stop.
+		state.fighter(0).vy = -0.4
+		state.fighter(0).weapon.speed = turning
+		## ACT
+		var audit := AuditedRigidSolver.new()
+		audit.solve_velocity(state, rules, true)
+		## ASSERT
+		assert_eq(state.blade_contact.hold_count(), 2, "fixture (%+.1f rad/s): both points are held" % turning)
+		assert_true(audit.stop_solves > 0, "fixture (%+.1f rad/s): the stop row is in the solve" % turning)
+		assert_true(audit.worst_energy_gain <= 1.0e-9, "turning %+.1f rad/s the hold adds no energy (%s J)" % [turning, str(audit.worst_energy_gain)])
+		assert_true(audit.worst_stop_overrun <= 1.0e-4, "and never turns past its stop (%s rad/s)" % str(audit.worst_stop_overrun))

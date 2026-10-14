@@ -36,10 +36,17 @@ const AUDIT_SEEDS: Array[int] = [
 
 ## A Quick Play duel between two CPU profiles on `seed_value`.
 static func session(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty, seed_value: int) -> MatchSession:
+	return session_of(CpuProfile.for_difficulty(first), CpuProfile.for_difficulty(second), seed_value)
+
+
+## The one duel constructor: `first` in slot 0, `second` in slot 1. A profile
+## candidate is graded through this too, so a candidate run and the ladder
+## differ only in the profiles, never in how the duel is built.
+static func session_of(first: CpuProfile, second: CpuProfile, seed_value: int) -> MatchSession:
 	var config := MatchConfig.quick_play(MatchConfig.Difficulty.MEDIUM, seed_value)
 	var controllers: Array[FighterController] = [
-		CpuController.create(config.rules, CpuProfile.for_difficulty(first), seed_value, 0),
-		CpuController.create(config.rules, CpuProfile.for_difficulty(second), seed_value, 1),
+		CpuController.create(config.rules, first, seed_value, 0),
+		CpuController.create(config.rules, second, seed_value, 1),
 	]
 	return MatchSession.create(config, controllers)
 

@@ -276,13 +276,13 @@ func test_side_does_not_chatter_across_centre() -> void:
 		assert_eq(side, -1.0, "numerical noise at centre never re-commits the side")
 
 
-func test_readiness_is_continuous_and_saturates_at_baseline() -> void:
+func test_preparation_is_continuous_and_saturates_at_baseline() -> void:
 	var weapon := _rules.combatant(0).weapon
-	assert_eq(weapon.readiness(0.0), 0.0, "a blade at dead centre has no preparation")
-	assert_near(weapon.readiness(deg_to_rad(22.5)), 0.5, 1e-12, "halfway to baseline is half readiness")
-	assert_eq(weapon.readiness(weapon.guard_angle), 1.0, "the canonical guard is fully prepared")
-	assert_eq(weapon.readiness(weapon.guard_limit), 1.0, "wound back past baseline stays fully prepared, not more")
-	assert_eq(weapon.readiness(-weapon.guard_angle), 1.0, "readiness is side-agnostic")
+	assert_eq(weapon.preparation(0.0), 0.0, "a blade at dead centre has no preparation")
+	assert_near(weapon.preparation(deg_to_rad(22.5)), 0.5, 1e-12, "halfway to baseline is half preparation")
+	assert_eq(weapon.preparation(weapon.guard_angle), 1.0, "the canonical guard is fully prepared")
+	assert_eq(weapon.preparation(weapon.guard_limit), 1.0, "wound back past baseline stays fully prepared, not more")
+	assert_eq(weapon.preparation(-weapon.guard_angle), 1.0, "preparation is side-agnostic")
 
 
 func test_under_prepared_tap_reaches_a_lower_top_speed() -> void:
@@ -292,8 +292,8 @@ func test_under_prepared_tap_reaches_a_lower_top_speed() -> void:
 	under.fighter.weapon.angle = deg_to_rad(-10.0)
 	WeaponSystem.update_stable_side(under.fighter.weapon, _rules.combatant(0).weapon)
 	under.step(true, true)
-	assert_near(prepared.fighter.weapon.launch_readiness, 1.0, 1e-12, "the canonical guard launches fully prepared")
-	assert_near(under.fighter.weapon.launch_readiness, 10.0 / 45.0, 1e-12, "a 10° blade launches at 10/45 readiness")
+	assert_near(prepared.fighter.weapon.launch_preparation, 1.0, 1e-12, "the canonical guard launches fully prepared")
+	assert_near(under.fighter.weapon.launch_preparation, 10.0 / 45.0, 1e-12, "a 10° blade launches at 10/45 preparation")
 	prepared.step_until_phase(CombatPhase.Id.OVERSWING)
 	under.step_until_phase(CombatPhase.Id.OVERSWING)
 	var prepared_peak := _peak_speed(prepared)
@@ -302,17 +302,17 @@ func test_under_prepared_tap_reaches_a_lower_top_speed() -> void:
 	assert_true(under_peak > 0.0, "but they still swing")
 
 
-func test_launch_readiness_is_fixed_at_release() -> void:
+func test_launch_preparation_is_fixed_at_release() -> void:
 	## Crossing centre mid-swing must not retroactively upgrade an
 	## under-prepared cut into a prepared one.
 	var rig := _rig()
 	rig.fighter.weapon.angle = deg_to_rad(-10.0)
 	WeaponSystem.update_stable_side(rig.fighter.weapon, _rules.combatant(0).weapon)
 	rig.step(true, true)
-	var at_launch := rig.fighter.weapon.launch_readiness
+	var at_launch := rig.fighter.weapon.launch_preparation
 	rig.step_until_phase(CombatPhase.Id.OVERSWING)
 	assert_true(absf(rig.fighter.weapon.angle) > _rules.combatant(0).weapon.guard_angle, "precondition: the blade swept well past baseline")
-	assert_eq(rig.fighter.weapon.launch_readiness, at_launch, "readiness stays the value captured at release")
+	assert_eq(rig.fighter.weapon.launch_preparation, at_launch, "preparation stays the value captured at release")
 
 
 func test_guard_region_classifies_without_snapping() -> void:
@@ -603,6 +603,132 @@ func test_a_landed_tap_is_never_a_whiff() -> void:
 	assert_true(attacker.weapon.attack_contacted, "the attack is marked as having met the opponent")
 	assert_eq(runner.count(DuelEventTypes.ATTACK_WHIFFED), 0, "a landed hit never emits ATTACK_WHIFFED")
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+
+## Two placements are the same measure to this (m).
+const MEASURE_TOLERANCE := 1.0e-3
+
+
+## LINE-CHANGE-001 (ATTACK-SIDE-001), from a searched state:
+## which side of the sweep a defender occupies decides what a committed cut
+## meets — line, not measure. Shipping rules, inside strike reach: the
+## attacker stands at the origin facing the defender 1.5 m away; a planted tap
+## from rest (θ −45° → +45°, swing_dir +1, 90°). The defender, reading it,
+## starts walking 4 ticks before the press and holds 8 ticks of pure lateral
+## walk. CONTROL (no step): the tap strikes the body. BEHIND THE BLADE (toward
+## the cut's origin side): the sweep misses the body and meets the defender's
+## steel. INTO THE BLADE (the same walk toward the end side): it strikes the
+## body. Both steps end at the same distance, inside reach, so the side alone
+## decided it; the mirrored scene does the same at the same distance. Inside
+## reach the defender's own guard lies in the sweep, so a line change turns a
+## hit into a contact on steel — it does not make the cut meet nothing.
+func test_the_side_of_the_sweep_decides_what_a_cut_meets() -> void:
+	var rules := StandardDuelRules.create()
+	var reach := WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1))
+	## ARRANGE (control): no line change.
+	var control := _lined_tap(rules, "none", false)
+	assert_eq(control.result, "body", "control: without a line change the tap strikes the body")
+	assert_true(control.distance < reach, "fixture: the defender stands inside strike reach (%.3f < %.3f m)" % [control.distance, reach])
+	## PERTURB + ACT: the same tap, the defender behind the blade, then into it.
+	var behind := _lined_tap(rules, "origin", false)
+	var into := _lined_tap(rules, "end", false)
+	## ASSERT: measure is equal, so the line decided.
+	## Equal to a millimetre: the attacker's heading tracks the two sides a
+	## little differently, so the radial drift of a pure lateral walk differs
+	## in the fifth decimal — far below anything that decides a contact.
+	assert_near(behind.distance, into.distance, MEASURE_TOLERANCE, "both steps end at the same distance (%.4f m)" % behind.distance)
+	assert_true(behind.distance < reach, "still inside strike reach after the step — measure did not decide it")
+	assert_true(absf(behind.bearing_change) > 0.02, "the step changed the line (bearing %.3f rad)" % behind.bearing_change)
+	assert_eq(behind.result, "steel", "behind the blade, the sweep misses the body and meets the defender's steel")
+	assert_false(behind.body_struck, "and the body is never struck by that cut")
+	assert_eq(into.result, "body", "into the blade, the same walk is struck")
+	## MIRROR: the whole scene reflected.
+	var mirrored := _lined_tap(rules, "origin", true)
+	assert_eq(mirrored.result, behind.result, "the mirrored scene meets the same thing")
+	assert_near(mirrored.distance, behind.distance, MEASURE_TOLERANCE, "at the same distance")
+	assert_near(mirrored.bearing_change, -behind.bearing_change, 1.0e-6, "with the bearing changed the other way")
+
+
+## FIRST-CONTACT-001 (THREAT-001): the steel-aware estimate tells a cut that
+## will meet the body from one that will meet steel, from the state at the
+## press alone — the defender's sword under its own known law, no future
+## input. On the line-change scenes it predicts what the real tap then meets:
+## the body with no step and into the blade, steel behind it, and the same in
+## the mirror.
+func test_the_threat_estimate_sees_the_steel_in_the_way() -> void:
+	var rules := StandardDuelRules.create()
+	for side: String in ["none", "origin", "end"]:
+		## ARRANGE + ACT
+		var scene := _lined_tap(rules, side, false)
+		var expected := ThreatEstimate.STEEL if scene.result == "steel" else ThreatEstimate.BODY
+		## ASSERT
+		assert_true(scene.result != "", "fixture (%s): the tap met something" % side)
+		assert_eq(scene.predicted, expected, "%s: predicted %d, the tap met %s" % [side, scene.predicted, scene.result])
+	## PERTURB: the mirrored scene.
+	var mirrored := _lined_tap(rules, "origin", true)
+	assert_eq(mirrored.predicted, ThreatEstimate.STEEL, "mirrored: the steel is seen just the same")
+
+
+## One planted tap at the defender 1.5 m ahead, the defender walking toward
+## the cut's `side` ("origin", "end" or "none") from 4 ticks before the press
+## for 8 ticks; `mirror` reflects the scene (both rests at +45°).
+func _lined_tap(rules: DuelRules, side: String, mirror: bool) -> LinedTap:
+	var runner := SimRunner.create(rules, 5)
+	runner.skip_intro()
+	var attacker := runner.state.fighter(0)
+	var defender := runner.state.fighter(1)
+	var reflect := -1.0 if mirror else 1.0
+	DuelFixture.place(attacker, 0.0, 0.0, 0.0)
+	DuelFixture.place(defender, 1.5, 0.0, PI)
+	attacker.weapon.reset(-reflect * rules.combatant(0).weapon.guard_angle)
+	defender.weapon.reset(-reflect * rules.combatant(1).weapon.guard_angle)
+	var start_bearing := DuelGeometry.bearing(attacker, defender)
+	var press := runner.state.tick + 4
+	var step_from := press - 4
+	var direction := Vector2.ZERO
+	var out := LinedTap.new()
+	for _t in 60:
+		var tick := runner.state.tick
+		if tick == step_from and side != "none":
+			direction = CutGeometry.origin_side(attacker) if side == "origin" else CutGeometry.end_side(attacker)
+		var walk := PlayerCommand.idle(tick)
+		if tick >= step_from and tick < step_from + 8 and side != "none":
+			var intent := CutGeometry.step_intent(defender, attacker, direction)
+			walk = PlayerCommand.create(tick, intent.x, intent.y)
+		if tick == press:
+			var spec := rules.spec_of(attacker)
+			## The tap is planted, so the prediction carries no new footwork.
+			out.predicted = InitiativeModel.estimate(attacker, spec, defender, rules.spec_of(defender), rules.combat, ThreatEstimate.new(), ThreatContinuation.planted(true)).first_contact
+		var seen := runner.events.size()
+		runner.push(PlayerCommand.create(tick, 0.0, 0.0, tick == press, tick == press), walk)
+		if tick == step_from + 7:
+			out.distance = DuelGeometry.distance(attacker, defender)
+			out.bearing_change = SimMath.wrap_angle(DuelGeometry.bearing(attacker, defender) - start_bearing)
+		for e in range(seen, runner.events.size()):
+			var event: DuelEvent = runner.events[e]
+			if event.type == DuelEventTypes.BODY_HIT and event.actor == 0:
+				out.body_struck = true
+				if out.result == "":
+					out.result = "body"
+			elif event.type == DuelEventTypes.BLADE_CONTACT and out.result == "":
+				out.result = "steel"
+		if out.result != "" and attacker.weapon.phase == CombatPhase.Id.RECOVERY:
+			break
+	if side == "none":
+		out.distance = DuelGeometry.distance(attacker, defender)
+	return out
+
+
+## What one `_lined_tap` did: the cut's first contact ("body", "steel" or ""),
+## whether its body was ever struck, and where the step left the defender.
+class LinedTap:
+	var result := ""
+	## What the steel-aware threat estimate, read at the press, said the tap
+	## would meet first (`ThreatEstimate.NONE` / `BODY` / `HAND` / `STEEL`).
+	var predicted := ThreatEstimate.NONE
+	var body_struck := false
+	var distance := 0.0
+	var bearing_change := 0.0
+
 
 ## Nothing in the simulation reads a whiff (WHIFF-001): the same free miss,
 ## once labelled and once with its label suppressed, moves every body, sword

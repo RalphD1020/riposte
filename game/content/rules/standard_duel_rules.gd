@@ -23,7 +23,17 @@ extends RefCounted
 ## *delivers*, never what that much energy *does to a body*. Re-seeding them is
 ## a deliberate balance pass, never a side effect of a geometry change.
 const REFERENCE_STAGGER_IMPULSE_NS := 14.1317560873646
-const REFERENCE_CUT_ENERGY_J := 72.7078850694906
+## The energy (J) that reference strike dissipates — a measurement, frozen.
+const REFERENCE_STRIKE_ENERGY_J := 72.7078850694906
+## What that strike does to a body (rules 49, the knife-edge re-seed): the
+## reference strike — a square cut at the centre of percussion at 10.5 m/s —
+## is a catastrophic wound, twice the energy of a reference-quality one, so it
+## saturates the compressive top of the damage curve. Severity still goes as
+## v², so a slow or poorly placed cut stays a scratch; only the clean, fast
+## one became decisive.
+const REFERENCE_STRIKE_SEVERITY := 2.0
+## The energy (J) of a reference-quality wound (quality 1 on the curve).
+const REFERENCE_CUT_ENERGY_J := REFERENCE_STRIKE_ENERGY_J / REFERENCE_STRIKE_SEVERITY
 const REFERENCE_THRUST_ENERGY_J := 2204.118
 
 
@@ -41,7 +51,7 @@ static func create() -> DuelRules:
 static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter_1: StringName, weapon_1: StringName) -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 47
+	rules.version = 49
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
 	rules.arena_id = ContentIds.ARENA_STANDARD
@@ -142,28 +152,6 @@ static func combat_tuning() -> CombatTuning:
 	combat.blade_friction = 0.2
 	combat.blade_body_friction = 0.05
 	combat.guard_friction = 0.4
-	## Stamina (STAMINA-001). The ceiling tracks health: at full health the
-	## fighter's pool is 100; at zero health a quarter of it has been lost to
-	## injury. Shock is moderate — a reference cut costs ~22 stamina — so a
-	## fighter can absorb a few hits before capability starts to erode, and
-	## resting brings it back slowly.
-	combat.stamina_health_share = 0.25
-	combat.stamina_shock_rate = 0.4
-	combat.stamina_exertion_rate = 5.0
-	combat.stamina_recovery_rate = 8.0
-	combat.stamina_recovery_effort_ceiling = 0.1
-	## Stamina normalization: max power × tick for the baseline fighter/weapon.
-	## Movement: LOCOMOTION_FORCE × max_speed × dt (1760 × 4.2 / 60).
-	## Turn: turn_torque × turn_speed_max × dt (175 × 9.0 / 60).
-	## Weapon: weapon_torque_scale × swing_torque_full × swing_speed_full × dt
-	##         (1.0 × 148.5 × 20.0 / 60).
-	combat.stamina_move_reference_work = 123.2
-	combat.stamina_turn_reference_work = 26.25
-	combat.stamina_weapon_reference_work = 49.5
-	## Work-type weights: driving > braking > static hold (STAMINA-001).
-	combat.stamina_drive_weight = 1.0
-	combat.stamina_brake_weight = 0.5
-	combat.stamina_hold_weight = 0.3
 	## Condition (rules 45). Damage alone drives it, linearly: at zero health a
 	## fighter keeps 70 % of their voluntary force, 85 % of their voluntary
 	## speeds and 80 % of their tracking rate (0.85 / 0.925 / 0.90 at half

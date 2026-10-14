@@ -17,6 +17,9 @@ const ATTACK_CANCELED := &"attack_canceled"
 const ATTACK_WHIFFED := &"attack_whiffed"
 const BLADE_CONTACT := &"blade_collision"
 const PARRY := &"parry"
+## Protective steel redirected a cut it did not arrest: the cut carries on and
+## its remaining sweep no longer reaches the body (DEFLECTION-001). A reading.
+const DEFLECTION := &"deflection"
 const BODY_HIT := &"body_hit"
 const BODY_POKE := &"body_poke"
 const BODY_THRUST := &"body_thrust"

@@ -15,7 +15,8 @@ extends SceneTree
 ##
 ## See also: /docs/architecture/PERFORMANCE.md
 
-const SEEDS: PackedInt64Array = [101, 202, 303, 404, 505, 606, 707, 808]
+## Clear of every CPU corpus (`CpuLadder`): this reads cost, never outcomes.
+const SEEDS: PackedInt64Array = [401, 402, 403, 404, 405, 406, 407, 408]
 const DEFAULT_SEEDS := 4
 const MAX_TICKS := 60 * 60 * 6
 const FRAME := 1.0 / 60.0
@@ -59,6 +60,11 @@ func _initialize() -> void:
 ## frame is measured here instead: from one frame's start to the next, with
 ## the frame limiter and headless idle sleep off, which includes the nodes processed after this
 ## script (clips, skeleton modifiers, IK) and the dummy renderer.
+## Frames left before quitting once every match is done (audio teardown).
+const DRAIN_FRAMES := 8
+var _draining := 0
+
+
 func _process(_delta: float) -> bool:
 	var frame_started := Time.get_ticks_usec()
 	if _measured_frame:
@@ -68,10 +74,19 @@ func _process(_delta: float) -> bool:
 
 
 func _frame_body() -> bool:
+	if _draining > 0:
+		_draining -= 1
+		return _draining == 0
 	if _session.is_finished() or _ticks >= MAX_TICKS:
 		if not _next_match():
 			_print()
-			return true
+			## Nothing this tool built may outlive it: the last presenter's
+			## stopped voices leave the audio server only on its next mix
+			## steps, so let a few frames pass before quitting.
+			_session = null
+			_kits = null
+			_draining = DRAIN_FRAMES
+			return false
 	var before := _session.events.size()
 	var started := Time.get_ticks_usec()
 	_session.step()
@@ -101,7 +116,13 @@ func _frame_body() -> bool:
 func _next_match() -> bool:
 	if _presenter != null:
 		_presenter.detach_and_dispose()
-		_root.queue_free()
+		## The tool's own detached root, freed from the main loop (not inside a
+		## node callback): freed now, so the last match's nodes do not wait
+		## for a frame that quitting never runs.
+		root.remove_child(_root)
+		_root.free()
+		_root = null
+		_presenter = null
 	_index += 1
 	_measured_frame = false
 	if _index >= _seeds:

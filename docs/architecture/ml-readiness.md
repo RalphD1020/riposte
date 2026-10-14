@@ -30,7 +30,6 @@ Only information available to the player/CPU at decision time. Corresponds to `C
 | `own_vx`, `own_vy`   | float | m/s         | FighterState                          |
 | `own_facing`         | float | radians     | FighterState                          |
 | `own_health`         | float | [0, max]    | FighterState                          |
-| `own_stamina`        | float | [0, max]    | FighterState                          |
 | `own_weapon_phase`   | int   | CombatPhase | FighterState.weapon                   |
 | `own_weapon_charge`  | float | [0, 1]      | FighterState.weapon                   |
 | `own_commitment`     | float | [0, 1]      | FighterState.weapon                   |
@@ -70,7 +69,6 @@ Local outcomes for reward/value estimation. Measured at the decision's temporal 
 | `damage_received`     | float | Damage taken in the window                   |
 | `measure_improvement` | float | Δ measure_quality from this decision to next |
 | `initiative_change`   | float | Δ initiative                                 |
-| `stamina_change`      | float | Δ stamina (negative = spent)                 |
 | `hit_landed`          | bool  | Own strike connected                         |
 | `hit_received`        | bool  | Opponent strike connected                    |
 | `round_result`        | int   | +1 won, -1 lost, 0 ongoing                   |

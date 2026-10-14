@@ -14,7 +14,7 @@ extends RefCounted
 ## Strictly linear in damage, exactly 1 at full health (the span is the
 ## floor's complement, so the healthy identity holds by construction), and
 ## approaching each floor only at zero health. At half health: 0.85 / 0.925 /
-## 0.90. Damage is the only input — stamina is not (STAMINA-002) — and the
+## 0.90. Damage is the only input — there is no fatigue resource (STAMINA-003) — and the
 ## same law applies to every fighter, from their own healthy actuators.
 ##
 ## Implements: /spec/invariants.md#condition-001

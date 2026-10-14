@@ -44,12 +44,6 @@
       "budget_ms": 2000
     },
     {
-      "name": "STAMINA",
-      "path": "res://tests/domain/test_stamina.gd",
-      "tier": "focused",
-      "budget_ms": 2000
-    },
-    {
       "name": "FUZZ",
       "path": "res://tests/domain/test_fuzz.gd",
       "tier": "gate",
@@ -156,6 +150,12 @@
       "path": "res://tests/domain/test_damage.gd",
       "tier": "focused",
       "budget_ms": 2000
+    },
+    {
+      "name": "LINE-GAME",
+      "path": "res://tests/domain/test_line_game.gd",
+      "tier": "focused",
+      "budget_ms": 6500
     },
     {
       "name": "POINT",
@@ -427,7 +427,6 @@
         "SYM",
         "SIDE",
         "CONDITION",
-        "STAMINA",
         "EDGE-SAFETY"
       ]
     },
@@ -481,13 +480,14 @@
       "paths": [
         "src/domain/combat/initiative_model.gd",
         "src/domain/combat/threat_estimate.gd",
+        "src/domain/combat/threat_continuation.gd",
         "src/domain/combat/exposure_model.gd"
       ],
-      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT"]
+      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT", "LINE-GAME"]
     },
     "cpu": {
       "paths": ["src/application/cpu/"],
-      "suites": ["CPU", "EDGE-SAFETY"]
+      "suites": ["CPU", "EDGE-SAFETY", "LINE-GAME"]
     },
     "app": {
       "paths": [

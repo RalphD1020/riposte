@@ -20,7 +20,7 @@ extends RefCounted
 ## cap. Null is the healthy identity. `tracking` is the share of the turn
 ## torque commitment leaves; `rate_tracking` the share of the turn-rate cap
 ## (DIRECTIONAL-COMMIT-001), the same share when omitted.
-static func step(fighter: FighterState, target_x: float, target_y: float, tracking: float, definition: FighterDefinition, condition: ConditionState = null, scratch: FighterTickScratch = null, rate_tracking: float = -1.0) -> void:
+static func step(fighter: FighterState, target_x: float, target_y: float, tracking: float, definition: FighterDefinition, condition: ConditionState = null, rate_tracking: float = -1.0) -> void:
 	var dt := SimulationTimebase.TICK_SECONDS
 	var force_scale := condition.force_scale if condition != null else 1.0
 	var tracking_scale := condition.tracking_scale if condition != null else 1.0
@@ -30,16 +30,5 @@ static func step(fighter: FighterState, target_x: float, target_y: float, tracki
 	var max_rate := definition.turn_speed_max * tracking_scale * rate_share
 	var desired_rate := clampf(definition.track_gain * error, -max_rate, max_rate)
 	var angular_accel := definition.turn_accel() * tracking * force_scale
-	var old_rate := fighter.turn_rate
 	fighter.turn_rate = SimMath.approach(fighter.turn_rate, desired_rate, angular_accel * dt)
 	fighter.facing = SimMath.wrap_angle(fighter.facing + fighter.turn_rate * dt)
-	if scratch != null:
-		var inertia := definition.moment_of_inertia()
-		var actual_alpha := (fighter.turn_rate - old_rate) / dt
-		var applied_torque := inertia * actual_alpha
-		var mid_omega := (old_rate + fighter.turn_rate) * 0.5
-		var power := applied_torque * mid_omega
-		scratch.turn_positive_work += maxf(power * dt, 0.0)
-		scratch.turn_braking_work += maxf(-power * dt, 0.0)
-		var base_max := definition.turn_accel() * dt
-		scratch.turn_utilization = SimMath.clamp01(absf(fighter.turn_rate - old_rate) / base_max) if base_max > SimMath.EPSILON else 0.0

@@ -137,7 +137,7 @@ func test_the_same_torque_turns_the_lighter_weapon_faster() -> void:
 		w.phase = CombatPhase.Id.LAUNCH
 		w.swing_dir = 1.0
 		w.swing_charge = 0.0
-		w.launch_readiness = 1.0
+		w.launch_preparation = 1.0
 		w.swing_start = angle
 		w.swing_end = angle + rules.combatant(slot).weapon.arc(0.0)
 	var events: Array[DuelEvent] = []

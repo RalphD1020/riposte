@@ -158,9 +158,6 @@ var _body_inverse := PackedFloat64Array([0.0, 0.0])
 var _stop_side := PackedFloat64Array([1.0, 1.0])
 ## Each fighter's own guard stop (rad), from their weapon.
 var _guard_limit := PackedFloat64Array([0.0, 0.0])
-## A sword resting on its guard stop leaves the row (`_lock_at_limits`).
-var _locked_a := PackedByteArray()
-var _locked_b := PackedByteArray()
 ## The geometric feature each sword row touches on its a and b side.
 var _feature_a := PackedInt32Array()
 var _feature_b := PackedInt32Array()
@@ -236,10 +233,6 @@ func _init() -> void:
 	_tangent_step = _floats(ROWS, 0.0)
 	_active.resize(ROWS)
 	_active.fill(0)
-	_locked_a.resize(ROWS)
-	_locked_a.fill(0)
-	_locked_b.resize(ROWS)
-	_locked_b.fill(0)
 	_feature_a = _ints(ROWS, 0)
 	_feature_b = _ints(ROWS, 0)
 	_rows = _ints(ROWS, 0)
@@ -457,9 +450,8 @@ func _build_tangents(rules: DuelRules) -> void:
 			continue
 		var tx := -_ny[row]
 		var ty := _nx[row]
-		if _locked_a[row] == 0:
-			_tangent_a[row] = WeaponKinematics.lever(_fighters[_a[row]], _poses[_a[row]], _px[row], _py[row], tx, ty)
-		if _is_blade_row(row) and _locked_b[row] == 0:
+		_tangent_a[row] = WeaponKinematics.lever(_fighters[_a[row]], _poses[_a[row]], _px[row], _py[row], tx, ty)
+		if _is_blade_row(row):
 			_tangent_b[row] = WeaponKinematics.lever(_fighters[_b[row]], _poses[_b[row]], _px[row], _py[row], tx, ty)
 		var turn := _tangent_a[row] * _tangent_a[row] / _inertia_a[row]
 		if _is_blade_row(row):
@@ -669,8 +661,6 @@ func _build(state: MatchState, rules: DuelRules, reach: float, bodies: bool) -> 
 	_guard_limit[1] = rules.combatant(1).weapon.guard_limit
 	for row in ROWS:
 		_active[row] = 0
-		_locked_a[row] = 0
-		_locked_b[row] = 0
 	WeaponKinematics.pose_of(a, rules.combatant(0), _poses[0])
 	WeaponKinematics.pose_of(b, rules.combatant(1), _poses[1])
 	_blade_rows = 0
@@ -818,7 +808,6 @@ func _build_blades(a: FighterState, b: FighterState, rules: DuelRules, reach: fl
 		ContactMechanics.held_sword(b, pose_b, px, py, rules.combatant(1), _held)
 		_inertia_b[row] = _held[0]
 		_inverse_mass_b[row] = _held[1]
-		_lock_at_limits(row, a, b, rules)
 		built += 1
 	return built
 
@@ -859,7 +848,6 @@ func _build_body(row: int, wielder: FighterState, target: FighterState, rules: D
 	_inverse_mass_a[row] = ContactMechanics.body_inverse_mass(wielding)
 	_inertia_b[row] = 1.0
 	_inverse_mass_b[row] = ContactMechanics.body_inverse_mass(struck)
-	_lock_at_limits(row, wielder, null, rules)
 	_gap[row] = distance - struck.fighter.hurt_radius - weapon.blade_radius
 	return _gap[row]
 
@@ -893,30 +881,6 @@ func _set_point(row: int, px: float, py: float, nx: float, ny: float) -> void:
 	_py[row] = py
 	_nx[row] = nx
 	_ny[row] = ny
-
-
-## A sword resting on its guard limit cannot give way further outward: the
-## stop holds it, so its weapon term leaves the row and the bodies carry what
-## remains. Only a sword *resting* there — one still turning inward is not
-## pressing on the stop, and the contact may slow it like any other. A stop at
-## rest does no work, so locking it keeps the solve passive.
-func _lock_at_limits(row: int, a: FighterState, b: FighterState, rules: DuelRules) -> void:
-	if _rests_on_stop(a.weapon, _lever_a[row], rules.spec_of(a).weapon.guard_limit - SimMath.EPSILON):
-		_lever_a[row] = 0.0
-		_locked_a[row] = 1
-	if b != null and _rests_on_stop(b.weapon, -_lever_b[row], rules.spec_of(b).weapon.guard_limit - SimMath.EPSILON):
-		_lever_b[row] = 0.0
-		_locked_b[row] = 1
-
-
-## Is `weapon` at its limit, not turning away from it, with a positive push
-## through `signed_lever` driving it further out?
-static func _rests_on_stop(weapon: WeaponState, signed_lever: float, limit: float) -> bool:
-	if weapon.angle >= limit:
-		return signed_lever > 0.0 and weapon.speed >= 0.0
-	if weapon.angle <= -limit:
-		return signed_lever < 0.0 and weapon.speed <= 0.0
-	return false
 
 
 ## How much a unit push at row `j` separates row `i`, through the coordinates

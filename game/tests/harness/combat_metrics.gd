@@ -13,6 +13,7 @@ const COUNTED: Array[StringName] = [
 	DuelEventTypes.ATTACK_RELEASED,
 	DuelEventTypes.BLADE_CONTACT,
 	DuelEventTypes.PARRY,
+	DuelEventTypes.DEFLECTION,
 	DuelEventTypes.BODY_HIT,
 	DuelEventTypes.BODY_POKE,
 	DuelEventTypes.BODY_THRUST,

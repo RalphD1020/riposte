@@ -326,7 +326,7 @@ func test_body_push_detected_during_fast_approach() -> void:
 
 
 func test_tick_order_version_bumped_for_body_push() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 13, "body push in contact loop bumps tick order (13: a spent re-hold budget carries the remainder without tunnelling)")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 14, "body push in contact loop bumps tick order (14: the stamina step is gone)")
 
 
 ## --- Rest epsilon (BODY-CONTACT-OWNERSHIP-001) -------------------------------
@@ -656,7 +656,6 @@ func test_symmetric_input_symmetric_output() -> void:
 	var b := runner.state.fighter(1)
 	## Tolerance accounts for asymmetry from side assignments and normals.
 	assert_near(a.health, b.health, 0.5, "symmetric input: approximately equal health")
-	assert_near(a.stamina, b.stamina, 0.5, "symmetric input: approximately equal stamina")
 	var bc := runner.state.body_contact
 	assert_true(bc.last_constraint_impulse >= 0.0, "constraint impulse is non-negative")
 

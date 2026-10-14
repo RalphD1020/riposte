@@ -8,6 +8,10 @@ extends RefCounted
 ## See also: /docs/concepts/presentation.md
 
 var tick: int = 0
+## Whether each fighter's `threat_time` and `exposure` were projected this tick
+## (`SnapshotProjector.project(..., threat_readings)`). When false both hold
+## their neutral defaults and MUST NOT be read as measurements.
+var has_threat_readings: bool = false
 var phase: MatchPhase.Id = MatchPhase.Id.ROUND_INTRO
 var phase_ticks: int = 0
 var round_number: int = 1

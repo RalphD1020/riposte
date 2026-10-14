@@ -4,7 +4,7 @@ extends TestCase
 ## not change the laws of physics; it changes how much voluntary force, speed
 ## and tracking the fighter can produce within them — linearly, exactly 1 at
 ## full health, never below the floors, never rescaling momentum, and never
-## delaying a command. Stamina is not an input (STAMINA-002).
+## delaying a command. There is no fatigue input (STAMINA-003).
 ##
 ## Implements: /spec/invariants.md#condition-001
 ## See also: /docs/concepts/combat.md
@@ -158,7 +158,7 @@ func _swing(condition: ConditionState) -> PackedFloat64Array:
 	w.phase = CombatPhase.Id.LAUNCH
 	w.swing_dir = 1.0
 	w.swing_charge = 1.0
-	w.launch_readiness = 1.0
+	w.launch_preparation = 1.0
 	w.swing_start = w.angle
 	w.swing_end = spec.weapon.guard_limit
 	var events: Array[DuelEvent] = []
@@ -208,27 +208,19 @@ func _scripted(health: float) -> SimRunner:
 	return runner
 
 
-## STAMINA-002: fatigue changes nothing a fighter can do.
-func test_stamina_is_not_an_input() -> void:
-	## ARRANGE: identical duels, one fighter exhausted in the second.
-	var rested := SimRunner.create(_rules, 9)
-	var tired := SimRunner.create(_rules, 9)
-	rested.skip_intro()
-	tired.skip_intro()
-	tired.state.fighter(0).stamina = 0.0
-	## ACT
-	for i in 40:
-		var command := PlayerCommand.create(rested.state.tick, 0.3, 1.0, i == 2, i == 20)
-		rested.push(command, PlayerCommand.idle(rested.state.tick))
-		tired.push(command, PlayerCommand.idle(tired.state.tick))
-	## ASSERT: the motion is bit-identical; only the stamina ledger differs.
-	var a := rested.state.fighter(0)
-	var b := tired.state.fighter(0)
-	assert_eq(b.x, a.x, "the exhausted fighter moves exactly as far (x)")
-	assert_eq(b.vy, a.vy, "and as fast")
-	assert_eq(b.weapon.speed, a.weapon.speed, "and swings exactly as fast")
-	assert_ne(b.stamina, a.stamina, "control: the stamina itself differs")
-
+## STAMINA-003: there is no fatigue resource. Condition is the one capability
+## reading, and nothing in authoritative state could carry a hidden second one
+## for a motor, the hash or the CPU to read.
+func test_no_fatigue_resource_exists() -> void:
+	## ARRANGE + ACT: a fresh duel's fighter and its rules.
+	var state := DuelFixture.state(_rules)
+	var fighter := state.fighter(0)
+	assert_true(fighter.health > 0.0, "fixture: a live fighter")
+	## ASSERT
+	for name: String in ["stamina", "fatigue", "exertion"]:
+		assert_false(name in fighter, "the fighter carries no %s" % name)
+		assert_false(("base_" + name) in _rules.combatant(0).fighter, "and no fighter defines a %s pool" % name)
+	assert_false("contact_shock" in FighterTickScratch.new(), "no tick ledger accrues one either")
 
 ## Condition never touches the body's or the weapon's physical profile.
 func test_condition_never_changes_mass_inertia_or_geometry() -> void:
@@ -245,3 +237,43 @@ func test_condition_never_changes_mass_inertia_or_geometry() -> void:
 	assert_eq(spec.fingerprint(), before, "the resolved content is untouched")
 	assert_eq(WeaponKinematics.motor_inertia(spec, 0.3), inertia, "the weapon's inertia is the same")
 	assert_true(runner.is_sound(), "and the wounded duel is legal (%s)" % runner.violation_summary())
+
+
+## FighterCondition: the coarse band a damage total reads as (moved from the
+## retired stamina suite, STAMINA-003).
+func test_condition_full_health_is_healthy() -> void:
+	assert_eq(FighterCondition.classify(100.0, 100.0), FighterCondition.Id.HEALTHY, "full health → HEALTHY")
+
+
+func test_condition_zero_health_is_critical() -> void:
+	assert_eq(FighterCondition.classify(0.0, 100.0), FighterCondition.Id.CRITICAL, "zero health → CRITICAL")
+
+
+func test_condition_classification_is_monotone() -> void:
+	var previous := FighterCondition.classify(100.0, 100.0)
+	for i in range(99, -1, -1):
+		var health := float(i)
+		var current := FighterCondition.classify(health, 100.0)
+		assert_true(current >= previous, "condition non-decreasing severity at health %s" % str(health))
+		previous = current
+
+
+func test_condition_thresholds() -> void:
+	assert_eq(FighterCondition.classify(76.0, 100.0), FighterCondition.Id.HEALTHY, "76% → HEALTHY")
+	assert_eq(FighterCondition.classify(75.0, 100.0), FighterCondition.Id.HURT, "75% → HURT")
+	assert_eq(FighterCondition.classify(51.0, 100.0), FighterCondition.Id.HURT, "51% → HURT")
+	assert_eq(FighterCondition.classify(50.0, 100.0), FighterCondition.Id.WOUNDED, "50% → WOUNDED")
+	assert_eq(FighterCondition.classify(26.0, 100.0), FighterCondition.Id.WOUNDED, "26% → WOUNDED")
+	assert_eq(FighterCondition.classify(25.0, 100.0), FighterCondition.Id.CRITICAL, "25% → CRITICAL")
+	assert_eq(FighterCondition.classify(1.0, 100.0), FighterCondition.Id.CRITICAL, "1% → CRITICAL")
+
+
+func test_condition_degenerate_max_health() -> void:
+	assert_eq(FighterCondition.classify(0.0, 0.0), FighterCondition.Id.CRITICAL, "zero max_health → CRITICAL")
+
+
+func test_condition_labels() -> void:
+	assert_eq(FighterCondition.label(FighterCondition.Id.HEALTHY), "HEALTHY", "label HEALTHY")
+	assert_eq(FighterCondition.label(FighterCondition.Id.HURT), "HURT", "label HURT")
+	assert_eq(FighterCondition.label(FighterCondition.Id.WOUNDED), "WOUNDED", "label WOUNDED")
+	assert_eq(FighterCondition.label(FighterCondition.Id.CRITICAL), "CRITICAL", "label CRITICAL")

@@ -34,9 +34,19 @@ var guard_centre_radius: float = 0.0
 var guard_half_span: float = 0.0
 var guard_radius: float = 0.0
 ## The handle — pommel to guard centre, as thick as the sword's own grip — is
-## the third collidable feature (HILT). Hands are not collision. Zero makes
-## the handle non-collidable.
+## the third collidable feature (HILT) at its real thickness; the hands around
+## it are hurt geometry, never steel (HAND-CONTACT-001). Zero makes the handle
+## non-collidable.
 var handle_radius: float = 0.0
+
+## What each feature (indexed by `SwordContactSet.Feature`: BLADE, GUARD,
+## HILT) means when it is touched and when it strikes (DEFENSE-ROLE-001).
+## Collidable is not protective: every feature is solved as rigid contact, but
+## only a feature that `protects_wielder` can be a successful defense (a PARRY),
+## and only one whose `damage_role` is not NONE can wound. Authored content.
+enum DamageRole { NONE, WEAPON_BLADE }
+var feature_protects := PackedByteArray([1, 1, 0])
+var feature_damage_role := PackedInt32Array([DamageRole.WEAPON_BLADE, DamageRole.NONE, DamageRole.NONE])
 ## Mass is a **measured fact** about the object, authored directly. It is
 ## never generated from length at runtime: a longer sword is usually a thinner
 ## one, so a cubic rule would quietly invent a crowbar.
@@ -75,9 +85,9 @@ var max_arc: float = 0.0
 ## Half-width of the centre band in which the committed side is not updated,
 ## so numerical noise at 0° cannot flip the next swing's direction.
 var side_deadzone: float = 0.0
-## Motor authority multiplier at zero readiness (blade at dead centre).
+## Motor authority multiplier at zero preparation (blade at dead centre).
 ## Under-loaded cuts are quick but weak; this is how weak.
-var readiness_floor: float = 0.0
+var preparation_floor: float = 0.0
 
 ## Input language. Tap = release before tap_threshold_ticks → exactly 0 charge.
 ## There is no charge *duration*: charge is bought in degrees of earned
@@ -148,6 +158,16 @@ var tip_region_start: float = 0.95
 var thrust_efficiency: float = 0.0
 
 
+## Whether a contact on `feature` can be a successful defense of the wielder.
+func protects(feature: int) -> bool:
+	return feature_protects[feature] != 0
+
+
+## Whether `feature` wounds what it strikes.
+func wounds(feature: int) -> bool:
+	return feature_damage_role[feature] != DamageRole.NONE
+
+
 func is_valid() -> bool:
 	return (
 		tip_radius > hilt_radius
@@ -155,6 +175,8 @@ func is_valid() -> bool:
 		and blade_radius > 0.0
 		and guard_half_span >= 0.0
 		and handle_radius >= 0.0
+		and feature_protects.size() == SwordContactSet.FEATURES
+		and feature_damage_role.size() == SwordContactSet.FEATURES
 		and (guard_half_span == 0.0 or (guard_radius > 0.0 and guard_centre_radius > dominant_grip_radius and guard_centre_radius <= hilt_radius))
 		and mass > 0.0
 		and inertia_coefficient > 0.0
@@ -168,8 +190,8 @@ func is_valid() -> bool:
 		and min_arc > 0.0
 		and side_deadzone >= 0.0
 		and side_deadzone < guard_angle
-		and readiness_floor > 0.0
-		and readiness_floor <= 1.0
+		and preparation_floor > 0.0
+		and preparation_floor <= 1.0
 		and tap_threshold_ticks > 0
 		and buffer_ticks >= 0
 		and buffer_ticks <= BUFFER_TICKS_LIMIT
@@ -249,8 +271,10 @@ func moment_of_inertia() -> float:
 ## Preparation quality of a blade sitting at `angle`, saturating at the
 ## canonical guard. Under-loaded (|angle| < guard_angle) scales down; anything
 ## at or beyond baseline is fully prepared. This gates achievable angular
-## velocity only — it is never a damage multiplier.
-func readiness(angle: float) -> float:
+## velocity only — it is never a damage multiplier, and it is not readiness:
+## position says nothing about which way the blade is moving
+## (THREAT-READINESS-001).
+func preparation(angle: float) -> float:
 	return SimMath.clamp01(absf(angle) / guard_angle)
 
 
@@ -259,12 +283,12 @@ func swing_speed(charge: float) -> float:
 	return SimMath.mix(swing_speed_tap, swing_speed_full, charge)
 
 
-## The top angular speed a swing launched at `readiness_value` can actually
+## The top angular speed a swing launched at `preparation_value` can actually
 ## reach. The one definition of a swing's ceiling: the motor accelerates
 ## toward it and contact resolution measures deflection against it, so the two
 ## can never disagree about what a swing was capable of.
-func achievable_swing_speed(charge: float, readiness_value: float) -> float:
-	return swing_speed(charge) * SimMath.mix(readiness_floor, 1.0, SimMath.clamp01(readiness_value))
+func achievable_swing_speed(charge: float, preparation_value: float) -> float:
+	return swing_speed(charge) * SimMath.mix(preparation_floor, 1.0, SimMath.clamp01(preparation_value))
 
 
 ## Angular acceleration available to drive a swing, `α = τ / M_θ`.

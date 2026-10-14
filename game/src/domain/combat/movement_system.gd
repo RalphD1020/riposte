@@ -26,8 +26,7 @@ extends RefCounted
 ## about events. `condition` is the fighter's frozen condition this tick
 ## (CONDITION-001): its force scale reduces every footwork force, its speed
 ## scale every voluntary target speed; null is the healthy identity. Existing
-## velocity is never rescaled (PHYS-003). If `scratch` is provided, writes
-## motor exertion (F·v work + utilization).
+## velocity is never rescaled (PHYS-003).
 
 ## Speeds this close (m/s) are one speed to the brake-or-drive choice: far
 ## below anything a body or a camera could show, far above rounding.
@@ -35,16 +34,16 @@ const SPEED_TIE := 1.0e-9
 
 
 static func step(
-	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, scratch: FighterTickScratch = null, dash_modifier: bool = false
+	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, dash_modifier: bool = false
 ) -> MovementGestureState.BurstKind:
-	return step_in_frame(fighter, SimMath.cosine(fighter.facing), SimMath.sine(fighter.facing), intent_x, intent_y, tick, definition, condition, scratch, dash_modifier)
+	return step_in_frame(fighter, SimMath.cosine(fighter.facing), SimMath.sine(fighter.facing), intent_x, intent_y, tick, definition, condition, dash_modifier)
 
 
 ## `step` with the frame given: the duel reads every fighter's heading at the
 ## start of the tick, before any heading turns, so update order never decides
 ## which way a body was asked to go (FRICTION-ORDER-001).
 static func step_in_frame(
-	fighter: FighterState, forward_x: float, forward_y: float, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, scratch: FighterTickScratch = null, dash_modifier: bool = false
+	fighter: FighterState, forward_x: float, forward_y: float, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, dash_modifier: bool = false
 ) -> MovementGestureState.BurstKind:
 	var dt := SimulationTimebase.TICK_SECONDS
 	var force_scale := condition.force_scale if condition != null else 1.0
@@ -131,9 +130,6 @@ static func step_in_frame(
 	fighter.y += fighter.vy * dt
 	fighter.ax = (fighter.vx - old_vx) / dt
 	fighter.ay = (fighter.vy - old_vy) / dt
-	if scratch != null:
-		_record_movement_exertion(scratch, definition, old_vx, old_vy, fighter.vx, fighter.vy, fighter.ax, fighter.ay, accel, force_scale, dt)
-		scratch.burst_active = fighter.gesture.is_bursting()
 	_update_stability(fighter, definition)
 	return launched
 
@@ -152,26 +148,6 @@ static func stride_multiplier(intent_x: float, intent_y: float, definition: Figh
 	return SimMath.mix(definition.speed_lateral, definition.speed_backward, -alignment)
 
 
-## Record the movement motor's actual physical exertion into the tick scratch.
-## Dynamic work = F_applied · v_mid × dt. Utilization = how much of the raw
-## motor capacity (before condition scaling) was demanded. Computed from the
-## motor's own output — never reconstructed from Δv by an external observer.
-static func _record_movement_exertion(scratch: FighterTickScratch, definition: FighterDefinition, old_vx: float, old_vy: float, new_vx: float, new_vy: float, ax: float, ay: float, accel: float, force_scale: float, dt: float) -> void:
-	var accel_magnitude := SimMath.length(ax, ay)
-	if accel_magnitude < SimMath.EPSILON:
-		return
-	var applied_force := definition.mass * accel_magnitude
-	var mid_vx := (old_vx + new_vx) * 0.5
-	var mid_vy := (old_vy + new_vy) * 0.5
-	var force_dir_x := ax / accel_magnitude
-	var force_dir_y := ay / accel_magnitude
-	var power := applied_force * (force_dir_x * mid_vx + force_dir_y * mid_vy)
-	scratch.movement_positive_work += maxf(power * dt, 0.0)
-	scratch.movement_braking_work += maxf(-power * dt, 0.0)
-	var raw_motor := accel / force_scale * dt if force_scale > SimMath.EPSILON else 0.0
-	scratch.movement_utilization = SimMath.clamp01(accel_magnitude * dt / raw_motor) if raw_motor > SimMath.EPSILON else 0.0
-
-
 ## Read the command stream for a double tap or dash modifier and arm the burst.
 ##
 ## A burst already running is never re-armed: the heading is frozen at
@@ -182,7 +158,7 @@ static func _recognize(
 ) -> MovementGestureState.BurstKind:
 	var gesture := fighter.gesture
 	## Dash modifier (accessibility): Shift+direction produces the same burst
-	## as a double-tap. Same force, stamina, startup, duration, physics — no
+	## as a double-tap. Same force, startup, duration, physics — no
 	## gameplay advantage. Requires a clear directional intent and no burst
 	## already in progress.
 	if dash_modifier and not gesture.is_bursting() and not gesture.is_recovering():

@@ -402,7 +402,7 @@ func test_the_ribbon_is_fed_the_simulated_swing_potential() -> void:
 	var weapon := mount.state.fighter(0).weapon
 	weapon.set_phase(CombatPhase.Id.ACTIVE_THREAT)
 	weapon.speed = 15.0
-	weapon.launch_readiness = 1.0
+	weapon.launch_preparation = 1.0
 	var snapshot := SnapshotProjector.project(mount.state, _rules)
 	var none: Array[DuelEvent] = []
 	mount.presenter.push(snapshot, none)

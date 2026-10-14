@@ -11,7 +11,8 @@ extends RefCounted
 ## GUARD  crossbar capsule across the blade at guard_centre_radius,
 ##        ±guard_half_span either side, guard_radius
 ## HILT   the handle, pommel to guard centre, handle_radius (the grip's own
-##        thickness — the hands around it are presentation, not collision)
+##        thickness; the hands around it are hurt geometry, never steel —
+##        HAND-CONTACT-001)
 ## ```
 ##
 ## The sweep, the first-impact resolver and the held solver all measure here,

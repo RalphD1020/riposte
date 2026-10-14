@@ -337,6 +337,35 @@ const WHIFF_ALLOW = new Set([
 scanCode("src/domain", WHIFF_RULES, { allow: WHIFF_ALLOW });
 scanCode("src/application", WHIFF_RULES);
 
+// --- DEFLECTION-001: a deflection is a label, never a mechanic -----------------
+// DEFLECTION is derived when a redirected attack ends having struck nothing.
+// `deflection_pending` exists only to emit it exactly once; the domain and the
+// CPU never react to either.
+const DEFLECTION_RULES = [
+  {
+    id: "deflection-event",
+    pattern: /\bDuelEventTypes\.DEFLECTION\b|\bconst DEFLECTION\b/,
+    reason:
+      "a deflection is a label for presentation and telemetry; the simulation and the CPU never read it (DEFLECTION-001)",
+  },
+  {
+    id: "deflection-pending",
+    pattern: /\bdeflection_pending\b/,
+    reason:
+      "deflection_pending only gates the deflection label; physics must not read it (DEFLECTION-001)",
+  },
+];
+const DEFLECTION_ALLOW = new Set([
+  "src/domain/events/duel_event_types.gd:deflection-event",
+  "src/domain/combat/weapon_system.gd:deflection-event",
+  "src/domain/combat/weapon_system.gd:deflection-pending",
+  "src/domain/combat/contact_resolver.gd:deflection-pending",
+  "src/domain/state/weapon_state.gd:deflection-pending",
+  "src/domain/replay/state_hasher.gd:deflection-pending",
+]);
+scanCode("src/domain", DEFLECTION_RULES, { allow: DEFLECTION_ALLOW });
+scanCode("src/application", DEFLECTION_RULES);
+
 // --- COMMITMENT-001: no authored movement or outcome rules ---------------------
 // Every commitment, push and punish behaviour already has a physical quantity
 // that produces it. These names are how an authored shortcut usually arrives.

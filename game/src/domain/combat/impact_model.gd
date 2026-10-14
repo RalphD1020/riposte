@@ -30,8 +30,16 @@ extends RefCounted
 
 
 static func resolve(attacker: FighterState, target: FighterState, point_x: float, point_y: float, rules: DuelRules) -> ImpactResult:
+	return resolve_at(attacker, point_x, point_y, target.x, target.y, target.vx, target.vy, rules.spec_of(target).fighter.mass, rules)
+
+
+## The same impact against any hurt shape of `target`: its centre (the normal
+## points into it), the velocity of its surface, and the effective mass it
+## answers with — the torso's body, or a hand's held sword at the grip
+## (HAND-CONTACT-001), so a hand moving with its sword is struck at its own
+## speed, never as a still point of the torso.
+static func resolve_at(attacker: FighterState, point_x: float, point_y: float, centre_x: float, centre_y: float, target_vx: float, target_vy: float, target_mass: float, rules: DuelRules) -> ImpactResult:
 	var wielding := rules.spec_of(attacker)
-	var struck := rules.spec_of(target)
 	var weapon := wielding.weapon
 	var combat := rules.combat
 	var impact := ImpactResult.new()
@@ -49,8 +57,8 @@ static func resolve(attacker: FighterState, target: FighterState, point_x: float
 	## fighter, so they add; the attack path adds its own share on top.
 	var omega := attacker.turn_rate + attacker.weapon.speed
 	WeaponKinematics.velocity_into(attacker, pose, point_x, point_y)
-	var relative_x := pose.vx - target.vx
-	var relative_y := pose.vy - target.vy
+	var relative_x := pose.vx - target_vx
+	var relative_y := pose.vy - target_vy
 	impact.relative_speed = SimMath.length(relative_x, relative_y)
 
 	var blade_x := bx / radius if radius > SimMath.EPSILON else pose.ux
@@ -59,8 +67,8 @@ static func resolve(attacker: FighterState, target: FighterState, point_x: float
 	impact.strike_x = -blade_y * turning
 	impact.strike_y = blade_x * turning
 
-	var to_center_x := target.x - point_x
-	var to_center_y := target.y - point_y
+	var to_center_x := centre_x - point_x
+	var to_center_y := centre_y - point_y
 	var center_distance := SimMath.length(to_center_x, to_center_y)
 	if center_distance > SimMath.EPSILON:
 		impact.normal_x = to_center_x / center_distance
@@ -78,7 +86,7 @@ static func resolve(attacker: FighterState, target: FighterState, point_x: float
 
 	impact.coupling = StructuralCoupling.coupling(attacker, impact.strike_x, impact.strike_y, wielding.fighter, combat)
 	impact.attacker_mass = wielding.fighter.mass
-	impact.target_mass = struck.fighter.mass
+	impact.target_mass = target_mass
 
 	## Point-strike kinematics (COMBAT-010, PHYS-007). Axial speed is the
 	## relative velocity projected along the sword axis (blade_x, blade_y).

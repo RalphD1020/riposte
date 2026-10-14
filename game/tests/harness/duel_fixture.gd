@@ -69,7 +69,6 @@ static func place(fighter: FighterState, x: float, y: float, facing: float) -> v
 ## that StateInvariants rejects, so tests must not take that shortcut.
 static func kill(fighter: FighterState) -> void:
 	fighter.health = 0.0
-	fighter.stamina = 0.0
 	WeaponSystem.kill(fighter, 0.0)
 
 

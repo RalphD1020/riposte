@@ -3,6 +3,7 @@ extends TestCase
 ## DAMAGE: strike quality is relational and nonlinear (COMBAT §34–§39, §46–§54).
 ##
 ## Implements: /spec/invariants.md#combat-003
+## Implements: /spec/invariants.md#line-change-001
 ## See also: /docs/concepts/combat.md
 
 var _rules: DuelRules
@@ -46,12 +47,40 @@ func test_reference_cut_is_solid() -> void:
 	assert_between(strike.damage, 14.0, 55.0, "a clean mid-blade cut is light-to-heavy, not lethal")
 
 
+## CLEAN-STRIKE-LETHALITY: the same clean cut, faster, dissipates more energy
+## and never does less injury. The law is pinned here; how lethal a clean fast
+## cut is belongs to the calibration and is read from the feel corpus.
+func test_more_clean_energy_never_does_less_injury() -> void:
+	var previous: StrikeResult = null
+	var broke := ""
+	for step in range(1, 41):
+		## ARRANGE + PERTURB: the same square, edge-first cut, 0.5 rad/s faster.
+		var omega := float(step) * 0.5
+		## ACT
+		var strike := _strike(_scene(omega))
+		if previous != null and broke == "":
+			if not (strike.impact.kinetic_severity > previous.impact.kinetic_severity):
+				broke = "energy did not rise at %.1f rad/s" % omega
+			elif strike.damage < previous.damage:
+				broke = "damage fell at %.1f rad/s (%.3f < %.3f)" % [omega, strike.damage, previous.damage]
+		previous = strike
+	## ASSERT
+	var slow := _strike(_scene(0.5))
+	assert_true(slow.contact_kind == StrikeResult.ContactKind.SLASH, "fixture: a clean, edge-first cut")
+	assert_eq(broke, "", "more dissipated energy, never less injury")
+	assert_true(previous.damage > slow.damage, "and the fast cut wounds more than the slow one (%.1f > %.1f)" % [previous.damage, slow.damage])
+
+
 func test_moving_into_the_blade_hurts_more_than_retreating() -> void:
-	var still := _strike(_scene(12.0)).quality
-	var advancing := _strike(_scene(12.0, -3.0)).quality
-	var retreating := _strike(_scene(12.0, 3.0)).quality
-	assert_true(advancing > still, "the target participates: stepping in raises impact")
-	assert_true(retreating < still, "retreating with the blade lowers impact")
+	var still := _strike(_scene(12.0))
+	var advancing := _strike(_scene(12.0, -3.0))
+	var retreating := _strike(_scene(12.0, 3.0))
+	assert_true(advancing.impact.kinetic_severity > still.impact.kinetic_severity, "the target participates: stepping in raises impact")
+	assert_true(retreating.impact.kinetic_severity < still.impact.kinetic_severity, "retreating with the blade lowers impact")
+	## Injury follows, up to the curve's compressive cap (which a 12 rad/s cut
+	## may already reach): never the other way round.
+	assert_true(advancing.quality >= still.quality and still.quality >= retreating.quality, "and the wound never reverses that order")
+	assert_true(advancing.quality > retreating.quality, "a cut met stepping in out-wounds one met retreating")
 
 
 func test_impulse_and_severity_are_different_quantities() -> void:
@@ -466,6 +495,60 @@ func test_a_sidestep_raises_the_attackers_threat_time() -> void:
 	assert_true(weapon.guard_limit > deg_to_rad(100.0), "fixture: the stepped bearing is still inside the domain")
 
 
+## THREAT-COMMIT-001: on an empty line the estimate and the duel agree. A
+## full committed cut in flight at a target whose own blade is turned away
+## beyond its torso, so nothing but the torso lies on the cut's line: the
+## estimate taken from the scene and the tick the real simulation (the same
+## state, rolled on, the target idle) first strikes the body are the same
+## time, to one tick, across bearings, distances and how far the cut still
+## has to travel.
+func test_on_an_empty_line_the_threat_estimate_is_the_strike_the_duel_lands() -> void:
+	var rules := DuelFixture.rules()
+	var definition := rules.combatant(0).weapon
+	var tick := SimulationTimebase.TICK_SECONDS
+	for bearing_deg: float in [0.0, 15.0]:
+		for distance: float in [1.3, 1.5]:
+			for travel_deg: float in [60.0, 40.0, 20.0]:
+				## ARRANGE
+				var runner := SimRunner.create(rules, 7)
+				runner.skip_intro()
+				var attacker := runner.state.fighter(0)
+				var target := runner.state.fighter(1)
+				var bearing := deg_to_rad(bearing_deg)
+				DuelFixture.place(attacker, 0.0, 0.0, 0.0)
+				attacker.weapon.reset(0.0)
+				DuelFixture.place(target, distance * SimMath.cosine(bearing), distance * SimMath.sine(bearing), bearing + PI)
+				target.weapon.reset(0.0)
+				target.weapon.angle = -PI * 0.5
+				var w := attacker.weapon
+				w.phase = CombatPhase.Id.ACTIVE_EARLY
+				w.swing_dir = 1.0
+				w.swing_charge = 1.0
+				w.launch_preparation = 1.0
+				w.swing_start = -definition.guard_limit
+				w.swing_end = w.swing_start + definition.arc(1.0)
+				w.angle = -deg_to_rad(travel_deg)
+				w.speed = definition.swing_speed_full
+				w.stable_side = -1.0
+				w.commitment = CommitmentModel.commitment(w, definition)
+				var label := "bearing %+.0f°, %.1f m, %.0f° to travel" % [bearing_deg, distance, travel_deg]
+				## ACT
+				var estimate := InitiativeModel.time_to_threat(attacker, target, rules)
+				var start := runner.state.tick
+				var struck := -1
+				for _i in 40:
+					runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+					var hit := runner.first(DuelEventTypes.BODY_HIT)
+					if hit != null:
+						struck = hit.tick - start + 1
+						break
+				## ASSERT
+				assert_eq(runner.count(DuelEventTypes.BLADE_CONTACT), 0, "fixture (%s): the line is empty — no steel is met" % label)
+				assert_true(w.commitment > 0.5, "fixture (%s): the cut is committed" % label)
+				assert_true(struck > 0, "the real cut lands (%s)" % label)
+				assert_near(estimate, float(struck) * tick, tick + 1.0e-9, "the estimate is the strike the duel lands (%s: %.3f s vs %.3f s)" % [label, estimate, float(struck) * tick])
+
+
 ## A full cut from the right (`side` = +1) or the left (−1), 40° short of the
 ## centre, at full speed; the target 1.3 m off at `bearing`.
 func _committed_cut(rules: DuelRules, bearing: float, side: float = 1.0) -> MatchState:
@@ -475,7 +558,7 @@ func _committed_cut(rules: DuelRules, bearing: float, side: float = 1.0) -> Matc
 	w.phase = CombatPhase.Id.ACTIVE_EARLY
 	w.swing_dir = side
 	w.swing_charge = 1.0
-	w.launch_readiness = 1.0
+	w.launch_preparation = 1.0
 	w.swing_start = -side * definition.guard_limit
 	w.swing_end = w.swing_start + side * definition.arc(1.0)
 	w.angle = -side * deg_to_rad(40.0)
@@ -528,3 +611,162 @@ func test_the_threat_estimate_is_bounded() -> void:
 	var closed := rules.combatant(0).fighter.max_speed * horizon
 	var still_to_close := 9.0 - reach - closed
 	assert_true(estimate.residual_gap >= still_to_close - rules.combatant(0).weapon.blade_radius - 1e-9, "the gap left is at least what top speed could not close (%.3f m)" % estimate.residual_gap)
+
+
+## THREAT-001, HAND-CONTACT-001: a hand is damageable, so the threat is the
+## earliest of the torso and either hand. Scanned out from close range, the
+## first distance a target turned away (its hands behind it) is out of the
+## horizon's reach — the torso alone out of reach — the same target facing the
+## attacker, its hands out in front, is threatened inside the horizon. The
+## slot-swapped scene reads the same estimate exactly.
+func test_a_hand_in_reach_is_a_threat_when_the_torso_is_not() -> void:
+	## ARRANGE
+	var rules := DuelFixture.rules()
+	var state := DuelFixture.state(rules)
+	var attacker := state.fighter(0)
+	var target := state.fighter(1)
+	DuelFixture.place(attacker, 0.0, 0.0, 0.0)
+	var distance := 1.4
+	var turned := ThreatEstimate.new()
+	while distance < 4.0:
+		DuelFixture.place(target, distance, 0.0, 0.0)
+		InitiativeModel.estimate(attacker, rules.combatant(0), target, rules.combatant(1), rules.combat, turned)
+		if not turned.within_horizon:
+			break
+		distance += 0.01
+	assert_false(turned.within_horizon, "fixture: turned away at %.2f m, the torso is out of reach" % distance)
+	## PERTURB: the same target, facing the attacker, hands forward.
+	DuelFixture.place(target, distance, 0.0, PI)
+	## ACT
+	var facing := InitiativeModel.estimate(attacker, rules.combatant(0), target, rules.combatant(1), rules.combat, ThreatEstimate.new())
+	## ASSERT
+	assert_true(facing.within_horizon, "its hands are in reach (%.3f s)" % facing.hit_time)
+	assert_eq(facing.residual_gap, 0.0, "with nothing left over")
+	## Mirror: the slots swapped, the same scene.
+	DuelFixture.place(target, 0.0, 0.0, 0.0)
+	DuelFixture.place(attacker, distance, 0.0, PI)
+	var mirrored := InitiativeModel.estimate(target, rules.combatant(1), attacker, rules.combatant(0), rules.combat, ThreatEstimate.new())
+	assert_eq(mirrored.within_horizon, facing.within_horizon, "the mirror is threatened too")
+	assert_eq(mirrored.hit_time, facing.hit_time, "at exactly the same time")
+
+
+## REVERSAL-DEBT-001 (THREAT-READINESS-001): readiness is the state, not the
+## position. The same blade at the same angle, once turning back toward the
+## line and once still flying away from it, threatens later when it must first
+## arrest and reverse that momentum — whether it is above or under control
+## speed. The mirrored scene reads exactly the same times.
+func test_a_blade_turning_away_threatens_later_than_one_turning_back() -> void:
+	var weapon := _rules.combatant(0).weapon
+	for rate: float in [weapon.control_speed * 0.5, 6.0]:
+		var times := {}
+		for side: float in [1.0, -1.0]:
+			for heading: String in ["back", "away"]:
+				## ARRANGE: a's blade 60° off the line on `side`, b square in front
+				## in a centred Long Guard, so the scene is its own mirror.
+				var state := DuelFixture.state(_rules)
+				var a := state.fighter(0)
+				var b := state.fighter(1)
+				DuelFixture.place(a, 0.0, 0.0, 0.0)
+				DuelFixture.place(b, 1.4, 0.0, PI)
+				b.weapon.angle = 0.0
+				a.weapon.angle = side * deg_to_rad(60.0)
+				WeaponSystem.update_stable_side(a.weapon, weapon)
+				## PERTURB: turning back toward the line, or away from it.
+				a.weapon.speed = -side * rate if heading == "back" else side * rate
+				## ACT
+				times["%+.0f %s" % [side, heading]] = InitiativeModel.estimate(a, _rules.combatant(0), b, _rules.combatant(1), _rules.combat, ThreatEstimate.new())
+		## ASSERT
+		var back: ThreatEstimate = times["+1 back"]
+		var away: ThreatEstimate = times["+1 away"]
+		assert_true(back.within_horizon, "fixture (%.1f rad/s): turning back threatens inside the horizon (%.3f s)" % [rate, back.hit_time])
+		assert_true(away.within_horizon, "fixture (%.1f rad/s): so does turning away, eventually (%.3f s)" % [rate, away.hit_time])
+		assert_true(away.hit_time > back.hit_time, "at %.1f rad/s the blade flying away threatens later (%.3f s > %.3f s)" % [rate, away.hit_time, back.hit_time])
+		assert_eq((times["-1 back"] as ThreatEstimate).hit_time, back.hit_time, "the mirrored blade turning back reads the same time")
+		assert_eq((times["-1 away"] as ThreatEstimate).hit_time, away.hit_time, "and turning away")
+
+
+## THREAT-READINESS-001: the estimate cuts the way the duel would. A blade
+## carried across the centre by its own momentum is committed to its new side
+## (COMBAT-005) before it is back under control and can launch, so two states
+## differing only in the side remembered *now* evolve identically in the duel
+## — and must read identically here.
+func test_the_threat_follows_the_side_the_blade_will_commit_to() -> void:
+	var weapon := _rules.combatant(0).weapon
+	var estimates: Array[ThreatEstimate] = []
+	var settled: Array[PackedFloat64Array] = []
+	for remembered: float in [1.0, -1.0]:
+		## ARRANGE: a's blade just left of centre, crossing to the right far
+		## faster than control speed; b far enough that nothing is met.
+		var runner := SimRunner.create(_rules, 1)
+		runner.skip_intro()
+		var a := runner.state.fighter(0)
+		var b := runner.state.fighter(1)
+		DuelFixture.place(a, 0.0, 0.0, 0.0)
+		DuelFixture.place(b, 2.6, 0.0, PI)
+		a.weapon.angle = deg_to_rad(5.0)
+		a.weapon.speed = -6.0
+		## PERTURB: the side it remembers before the crossing.
+		a.weapon.stable_side = remembered
+		## ACT: the estimate now, then the duel itself until the blade is
+		## back under control.
+		estimates.append(InitiativeModel.estimate(a, _rules.combatant(0), b, _rules.combatant(1), _rules.combat, ThreatEstimate.new()))
+		var ticks := 0
+		while absf(a.weapon.speed) > weapon.control_speed and ticks < 60:
+			runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+			ticks += 1
+		settled.append(PackedFloat64Array([ticks, a.weapon.angle, a.weapon.stable_side]))
+	## ASSERT
+	assert_eq(settled[0], settled[1], "fixture: the duel evolves both identically")
+	assert_true(settled[0][1] < -weapon.side_deadzone, "fixture: the blade is past the centre band (%.1f°) when it comes under control" % rad_to_deg(settled[0][1]))
+	assert_eq(settled[0][2], -1.0, "fixture: and committed to its new side")
+	assert_true(estimates[0].hit_time > 0.0, "the estimate is a real reading (%.3f s)" % estimates[0].hit_time)
+	assert_eq(estimates[0].hit_time, estimates[1].hit_time, "whichever side it remembered before the crossing")
+	assert_eq(estimates[0].residual_gap, estimates[1].residual_gap, "with the same residual")
+
+
+## HAND-CONTACT-001: a hand wound is the ordinary damage model at the target's
+## hand share. The same wound against a share of 1 differs only by that share:
+## the same quality, and health falls by exactly the damage reported.
+func test_a_hand_wound_is_the_ordinary_strike_at_the_hand_share() -> void:
+	var wounds: Array[DuelEvent] = []
+	var lost: Array[float] = []
+	for share: float in [-1.0, 1.0]:
+		## ARRANGE: fighter 0's blade square across fighter 1's off hand,
+		## a centimetre into the disc, driving in at 3 m/s.
+		var rules := DuelFixture.rules()
+		if share > 0.0:
+			## PERTURB: the whole wound, no hand share.
+			rules.combatant(1).fighter.hand_damage_factor = share
+		var state := DuelFixture.state(rules)
+		var holder := state.fighter(1)
+		DuelFixture.place(holder, 0.0, 0.0, 0.0)
+		holder.weapon.angle = 0.0
+		var held := WeaponKinematics.pose_of(holder, rules.combatant(1), BladePose.new())
+		var grip := rules.combatant(1).weapon.offhand_grip_radius
+		var nx := -held.uy
+		var ny := held.ux
+		var into := rules.combatant(1).fighter.hand_radius + rules.combatant(0).weapon.blade_radius - 0.01
+		var direction := atan2(-ny, -nx)
+		var reach := WeaponKinematics.pose_at(0.0, 0.0, direction, 0.0, rules.combatant(0), BladePose.new())
+		var striker := state.fighter(0)
+		DuelFixture.place(striker, held.point_x(grip) + nx * into - reach.point_x(rules.combatant(0).weapon.tip_radius), held.point_y(grip) + ny * into - reach.point_y(rules.combatant(0).weapon.tip_radius), direction)
+		striker.weapon.angle = 0.0
+		striker.vx = -nx * 3.0
+		striker.vy = -ny * 3.0
+		var before := holder.health
+		## ACT
+		var events: Array[DuelEvent] = []
+		ContactResolver.wound_hand(state, rules, 0, grip, 0.5, 1, events)
+		## ASSERT
+		assert_eq(events.size(), 1, "fixture (share %s): one wound" % str(share))
+		assert_eq(events[0].text(DuelEventKeys.REGION), DuelEventKeys.REGION_HAND, "on the hand")
+		assert_true(holder.is_alive(), "never an instant kill")
+		assert_true(striker.weapon.hand_struck, "the attack's hand episode is spent")
+		wounds.append(events[0])
+		lost.append(before - holder.health)
+	var shipped := wounds[0].number(DuelEventKeys.DAMAGE)
+	var whole := wounds[1].number(DuelEventKeys.DAMAGE)
+	assert_true(whole > 0.0, "fixture: the blade wounds (%.4f)" % whole)
+	assert_eq(wounds[0].number(DuelEventKeys.QUALITY), wounds[1].number(DuelEventKeys.QUALITY), "the same strike quality either way")
+	assert_near(shipped, whole * DuelFixture.rules().combatant(1).fighter.hand_damage_factor, 1e-12, "the shipped wound is the hand share of the whole")
+	assert_near(lost[0], shipped, 1e-12, "and health falls by exactly that")

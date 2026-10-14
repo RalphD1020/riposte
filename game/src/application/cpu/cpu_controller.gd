@@ -89,6 +89,12 @@ const BURST_SCRIPT: Array[float] = [1.0, 1.0, 0.0, 0.0, 1.0]
 ## Only dash when the footwork decision was decisive. Dashing out of an
 ## ambivalent step is how an opponent starts looking twitchy rather than sharp.
 const BURST_UTILITY_MIN := 0.6
+## The longest a capitalize intent may live without lapsing on its own (ticks):
+## a guard against stale intent, never its expected length — the intent ends
+## as soon as the physics no longer supports it.
+const CAPITALIZE_LIMIT_TICKS := 90
+## How far under the sector-entry deflection an eased step is held.
+const DASH_EASE := 0.95
 
 var profile: CpuProfile
 ## Tick of the observation the last decision used (proves perception delay).
@@ -103,7 +109,11 @@ var _calibration_m: float = 0.0
 ## weapon coordinate's peak inertia — a release valve, never physics.
 var _windback_limit_ticks: int = 0
 var _rng: SeededRng
+## The last `MEMORY_TICKS` observations, a ring of kept objects rewritten in
+## place: `_newest` is the latest, `_remembered` how many are filled.
 var _memory: Array[CpuObservation] = []
+var _newest: int = -1
+var _remembered: int = 0
 var _next_decision_tick: int = 0
 var _move: Move = Move.APPROACH
 var _orbit_sign: float = 1.0
@@ -123,6 +133,21 @@ var _sight_y: float = 0.0
 var _sight_distance: float = 0.0
 ## Decision traces (Phase 8a). Sidecar telemetry, never authoritative.
 var traces: Array[CpuDecisionTrace] = []
+## CapitalizeIntent (CPU-008): while true the CPU is closing on an opening it
+## physically expects to reach first, by the route `_clear_side` names — 0
+## straight in, ±1 beside the opponent on that side of its line (+1
+## counter-clockwise of its heading), away from its sword — until
+## `_capitalize_until` at the latest. Revalidated every decision; a command
+## intent only — nothing here is state of the duel.
+var _capitalizing: bool = false
+var _clear_side: float = 0.0
+var _capitalize_until: int = 0
+var _route_scratch := ThreatEstimate.new()
+var _threat_scratch := ThreatEstimate.new()
+## The opponent's perceived heading and its body's push radius, for the
+## route beside it.
+var _sight_facing: float = 0.0
+var _opponent_push: float = 0.0
 
 
 static func create(rules: DuelRules, cpu_profile: CpuProfile, match_seed: int, slot: int) -> CpuController:
@@ -135,6 +160,7 @@ static func create(rules: DuelRules, cpu_profile: CpuProfile, match_seed: int, s
 	controller._calibration_m = calibration_reach()
 	controller._windback_limit_ticks = controller._spec.weapon.windback_limit_ticks(controller._spec.fighter.weapon_torque_scale, WeaponKinematics.peak_motor_inertia(controller._spec))
 	controller.profile = cpu_profile
+	controller._opponent_push = rules.combatant(1 - slot).fighter.push_radius
 	controller._rng = SeededRng.create(match_seed, SeededRng.cpu_stream(slot))
 	return controller
 
@@ -145,13 +171,11 @@ func command_for(state: MatchState, slot: int) -> PlayerCommand:
 		return PlayerCommand.idle(state.tick)
 	var me := state.fighter(slot)
 	_idle_ticks += 1
-	_memory.append(CpuObservation.record(state, slot, _rules))
-	if _memory.size() > MEMORY_TICKS:
-		_memory.remove_at(0)
-	var seen := _memory[maxi(0, _memory.size() - 1 - profile.reaction_ticks)]
+	var seen := _remember(state, slot)
 	_perceive(seen, me, state.tick)
 	if state.tick >= _next_decision_tick:
 		last_perceived_tick = seen.tick
+		seen.feel_self(me)
 		seen.resolve(_rules)
 		_decide(seen, me, state.tick, state.body_contact)
 		_next_decision_tick = state.tick + profile.decision_ticks + _rng.next_int(0, profile.decision_jitter)
@@ -159,7 +183,8 @@ func command_for(state: MatchState, slot: int) -> PlayerCommand:
 
 
 func _forget() -> void:
-	_memory.clear()
+	_newest = -1
+	_remembered = 0
 	_holding = false
 	_hold_ticks = 0
 	_attack = Attack.NONE
@@ -169,6 +194,8 @@ func _forget() -> void:
 	_burst_cursor = BURST_SCRIPT.size()
 	_burst_sign = 0.0
 	_burst_is_lateral = false
+	_capitalizing = false
+	_clear_side = 0.0
 	traces.clear()
 
 
@@ -200,6 +227,19 @@ func _range(authored: float) -> float:
 ## stopped (m): the CPU's own speed toward the opponent (felt) and the
 ## opponent's toward it (observed, delayed like every other reading) over one
 ## decision period, plus the CPU's own braking distance.
+## Record this tick and return the observation `reaction_ticks` old (the oldest
+## kept while fewer are remembered).
+func _remember(state: MatchState, slot: int) -> CpuObservation:
+	if _memory.is_empty():
+		for _i in MEMORY_TICKS:
+			_memory.append(CpuObservation.new())
+	_newest = (_newest + 1) % MEMORY_TICKS
+	_memory[_newest].record_into(state, slot, _rules)
+	_remembered = mini(_remembered + 1, MEMORY_TICKS)
+	var back := mini(profile.reaction_ticks, _remembered - 1)
+	return _memory[(_newest - back + MEMORY_TICKS) % MEMORY_TICKS]
+
+
 func _closing_lead(seen: CpuObservation, me: FighterState) -> float:
 	var dx := _sight_x - me.x
 	var dy := _sight_y - me.y
@@ -288,9 +328,22 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 	_move = _best_move(utilities)
 	_move = _safe_move(utilities, me)
 	_orbit_sign = seen.opp_swing_dir
-	_consider_burst(utilities[_move], striking, assessment, me)
+	_sight_facing = seen.opp_facing
+	_update_capitalize(seen, me, decision_tick, striking, utilities)
+	var burst_utility := utilities[_move]
+	if _capitalizing:
+		_move = Move.APPROACH
+		## Dash in only when the gap still needs closing.
+		if perceived > reach:
+			burst_utility = maxf(burst_utility, BURST_UTILITY_MIN)
+	_consider_burst(burst_utility, striking, assessment, me)
 	_attack = Attack.NONE
 	if _holding or not ready:
+		return
+	if _capitalizing:
+		if perceived <= reach:
+			_attack = Attack.TAP
+		traces.append(CpuDecisionTrace.create(decision_tick, seen.tick, utilities, _move, _attack, assessment))
 		return
 	var intercept := (opp_charging or seen.opp_phase == CombatPhase.Id.LAUNCH) and perceived <= reach
 	## Indes: interception when opponent is committed and own tap can arrive.
@@ -374,6 +427,107 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 			_burst_sign = _orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else -_orbit_sign
 		_burst_is_lateral = true
 		_burst_cursor = 0
+
+
+## CapitalizeIntent (CPU-008): start, keep or drop the intent from physics
+## alone — never a WHIFF, PARRY or DEFLECTION label. The same test serves a
+## miss, a parry, a deflection, a clash, an overswing or a stumble. Read from
+## the CPU's current self and its delayed view of the opponent.
+##
+## - A clear route (`_clear_route`): the direct line if, pressed now and
+##   closing along it, my blade would reach the body or a hand before the
+##   opponent's protective steel; otherwise a detour beside the opponent on the
+##   side away from its sword, if that is clear. The opponent's sword moves
+##   only under its own known law for its perceived phase.
+## - Feasible (every profile alike): along that route I arrive before the
+##   opponent's own threat, read in the same imagined world — one
+##   `ThreatContinuation`, both swords swept, each body at its current
+##   velocity (`opponent_threat_reading`).
+## - Confident (this profile): sooner by `capitalize_margin`.
+## - Safe: approaching does not walk off the platform.
+##
+## It starts when the opponent is open and all four hold. Every later decision
+## re-asks all of them (the opponent need no longer be open: it is owed until
+## it threatens first), re-choosing the route — the detour only while steel is
+## in the direct line — and drops the intent at the first that fails, or at the
+## safety cap. Once the strike is out it has done its work.
+func _update_capitalize(seen: CpuObservation, me: FighterState, decision_tick: int, striking: bool, utilities: PackedFloat64Array) -> void:
+	if striking:
+		_capitalizing = false
+		return
+	if not _capitalizing:
+		## Only an opponent who owes something — overswinging, recovering,
+		## staggered, or its threat lagging mine (`opponent_open`, the state of
+		## its weapon and body, never an event) — is an opening; a guarded
+		## opponent at rest is neutral, decided by the ordinary utilities.
+		if not seen.opponent_open():
+			return
+	elif decision_tick >= _capitalize_until:
+		_capitalizing = false
+		return
+	var arrival := _clear_route(seen, me)
+	if arrival < 0.0:
+		_capitalizing = false
+		return
+	## The opponent's threat in the same imagined world as the route (one
+	## continuation): a strike of theirs that my steel would stop first, or
+	## that reaches nothing inside the horizon, is no threat to arrive before.
+	var theirs := seen.opponent_threat_reading(_rules, _threat_scratch)
+	var their_time := theirs.hit_time if _reaches_flesh(theirs) else INF
+	var margin := 0.0 if _capitalizing else profile.capitalize_margin
+	var go := arrival + margin < their_time and _approach_safe(utilities, me)
+	if not go:
+		_capitalizing = false
+		return
+	if not _capitalizing:
+		_capitalizing = true
+		_capitalize_until = decision_tick + CAPITALIZE_LIMIT_TICKS
+
+
+## The route to the opening, as `_clear_side` (0 straight in; ±1 beside the
+## opponent on that side of its line, away from its sword), and its arrival
+## time — or −1 when neither the direct line nor the detour reaches the body
+## or a hand before protective steel.
+func _clear_route(seen: CpuObservation, me: FighterState) -> float:
+	var direct := Vector2(_sight_x - me.x, _sight_y - me.y)
+	if direct.length() <= SimMath.EPSILON:
+		return -1.0
+	direct = direct.normalized()
+	var reading := seen.route_reading(_rules, direct.x, direct.y, _route_scratch)
+	if _reaches_flesh(reading):
+		_clear_side = 0.0
+		return reading.hit_time
+	var side := _side_away_from_blade(seen)
+	var detour := _route_beside(me, side)
+	reading = seen.route_reading(_rules, detour.x, detour.y, _route_scratch)
+	if _reaches_flesh(reading):
+		_clear_side = side
+		return reading.hit_time
+	return -1.0
+
+
+## A route reaches flesh when the predicted strike meets the body or a hand
+## before any steel. A prediction that starts with the swords already bound is
+## no answer: the cheap predictor does not carry the bind's constraint, and
+## the agreement audit found its "clear" readings from a bind mostly wrong, so
+## a bound route is never taken as clear — the bind is decided by the ordinary
+## utilities and by physics, not by an invented forecast.
+static func _reaches_flesh(reading: ThreatEstimate) -> bool:
+	return not reading.starts_bound and (reading.first_contact == ThreatEstimate.BODY or reading.first_contact == ThreatEstimate.HAND)
+
+
+## The side of the opponent's line (its heading, as perceived; +1
+## counter-clockwise) its sword is not on: the open side.
+func _side_away_from_blade(seen: CpuObservation) -> float:
+	var off_line := SimMath.sine(seen.opp_blade_angle() - seen.opp_facing)
+	return -1.0 if off_line > 0.0 else 1.0
+
+
+## Whether an approach is a move the edge-safety filter would allow.
+func _approach_safe(utilities: PackedFloat64Array, me: FighterState) -> bool:
+	var preferring := utilities.duplicate()
+	preferring[Move.APPROACH] = INF
+	return _safe_move(preferring, me) == Move.APPROACH
 
 
 static func _best_move(utilities: PackedFloat64Array) -> Move:
@@ -465,7 +619,7 @@ func _safe_move(utilities: PackedFloat64Array, me: FighterState) -> Move:
 
 
 func _execute(tick: int, me: FighterState) -> PlayerCommand:
-	var steer := _burst_step() if _burst_cursor < BURST_SCRIPT.size() else _steer(me)
+	var steer := _burst_step() if _burst_cursor < BURST_SCRIPT.size() else _without_accidental_dash(_steer(me), tick, me)
 	var pressed := false
 	var released := false
 	if _holding:
@@ -493,6 +647,32 @@ func _execute(tick: int, me: FighterState) -> PlayerCommand:
 	return PlayerCommand.create(tick, steer[0], steer[1], pressed, released)
 
 
+## Input hygiene: a dash is a decision (`_consider_burst`), never an accident
+## of footwork switching. The CPU feels its own input as a player does — its
+## own gesture state (`FighterState.gesture`, what `DirectionalTapRecognizer`
+## remembers of its taps) — and a footwork step that would be the second tap
+## of a double tap it did not decide on is eased just under the deflection
+## that enters a sector, so it walks without dashing.
+func _without_accidental_dash(steer: PackedFloat64Array, tick: int, me: FighterState) -> PackedFloat64Array:
+	var body := _spec.fighter
+	var gesture := me.gesture
+	var probe := PlayerCommand.create(tick, steer[0], steer[1])
+	var next := DirectionalTapRecognizer.sector_of(gesture.sector, probe.axis_x(), probe.axis_y(), body)
+	var second_tap := (
+		next != gesture.sector
+		and next != MovementGestureState.Direction.NONE
+		and gesture.awaiting_second_tap
+		and gesture.last_direction == next
+		and gesture.returned_to_neutral
+		and tick - gesture.first_tap_tick <= body.double_tap_window_ticks
+	)
+	if not second_tap:
+		return steer
+	var magnitude := SimMath.length(steer[0], steer[1])
+	var eased := body.burst_enter_deflection * DASH_EASE / magnitude
+	return PackedFloat64Array([steer[0] * eased, steer[1] * eased])
+
+
 ## One tick of the dash gesture, in duel axes. Axial bursts go on the Y axis
 ## (forward/back), lateral bursts on X (right/left). The rest ticks are real
 ## rests: the recognizer requires the intent to come genuinely to neutral
@@ -503,6 +683,17 @@ func _burst_step() -> PackedFloat64Array:
 	if _burst_is_lateral:
 		return PackedFloat64Array([deflection, 0.0])
 	return PackedFloat64Array([0.0, deflection])
+
+
+## The capitalize close (CPU-008) along `side`: 0 straight at the perceived
+## opponent; ±1 toward a point beside it on that side of its line — its body's
+## edge and mine off its centre line — so the step closes while keeping its
+## sword out of the path. From the bodies' own radii; no authored angle. A
+## unit world vector.
+func _route_beside(me: FighterState, side: float) -> Vector2:
+	var offset := (_opponent_push + _spec.fighter.push_radius) * side
+	var route := Vector2(_sight_x - SimMath.sine(_sight_facing) * offset - me.x, _sight_y + SimMath.cosine(_sight_facing) * offset - me.y)
+	return route.normalized() if route.length() > SimMath.EPSILON else Vector2(_sight_x - me.x, _sight_y - me.y).normalized()
 
 
 ## Footwork vector toward / away from / around the perceived opponent, with
@@ -520,6 +711,10 @@ func _steer(me: FighterState) -> PackedFloat64Array:
 		Move.APPROACH:
 			x = tx
 			y = ty
+			if _capitalizing:
+				var route := _route_beside(me, _clear_side)
+				x = route.x
+				y = route.y
 		Move.RETREAT:
 			x = -tx
 			y = -ty

@@ -85,6 +85,8 @@ func observe(events: Array[DuelEvent]) -> void:
 				_last_contact = "body %.1f dmg · quality %.2f · exposure %.2f" % [event.number(DuelEventKeys.DAMAGE), event.number(DuelEventKeys.QUALITY), event.number(DuelEventKeys.EXPOSURE)]
 			DuelEventTypes.PARRY:
 				_last_contact = "parry · riposte advantage %+.2f s" % event.number(DuelEventKeys.MARGIN)
+			DuelEventTypes.DEFLECTION:
+				_last_contact = "deflection · riposte advantage %+.2f s" % event.number(DuelEventKeys.MARGIN)
 
 
 func update(snapshot: PresentationSnapshot, fps: float) -> void:
@@ -94,13 +96,13 @@ func update(snapshot: PresentationSnapshot, fps: float) -> void:
 	lines.append("tick %d · %d fps" % [snapshot.tick, roundi(fps)])
 	lines.append("distance %.2f m · closing %.2f m/s · orbit %.2f rad/s" % [snapshot.distance, snapshot.closing_speed, snapshot.orbit_rate])
 	for fighter in snapshot.fighters:
-		lines.append("P%d %s · charge %.2f · commit %.2f · stability %.2f · threat %.2f s · condition F %.2f S %.2f T %.2f" % [
+		lines.append("P%d %s · charge %.2f · commit %.2f · stability %.2f · threat %s · condition F %.2f S %.2f T %.2f" % [
 			fighter.slot,
 			CombatPhase.label(fighter.phase),
 			fighter.charge,
 			fighter.commitment,
 			fighter.stability,
-			fighter.threat_time,
+			"%.2f s" % fighter.threat_time if snapshot.has_threat_readings else "—",
 			fighter.force_scale,
 			fighter.speed_scale,
 			fighter.tracking_scale,

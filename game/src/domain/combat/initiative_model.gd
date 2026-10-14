@@ -53,11 +53,40 @@ static func threat_time(attacker: FighterState, attacker_spec: CombatantPhysicsS
 	return estimate(attacker, attacker_spec, target, target_spec, combat, ThreatEstimate.new()).hit_time
 
 
-## The whole bounded prediction, written into `out` and returned.
-static func estimate(attacker: FighterState, attacker_spec: CombatantPhysicsSpec, target: FighterState, target_spec: CombatantPhysicsSpec, combat: CombatTuning, out: ThreatEstimate) -> ThreatEstimate:
+## The whole bounded prediction, written into `out` and returned, under one
+## named `continuation` (`ThreatContinuation`; the unopposed close when none):
+## PLANTED reads a swing in flight on its own line — whether its remaining
+## sweep, about the heading as it reacquires, reaches the body
+## (DEFLECTION-001); ROUTE predicts an intended path (CPU-008). With its
+## `steel` set the target's sword is swept too, under its own known law for the phase
+## it is in — a swing in flight keeps driving to its end, anything else is
+## arrested by its brake or hold — with no knowledge of the target's future
+## input; any of its steel (blade, crossguard bar and handle — every
+## collidable feature stops a cut, GUARD-CONTACT-001) met by any of this sword's
+## before the torso or a hand reads `ThreatEstimate.STEEL` (a tie goes to the
+## steel, as in the duel). Blades
+## already touching when the prediction starts are a bind, not an obstruction
+## (`starts_bound`): only steel met again after they part is a new contact.
+static func estimate(
+	attacker: FighterState,
+	attacker_spec: CombatantPhysicsSpec,
+	target: FighterState,
+	target_spec: CombatantPhysicsSpec,
+	combat: CombatTuning,
+	out: ThreatEstimate,
+	continuation: ThreatContinuation = null
+) -> ThreatEstimate:
+	var assumed := continuation if continuation != null else ThreatContinuation.closing()
+	var motion := assumed.motion
+	var steel := assumed.steel
+	var route_x := assumed.route_x
+	var route_y := assumed.route_y
 	out.within_horizon = false
 	out.residual_gap = 0.0
 	out.readiness_remaining = 0.0
+	out.first_contact = ThreatEstimate.NONE
+	out.steel_time = 0.0
+	out.starts_bound = false
 	var weapon := attacker.weapon
 	if weapon.phase == CombatPhase.Id.DEAD:
 		out.hit_time = UNREACHABLE
@@ -77,8 +106,11 @@ static func estimate(attacker: FighterState, attacker_spec: CombatantPhysicsSpec
 	var swinging := CombatPhase.is_swinging(weapon.phase)
 	var charging := weapon.phase == CombatPhase.Id.CHARGING
 	var dir := weapon.swing_dir if swinging or charging else WeaponSystem.swing_direction(weapon)
+	## A strike not yet pressed cuts from the side the blade commits to by the
+	## time it launches, which its own momentum may still change (COMBAT-005).
+	var side_free := not (swinging or charging)
 	var charge := weapon.swing_charge if swinging else (weapon.charge if charging else 0.0)
-	var ceiling := definition.achievable_swing_speed(charge, weapon.launch_readiness) * speed if swinging else 0.0
+	var ceiling := definition.achievable_swing_speed(charge, weapon.launch_preparation) * speed if swinging else 0.0
 	var swing_end := weapon.swing_end
 	## A swing in flight (or a held charge, released now) is launched already;
 	## any other weapon launches its strike from wherever its motor has
@@ -103,14 +135,65 @@ static func estimate(attacker: FighterState, attacker_spec: CombatantPhysicsSpec
 	var asking := CommitmentModel.translation_multiplier(attacker, body)
 	var authority := CommitmentModel.move_authority(attacker, body)
 	var touch := target_spec.fighter.hurt_radius + definition.blade_radius
+	## The target's hands are damageable too (HAND-CONTACT-001): the earliest of
+	## torso and either hand disc is the threat. They ride the target's predicted
+	## translation from where its grips are now (its heading and sword frozen,
+	## like the rest of the target).
+	var wounds_hands := definition.wounds(SwordContactSet.Feature.BLADE)
+	var grips := WeaponKinematics.pose_of(target, target_spec, BladePose.new())
+	var off_x := grips.point_x(target_spec.weapon.offhand_grip_radius) - target.x
+	var off_y := grips.point_y(target_spec.weapon.offhand_grip_radius) - target.y
+	var dominant_x := grips.point_x(target_spec.weapon.dominant_grip_radius) - target.x
+	var dominant_y := grips.point_y(target_spec.weapon.dominant_grip_radius) - target.y
+	var hand_touch := target_spec.fighter.hand_radius + definition.blade_radius
 	var apart := body.push_radius + target_spec.fighter.push_radius
 	var tx := target.x
 	var ty := target.y
 	var gap := INF
+	## The target's sword, swept only when asked (`steel`).
+	var their := target_spec.weapon
+	var their_theta := target.weapon.angle
+	var their_omega := target.weapon.speed
+	var their_swinging := CombatPhase.is_swinging(target.weapon.phase)
+	var their_drive := 0.0
+	var their_ceiling := 0.0
+	var their_speed_scale := 1.0
+	var their_pose: BladePose = null
+	var segments: SegmentContact = null
+	## Last tick's bodies and swords, to order a same-tick crossing.
+	var previous := PackedFloat64Array()
+	## With `steel`, the target's heading follows its known automatic law too —
+	## it keeps tracking the attacker with its own bounded turn motor, carrying
+	## its sword with it — while its body keeps its current velocity: its next
+	## footwork input is not known.
+	var their_phi := target.facing
+	var their_phi_rate := target.turn_rate
+	var their_body := target_spec.fighter
+	var their_tracking := 0.0
+	var their_rate_tracking := 0.0
+	if steel:
+		var their_condition := ConditionModel.compute(target.health, target_spec.fighter.max_health, combat, ConditionState.new())
+		their_drive = target_spec.fighter.weapon_torque_scale * their_condition.force_scale
+		their_ceiling = their.achievable_swing_speed(target.weapon.swing_charge, target.weapon.launch_preparation) * their_condition.speed_scale
+		their_speed_scale = their_condition.speed_scale
+		their_tracking = CommitmentModel.turn_torque_share(target, target_spec, their_condition, combat)
+		their_rate_tracking = CommitmentModel.turn_rate_share(target, target_spec, their_condition, combat)
+		their_pose = BladePose.new()
+		segments = SegmentContact.new()
+		WeaponKinematics.pose_at(x, y, phi, theta, attacker_spec, pose)
+		WeaponKinematics.pose_at(tx, ty, target.facing, their_theta, target_spec, their_pose)
+		out.starts_bound = _steel_clearance(pose, definition, their_pose, their, segments) <= 0.0
+	var bound := out.starts_bound
+	previous = PackedFloat64Array([x, y, phi, theta, tx, ty, their_phi, their_theta])
 	for k in range(1, HORIZON_TICKS + 1):
 		var t := float(k) * dt
 		tx += target.vx * dt
 		ty += target.vy * dt
+		if steel:
+			var their_error := SimMath.wrap_angle(SimMath.arctan2(y - ty, x - tx) - their_phi)
+			var their_max_rate := their_body.turn_speed_max * their_rate_tracking
+			their_phi_rate = SimMath.approach(their_phi_rate, clampf(their_body.track_gain * their_error, -their_max_rate, their_max_rate), their_body.turn_accel() * their_tracking * dt)
+			their_phi = SimMath.wrap_angle(their_phi + their_phi_rate * dt)
 		## Heading: bounded turn torque toward the target, as FacingSystem.
 		var error := SimMath.wrap_angle(SimMath.arctan2(ty - y, tx - x) - phi)
 		var max_rate := body.turn_speed_max * rate_tracking
@@ -120,18 +203,22 @@ static func estimate(attacker: FighterState, attacker_spec: CombatantPhysicsSpec
 		var dx := tx - x
 		var dy := ty - y
 		var distance := SimMath.length(dx, dy)
-		var closing := body.max_speed * speed * asking if distance > apart else 0.0
-		var ux := dx / distance if distance > SimMath.EPSILON else 0.0
-		var uy := dy / distance if distance > SimMath.EPSILON else 0.0
-		var step := body.move_accel() * force * authority * dt
-		var wx := ux * closing - vx
-		var wy := uy * closing - vy
-		var want := SimMath.length(wx, wy)
-		if want > step:
-			wx *= step / want
-			wy *= step / want
-		vx += wx
-		vy += wy
+		if motion != ThreatContinuation.PLANTED:
+			var closing := body.max_speed * speed * asking if distance > apart else 0.0
+			var ux := dx / distance if distance > SimMath.EPSILON else 0.0
+			var uy := dy / distance if distance > SimMath.EPSILON else 0.0
+			if motion == ThreatContinuation.ROUTE:
+				ux = route_x
+				uy = route_y
+			var step := body.move_accel() * force * authority * dt
+			var wx := ux * closing - vx
+			var wy := uy * closing - vy
+			var want := SimMath.length(wx, wy)
+			if want > step:
+				wx *= step / want
+				wy *= step / want
+			vx += wx
+			vy += wy
 		x += vx * dt
 		y += vy * dt
 		## Weapon. Until it is ready the blade is not frozen: it keeps moving and
@@ -139,35 +226,209 @@ static func estimate(attacker: FighterState, attacker_spec: CombatantPhysicsSpec
 		## while overswinging or recovering above control speed, the hold
 		## otherwise), so a guard knocked spinning is predicted to spin away.
 		## Once ready it drives its strike toward the target speed.
-		inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
+		## The coordinate's inertia at this pose is read only where a motor
+		## changes θ̇: a blade at rest and not launched, or a swing past its
+		## end, stays exactly where it is.
 		if not launched and t >= ready:
 			launched = true
-			ceiling = definition.achievable_swing_speed(charge, definition.readiness(theta)) * speed
+			ceiling = definition.achievable_swing_speed(charge, definition.preparation(theta)) * speed
 			swing_end = clampf(theta + dir * definition.arc(charge), -definition.guard_limit, definition.guard_limit)
 		if launched:
 			if (theta - swing_end) * dir < 0.0:
+				inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
 				omega = SimMath.approach(omega, dir * ceiling, definition.swing_accel(charge, drive, inertia) * dt)
 				theta = clampf(theta + omega * dt, -definition.guard_limit, definition.guard_limit)
 		else:
-			omega = SimMath.approach(omega, 0.0, _arrest_accel(weapon, omega, definition, drive, inertia) * dt)
-			theta = clampf(theta + omega * dt, -definition.guard_limit, definition.guard_limit)
+			if omega != 0.0:
+				inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
+				omega = SimMath.approach(omega, 0.0, _arrest_accel(weapon, omega, definition, drive, inertia) * dt)
+				theta = clampf(theta + omega * dt, -definition.guard_limit, definition.guard_limit)
+			if side_free and absf(theta) > definition.side_deadzone:
+				dir = -1.0 if theta > 0.0 else 1.0
 		WeaponKinematics.pose_at(x, y, phi, theta, attacker_spec, pose)
 		var hx := pose.point_x(definition.hilt_radius)
 		var hy := pose.point_y(definition.hilt_radius)
 		var px := pose.point_x(definition.tip_radius)
 		var py := pose.point_y(definition.tip_radius)
+		var steel_now := INF
+		var steel_crossed := false
+		if steel:
+			if their_swinging and (their_theta - target.weapon.swing_end) * target.weapon.swing_dir < 0.0:
+				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
+				their_omega = SimMath.approach(their_omega, target.weapon.swing_dir * their_ceiling, their.swing_accel(target.weapon.swing_charge, their_drive, their_inertia) * dt)
+			elif target.weapon.phase == CombatPhase.Id.CHARGING:
+				## A held charge keeps winding back under its own motor, as
+				## `WeaponSystem` drives it, while the button stays held.
+				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
+				their_omega = SimMath.approach(their_omega, -target.weapon.swing_dir * their.windup_speed * their_speed_scale, their.windup_accel(their_drive, their_inertia) * dt)
+			elif their_omega != 0.0:
+				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
+				their_omega = SimMath.approach(their_omega, 0.0, _arrest_accel(target.weapon, their_omega, their, their_drive, their_inertia) * dt)
+			their_theta = clampf(their_theta + their_omega * dt, -their.guard_limit, their.guard_limit)
+			WeaponKinematics.pose_at(tx, ty, their_phi, their_theta, target_spec, their_pose)
+			steel_now = _steel_clearance(pose, definition, their_pose, their, segments)
+			if bound:
+				## Still in the bind it started in, or just parted from it.
+				bound = steel_now <= 0.0
+			else:
+				steel_crossed = steel_now <= 0.0
 		var along := SimMath.closest_param_on_segment(hx, hy, px, py, tx, ty)
 		gap = SimMath.length(tx - SimMath.mix(hx, px, along), ty - SimMath.mix(hy, py, along)) - touch
-		if gap <= 0.0:
+		var region := ThreatEstimate.BODY
+		if wounds_hands:
+			## Swept with its sword, the target's hands ride its grips as its
+			## sword and heading actually move; otherwise at their frozen offsets.
+			var hand_gap := (
+				_hands_gap(hx, hy, px, py, their_pose, their) if steel
+				else minf(
+					_segment_gap(hx, hy, px, py, tx + off_x, ty + off_y),
+					_segment_gap(hx, hy, px, py, tx + dominant_x, ty + dominant_y)
+				)
+			) - hand_touch
+			if hand_gap < gap:
+				gap = hand_gap
+				region = ThreatEstimate.HAND
+		var flesh_crossed := gap <= 0.0
+		## Steel and flesh both reached inside this tick: order them by where
+		## each first crossed, found by bisecting the tick on the interpolated
+		## bodies and swords (a fixed count); a tie is the steel's.
+		if steel_crossed and flesh_crossed:
+			var now := PackedFloat64Array([x, y, phi, theta, tx, ty, their_phi, their_theta])
+			var steel_at := _first_crossing(true, previous, now, attacker_spec, target_spec, touch, hand_touch, wounds_hands, pose, their_pose, segments)
+			var flesh_at := _first_crossing(false, previous, now, attacker_spec, target_spec, touch, hand_touch, wounds_hands, pose, their_pose, segments)
+			steel_crossed = steel_at <= flesh_at
+			flesh_crossed = not steel_crossed
+		if steel_crossed:
+			out.first_contact = ThreatEstimate.STEEL
+			out.steel_time = t
+			break
+		if flesh_crossed:
 			out.within_horizon = true
 			out.hit_time = t
+			out.first_contact = region
 			return out
+		if steel:
+			previous = PackedFloat64Array([x, y, phi, theta, tx, ty, their_phi, their_theta])
 	var horizon := float(HORIZON_TICKS) * dt
 	out.hit_time = horizon
 	out.residual_gap = gap
 	out.readiness_remaining = maxf(0.0, ready - horizon)
 	return out
 
+
+
+## The surface clearance (m; ≤ 0 touching) between any collidable feature of
+## the sword at `pose` (blade, crossguard bar, handle — GUARD-CONTACT-001) and
+## any of the sword at `their_pose`: any steel stops a cut's path, protective
+## or not, so a route is only clear past all of it.
+static func _steel_clearance(pose: BladePose, definition: WeaponDefinition, their_pose: BladePose, their: WeaponDefinition, segments: SegmentContact) -> float:
+	var mine := _features(pose, definition)
+	var theirs := _features(their_pose, their)
+	var least := INF
+	for i in range(0, mine.size(), FEATURE_STRIDE):
+		for j in range(0, theirs.size(), FEATURE_STRIDE):
+			SimMath.closest_segments(mine[i], mine[i + 1], mine[i + 2], mine[i + 3], theirs[j], theirs[j + 1], theirs[j + 2], theirs[j + 3], segments)
+			least = minf(least, segments.distance - mine[i + 4] - theirs[j + 4])
+	return least
+
+
+## Bisection steps that order a same-tick steel and flesh crossing: a fixed
+## count, never "until converged" (1/64 of a tick).
+const CROSSING_REFINEMENT := 6
+
+
+## The fraction of the tick from `before` to `now` (each [x, y, φ, θ, target
+## x, target y, target φ, target θ]) at which the steel clearance (`steel`) or
+## the flesh gap first closed, by bisection on the interpolated bodies and
+## swords. The tick's end when it closed only there.
+static func _first_crossing(
+	steel: bool,
+	before: PackedFloat64Array,
+	now: PackedFloat64Array,
+	attacker_spec: CombatantPhysicsSpec,
+	target_spec: CombatantPhysicsSpec,
+	touch: float,
+	hand_touch: float,
+	wounds_hands: bool,
+	pose: BladePose,
+	their_pose: BladePose,
+	segments: SegmentContact
+) -> float:
+	var open := 0.0
+	var closed := 1.0
+	for _i in CROSSING_REFINEMENT:
+		var middle := (open + closed) * 0.5
+		var x := SimMath.mix(before[0], now[0], middle)
+		var y := SimMath.mix(before[1], now[1], middle)
+		var phi := before[2] + SimMath.wrap_angle(now[2] - before[2]) * middle
+		var theta := SimMath.mix(before[3], now[3], middle)
+		var tx := SimMath.mix(before[4], now[4], middle)
+		var ty := SimMath.mix(before[5], now[5], middle)
+		var their_phi := before[6] + SimMath.wrap_angle(now[6] - before[6]) * middle
+		var their_theta := SimMath.mix(before[7], now[7], middle)
+		WeaponKinematics.pose_at(x, y, phi, theta, attacker_spec, pose)
+		WeaponKinematics.pose_at(tx, ty, their_phi, their_theta, target_spec, their_pose)
+		var gap := 0.0
+		if steel:
+			gap = _steel_clearance(pose, attacker_spec.weapon, their_pose, target_spec.weapon, segments)
+		else:
+			var definition := attacker_spec.weapon
+			var hx := pose.point_x(definition.hilt_radius)
+			var hy := pose.point_y(definition.hilt_radius)
+			var px := pose.point_x(definition.tip_radius)
+			var py := pose.point_y(definition.tip_radius)
+			gap = _segment_gap(hx, hy, px, py, tx, ty) - touch
+			if wounds_hands:
+				gap = minf(gap, _hands_gap(hx, hy, px, py, their_pose, target_spec.weapon) - hand_touch)
+		if gap <= 0.0:
+			closed = middle
+		else:
+			open = middle
+	## Leave the poses where the tick ended.
+	WeaponKinematics.pose_at(now[0], now[1], now[2], now[3], attacker_spec, pose)
+	WeaponKinematics.pose_at(now[4], now[5], now[6], now[7], target_spec, their_pose)
+	return closed
+
+
+## The least distance from the blade segment to either of the target's grip
+## markers, at the target's sword pose (its hands ride its grips).
+static func _hands_gap(hx: float, hy: float, px: float, py: float, their_pose: BladePose, their: WeaponDefinition) -> float:
+	return minf(
+		_segment_gap(hx, hy, px, py, their_pose.point_x(their.offhand_grip_radius), their_pose.point_y(their.offhand_grip_radius)),
+		_segment_gap(hx, hy, px, py, their_pose.point_x(their.dominant_grip_radius), their_pose.point_y(their.dominant_grip_radius))
+	)
+
+
+## Each collidable feature of a posed sword as [x0, y0, x1, y1, radius]: the
+## blade, then the crossguard bar and the handle where the weapon has them.
+const FEATURE_STRIDE := 5
+
+
+static func _features(pose: BladePose, weapon: WeaponDefinition) -> PackedFloat64Array:
+	var out := PackedFloat64Array([
+		pose.point_x(weapon.hilt_radius), pose.point_y(weapon.hilt_radius),
+		pose.point_x(weapon.tip_radius), pose.point_y(weapon.tip_radius),
+		weapon.blade_radius,
+	])
+	if weapon.guard_half_span > 0.0:
+		var gx := pose.point_x(weapon.guard_centre_radius)
+		var gy := pose.point_y(weapon.guard_centre_radius)
+		var sx := pose.uy * weapon.guard_half_span
+		var sy := -pose.ux * weapon.guard_half_span
+		out.append_array([gx + sx, gy + sy, gx - sx, gy - sy, weapon.guard_radius])
+	if weapon.handle_radius > 0.0:
+		out.append_array([
+			pose.point_x(0.0), pose.point_y(0.0),
+			pose.point_x(weapon.guard_centre_radius), pose.point_y(weapon.guard_centre_radius),
+			weapon.handle_radius,
+		])
+	return out
+
+
+## Distance from the segment (`ax`, `ay`)–(`bx`, `by`) to the point (`x`, `y`).
+static func _segment_gap(ax: float, ay: float, bx: float, by: float, x: float, y: float) -> float:
+	var t := SimMath.closest_param_on_segment(ax, ay, bx, by, x, y)
+	return SimMath.length(x - SimMath.mix(ax, bx, t), y - SimMath.mix(ay, by, t))
 
 ## Seconds until the weapon is back under control and may strike — the same
 ## gate recovery itself ends on (RECOVERY-001): an overswing brakes to rest

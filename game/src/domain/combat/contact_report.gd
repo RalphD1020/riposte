@@ -18,6 +18,13 @@ var blade_by: float = 0.0
 var body: Array[bool] = [false, false]
 var body_x: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
 var body_y: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
+## hand[i]: fighter i's blade entered one of the opponent's hand discs — hurt
+## geometry only (HAND-CONTACT-001): damage, no constraint, and the sweep
+## carries on. `hand_grip[i]` is the grip marker's radius on the opponent's
+## sword (which hand), `hand_fraction[i]` the sweep fraction it was entered at.
+var hand: Array[bool] = [false, false]
+var hand_grip: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
+var hand_fraction: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
 ## Two fighter bodies overlapped — a shoulder check or bump.
 var body_push: bool = false
 ## True when this is a persistent contact (CONTACTING with ticks_in_contact > 0)
@@ -38,10 +45,12 @@ func clear() -> void:
 	blade = false
 	body[0] = false
 	body[1] = false
+	hand[0] = false
+	hand[1] = false
 	body_push = false
 	body_push_persistent = false
 	persistent = false
 
 
 func any() -> bool:
-	return blade or body[0] or body[1] or body_push or persistent
+	return blade or body[0] or body[1] or hand[0] or hand[1] or body_push or persistent

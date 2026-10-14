@@ -42,7 +42,7 @@ static func consequence(impact: ImpactResult, attacker: FighterState, target: Fi
 	strike.quality = strike.physical_quality
 	strike.swing_potential = SwingSemantics.potential(
 		SwingSemantics.tip_speed(attacker, rules.spec_of(attacker)),
-		attacker.weapon.launch_readiness,
+		attacker.weapon.launch_preparation,
 		attacker.stability,
 		attacker.weapon.phase,
 		weapon

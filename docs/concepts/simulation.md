@@ -23,7 +23,7 @@ Dependency direction: application → presentation → domain; content is data a
 
 ### Canonical tick order
 
-"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **13**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
+"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **14**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
 
 ```text
  1. guard: a finished match accepts no further steps
@@ -49,12 +49,10 @@ Dependency direction: application → presentation → domain; content is data a
        past platform_radius is marked falling and emits RING_OUT
     c. persisted overlap beyond contact_slop pushed out at position level
        (velocities untouched), then the same support-loss check
-14. stamina step: drain from scratch work, recovery if below threshold,
-    apply contact shock, clamp
-15. contact pair lifecycle upkeep (blade + weapon-body)
-16. round end evaluation
-17. advance the tick counter
-18. validate invariants; fail closed on violation
+14. contact pair lifecycle upkeep (blade + weapon-body)
+15. round end evaluation
+16. advance the tick counter
+17. validate invariants; fail closed on violation
 ```
 
 Step 12 is itself a bounded loop rather than a single pass, because contacts inside one tick are ordered in time and the later ones depend on the earlier ones (COMBAT-007). All contact types share the same chronology:

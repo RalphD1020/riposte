@@ -75,7 +75,7 @@ const STRUCTURE_FLOOR := 0.35
 ## it happens to be travelling: a wind-back is a fast-moving sword that cannot
 ## cut anyone.
 static func potential(
-	blade_tip_speed: float, launch_readiness: float, stability: float, phase: CombatPhase.Id, weapon: WeaponDefinition
+	blade_tip_speed: float, launch_preparation: float, stability: float, phase: CombatPhase.Id, weapon: WeaponDefinition
 ) -> float:
 	if not CombatPhase.is_striking(phase):
 		return 0.0
@@ -83,14 +83,14 @@ static func potential(
 	if fastest <= SimMath.EPSILON:
 		return 0.0
 	var speed := SimMath.clamp01(blade_tip_speed / fastest)
-	return speed * speed * structure(launch_readiness, stability)
+	return speed * speed * structure(launch_preparation, stability)
 
 
 ## The structural quality behind a swing: how well prepared the blade was at
 ## release and how composed the body is carrying it. Both are already bounded
 ## fractions of their own, so this is simply their product lifted off zero.
-static func structure(launch_readiness: float, stability: float) -> float:
-	return SimMath.mix(STRUCTURE_FLOOR, 1.0, SimMath.clamp01(launch_readiness) * SimMath.clamp01(stability))
+static func structure(launch_preparation: float, stability: float) -> float:
+	return SimMath.mix(STRUCTURE_FLOOR, 1.0, SimMath.clamp01(launch_preparation) * SimMath.clamp01(stability))
 
 
 ## Linear speed of the blade tip relative to the fighter's own translation,

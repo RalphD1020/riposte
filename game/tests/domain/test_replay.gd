@@ -55,17 +55,37 @@ func test_record_survives_json() -> void:
 	assert_true(ReplayRecord.from_dictionary({"format": ReplayRecord.FORMAT_VERSION, "commands_0": [1, 2, 3], "commands_1": []}) == null, "malformed streams rejected")
 
 
+## A recording names the state-hash layout it was hashed under, and is refused
+## across a layout change (STAMINA-003 moved every hash without changing the
+## game): the replay says "different schema", never "nondeterminism".
+func test_a_recording_is_refused_across_a_state_layout_change() -> void:
+	## ARRANGE
+	var rules := DuelFixture.rules()
+	var record := ReplayRecord.begin(rules, 7)
+	assert_eq(record.state_layout_version, StateHasher.LAYOUT_VERSION, "fixture: a new recording names the current layout")
+	assert_true(record.matches_rules(rules), "fixture: and matches its own rules")
+	var restored := ReplayRecord.from_dictionary(record.to_dictionary())
+	assert_true(restored != null and restored.matches_rules(rules), "fixture: the layout survives serialization")
+	## PERTURB: a recording made under an older layout.
+	var older := record.to_dictionary()
+	older[ReplayRecord.KEY_STATE_LAYOUT] = StateHasher.LAYOUT_VERSION - 1
+	var legacy := ReplayRecord.from_dictionary(older)
+	## ACT + ASSERT
+	assert_true(legacy != null, "fixture: the older recording still parses")
+	assert_false(legacy.matches_rules(rules), "but is refused against the current layout")
+
+
 ## Pinned final hashes. Presentation work of any size must leave these alone;
 ## only a deliberate rules change (with its `DuelRules.version` bump) may
 ## re-record them, and only beside a reviewed metrics re-pin (below).
-## Last re-recorded for rules 47: combat-frame movement (MOVEMENT-FRAME-001).
-## See the metrics re-pin below.
+## Last re-recorded for rules 49 with the re-hold crossing refinement and state
+## layout 4 (`deflection_pending`). See the metrics re-pin below.
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
-		3: "0b59e1b0baa679c00b554026e9542c78be4dab80f1614718863762ffd055b0f7",
-		5: "84febb411128e0d71c3d399d2b0ee124084985192b03c3b027c0598a67d25fe1",
-		9: "0ea4f23508bae2be74b7f435789f3002875bf6596d79b99dce81afa43e4a83a2",
-		17: "beb3edd40e615de2265bebaf6ee426d735a3f467a30055bed627b80dd3790b9e",
+		3: "a9482b6288c7df1f48acec12fb70bf87f5261656e9cea9d9169222fef2cee54f",
+		5: "2b1025a7615bb8c89284fd9cbf53a32c75dd56452f5abd9de0a6a05478018fd7",
+		9: "7a1d1c29ec002f29e39e91c81d45cb7141e2021e3ede5ecff0b2e4744aab275b",
+		17: "3a06f52132a283cd659835c5940c70c1e5b517996eced68e8ce0836550459652",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -461,12 +481,44 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## off-line positions pay: landed hits rise and clashes fall where the CPUs
 ## circle (3: hits 1→7, clashes 45→28; 5: 3→9; 17: 10→17), and seed 9, a
 ## straighter duel, barely moves (hits 26→24).
+##
+## Rules 49 review (rules 47 → 49), attributed in two stages on these seeds by
+## replaying the shipped tree with the rules-49 injury re-seed undone (the
+## reference strike back to one reference-quality wound); the wander pilots
+## never read the threat predictor, so its side fix moves nothing here.
+## - 47 → 48 (one bundle): the inclusive guard stop (SYM-STORM-SEPARATING-001),
+##   the per-row stop lock removed from two-point holds, stamina removed (a
+##   state-layout change: every hash moves, no metric does) and V48A (the
+##   handle collides but no longer protects; hands are wound-only discs).
+##   Seed 9 is physically the same duel — every count but one is unchanged —
+##   and its parries fall 4 → 1: those were cuts stopped on the handle, a
+##   contact that is no longer a defence (DEFENSE-ROLE-001; the label moved,
+##   the physics did not). Seeds 3, 5 and 17 re-roll from the first tick the
+##   stop or the hands touch: 3: clashes 28→42, parries 6→9, hits 7→1;
+##   5: clashes 42→37, hits 9→6; 17: about level (hits 17→16).
+## - 48 → 49 (the knife-edge re-seed, REFERENCE_STRIKE_SEVERITY = 2): fights
+##   end sooner and cuts land harder. 3: unchanged counts (one light hit; only
+##   the hash moves); 5: its first kill (hits 6→4, round 1 ends); 9: kills
+##   1→2, criticals 0→2, hits 24→12; 17: criticals 1→4, hits 16→6, the same
+##   two kills sooner. No golden duel faulted.
+##
+## Rules 49 re-hold refinement and contact readings (reviews 13–14), attributed
+## in two stages:
+## - The re-hold crossing refinement (RIGID-CONTACT-001: a lone held pair is
+##   re-held where it crossed its line, not at the substep's end). Seed 3's
+##   long crossguard lock no longer sinks a substep past the line between
+##   re-holds, so the duel takes another path from that bind: clashes 42→11,
+##   parries 9→0, hits 1→6, its first kill. 9: criticals 2→1; 17: one attack,
+##   one parry fewer, one clash more. 5 is physically unchanged.
+## - ContactOutcome, DEFLECTION and state layout 4 (`deflection_pending`):
+##   readings only — every count above is the same with them; every hash moves
+##   with the layout; `deflection` joins the counts (seed 9: one).
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
-		3: {"attack_released": 46, "blade_collision": 28, "parry": 6, "body_hit": 7, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 0, "ring_out": 0, "round_ended": 0},
-		5: {"attack_released": 44, "blade_collision": 42, "parry": 8, "body_hit": 9, "body_poke": 1, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 0, "ring_out": 0, "round_ended": 0},
-		9: {"attack_released": 39, "blade_collision": 22, "parry": 4, "body_hit": 24, "body_poke": 3, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		17: {"attack_released": 21, "blade_collision": 22, "parry": 3, "body_hit": 17, "body_poke": 3, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		3: {"attack_released": 48, "blade_collision": 11, "parry": 0, "deflection": 0, "body_hit": 6, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		5: {"attack_released": 42, "blade_collision": 36, "parry": 6, "deflection": 0, "body_hit": 4, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		9: {"attack_released": 25, "blade_collision": 21, "parry": 0, "deflection": 1, "body_hit": 12, "body_poke": 1, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		17: {"attack_released": 26, "blade_collision": 28, "parry": 4, "deflection": 0, "body_hit": 6, "body_poke": 1, "body_thrust": 0, "critical_hit": 4, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
 		var metrics := CombatMetrics.of(_played(seed_value))

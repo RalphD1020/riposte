@@ -3,6 +3,9 @@ extends TestCase
 ## CONTACT: collisions change both combat states (COMBAT §40–§45, §55–§59).
 ##
 ## Implements: /spec/invariants.md#combat-003
+## Implements: /spec/invariants.md#contact-heading-001
+## Implements: /spec/invariants.md#contact-outcome-001
+## Implements: /spec/invariants.md#deflection-001
 ## See also: /docs/concepts/combat.md
 
 ## What a fixed-iteration solve with friction leaves of a velocity target (m/s).
@@ -59,9 +62,12 @@ func test_a_blade_contact_carries_its_own_geometry() -> void:
 
 
 ## A tap thrown from measure on the shipping rules at an idle defender whose
-## guard rests at `guard` (rad); runs `ticks` ticks after the release.
-func _tap_at_guard(guard: float, ticks: int) -> SimRunner:
-	var rules := DuelFixture.rules()
+## guard rests at `guard` (rad); runs `ticks` ticks after the release, under
+## `rules` (the shipping rules by default), appending each of those ticks'
+## state hash to `trace`.
+func _tap_at_guard(guard: float, ticks: int, rules: DuelRules = null, trace: Array[String] = []) -> SimRunner:
+	if rules == null:
+		rules = DuelFixture.rules()
 	var runner := SimRunner.create(rules, 2)
 	runner.skip_intro()
 	var attacker := runner.state.fighter(0)
@@ -78,7 +84,34 @@ func _tap_at_guard(guard: float, ticks: int) -> SimRunner:
 	runner.push(PlayerCommand.create(runner.state.tick, 0.0, 0.0, true, true), PlayerCommand.idle(runner.state.tick))
 	for _i in ticks:
 		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+		trace.append(StateHasher.hash_state(runner.state))
 	return runner
+
+
+## NO-LABEL-PHYSICS-001: nothing in the simulation reads a parry. The same
+## interception, once by steel that protects (labelled PARRY) and once by the
+## same steel declared non-protective — a classification-only input, read by
+## PARRY alone — moves every body, sword, phase and contact identically on
+## every tick. The only difference is the event.
+func test_a_parry_label_changes_no_physics() -> void:
+	var limit := _rules.combatant(1).weapon.guard_limit
+	## ARRANGE: the parry scene of test_tap_into_a_strong_guard_is_parried.
+	var labelled_trace: Array[String] = []
+	var labelled := _tap_at_guard(limit, 40, DuelFixture.rules(), labelled_trace)
+	## PERTURB: the defender's steel protects nothing.
+	var inert := DuelFixture.rules()
+	inert.combatant(1).weapon.feature_protects = PackedByteArray([0, 0, 0])
+	assert_true(inert.is_valid(), "fixture: the declaration is still valid content")
+	## ACT
+	var silenced_trace: Array[String] = []
+	var silenced := _tap_at_guard(limit, 40, inert, silenced_trace)
+	## ASSERT
+	assert_true(labelled.first(DuelEventTypes.BLADE_CONTACT) != null, "control: the guard meets the tap")
+	assert_eq(labelled.count(DuelEventTypes.PARRY), 1, "control: labelled a parry")
+	assert_eq(silenced.count(DuelEventTypes.PARRY), 0, "perturbed: non-protective steel parries nothing")
+	assert_eq(silenced.count(DuelEventTypes.BLADE_CONTACT), labelled.count(DuelEventTypes.BLADE_CONTACT), "yet the same contacts happen")
+	assert_eq(silenced_trace.size(), 40, "fixture: every tick traced")
+	assert_eq(silenced_trace, labelled_trace, "and the state is identical on every tick")
 
 
 ## A parry is physical interception, never a timing verdict (PARRY-001). The
@@ -104,7 +137,7 @@ func test_tap_into_a_strong_guard_is_parried() -> void:
 	assert_eq(contact.actor, 0, "the tap is the attacker")
 	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "with a solved, positive impulse")
 	assert_true(contact.number(DuelEventKeys.DELTA_0) * runner.state.fighter(0).weapon.swing_dir < 0.0, "that opposed the cut")
-	assert_true(bool(contact.data[DuelEventKeys.DEFLECTED_0]), "and arrested it")
+	assert_true(bool(contact.data[DuelEventKeys.ARRESTED_0]), "and arrested it")
 	assert_eq(runner.count(DuelEventTypes.BODY_HIT), 0, "the body hit is prevented")
 	## ...so it is labelled a parry, whatever the tempo it left.
 	var parries := DuelFixture.of_type(runner.events, DuelEventTypes.PARRY)
@@ -124,7 +157,7 @@ func test_a_clash_the_cut_carries_through_is_not_a_parry() -> void:
 	var contact := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)[0]
 	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "precondition: a real clash")
 	assert_true(contact.number(DuelEventKeys.DELTA_0) < 0.0, "precondition: the guard took progress from the cut")
-	assert_false(bool(contact.data[DuelEventKeys.DEFLECTED_0]), "precondition: but did not arrest it")
+	assert_false(bool(contact.data[DuelEventKeys.ARRESTED_0]), "precondition: but did not arrest it")
 	assert_true(state.fighter(0).weapon.speed * state.fighter(0).weapon.swing_dir > 0.0, "precondition: the cut still progresses")
 	assert_true(state.fighter(0).weapon.attack_contacted, "the attack did meet the opponent")
 	assert_eq(DuelFixture.of_type(events, DuelEventTypes.PARRY).size(), 0, "but a carried-through cut is not parried")
@@ -237,7 +270,7 @@ func test_a_met_cut_is_re_driven_at_finite_torque() -> void:
 	var authority := w.swing_accel(1.0, _rules.combatant(0).fighter.weapon_torque_scale, WeaponKinematics.motor_inertia(_rules.combatant(0), deg_to_rad(-60.0))) * SimulationTimebase.TICK_SECONDS
 	var met := state.fighter(0)
 	ContactFixture.arm(met, 0.0, 0.0, 0.0, deg_to_rad(-60.0), ceiling, CombatPhase.Id.ACTIVE_EARLY, 1.0, w)
-	met.weapon.launch_readiness = 1.0
+	met.weapon.launch_preparation = 1.0
 	ContactFixture.arm(state.fighter(1), 3.0, 0.0, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, w)
 	var after_contact := ceiling - 1.5 * authority
 	met.weapon.speed = after_contact
@@ -737,3 +770,246 @@ func test_constraining_reentry_from_exiting() -> void:
 	## Re-enter the body (gap <= touch).
 	wbc.observe(0.05, 0.1, 0.02)
 	assert_eq(wbc.phase, WeaponBodyContact.Phase.CONSTRAINING, "re-entry from EXITING goes to CONSTRAINING")
+
+
+## CONTACT-HEADING-001: contact acts on the root and the weapon coordinate,
+## never on the heading. The same clash leaves both fighters' φ and φ̇
+## exactly as they were while it changes root velocity and θ̇; the heading
+## then answers on the next turn only through what the contact changed — here
+## the cut's lost momentum, which is less redirect debt, so the same turn
+## toward the same target is faster.
+func test_contact_never_turns_the_heading_it_changes_what_the_heading_must_do() -> void:
+	## ARRANGE: two identical clashes; one is resolved.
+	var untouched := _beat_scene()
+	var state := _beat_scene()
+	var spec := _rules.combatant(0)
+	var facing := PackedFloat64Array([state.fighter(0).facing, state.fighter(1).facing])
+	var turn_rate := PackedFloat64Array([state.fighter(0).turn_rate, state.fighter(1).turn_rate])
+	var cut_speed := state.fighter(0).weapon.speed
+	var velocity := Vector2(state.fighter(0).vx, state.fighter(0).vy)
+	## ACT
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
+	## ASSERT: the solve moved the root and θ̇...
+	var contact := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)[0]
+	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "fixture: a real clash")
+	assert_true(absf(state.fighter(0).weapon.speed - cut_speed) > 0.1, "the contact changed the cut's θ̇")
+	assert_true(Vector2(state.fighter(0).vx, state.fighter(0).vy).distance_to(velocity) > 0.0, "and the wielder's root velocity")
+	## ...and never the heading.
+	for slot in 2:
+		var f := state.fighter(slot)
+		assert_eq(f.facing, facing[slot], "fighter %d's heading is where it was" % slot)
+		assert_eq(f.turn_rate, turn_rate[slot], "and its turn rate (φ̇) is untouched")
+	## PERTURB: one heading tick toward a target off to the side, from the
+	## untouched clash and from the resolved one.
+	var turned: Array[float] = []
+	for scene: MatchState in [untouched, state]:
+		var f := scene.fighter(0)
+		var torque := CommitmentModel.turn_torque_share(f, spec, ConditionState.new(), _rules.combat)
+		var rate := CommitmentModel.turn_rate_share(f, spec, ConditionState.new(), _rules.combat)
+		FacingSystem.step(f, 0.0, 3.0, torque, spec.fighter, null, rate)
+		turned.append(f.turn_rate)
+	assert_true(turned[0] > 0.0, "control: the committed cut still turns when asked (AUTHORITY-001)")
+	assert_true(turned[1] > turned[0], "the clash took momentum, so less redirect debt turns the heading faster (%.4f vs %.4f rad/s)" % [turned[1], turned[0]])
+
+
+## CONTACT-POINT-LEVER-001: where the contact lands on the blade decides the
+## sword's response through the Jacobian, with no strong/weak multiplier. The
+## same cut met at the forte and at the foible: each weapon-speed change is
+## exactly its impulse times the lever over the coordinate's inertia
+## (`Δθ̇ = J·c/M_θ`), and the foible's longer lever turns the sword more per
+## newton-second.
+func test_where_the_blade_is_met_decides_its_response_through_the_lever() -> void:
+	var rules := DuelFixture.revolute_rules()
+	rules.combat.blade_friction = 0.0
+	var spec := rules.combatant(0)
+	var per_impulse: Array[float] = []
+	for r: float in [0.45, 1.05]:
+		## ARRANGE: the same heavy cut along +X, met by a guard whose tip lies
+		## 4.4 cm above the blade at radius `r`.
+		var state := DuelFixture.state(rules)
+		ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 18.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, spec.weapon)
+		ContactFixture.arm(state.fighter(1), r + spec.weapon.tip_radius - 0.02, 0.044, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, spec.weapon)
+		var report := ContactFixture.blade_report(state, r, 0.0, r, 0.044)
+		var attacker := state.fighter(0)
+		var pose := WeaponKinematics.pose_of(attacker, spec, BladePose.new())
+		var lever := WeaponKinematics.lever(attacker, pose, r, 0.022, 0.0, -1.0)
+		var held := PackedFloat64Array([0.0, 0.0])
+		ContactMechanics.held_sword(attacker, pose, r, 0.022, spec, held)
+		## ACT
+		var events: Array[DuelEvent] = []
+		ContactResolver.resolve(state, report, rules, 1, 0.0, events)
+		## ASSERT
+		var contact := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)[0]
+		var impulse := contact.number(DuelEventKeys.IMPULSE)
+		assert_true(impulse > 0.0, "fixture (r %.2f m): a solved clash" % r)
+		assert_near(absf(contact.number(DuelEventKeys.DELTA_0)), impulse * absf(lever) / held[0], 1e-9 * maxf(1.0, impulse), "r %.2f m: Δθ̇ is exactly J·c/M_θ — no zone multiplier" % r)
+		per_impulse.append(absf(contact.number(DuelEventKeys.DELTA_0)) / impulse)
+	assert_true(per_impulse[1] > per_impulse[0], "the foible turns the sword more per N·s than the forte (%.3f vs %.3f rad/s per N·s)" % [per_impulse[1], per_impulse[0]])
+
+
+## A cut at speed `speed` (rad/s) from the defender's right, the defender
+## `distance` ahead at `bearing`, stepping sideways (`lateral` = ±1) at walking
+## speed, its guard at `guard`; 30 ticks of the defender's step, appending
+## each tick's physical state to `trace` (`_physics`).
+func _redirected_cut(guard: float, rules: DuelRules, trace: Array[String] = []) -> SimRunner:
+	var runner := SimRunner.create(rules, 5)
+	runner.skip_intro()
+	var state := runner.state
+	var weapon := rules.combatant(0).weapon
+	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-90.0), 16.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, weapon)
+	var defender := state.fighter(1)
+	ContactFixture.arm(defender, 1.3, 0.0, PI, guard, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	var walk := rules.combatant(1).fighter.max_speed
+	defender.vx = -SimMath.sine(defender.facing) * walk
+	defender.vy = SimMath.cosine(defender.facing) * walk
+	for _i in 30:
+		runner.push(PlayerCommand.idle(state.tick), PlayerCommand.create(state.tick, 1.0, 0.0))
+		trace.append(_physics(state))
+	return runner
+
+
+## Every physical quantity of both fighters — bodies, headings, swords,
+## phases, health — and nothing a label gates (the state hash also covers the
+## label flags, WHIFF-001 / DEFLECTION-001).
+func _physics(state: MatchState) -> String:
+	var parts := PackedStringArray()
+	for slot in 2:
+		var f := state.fighter(slot)
+		parts.append(var_to_str([f.x, f.y, f.vx, f.vy, f.facing, f.turn_rate, f.weapon.angle, f.weapon.speed, f.weapon.phase, f.weapon.commitment, f.weapon.recovery_left, f.health]))
+	return "|".join(parts)
+
+
+## DEFLECTION-001: a deflection is what a redirected attack did, never a
+## mechanic. The scene proves itself: with the guard seated away the same cut
+## lands on the stepping defender, so it was on the line. With the guard in
+## its path, protective steel takes a positive impulse that does not arrest
+## the cut, and the cut ends having struck nothing — so it is a deflection,
+## credited to the defender, once, and not a parry. Then NO-LABEL-PHYSICS-001:
+## the same scene with that steel declared non-protective moves identically on
+## every tick and emits no deflection.
+func test_a_redirected_cut_that_strikes_nothing_is_a_deflection() -> void:
+	var rules := DuelFixture.rules()
+	var limit := rules.combatant(1).weapon.guard_limit
+	## ARRANGE (control): the guard seated outside the sweep — the cut lands.
+	var control := _redirected_cut(-limit, rules)
+	var landed := control.first(DuelEventTypes.BODY_HIT)
+	assert_eq(control.count(DuelEventTypes.BLADE_CONTACT), 0, "control: no sword contact")
+	assert_true(landed != null and landed.actor == 0, "control: without the guard in its path the cut hits")
+	## PERTURB + ACT: the guard in its path.
+	var trace: Array[String] = []
+	var runner := _redirected_cut(deg_to_rad(20.0), DuelFixture.rules(), trace)
+	## ASSERT: physically a redirection that did not arrest...
+	var contact := runner.first(DuelEventTypes.BLADE_CONTACT)
+	assert_true(contact != null and contact.actor == 0, "the guard meets the cut")
+	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "with a solved, positive impulse")
+	assert_false(bool(contact.data[DuelEventKeys.ARRESTED_0]), "that does not arrest it")
+	for event in runner.events:
+		if event.type == DuelEventTypes.BODY_HIT:
+			assert_true(event.actor != 0, "and the cut strikes nothing")
+	## ...so it is labelled a deflection when the attack ends, never a parry.
+	var deflections := DuelFixture.of_type(runner.events, DuelEventTypes.DEFLECTION)
+	assert_eq(deflections.size(), 1, "a redirected cut that struck nothing is one deflection")
+	assert_true(deflections[0].tick >= contact.tick, "decided when the attack ended, not before the contact")
+	assert_eq(deflections[0].actor, 1, "credited to the defender")
+	assert_eq(deflections[0].target, 0, "against the attacker")
+	assert_eq(runner.count(DuelEventTypes.PARRY), 0, "an unarrested cut is not a parry")
+	assert_eq(runner.count(DuelEventTypes.ATTACK_WHIFFED), 0, "and having met steel it is not a whiff")
+	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+	## NO-LABEL-PHYSICS-001: the label is a reading.
+	var inert := DuelFixture.rules()
+	inert.combatant(1).weapon.feature_protects = PackedByteArray([0, 0, 0])
+	var silenced_trace: Array[String] = []
+	var silenced := _redirected_cut(deg_to_rad(20.0), inert, silenced_trace)
+	assert_eq(silenced.count(DuelEventTypes.DEFLECTION), 0, "perturbed: non-protective steel deflects nothing")
+	assert_eq(silenced_trace.size(), trace.size(), "fixture: every tick traced")
+	assert_eq(silenced_trace, trace, "yet every tick moves identically")
+
+
+## ACTIVE-DEFLECTION-001 (DEFLECTION-CONSEQUENCE-001), a relationship witness,
+## not a law: a defense buys tempo only through what it physically did. In this
+## canonical scene — the parry scene, a tap from measure into a guard at its
+## limit — an active beat at 12 rad/s solves a larger change in the cut's θ̇
+## than a resting guard, and in this scene the attacker's next threat is later.
+## Both are parries (the label is the same and reads nothing). There is no
+## monotonic law in guard speed or in |Δθ̇|: other beats meet the cut at other
+## points and moments, so the solved geometry decides. The solver's exact laws
+## (impulse signs, Δθ̇ = J·c/M_θ, the friction bound, determinism) are owned by
+## CONTACT and MANIFOLD.
+func test_an_active_beat_displaces_this_cut_more_than_a_resting_guard() -> void:
+	## ARRANGE + ACT
+	var resting := _beaten_tap(0.0)
+	var beaten := _beaten_tap(-12.0)
+	## ASSERT
+	assert_true(resting[2] and beaten[2], "fixture: both interceptions are parries — the label does not differ")
+	assert_true(beaten[0] > resting[0], "the beat takes more of the cut's motion (|Δθ̇| %.2f vs %.2f rad/s)" % [beaten[0], resting[0]])
+	assert_true(beaten[1] > resting[1], "so the attacker's next threat is later (%.3f vs %.3f s)" % [beaten[1], resting[1]])
+
+
+## The parry scene of `test_tap_into_a_strong_guard_is_parried` with the
+## defender's guard driven at `beat` rad/s until the tap meets it: [|Δθ̇| of
+## the cut at the contact, the attacker's threat time just after it, whether
+## it was a parry].
+func _beaten_tap(beat: float) -> Array:
+	var rules := DuelFixture.rules()
+	var runner := _tap_at_guard(rules.combatant(1).weapon.guard_limit, 0, rules)
+	var defender := runner.state.fighter(1)
+	for _i in 30:
+		if runner.first(DuelEventTypes.BLADE_CONTACT) == null:
+			defender.weapon.speed = beat if beat != 0.0 else defender.weapon.speed
+		var seen := runner.events.size()
+		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+		for i in range(seen, runner.events.size()):
+			var event: DuelEvent = runner.events[i]
+			if event.type == DuelEventTypes.BLADE_CONTACT:
+				return [absf(event.number(DuelEventKeys.DELTA_0)), InitiativeModel.time_to_threat(runner.state.fighter(0), defender, rules), runner.count(DuelEventTypes.PARRY) > 0]
+	return [0.0, 0.0, false]
+
+
+## RIPOSTE-NO-BONUS-001: a riposte is an ordinary attack from the state a
+## defense left, never a mode. The parry scene, then the defender answers with
+## an ordinary tap; once with the parry labelled and once with the steel made
+## non-protective (no label anywhere), every tick and the answer's outcome are
+## identical — nothing in the simulation knew it was a riposte.
+func test_an_answer_after_a_parry_is_an_ordinary_attack() -> void:
+	var labelled_trace: Array[String] = []
+	var labelled := _riposte_after_parry(DuelFixture.rules(), labelled_trace)
+	var inert := DuelFixture.rules()
+	inert.combatant(1).weapon.feature_protects = PackedByteArray([0, 0, 0])
+	var plain_trace: Array[String] = []
+	var plain := _riposte_after_parry(inert, plain_trace)
+	assert_eq(labelled.count(DuelEventTypes.PARRY), 1, "control: the defense is labelled a parry")
+	assert_eq(plain.count(DuelEventTypes.PARRY), 0, "perturbed: no label at all")
+	assert_true(labelled.count(DuelEventTypes.ATTACK_RELEASED) >= 2, "fixture: the defender answered with an attack")
+	assert_eq(plain_trace, labelled_trace, "every tick of the answer moves identically")
+	var answered := _consequences(labelled)
+	assert_true(answered.size() > 1, "fixture: the answer met the opponent")
+	assert_eq(_consequences(plain), answered, "and everything it did — every contact's impulse and every hit's damage — is identical: no riposte bonus")
+
+
+## Every contact and hit of `runner`'s duel as (type, tick, actor, impulse,
+## damage): what the attacks physically did, labels left out.
+func _consequences(runner: SimRunner) -> Array[String]:
+	var out: Array[String] = []
+	for event in runner.events:
+		if event.type == DuelEventTypes.BLADE_CONTACT or event.type == DuelEventTypes.BODY_HIT:
+			out.append("%s %d %d %s %s" % [event.type, event.tick, event.actor, var_to_str(event.number(DuelEventKeys.IMPULSE)), var_to_str(event.number(DuelEventKeys.DAMAGE))])
+	return out
+
+
+## The parry scene of `test_tap_into_a_strong_guard_is_parried`, then the
+## defender answers: from the interception it steps aside and holds the
+## attack, releasing it 8 ticks later.
+func _riposte_after_parry(rules: DuelRules, trace: Array[String]) -> SimRunner:
+	var limit := rules.combatant(1).weapon.guard_limit
+	var runner := _tap_at_guard(limit, 0, rules)
+	var met := -1
+	for _i in 90:
+		var tick := runner.state.tick
+		if met < 0 and runner.first(DuelEventTypes.BLADE_CONTACT) != null:
+			met = tick
+		var holding := met >= 0 and tick <= met + 8
+		var release := met >= 0 and tick == met + 8
+		runner.push(PlayerCommand.idle(tick), PlayerCommand.create(tick, 0.5 if met >= 0 else 0.0, 0.0, holding, release))
+		trace.append(StateHasher.hash_state(runner.state))
+	return runner

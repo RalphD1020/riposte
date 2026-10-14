@@ -43,7 +43,7 @@ func _cutting(charge: float, share: float = 1.0) -> FighterState:
 	fighter.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	fighter.weapon.swing_dir = 1.0
 	fighter.weapon.swing_charge = charge
-	fighter.weapon.launch_readiness = 1.0
+	fighter.weapon.launch_preparation = 1.0
 	fighter.weapon.speed = _spec().weapon.achievable_swing_speed(charge, 1.0) * share
 	return fighter
 
@@ -73,7 +73,7 @@ func _rate(fighter: FighterState) -> float:
 func _turned(fighter: FighterState) -> float:
 	var start := fighter.facing
 	for _i in TURN_TICKS:
-		FacingSystem.step(fighter, cos(TARGET_OFFSET) * 3.0, sin(TARGET_OFFSET) * 3.0, _torque(fighter), _spec().fighter, null, null, _rate(fighter))
+		FacingSystem.step(fighter, cos(TARGET_OFFSET) * 3.0, sin(TARGET_OFFSET) * 3.0, _torque(fighter), _spec().fighter, null, _rate(fighter))
 	return SimMath.wrap_angle(fighter.facing - start)
 
 
@@ -384,7 +384,7 @@ func test_a_committed_advance_runs_down_its_heading_not_onto_the_target() -> voi
 			me.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 			me.weapon.swing_dir = 1.0
 			me.weapon.swing_charge = 1.0
-			me.weapon.launch_readiness = 1.0
+			me.weapon.launch_preparation = 1.0
 			me.weapon.speed = _spec().weapon.achievable_swing_speed(1.0, 1.0)
 		## ACT: forward held, the frame checked against the heading every tick.
 		var frame_error := 0.0
@@ -434,12 +434,41 @@ func test_commitment_mirrors_exactly() -> void:
 		mirrored.weapon.motor_torque = -fighter.weapon.motor_torque
 		mirrored.weapon.swing_dir = -fighter.weapon.swing_dir
 		mirrored.weapon.swing_charge = fighter.weapon.swing_charge
-		mirrored.weapon.launch_readiness = fighter.weapon.launch_readiness
+		mirrored.weapon.launch_preparation = fighter.weapon.launch_preparation
 		assert_eq(_weapon(mirrored), _weapon(fighter), "the mirrored weapon debt is exactly the same")
 		assert_eq(_root(mirrored), _root(fighter), "and the root's")
 		assert_eq(_facing(mirrored), _facing(fighter), "and the facing's")
 		assert_eq(_torque(mirrored), _torque(fighter), "so it turns with exactly the same torque")
 		assert_eq(_rate(mirrored), _rate(fighter), "and rate")
+
+
+## ATTACK-LINE-001 (LINE-CHANGE-001): a sidestep moves the target bearing τ;
+## the attack line is `φ + θ`, and only φ can follow it. After the same
+## lateral change of τ, a fighter mid-cut and a neutral one both start turning
+## toward it at once, but over the same ticks the committed heading leaves
+## more of the new angle unanswered — its redirect debt — while the turn never
+## touches θ. That gap is the angle a defender can win without winning any
+## position.
+func test_a_sidestep_leaves_a_committed_line_behind_a_neutral_one() -> void:
+	var line := deg_to_rad(35.0)
+	var unanswered: Array[float] = []
+	for committed: bool in [false, true]:
+		## ARRANGE
+		var fighter := _cutting(1.0) if committed else _fighter()
+		if committed:
+			fighter.vx = _spec().fighter.burst_speed_axial
+		var theta := fighter.weapon.angle
+		## PERTURB: the target steps; its bearing is now `line` off the heading.
+		var tx := cos(line) * 1.3
+		var ty := sin(line) * 1.3
+		## ACT
+		for _i in 6:
+			FacingSystem.step(fighter, tx, ty, _torque(fighter), _spec().fighter, null, _rate(fighter))
+		## ASSERT
+		assert_true(fighter.facing > 0.0, "%s: the heading turns toward the new line (AUTHORITY-001)" % ("committed" if committed else "neutral"))
+		assert_eq(fighter.weapon.angle, theta, "and turning the heading never moves θ")
+		unanswered.append(line - fighter.facing)
+	assert_true(unanswered[1] > unanswered[0], "the committed line leaves more of the sidestep unanswered (%.1f° vs %.1f°)" % [rad_to_deg(unanswered[1]), rad_to_deg(unanswered[0])])
 
 
 ## AUTHORITY-001: commitment never rejects the turn. A fully committed fighter
@@ -452,7 +481,7 @@ func test_a_committed_fighter_still_turns_on_the_tick_it_is_asked() -> void:
 	var rate := _rate(committed)
 	assert_true(_facing(committed) > 0.25 and torque < 1.0, "precondition: committed (C_φ %.3f, torque share %.3f)" % [_facing(committed), torque])
 	assert_true(torque >= _rules.combat.commit_turn_torque_floor and rate >= _rules.combat.commit_turn_speed_floor, "never below the floors (%.3f, %.3f)" % [torque, rate])
-	FacingSystem.step(committed, 0.0, 3.0, torque, _spec().fighter, null, null, rate)
+	FacingSystem.step(committed, 0.0, 3.0, torque, _spec().fighter, null, rate)
 	assert_true(committed.turn_rate > 0.0, "it already turns toward the target this tick (%.4f rad/s)" % committed.turn_rate)
 
 

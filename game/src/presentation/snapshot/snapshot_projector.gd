@@ -7,7 +7,12 @@ extends RefCounted
 ## See also: /docs/concepts/presentation.md
 
 
-static func project(state: MatchState, rules: DuelRules) -> PresentationSnapshot:
+## `threat_readings` adds each fighter's threat time and exposure — two bounded
+## predictions a tick, read today only by the debug overlay — so a frame that
+## shows none of them does not pay for them; left out, `has_threat_readings` is
+## false and both keep their neutral defaults (COMBAT-009: not projected,
+## never invented).
+static func project(state: MatchState, rules: DuelRules, threat_readings: bool = false) -> PresentationSnapshot:
 	var snapshot := PresentationSnapshot.new()
 	snapshot.tick = state.tick
 	snapshot.phase = state.phase
@@ -36,8 +41,15 @@ static func project(state: MatchState, rules: DuelRules) -> PresentationSnapshot
 	snapshot.distance = DuelGeometry.distance(a, b)
 	snapshot.closing_speed = DuelGeometry.closing_speed(a, b)
 	snapshot.orbit_rate = DuelGeometry.orbit_rate(a, b)
+	## Each fighter's threat on the other, predicted once: both rows read the
+	## same two (their threat time, and their exposure as the difference).
+	snapshot.has_threat_readings = threat_readings
+	var threat := PackedFloat64Array([0.0, 0.0])
+	if threat_readings:
+		threat[0] = InitiativeModel.time_to_threat(a, b, rules)
+		threat[1] = InitiativeModel.time_to_threat(b, a, rules)
 	for slot in 2:
-		snapshot.fighters.append(_fighter(state.fighter(slot), state.opponent_of(slot), rules))
+		snapshot.fighters.append(_fighter(state.fighter(slot), state.opponent_of(slot), rules, threat[slot], threat[1 - slot], threat_readings))
 	return snapshot
 
 
@@ -71,7 +83,10 @@ static func _contact(contact: SwordContactSet, point: int) -> PresentationContac
 	return row
 
 
-static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelRules) -> PresentationFighter:
+## `threat` is `fighter`'s time to threaten `opponent`, `threatened` the
+## opponent's time to threaten `fighter` (`InitiativeModel.time_to_threat`);
+## both 0 when the readings are not projected.
+static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelRules, threat: float = 0.0, threatened: float = 0.0, readings: bool = false) -> PresentationFighter:
 	var row := PresentationFighter.new()
 	var weapon := fighter.weapon
 	var spec := rules.spec_of(fighter)
@@ -95,10 +110,10 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	row.weapon_speed = weapon.speed
 	row.charge = weapon.charge
 	row.swing_charge = weapon.swing_charge
-	row.launch_readiness = weapon.launch_readiness
+	row.launch_preparation = weapon.launch_preparation
 	row.swing_progress = SwingSemantics.phase_progress(weapon)
 	row.swing_potential = SwingSemantics.potential(
-		row.tip_speed, weapon.launch_readiness, fighter.stability, weapon.phase, spec.weapon
+		row.tip_speed, weapon.launch_preparation, fighter.stability, weapon.phase, spec.weapon
 	)
 	row.phase = weapon.phase
 	row.commitment = weapon.commitment
@@ -106,7 +121,7 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	## Each fighter's *own* exposure, projected for them rather than against
 	## their opponent's swing: vulnerability is a physical state a player can
 	## read off a body, not a prediction about an attack that has not happened.
-	row.exposure = ExposureModel.reading(fighter, opponent, rules)
+	row.exposure = ExposureModel.reading_of(threat - threatened, rules) if readings else 0.0
 	row.facing_error = DuelGeometry.facing_error(fighter, opponent)
 	row.stable_side = weapon.stable_side
 	row.guard_region = GuardRegion.of(weapon.angle, spec.weapon.guard_angle)
@@ -134,7 +149,7 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	row.tip_vx = tip.vx
 	row.tip_vy = tip.vy
 	row.weapon_mass = spec.weapon.mass
-	row.threat_time = InitiativeModel.time_to_threat(fighter, opponent, rules)
+	row.threat_time = threat
 	## Combat readability state (Phase 9): normalized 0-1 derived quantities.
 	row.recovery_remaining01 = _recovery_remaining(weapon)
 	row.point_threat01 = _point_threat(fighter, opponent, rules)

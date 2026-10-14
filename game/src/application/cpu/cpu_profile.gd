@@ -76,6 +76,11 @@ var lateral_dash_weight: float = 0.0
 ## herd the opponent toward the cliff and recognize knockback ring-out
 ## opportunities. Scaling `edge_position_advantage` from TacticalAssessment.
 var edge_exploit_weight: float = 0.0
+## How much sooner (s) than the opponent's own threat this CPU must expect
+## to arrive before it commits to capitalizing (CPU-008). A confidence margin
+## on top of the shared physical feasibility test, never instead of it:
+## Easy waits for a wide opening, Hard takes a tight one.
+var capitalize_margin: float = 0.0
 
 
 static func for_difficulty(level: MatchConfig.Difficulty) -> CpuProfile:
@@ -127,6 +132,7 @@ static func easy() -> CpuProfile:
 	profile.lateral_dash_weight = 0.0
 	## Easy has no awareness of edge positioning.
 	profile.edge_exploit_weight = 0.0
+	profile.capitalize_margin = 0.2
 	return profile
 
 
@@ -167,6 +173,7 @@ static func medium() -> CpuProfile:
 	profile.lateral_dash_weight = 0.05
 	## Medium notices edge positioning but does not actively exploit it.
 	profile.edge_exploit_weight = 0.2
+	profile.capitalize_margin = 0.1
 	return profile
 
 
@@ -231,4 +238,5 @@ static func hard() -> CpuProfile:
 	profile.lateral_dash_weight = 0.12
 	## Hard actively herds the opponent toward the cliff.
 	profile.edge_exploit_weight = 0.6
+	profile.capitalize_margin = 0.04
 	return profile

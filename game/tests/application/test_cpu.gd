@@ -134,6 +134,7 @@ const PROFILE_POLICY: Array[String] = [
 	"corner_pressure_weight", "tempo_awareness", "withdrawal_discipline",
 	"lateral_dash_weight",
 	"edge_exploit_weight",
+	"capitalize_margin",
 ]
 
 
@@ -326,6 +327,167 @@ func test_a_recorded_observation_resolves_to_what_was_seen_then() -> void:
 	assert_eq(recorded.opp_opening, whole.opp_opening, "and the opening")
 
 
+## DASH-HYGIENE (CPU-008): a dash is a decision. With the CPU's own gesture
+## state holding a first tap and a genuine rest, a full forward step would be
+## the second tap — the real recognizer fires a forward dash for it (control).
+## The CPU eases that step under the sector-entry deflection, inside the range
+## a human stick can give, and the same recognizer then fires nothing.
+func test_the_cpu_never_types_a_dash_it_did_not_decide_on() -> void:
+	## ARRANGE: a first forward tap, then a rest.
+	var rules := DuelFixture.rules()
+	var body := rules.combatant(0).fighter
+	var me := FighterState.new()
+	for tick in 3:
+		DirectionalTapRecognizer.observe(me.gesture, 0.0, 1.0, tick, body)
+	for tick in range(3, 6):
+		DirectionalTapRecognizer.observe(me.gesture, 0.0, 0.0, tick, body)
+	var control := MovementGestureState.new()
+	StateFork.copy(me.gesture, control)
+	## ACT
+	var cpu := CpuController.create(rules, CpuProfile.easy(), 3, 0)
+	var eased := cpu._without_accidental_dash(PackedFloat64Array([0.0, 1.0]), 6, me)
+	var command := PlayerCommand.create(6, eased[0], eased[1])
+	## ASSERT
+	assert_eq(DirectionalTapRecognizer.observe(control, 0.0, 1.0, 6, body), MovementGestureState.BurstKind.FORWARD_DASH, "control: the un-eased step is a second tap — a dash")
+	var magnitude := SimMath.length(eased[0], eased[1])
+	assert_true(magnitude <= 1.0 and magnitude < body.burst_enter_deflection, "the eased step stays a legal stick deflection under the sector entry (%.3f)" % magnitude)
+	assert_true(SimMath.length(command.axis_x(), command.axis_y()) <= 1.0, "and so does the command it becomes")
+	assert_eq(DirectionalTapRecognizer.observe(me.gesture, command.axis_x(), command.axis_y(), 6, body), MovementGestureState.BurstKind.NONE, "the same recognizer fires no dash for it")
+	assert_true(eased[1] > 0.0, "and it still walks forward")
+
+
+## CPU-PROPRIOCEPTION-001 (CPU-001): the CPU feels itself now and sees the
+## opponent late. One observation, recorded at a tick; the duel moves on. Handed
+## two different current selves, its threat readings follow the self at once;
+## the opponent it reads is still the one recorded, whatever the opponent has
+## done since.
+func test_the_cpu_feels_itself_now_and_sees_the_opponent_late() -> void:
+	## ARRANGE: a recorded observation, then the duel moves on.
+	var rules := DuelFixture.rules()
+	var runner := SimRunner.create(rules, 3)
+	runner.skip_intro()
+	runner.drive(0.0, 1.0, 30)
+	var recorded := CpuObservation.record(runner.state, 1, rules)
+	var seen_x := recorded.opp_x
+	runner.drive(1.0, 0.0, 12)
+	var opponent := runner.state.fighter(0)
+	assert_ne(opponent.x, seen_x, "fixture: the opponent has moved since it was seen")
+	## PERTURB: two current selves, half a metre apart.
+	var near := FighterState.new()
+	CpuObservation._copy(runner.state.fighter(1), near)
+	var far := FighterState.new()
+	CpuObservation._copy(near, far)
+	var away := Vector2(far.x - seen_x, far.y - recorded.opp_y).normalized() * 0.5
+	far.x += away.x
+	far.y += away.y
+	## ACT
+	recorded.feel_self(near)
+	recorded.resolve(rules)
+	var near_threat := recorded.my_threat_time
+	var near_hit := recorded.my_threat.residual_gap
+	recorded.feel_self(far)
+	recorded.resolve(rules)
+	## ASSERT
+	assert_true(recorded.my_threat_time != near_threat or recorded.my_threat.residual_gap != near_hit, "the self it reads is the current one: half a metre back changes its threat (%.3f / %.3f s)" % [near_threat, recorded.my_threat_time])
+	assert_eq(recorded.opp_x, seen_x, "the opponent it reads is still the one seen through the delay")
+
+
+## CPU-PROPRIOCEPTION-001, the point (B12): whether the opponent's point is aimed
+## at the CPU is judged from the delayed opponent against the CPU's body as it
+## is now. One recorded observation of an opponent closing with its point
+## forward; handed the CPU's current self on that line it reads a point
+## threat, handed the same self stepped well off the line it reads less.
+func test_the_point_threat_is_read_against_the_cpus_current_body() -> void:
+	## ARRANGE: the opponent's point straight at the CPU, closing.
+	var rules := DuelFixture.rules()
+	var state := DuelFixture.state(rules)
+	var them := state.fighter(0)
+	them.weapon.angle = 0.0
+	them.vx = cos(them.facing) * rules.combatant(0).fighter.max_speed * 0.8
+	them.vy = sin(them.facing) * rules.combatant(0).fighter.max_speed * 0.8
+	var recorded := CpuObservation.record(state, 1, rules)
+	var on_line := FighterState.new()
+	CpuObservation._copy(state.fighter(1), on_line)
+	## PERTURB: the same self, a metre and a half off the opponent's line.
+	var off_line := FighterState.new()
+	CpuObservation._copy(on_line, off_line)
+	off_line.x += -sin(them.facing) * 1.5
+	off_line.y += cos(them.facing) * 1.5
+	## ACT
+	recorded.feel_self(on_line)
+	recorded.resolve(rules)
+	var aimed := recorded.opp_point_threat
+	recorded.feel_self(off_line)
+	recorded.resolve(rules)
+	## ASSERT
+	assert_true(aimed > 0.3, "fixture: on its line the opponent's point is a threat (%.3f)" % aimed)
+	assert_true(recorded.opp_point_threat < aimed, "off the line, the same point is less of one (%.3f) — read against where the CPU is now" % recorded.opp_point_threat)
+
+
+## CPU-MIRROR-001 (AI-FAIRNESS-001): the CPU has no slot. The same profile
+## on the same seed, once in slot 0 of a duel and once in slot 1 of that duel's
+## point reflection (positions and velocities reflected, headings turned half
+## a revolution, the opponent standing idle in the other slot), issues the
+## same frame-relative commands tick by tick and scores the same decisions.
+## Only the starting state is built by hand; the observations, the decisions
+## and the commands come through the ordinary state → observation → decision
+## path. Each slot's random stream is its own by design, so the profile's
+## random draws are pinned (no range error, no jitter, one charge target,
+## certain dashes) — what is left is everything a slot could leak through.
+func test_the_cpu_plays_the_mirrored_duel_from_the_other_slot_identically() -> void:
+	## ARRANGE: a duel and its point reflection with the slots swapped.
+	var rules := DuelFixture.rules()
+	var profile := CpuProfile.hard()
+	profile.range_error = 0.0
+	profile.decision_jitter = 0
+	profile.charge_min = profile.charge_max
+	profile.burst_weight = 1.0
+	profile.lateral_dash_weight = 1.0
+	var left := SimRunner.create(rules, 4)
+	var right := SimRunner.create(rules, 4)
+	left.skip_intro()
+	right.skip_intro()
+	var placements := [[0.3, -1.2, 1.4, 0.4, 1.1], [-0.2, 0.9, -1.6, -0.3, -0.5]]
+	for slot in 2:
+		var spot: Array = placements[slot]
+		var mine := left.state.fighter(slot)
+		var reflected := right.state.fighter(1 - slot)
+		DuelFixture.place(mine, spot[0], spot[1], spot[2])
+		DuelFixture.place(reflected, -float(spot[0]), -float(spot[1]), float(spot[2]) + PI)
+		mine.vx = spot[3]
+		mine.vy = spot[4]
+		reflected.vx = -float(spot[3])
+		reflected.vy = -float(spot[4])
+	var cpu_left := CpuController.create(rules, profile, 4, 0)
+	var cpu_right := CpuController.create(rules, profile, 4, 1)
+	## ACT: the CPU drives slot 0 on the left and slot 1 on the right.
+	var mismatches := 0
+	var commands := 0
+	for _i in 300:
+		if left.state.phase != MatchPhase.Id.ROUND_ACTIVE or right.state.phase != MatchPhase.Id.ROUND_ACTIVE:
+			break
+		var from_left := cpu_left.command_for(left.state, 0)
+		var from_right := cpu_right.command_for(right.state, 1)
+		if from_left.move_x != from_right.move_x or from_left.move_y != from_right.move_y or from_left.attack_pressed != from_right.attack_pressed or from_left.attack_released != from_right.attack_released or from_left.dash_modifier != from_right.dash_modifier:
+			mismatches += 1
+		if not from_left.is_idle():
+			commands += 1
+		left.push(from_left, PlayerCommand.idle(left.state.tick))
+		right.push(PlayerCommand.idle(right.state.tick), from_right)
+	## ASSERT
+	assert_true(cpu_left.traces.size() >= 4, "fixture: the CPU recorded whole decisions (%d; a decision while holding or recovering is not traced)" % cpu_left.traces.size())
+	assert_true(commands > 100, "fixture: and acted (%d non-idle commands)" % commands)
+	assert_eq(mismatches, 0, "every command from the other slot is the same frame-relative command")
+	assert_eq(cpu_right.traces.size(), cpu_left.traces.size(), "the same number of decisions")
+	for i in mini(cpu_left.traces.size(), cpu_right.traces.size()):
+		var a := cpu_left.traces[i]
+		var b := cpu_right.traces[i]
+		assert_eq(b.chosen_move, a.chosen_move, "decision %d chooses the same footwork" % i)
+		assert_eq(b.chosen_attack, a.chosen_attack, "decision %d the same attack" % i)
+		for k in a.move_scores.size():
+			assert_near(b.move_scores[k], a.move_scores[k], 1e-9, "decision %d scores move %d the same" % [i, k])
+
+
 func test_the_cpu_perceives_opponent_condition() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
@@ -466,26 +628,20 @@ func test_lateral_dashes_are_available_to_all_difficulties() -> void:
 	assert_true(hard.lateral_dash_weight >= medium.lateral_dash_weight, "Hard at least as lateral as Medium")
 
 
-## ──────────────── STAMINA IS NOT A CPU SIGNAL (STAMINA-002) ────────────────
+## ──────────────── NO FATIGUE SIGNAL FOR THE CPU (STAMINA-003) ───────────────
 
 
-## Stamina is a deprecated resource with no gameplay consumer: the CPU must
-## not read it, so draining it changes nothing the assessment says.
-func test_stamina_never_changes_the_tactical_assessment() -> void:
+## There is no fatigue resource, so no CPU reading or profile weight may
+## pretend there is one.
+func test_the_cpu_reads_no_fatigue() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
-	var me := state.fighter(0)
 	var seen := CpuObservation.observe(state, 0, rules)
 	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
-	var fresh := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard())
-	assert_eq(me.stamina, rules.combatant(0).fighter.base_stamina, "arrange: full stamina")
-	me.stamina = 0.0
-	assert_eq(me.stamina, 0.0, "perturb: stamina emptied")
-	var drained := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.hard())
-	assert_eq(drained.burst_scores, fresh.burst_scores, "burst utilities ignore stamina")
-	assert_eq(drained.withdrawal_urge, fresh.withdrawal_urge, "withdrawal ignores stamina")
-	assert_false("stamina_depletion" in drained, "the assessment carries no stamina reading")
-	assert_false("stamina_cost_weight" in CpuProfile.hard(), "no profile weighs stamina")
+	var assessment := TacticalAssessment.evaluate(seen, state.fighter(0), 1.5, reach, rules, CpuProfile.hard())
+	assert_true(assessment.edge_clearance > 0.0, "fixture: a whole assessment was made (edge clearance %.2f m)" % assessment.edge_clearance)
+	assert_false("stamina_depletion" in assessment, "the assessment carries no fatigue reading")
+	assert_false("stamina_cost_weight" in CpuProfile.hard(), "no profile weighs fatigue")
 
 ## ──────────────────────── DECISION TRACE (Phase 8a) ───────────────────────
 
@@ -747,3 +903,174 @@ func test_push_pressure_from_physics_not_motor_intent() -> void:
 	assert_true(assessment.body_contact_active, "contact active after resolver ran")
 	assert_true(assessment.push_pressure > 0.0, "push pressure from the solved impulse, not motor intent")
 
+
+## ─────────────────────────── CAPITALIZE (CPU-008) ───────────────────────────
+##
+## Decision-function laws: given a perceived state, which commands the CPU
+## chooses. Each is read from a held scene — the bodies stand as placed and
+## only the clock moves, so the CPU's delayed perception fills with one
+## picture and every decision reads the same physics. Gameplay itself is
+## proven elsewhere (ATTACK's line and human-capitalize witnesses, the
+## interaction audit); these say what the policy does with a state.
+
+
+## The CPU (slot 0) at the origin facing +x, `offset` off the opponent's line;
+## the opponent (slot 1) `distance` ahead facing back, its sword at θ
+## `opponent_angle` in `phase` (RECOVERY: still owing its recovery).
+## `reflect` mirrors the scene in y. Returns [controller, last command, state,
+## whether it ever capitalized, the clear side it last chose].
+func _held_capitalize_scene(distance: float, offset: float, opponent_angle: float, phase: CombatPhase.Id, reflect: float = 1.0, ticks: int = 12) -> Array:
+	var rules := DuelFixture.rules()
+	var state := DuelFixture.state(rules, 3)
+	state.phase = MatchPhase.Id.ROUND_ACTIVE
+	var me := state.fighter(0)
+	var them := state.fighter(1)
+	DuelFixture.place(me, 0.0, reflect * offset, 0.0)
+	me.weapon.reset(-reflect * rules.combatant(0).weapon.guard_angle)
+	DuelFixture.place(them, distance, 0.0, PI)
+	them.weapon.reset(-reflect * rules.combatant(1).weapon.guard_angle)
+	them.weapon.angle = reflect * opponent_angle
+	them.weapon.phase = phase
+	if phase == CombatPhase.Id.RECOVERY:
+		them.weapon.recovery_ticks = 40
+		them.weapon.recovery_left = 40
+	var cpu := CpuController.create(rules, CpuProfile.hard(), 3, 0)
+	var command := PlayerCommand.idle(state.tick)
+	var capitalized := false
+	var side := 0.0
+	for _i in ticks:
+		command = cpu.command_for(state, 0)
+		if cpu._capitalizing:
+			capitalized = true
+			side = cpu._clear_side
+		state.tick += 1
+	return [cpu, command, state, capitalized, side]
+
+
+## The command's step as a world vector, and the line to the opponent.
+func _step_and_line(held: Array) -> Array[Vector2]:
+	var command: PlayerCommand = held[1]
+	var state: MatchState = held[2]
+	var me := state.fighter(0)
+	var them := state.fighter(1)
+	var line := Vector2(them.x - me.x, them.y - me.y).normalized()
+	var step := DuelGeometry.to_world(command.axis_x(), command.axis_y(), line.x, line.y)
+	var out: Array[Vector2] = [Vector2(step[0], step[1]), line]
+	return out
+
+
+## An opponent who owes its recovery, its sword on the far side of its line,
+## the direct line clear: the CPU capitalizes and closes straight in — the
+## side it stands on is only a route constraint, and here nothing obstructs.
+func test_an_open_line_is_taken_straight_in() -> void:
+	## ARRANGE + ACT
+	var held := _held_capitalize_scene(1.9, -0.35, deg_to_rad(-45.0), CombatPhase.Id.RECOVERY)
+	## ASSERT
+	assert_true(held[3], "an open opponent with a clear direct line is capitalized on")
+	assert_eq(held[4], 0.0, "by the direct line")
+	var vectors := _step_and_line(held)
+	assert_true(vectors[0].dot(vectors[1]) > 0.99, "and the step goes straight at the opponent (%.3f)" % vectors[0].dot(vectors[1]))
+
+
+## The opponent's sword lies across the direct line but not the other side: the
+## CPU capitalizes around it — beside the opponent on the side away from its
+## sword — never through it.
+func test_steel_in_the_direct_line_is_gone_around_on_the_side_away_from_it() -> void:
+	## ARRANGE + ACT: the CPU on the side of the opponent's line its sword is on.
+	var held := _held_capitalize_scene(1.7, 0.4, deg_to_rad(-60.0), CombatPhase.Id.RECOVERY)
+	## ASSERT
+	assert_true(held[3], "fixture: a detour clears the steel and is taken")
+	assert_ne(held[4], 0.0, "the direct line was blocked, so the route goes around")
+	var vectors := _step_and_line(held)
+	assert_true(vectors[0].dot(vectors[1]) > 0.0, "it still closes")
+	## The opponent's sword is on the +y side; going around it steps toward −y.
+	assert_true(vectors[0].y < vectors[1].y, "and leans off the line away from the sword (step y %.3f, line y %.3f)" % [vectors[0].y, vectors[1].y])
+
+
+## The opponent's steel blocks the direct line and the detour alike: no route
+## is clear, so the CPU does not throw itself into it.
+func test_a_route_only_into_steel_is_declined() -> void:
+	var held := _held_capitalize_scene(1.9, 0.35, deg_to_rad(90.0), CombatPhase.Id.RECOVERY)
+	assert_false(held[3], "no clear route, no capitalize")
+
+
+## The swords already bound: the cheap predictor carries no bind constraint,
+## so its route reading from a bind is no answer, and the CPU leaves the bind to
+## the ordinary utilities and the physics.
+func test_a_route_that_starts_in_a_bind_is_not_taken_as_clear() -> void:
+	var held := _held_capitalize_scene(1.9, 0.35, deg_to_rad(60.0), CombatPhase.Id.RECOVERY)
+	var cpu: CpuController = held[0]
+	var state: MatchState = held[2]
+	var seen := CpuObservation.observe(state, 0, DuelFixture.rules())
+	var line := _step_and_line(held)[1]
+	var reading := seen.route_reading(DuelFixture.rules(), line.x, line.y, ThreatEstimate.new())
+	assert_true(reading.starts_bound, "fixture: the swords start bound")
+	assert_false(held[3], "a bound route is not capitalized on")
+	assert_false(cpu._capitalizing, "and no intent is held")
+
+
+## A guarded opponent at rest owes nothing: neutral is the ordinary utilities'
+## business, never a capitalize.
+func test_a_guarded_opponent_at_rest_is_not_an_opening() -> void:
+	var held := _held_capitalize_scene(1.9, -0.35, deg_to_rad(-45.0), CombatPhase.Id.NEUTRAL)
+	assert_false(held[3], "neutral is not capitalized on")
+
+
+## CPU-008 in live play (integration, not a held scene): one Hard–Medium duel
+## on an audit seed, real physics and real delayed perception throughout. The
+## intent is chosen, some of its starts are followed within half a second by
+## the capitalizer's body hit, some are abandoned without a strike when the
+## physics stops supporting them, and none starts while the CPU is already
+## striking. (That its commands are legal input is owned by
+## `test_the_cpu_never_types_a_dash_it_did_not_decide_on` and `PlayerCommand`.)
+func test_the_capitalize_intent_lives_in_real_play() -> void:
+	## ARRANGE
+	var duel := CpuLadder.session(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.MEDIUM, 201)
+	var starts := 0
+	var converted := 0
+	var abandoned := 0
+	var while_striking := 0
+	var was := [false, false]
+	var pending := [-1, -1]
+	var struck := [false, false]
+	## ACT
+	while not duel.is_finished() and duel.state.tick < CpuLadder.MAX_TICKS:
+		var striking_before := [CombatPhase.is_striking(duel.state.fighter(0).weapon.phase), CombatPhase.is_striking(duel.state.fighter(1).weapon.phase)]
+		var events := duel.step()
+		for slot in 2:
+			var cpu := duel.controllers[slot] as CpuController
+			if cpu._capitalizing and not was[slot]:
+				starts += 1
+				pending[slot] = duel.state.tick
+				struck[slot] = false
+				if striking_before[slot]:
+					while_striking += 1
+			if cpu._capitalizing:
+				struck[slot] = struck[slot] or CombatPhase.is_striking(duel.state.fighter(slot).weapon.phase)
+			if was[slot] and not cpu._capitalizing and not struck[slot]:
+				abandoned += 1
+			was[slot] = cpu._capitalizing
+		for event in events:
+			if event.type == DuelEventTypes.BODY_HIT and pending[event.actor] >= 0 and event.tick - pending[event.actor] <= 30:
+				converted += 1
+				pending[event.actor] = -1
+	## ASSERT
+	assert_true(starts > 0, "the intent is chosen in real play (%d starts)" % starts)
+	assert_true(converted > 0, "some starts are followed by the capitalizer's hit (%d)" % converted)
+	assert_true(abandoned > 0, "some are dropped without a strike once the opening closes (%d)" % abandoned)
+	assert_eq(while_striking, 0, "none starts while the CPU is already striking")
+
+
+## Mirrored, the decision, the route and the command mirror exactly — straight
+## in and around the blade alike.
+func test_capitalizing_mirrors_exactly() -> void:
+	for scene: Array in [[1.9, -0.35, deg_to_rad(-45.0)], [1.7, 0.4, deg_to_rad(-60.0)]]:
+		var plain := _held_capitalize_scene(scene[0], scene[1], scene[2], CombatPhase.Id.RECOVERY)
+		var mirrored := _held_capitalize_scene(scene[0], scene[1], scene[2], CombatPhase.Id.RECOVERY, -1.0)
+		var a: PlayerCommand = plain[1]
+		var b: PlayerCommand = mirrored[1]
+		assert_true(plain[3] and mirrored[3], "fixture: both capitalize (%.1f m)" % scene[0])
+		assert_eq(mirrored[4], -float(plain[4]), "from mirrored routes")
+		assert_eq(b.move_x, -a.move_x, "the lateral step mirrors")
+		assert_eq(b.move_y, a.move_y, "the forward step is the same")
+		assert_eq(b.attack_pressed, a.attack_pressed, "and so is the attack")

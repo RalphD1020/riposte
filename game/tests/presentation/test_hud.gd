@@ -81,7 +81,7 @@ func test_hud_shows_health_pips_round_and_low_time_from_the_humans_side() -> voi
 	hud.queue_free()
 
 
-## The player HUD shows health only (CONDITION-001, STAMINA-002): one bar per
+## The player HUD shows health only (CONDITION-001, STAMINA-003): one bar per
 ## fighter, and no meter for a resource nothing in the game consumes.
 func test_hud_shows_health_only_and_condition() -> void:
 	var hud := DuelHud.create("YOU", "CPU · Medium", 0, DuelSide.Id.LIGHT_SOUTH)

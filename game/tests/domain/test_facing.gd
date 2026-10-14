@@ -46,7 +46,7 @@ func test_commitment_degrades_tracking() -> void:
 	committed.weapon.reset(-_rules.combatant(0).weapon.guard_angle)
 	DuelFixture.place(committed, 0.0, 0.0, 0.0)
 	DuelFixture.commit(committed, CombatPhase.Id.ACTIVE_THREAT, 1.0, _rules.combatant(0).weapon)
-	committed.weapon.launch_readiness = 1.0
+	committed.weapon.launch_preparation = 1.0
 	committed.weapon.speed = _rules.combatant(0).weapon.achievable_swing_speed(1.0, 1.0)
 	var tracking := CommitmentModel.turn_torque_share(committed, _rules.combatant(0), ConditionState.new(), _rules.combat)
 	for _i in 12:

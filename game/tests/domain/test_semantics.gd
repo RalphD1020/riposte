@@ -93,7 +93,7 @@ func _measure_peak_potential(rig: WeaponRig, tap: bool = true) -> float:
 			peak,
 			SwingSemantics.potential(
 				SwingSemantics.tip_speed(rig.fighter, _rules.combatant(0)),
-				rig.fighter.weapon.launch_readiness,
+				rig.fighter.weapon.launch_preparation,
 				rig.fighter.stability,
 				rig.fighter.weapon.phase,
 				_rules.combatant(0).weapon
@@ -125,7 +125,7 @@ func test_a_blade_that_cannot_strike_has_no_potential() -> void:
 func test_a_badly_structured_swing_reads_as_less_but_never_as_nothing() -> void:
 	var fastest := _rules.combatant(0).weapon.swing_speed_full * _rules.combatant(0).weapon.tip_radius
 	var composed := SwingSemantics.potential(fastest, 1.0, 1.0, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
-	var scrambling := SwingSemantics.potential(fastest, _rules.combatant(0).weapon.readiness_floor, _rules.combatant(0).fighter.stability_floor, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
+	var scrambling := SwingSemantics.potential(fastest, _rules.combatant(0).weapon.preparation_floor, _rules.combatant(0).fighter.stability_floor, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)
 	assert_true(scrambling < composed, "a poorly prepared swing from an off-balance fighter reads lower")
 	assert_true(scrambling > 0.25, "but still clearly reads as a threat (%.2f)" % scrambling)
 	var unprepared := SwingSemantics.potential(fastest, 0.0, 0.0, CombatPhase.Id.ACTIVE_THREAT, _rules.combatant(0).weapon)

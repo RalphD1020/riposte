@@ -24,7 +24,7 @@ func _fighter(phase: CombatPhase.Id, charge: float) -> FighterState:
 ## nothing (DIRECTIONAL-COMMIT-001).
 func _moving(phase: CombatPhase.Id, charge: float) -> FighterState:
 	var fighter := _fighter(phase, charge)
-	fighter.weapon.launch_readiness = 1.0
+	fighter.weapon.launch_preparation = 1.0
 	fighter.weapon.speed = _rules.combatant(0).weapon.achievable_swing_speed(charge, 1.0) if CombatPhase.is_striking(phase) else 0.0
 	return fighter
 

@@ -265,7 +265,7 @@ func _notification(what: int) -> void:
 func _advance_tick() -> void:
 	var phase_before := session.state.phase
 	var events := session.step()
-	var snapshot := SnapshotProjector.project(session.state, session.config.rules)
+	var snapshot := SnapshotProjector.project(session.state, session.config.rules, debug_overlay != null and debug_overlay.visible)
 	presenter.push(snapshot, events)
 	hud.update(snapshot)
 	if session.state.phase != phase_before:

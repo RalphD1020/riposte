@@ -46,16 +46,24 @@ func test_the_snapshot_carries_the_swing_semantics() -> void:
 	var state := DuelSetup.new_state(rules, 1)
 	var fighter := state.fighter(0)
 	ContactFixture.arm(fighter, 0.0, 0.0, 0.0, 0.0, 12.0, CombatPhase.Id.ACTIVE_THREAT, 0.7, rules.combatant(0).weapon)
-	fighter.weapon.launch_readiness = 0.9
+	fighter.weapon.launch_preparation = 0.9
 	var row := SnapshotProjector.project(state, rules).fighter(0)
 	var tip_speed := SwingSemantics.tip_speed(fighter, rules.combatant(0))
 	assert_near(row.tip_speed, tip_speed, 1e-9, "the simulation's own tip-speed reading, never recomputed")
 	assert_true(row.tip_speed > 12.0, "tip speed, not angular speed")
-	assert_eq(row.launch_readiness, 0.9, "how well prepared the swing was at release")
+	assert_eq(row.launch_preparation, 0.9, "how well prepared the swing was at release")
 	assert_between(row.swing_progress, 0.0, 1.0, "how far through its arc the blade physically is")
 	assert_between(row.swing_potential, 0.0, 1.0, "and how dangerous this part of it is")
 	assert_true(row.swing_potential > 0.0, "a live swing at speed reads as a threat")
-	assert_between(row.exposure, 0.0, 1.0, "each fighter's own exposure, as a fraction")
+	var plain := SnapshotProjector.project(state, rules)
+	assert_false(plain.has_threat_readings, "the threat readings are left out unless asked for, and the snapshot says so")
+	assert_eq(row.exposure, 0.0, "left out, the exposure keeps its neutral default (never NaN)")
+	assert_eq(row.threat_time, 0.0, "and so does the threat time")
+	var read := SnapshotProjector.project(state, rules, true)
+	assert_true(read.has_threat_readings, "asked for, the snapshot carries them")
+	assert_between(read.fighter(0).exposure, 0.0, 1.0, "asked for, each fighter's own exposure, as a fraction")
+	assert_eq(read.fighter(0).threat_time, InitiativeModel.time_to_threat(fighter, state.fighter(1), rules), "and its own threat time, the domain's estimate")
+	assert_eq(read.fighter(0).exposure, ExposureModel.reading(fighter, state.fighter(1), rules), "its exposure the domain's reading exactly")
 	assert_eq(row.stable_side, fighter.weapon.stable_side, "the side the blade is committed to")
 	assert_eq(row.guard_region, GuardRegion.of(fighter.weapon.angle, rules.combatant(0).weapon.guard_angle), "and where it sits relative to the guard")
 	assert_eq(row.burst, fighter.gesture.burst_kind, "plus any burst under way")
@@ -105,7 +113,7 @@ func test_projector_carries_condition_and_no_stamina() -> void:
 	var fighter := state.fighter(0)
 	fighter.health = rules.combatant(0).fighter.max_health * 0.4
 	var row := SnapshotProjector.project(state, rules).fighter(0)
-	## STAMINA-002: a resource with no gameplay consumer is not presented.
+	## STAMINA-003: there is no fatigue resource to present.
 	assert_false("stamina" in row, "no stamina in the snapshot")
 	assert_false("stamina01" in row, "nor a normalized stamina reading")
 	assert_eq(row.condition, FighterCondition.Id.WOUNDED, "40% health is WOUNDED")
@@ -200,6 +208,9 @@ func test_impact_feedback_from_contact_event() -> void:
 	assert_eq(fb.contact_type, DuelEventTypes.BODY_HIT, "event type")
 	assert_eq(fb.point_x, 1.0, "contact point x")
 	assert_eq(fb.point_y, 2.0, "contact point y")
+	assert_false(fb.hand, "a torso hit by default")
+	event.data[DuelEventKeys.REGION] = DuelEventKeys.REGION_HAND
+	assert_true(ImpactFeedback.from_event(event, rules.combat).hand, "the region a HAND wound carries")
 
 
 func test_impact_feedback_recognizes_contact_events() -> void:

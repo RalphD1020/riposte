@@ -57,7 +57,6 @@ static func reset_fighter(fighter: FighterState, spec: CombatantPhysicsSpec, rul
 	fighter.duel_forward_x = SimMath.cosine(fighter.facing)
 	fighter.duel_forward_y = SimMath.sine(fighter.facing)
 	fighter.health = spec.fighter.max_health
-	fighter.stamina = spec.fighter.base_stamina
 	fighter.stability = 1.0
 	fighter.stagger_left = 0
 	fighter.lethal_fraction = FighterState.ALIVE

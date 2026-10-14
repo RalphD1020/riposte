@@ -54,6 +54,10 @@ var hand_mass: float = 0.0
 ## `WeaponDefinition.hilt_radius` is this, and `tip_radius` adds the blade.
 var grip_radius: float = 0.0
 var max_health: float = 0.0
+## The target's region table: the share of a strike's damage each vulnerable
+## region takes (anatomy — armor would modify it here). A blade on the hands
+## (HAND-CONTACT-001) wounds through the ordinary damage model at this share.
+var hand_damage_factor: float = 0.0
 ## Mass resists *everything*: acceleration, displacement under impulse,
 ## turning. It is never a damage multiplier — a heavy fighter does not hit
 ## harder with the same sword at the same speed, they are merely harder to
@@ -68,11 +72,6 @@ var body_inertia_coefficient: float = 0.0
 ## body's inertia is a uniform rod of its own length and mass.
 var lying_half_length: float = 0.0
 var lying_radius: float = 0.0
-
-## Stamina pool at full health. The current ceiling is derived from health by
-## `StaminaModel.max_for_health()` — never stored in FighterState — so injury
-## is the cause and reduced stamina ceiling is the consequence.
-var base_stamina: float = 100.0
 
 ## --- Actuators ---------------------------------------------------------------
 
@@ -170,8 +169,9 @@ func is_valid() -> bool:
 		and body_inertia_coefficient > 0.0
 		and lying_half_length > 0.0
 		and lying_radius > 0.0
-		and base_stamina > 0.0
 		and max_speed > 0.0
+		and hand_damage_factor > 0.0
+		and hand_damage_factor <= 1.0
 		and locomotion_force > 0.0
 		and braking_force > locomotion_force
 		and burst_force > braking_force

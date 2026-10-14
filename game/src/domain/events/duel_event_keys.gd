@@ -47,10 +47,21 @@ const FEATURE_1 := "feature_1"
 const POINT_COUNT := "point_count"
 ## ContactResolver.CLASS_LIGHT / CLASS_SOLID / CLASS_STRONG.
 const CONTACT_CLASS := "class"
-const DEFLECTED_0 := "deflected_0"
-const DEFLECTED_1 := "deflected_1"
+## Whether each side's cut was arrested by the contact (RIGID-CONTACT-002).
+const ARRESTED_0 := "arrested_0"
+const ARRESTED_1 := "arrested_1"
+## Each side's weapon-speed change from the solve (rad/s).
 const DELTA_0 := "delta_0"
 const DELTA_1 := "delta_1"
+## The impulse fighter 0's sword received, summed over the rows (N·s);
+## fighter 1's is its negative (CONTACT-OUTCOME-001).
+const IMPULSE_X := "impulse_x"
+const IMPULSE_Y := "impulse_y"
+## The fastest closing over the rows after the solve (m/s); negative is
+## separating.
+const CLOSING_AFTER := "closing_after"
+## The largest share of its friction cone any row used (1 is sliding).
+const FRICTION_SATURATION := "friction_saturation"
 
 ## Parry: the riposte advantage — how much sooner (s) the defender threatens
 ## than the attacker in the state the interception left. A reading, never the
@@ -85,11 +96,14 @@ const CRITICAL := "critical"
 ## True for unprotected THRUSTs and POKEs above the lethal severity threshold.
 const LETHAL := "lethal"
 const HEALTH := "health"
-## Stamina shock applied on a damage event (STAMINA-001).
-const STAMINA := "stamina"
 ## Thrust classification (COMBAT-010). Carried on body-contact events that
 ## qualify as a point-first thrust.
 const THRUST_ALIGNMENT := "thrust_alignment"
+## Which vulnerable region a BODY_HIT struck (`REGION_TORSO` / `REGION_HAND`,
+## DEFENSE-ROLE-001).
+const REGION := "region"
+const REGION_TORSO := "torso"
+const REGION_HAND := "hand"
 const INCIDENCE_QUALITY := "incidence_quality"
 ## Contact kind: "slash", "thrust", or "graze". Present on all body contacts.
 const CONTACT_KIND := "contact_kind"

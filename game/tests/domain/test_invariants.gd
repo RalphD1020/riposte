@@ -84,28 +84,15 @@ func test_out_of_range_health_and_stability_are_detected() -> void:
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.STABILITY_RANGE, "stability below the authored floor is rejected")
 
 
-func test_non_finite_or_negative_stamina_is_detected() -> void:
-	var rules := DuelFixture.rules()
-	var state := DuelFixture.state(rules)
-	state.fighter(0).stamina = NAN
-	assert_eq(StateInvariants.check(state, rules), StateInvariants.STAMINA_NOT_FINITE, "NaN stamina is rejected")
-	state.fighter(0).stamina = -1.0
-	assert_eq(StateInvariants.check(state, rules), StateInvariants.STAMINA_NOT_FINITE, "negative stamina is rejected")
-	state.fighter(0).stamina = rules.combatant(0).fighter.base_stamina
-	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "full stamina is sound")
-
-
 func test_death_and_weapon_phase_must_agree() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)
 	state.fighter(0).health = 0.0
-	state.fighter(0).stamina = 0.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.DEATH_PHASE_MISMATCH, "a fighter at zero health outside DEAD is impossible")
 	state.fighter(0).weapon.set_phase(CombatPhase.Id.DEAD)
 	state.fighter(0).lethal_fraction = 0.0
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.OK, "zero health with a DEAD weapon is sound")
 	state.fighter(0).health = rules.combatant(0).fighter.max_health
-	state.fighter(0).stamina = rules.combatant(0).fighter.base_stamina
 	assert_eq(StateInvariants.check(state, rules), StateInvariants.DEATH_PHASE_MISMATCH, "a living fighter in DEAD is impossible")
 
 
@@ -214,7 +201,7 @@ func test_finished_match_emits_no_further_faults() -> void:
 
 
 func test_tick_order_version_is_pinned() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 13, "the canonical tick order is version 13; bump this deliberately")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 14, "the canonical tick order is version 14; bump this deliberately")
 
 
 func test_input_edges_resolve_before_the_motor() -> void:

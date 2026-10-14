@@ -34,6 +34,16 @@ var _frame := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0
 var _blade := BladePose.new()
 ## Each attacker's blade-to-body gap at the previous substep.
 var _previous_body := PackedFloat64Array([0.0, 0.0])
+## Each attacker's blade's surface gap to the opponent's nearer hand disc at the
+## previous substep, and which grip that nearer hand is on (HAND-CONTACT-001).
+var _previous_hand := PackedFloat64Array([0.0, 0.0])
+## The hand gap a sweep records for a hand it has proven clear (any positive
+## value: only the sign and the crossing are read).
+const HANDS_CLEAR := 1.0
+## Below this much clearance (m) the bound defers to the exact gap, so rounding
+## at the boundary can never read a sign the exact measurement would not.
+const CLEAR_MARGIN := 1.0e-9
+var _hand_grip := PackedFloat64Array([0.0, 0.0])
 ## Each attacker's re-hold line for this sweep (centre distance).
 var _body_hold := PackedFloat64Array([0.0, 0.0])
 ## Each attacker's blade-to-body touch distance: the target's hurt torso plus
@@ -93,6 +103,9 @@ func detect(
 	for attacker in 2:
 		_body_touch[attacker] = rules.combatant(1 - attacker).fighter.hurt_radius + rules.combatant(attacker).weapon.blade_radius
 	var can_strike: Array[bool] = [_can_contact_body(state.fighter(0)), _can_contact_body(state.fighter(1))]
+	## A hand can be wounded once per attack by a feature that wounds, while its
+	## owner can still be struck (HAND-CONTACT-001).
+	var hands_open: Array[bool] = [_hands_open(state, 0, rules, can_strike[0]), _hands_open(state, 1, rules, can_strike[1])]
 	var body_touch_body := rules.combatant(0).fighter.push_radius + rules.combatant(1).fighter.push_radius
 	var wanted := substeps_wanted(start, finish, rules)
 	if wanted > rules.combat.max_substeps:
@@ -115,6 +128,8 @@ func detect(
 	var previous_blade := _blade_distance(rules)
 	_previous_body[0] = _body_gap(0, rules.combatant(0).weapon)
 	_previous_body[1] = _body_gap(1, rules.combatant(1).weapon)
+	_previous_hand[0] = _open_hand_gap(0, rules) if hands_open[0] else HANDS_CLEAR
+	_previous_hand[1] = _open_hand_gap(1, rules) if hands_open[1] else HANDS_CLEAR
 	var blade_hold := minf(blade_touch - 2.0 * slop, previous_blade - slop)
 	_body_hold[0] = minf(_body_touch[0] - 2.0 * slop, _previous_body[0] - slop)
 	_body_hold[1] = minf(_body_touch[1] - 2.0 * slop, _previous_body[1] - slop)
@@ -125,7 +140,9 @@ func detect(
 		if blade_gap <= blade_touch:
 			_record_blade_points(manifold, blade_touch)
 		var blade_retouch := blade_gap <= blade_hold and previous_blade > blade_hold
+		var blade_before := previous_blade
 		previous_blade = blade_gap
+		var rehold := NO_REHOLD
 		if manifold.observe(blade_gap, blade_touch, epsilon):
 			report.blade = true
 			report.blade_ax = _geometry.ax
@@ -134,24 +151,66 @@ func detect(
 			report.blade_by = _geometry.by
 		elif holds and blade_retouch and manifold.phase != SwordContactSet.Phase.SEPARATED:
 			report.persistent = true
+			rehold = REHOLD_BLADE
+			_rehold_travel = blade_before - blade_gap
+			_rehold_line = blade_hold
+		## A hand is entered, never held: the gap crossing into it is the contact,
+		## a blade already inside is not a new one. The hand reaches only a few
+		## centimetres past the handle — less than a substep — so its entry is
+		## refined within the substep by a fixed bisection, and so is the steel's
+		## when a new sword contact began in the same substep: steel met first
+		## shields the hand behind it; a hand reached first is struck.
+		for attacker in 2:
+			if not hands_open[attacker]:
+				continue
+			var hand_gap := _open_hand_gap(attacker, rules)
+			var hand_before := _previous_hand[attacker]
+			_previous_hand[attacker] = hand_gap
+			if hand_gap <= 0.0 and hand_before > 0.0 and hands_open[attacker] and not report.hand[attacker]:
+				var grip := _hand_grip[attacker]
+				var previous_s := float(k - 1) / float(steps)
+				var entered := _hand_entry(start, finish, attacker, previous_s, s, rules)
+				var first := not report.blade or (blade_before > blade_touch and entered <= _steel_entry(start, finish, previous_s, s, blade_touch, rules))
+				_interpolate(start, finish, s, rules)
+				_blade_distance(rules)
+				if first:
+					report.hand[attacker] = true
+					report.hand_grip[attacker] = grip
+					report.hand_fraction[attacker] = entered
 		if not report.blade:
 			for attacker in 2:
 				var lifecycle := state.weapon_body_contacts[attacker]
 				var weapon := rules.combatant(attacker).weapon
 				var gap := _body_gap(attacker, weapon)
 				var body_retouch := gap <= _body_hold[attacker] and _previous_body[attacker] > _body_hold[attacker]
+				var body_before := _previous_body[attacker]
 				_previous_body[attacker] = gap
 				if can_strike[attacker] and _body_hit_with_lifecycle(attacker, weapon, gap, _body_touch[attacker], epsilon, lifecycle, report):
 					report.body[attacker] = true
 				elif holds and body_retouch and can_strike[attacker] and lifecycle.phase == WeaponBodyContact.Phase.CONSTRAINING:
 					report.persistent = true
+					if rehold == NO_REHOLD:
+						rehold = attacker
+						_rehold_travel = body_before - gap
+						_rehold_line = _body_hold[attacker]
 		var apart := _body_distance()
 		if bodies and not report.blade and not report.body[0] and not report.body[1] and apart < body_touch_body:
 			_body_push_normal(apart, report)
 			report.body_push = true
 			report.body_push_persistent = state.body_contact.is_persistent_contact()
-		if report.any():
+		## A hand is non-blocking: the sweep carries on past it, to whatever steel
+		## or body lies behind (HAND-CONTACT-001).
+		if report.blade or report.body[0] or report.body[1] or report.body_push or report.persistent:
 			report.fraction = s
+			## A held pair alone (nothing new, no hand) is re-held where it crossed
+			## its line, not where the substep happened to end — otherwise a pair
+			## driven slowly through a coarse substep sinks up to a substep of
+			## travel past the line between re-holds (RIGID-CONTACT-001).
+			var only_held := not (report.blade or report.body[0] or report.body[1] or report.body_push or report.hand[0] or report.hand[1])
+			if only_held and rehold != NO_REHOLD:
+				report.fraction = _rehold_crossing(start, finish, float(k - 1) / float(steps), s, rehold, slop, rules)
+				if rehold == REHOLD_BLADE and _blade_distance(rules) <= blade_touch:
+					_record_blade_points(manifold, blade_touch)
 			return
 
 
@@ -267,6 +326,136 @@ func _body_hit_with_lifecycle(attacker: int, weapon: WeaponDefinition, gap: floa
 	report.body_y[attacker] = SimMath.mix(hy, ty, t)
 	return true
 
+
+## Bisection steps that order a hand entry against steel inside one substep: a
+## fixed count, never "until converged" (1/16 of a substep).
+const ENTRY_REFINEMENT := 4
+
+## Which held pair crossed its re-hold line this substep: a weapon→body pair is
+## its attacker's slot, the swords are `REHOLD_BLADE`.
+const NO_REHOLD := -1
+const REHOLD_BLADE := 2
+## The most bisection steps a re-hold is refined by (1/64 of a substep). The
+## count is derived from how far the pair closed inside the substep — enough
+## halvings to bring that within one slop — so a slow pair costs none.
+const REHOLD_REFINEMENT_MAX := 6
+
+## How far the re-held pair closed inside its substep, and its re-hold line.
+var _rehold_travel := 0.0
+var _rehold_line := 0.0
+
+
+## Sweep fraction (within `from`–`to`) at which the held pair `rehold` came to
+## its re-hold line, leaving the frame interpolated there.
+func _rehold_crossing(start: Array[FighterPose], finish: Array[FighterPose], from: float, to: float, rehold: int, slop: float, rules: DuelRules) -> float:
+	var halvings := 0
+	var travel := _rehold_travel
+	while travel > slop and halvings < REHOLD_REFINEMENT_MAX:
+		travel *= 0.5
+		halvings += 1
+	var outside := from
+	var inside := to
+	for _i in halvings:
+		var middle := (outside + inside) * 0.5
+		_interpolate(start, finish, middle, rules)
+		var gap := _blade_distance(rules) if rehold == REHOLD_BLADE else _body_gap(rehold, rules.combatant(rehold).weapon)
+		if gap <= _rehold_line:
+			inside = middle
+		else:
+			outside = middle
+	_interpolate(start, finish, inside, rules)
+	return inside
+
+
+## Sweep fraction (within `from`–`to`, where the blade went from outside to
+## inside a hand) at which `attacker`'s blade entered the opponent's hand.
+func _hand_entry(start: Array[FighterPose], finish: Array[FighterPose], attacker: int, from: float, to: float, rules: DuelRules) -> float:
+	var outside := from
+	var inside := to
+	for _i in ENTRY_REFINEMENT:
+		var middle := (outside + inside) * 0.5
+		_interpolate(start, finish, middle, rules)
+		if _hand_gap(attacker, rules) <= 0.0:
+			inside = middle
+		else:
+			outside = middle
+	return inside
+
+
+## Sweep fraction (within `from`–`to`) at which the swords came into touch.
+func _steel_entry(start: Array[FighterPose], finish: Array[FighterPose], from: float, to: float, touch: float, rules: DuelRules) -> float:
+	var apart := from
+	var touching := to
+	for _i in ENTRY_REFINEMENT:
+		var middle := (apart + touching) * 0.5
+		_interpolate(start, finish, middle, rules)
+		if _blade_distance(rules) <= touch:
+			touching = middle
+		else:
+			apart = middle
+	return touching
+
+
+## Whether `attacker` may wound a hand this sweep: it can strike, its blade
+## wounds, its attack has not already struck a hand, and the opponent is a
+## living fighter on the platform — the torso's rule.
+static func _hands_open(state: MatchState, attacker: int, rules: DuelRules, can_strike: bool) -> bool:
+	var target := state.opponent_of(attacker)
+	return (
+		can_strike
+		and rules.combatant(attacker).weapon.wounds(SwordContactSet.Feature.BLADE)
+		and not state.fighter(attacker).weapon.hand_struck
+		and target.is_alive()
+		and not target.is_falling
+	)
+
+
+## The opponent's nearer hand gap as the sweep reads it — only its sign and
+## its crossing matter, so a hand certainly clear of `attacker`'s blade reads
+## `HANDS_CLEAR` without measuring either disc: both grip markers lie within
+## half their spacing of the grips' midpoint, so a blade farther than that
+## (plus the disc and the blade's radius) from the midpoint is clear of both.
+## Otherwise the exact gap (`_hand_gap`).
+func _open_hand_gap(attacker: int, rules: DuelRules) -> float:
+	var defending := rules.combatant(1 - attacker)
+	var off := defending.weapon.offhand_grip_radius
+	var dominant := defending.weapon.dominant_grip_radius
+	var reach := absf(dominant - off) * 0.5 + defending.fighter.hand_radius + rules.combatant(attacker).weapon.blade_radius
+	if _blade_to_grip(attacker, (off + dominant) * 0.5, rules) > reach + CLEAR_MARGIN:
+		return HANDS_CLEAR
+	return _hand_gap(attacker, rules)
+
+
+## Surface gap from `attacker`'s blade to the opponent's nearer hand disc (the
+## wielder's `hand_radius` about each grip marker on its own sword), recording
+## which grip that hand is on.
+func _hand_gap(attacker: int, rules: DuelRules) -> float:
+	var defending := rules.combatant(1 - attacker)
+	var off := _grip_gap(attacker, rules, defending.weapon.offhand_grip_radius)
+	var dominant := _grip_gap(attacker, rules, defending.weapon.dominant_grip_radius)
+	_hand_grip[attacker] = defending.weapon.offhand_grip_radius if off <= dominant else defending.weapon.dominant_grip_radius
+	return minf(off, dominant)
+
+
+## Surface gap from `attacker`'s blade to the opponent's hand at grip radius
+## `grip`.
+func _grip_gap(attacker: int, rules: DuelRules, grip: float) -> float:
+	return _blade_to_grip(attacker, grip, rules) - rules.combatant(1 - attacker).fighter.hand_radius - rules.combatant(attacker).weapon.blade_radius
+
+
+## Distance from `attacker`'s blade segment to the point `grip` down the
+## opponent's sword.
+func _blade_to_grip(attacker: int, grip: float, rules: DuelRules) -> float:
+	var weapon := rules.combatant(attacker).weapon
+	var d := 1 - attacker
+	var gx := _blade_x(d, grip)
+	var gy := _blade_y(d, grip)
+	var hx := _blade_x(attacker, weapon.hilt_radius)
+	var hy := _blade_y(attacker, weapon.hilt_radius)
+	var tx := _blade_x(attacker, weapon.tip_radius)
+	var ty := _blade_y(attacker, weapon.tip_radius)
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, gx, gy)
+	return SimMath.length(gx - SimMath.mix(hx, tx, t), gy - SimMath.mix(hy, ty, t))
 
 ## Distance from attacker's blade to the defender's body center.
 func _body_gap(attacker: int, weapon: WeaponDefinition) -> float:

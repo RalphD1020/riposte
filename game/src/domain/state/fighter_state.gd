@@ -35,11 +35,6 @@ var duel_forward_y: float = 0.0
 ## moment of inertia, never clamped down directly (PHYS-003).
 var turn_rate: float = 0.0
 var health: float = 0.0
-## Exertion resource (STAMINA-001). Drains from motor effort, recovers at
-## rest, and takes a shock on damage. The ceiling is derived from health via
-## `StaminaModel.max_for_health()` — never stored — so injury is the cause
-## and reduced ceiling is the consequence.
-var stamina: float = 0.0
 ## Balance B ∈ [floor, 1] (COMBAT §36).
 var stability: float = 1.0
 var stagger_left: int = 0
