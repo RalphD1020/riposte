@@ -119,7 +119,7 @@ func test_the_director_poses_intro_figures_from_the_take() -> void:
 	var planar := WeaponKinematics.pose_at(x, y, lerp_angle(from.facing, row.facing, weight), lerpf(from.weapon_angle, row.weapon_angle, weight), _rules.combatant(0), BladePose.new())
 	var drawn := figure.authoritative_blade_points()
 	var height := kits.weapon.blade_height
-	for end: Array in [[0, _rules.combatant(0).weapon.hilt_radius, "hilt"], [1, _rules.combatant(0).weapon.tip_radius, "tip"]]:
+	for end: Array in [[0, _rules.combatant(0).weapon.blade_base_radius, "hilt"], [1, _rules.combatant(0).weapon.tip_radius, "tip"]]:
 		var truth := ArenaTransform.to_world(planar.point_x(float(end[1])), planar.point_y(float(end[1])), height)
 		assert_true(drawn[int(end[0])].distance_to(truth) < 1.0e-3, "the planar sword's %s is the rehearsal's (%.4f m off)" % [end[2], drawn[int(end[0])].distance_to(truth)])
 	assert_true(figure.animation_player().has_animation(figure.playing_clip()), "the legs play a clip the rig has (%s)" % figure.playing_clip())

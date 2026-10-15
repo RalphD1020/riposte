@@ -36,14 +36,13 @@ const IMPULSE := "impulse"
 ## Energy the contact dissipated (J, ContactMechanics): the size of what
 ## actually happened, for feedback that must not read charge.
 const ENERGY := "energy"
-## Where on each blade a blade contact landed (0 guard, 1 tip).
+## Where on each blade a blade contact landed (0 crossguard, 1 tip).
 const FRACTION_0 := "fraction_0"
 const FRACTION_1 := "fraction_1"
-## Which feature of each sword the contact touched
-## (`SwordContactSet.Feature`: blade, guard or hilt).
-const FEATURE_0 := "feature_0"
-const FEATURE_1 := "feature_1"
-## How many manifold points a blade contact was solved on (1 or 2).
+## Which steel the contact was named by (`SwordContactSet.PAIR_*`): blade on
+## blade, or a blade on a guard root.
+const STEEL_PAIR := "steel_pair"
+## How many manifold points a sword contact was solved on.
 const POINT_COUNT := "point_count"
 ## ContactResolver.CLASS_LIGHT / CLASS_SOLID / CLASS_STRONG.
 const CONTACT_CLASS := "class"
@@ -99,11 +98,18 @@ const HEALTH := "health"
 ## Thrust classification (COMBAT-010). Carried on body-contact events that
 ## qualify as a point-first thrust.
 const THRUST_ALIGNMENT := "thrust_alignment"
-## Which vulnerable region a BODY_HIT struck (`REGION_TORSO` / `REGION_HAND`,
-## DEFENSE-ROLE-001).
+## Which vulnerable region a BODY_HIT struck (`REGION_TORSO` / `REGION_GRIP`,
+## DEFENSE-ROLE-001). The grip region is the hands and the handle, one region
+## with one damage share (GRIP-NONBLOCKING-001).
 const REGION := "region"
 const REGION_TORSO := "torso"
-const REGION_HAND := "hand"
+const REGION_GRIP := "grip"
+## Which part of the grip region a GRIP hit entered first — a diagnostic of
+## where, never a different damage law.
+const SOURCE_REGION := "source_region"
+const SOURCE_HAND_OFF := "hand_off"
+const SOURCE_HAND_DOMINANT := "hand_dominant"
+const SOURCE_HANDLE := "handle"
 const INCIDENCE_QUALITY := "incidence_quality"
 ## Contact kind: "slash", "thrust", or "graze". Present on all body contacts.
 const CONTACT_KIND := "contact_kind"

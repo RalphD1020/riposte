@@ -28,7 +28,7 @@ func _initialize() -> void:
 	var rules := StandardDuelRules.create()
 	var spec := rules.combatant(0)
 	var weapon := spec.weapon
-	var forte := weapon.hilt_radius + 0.25 * weapon.blade_length()
+	var forte := weapon.blade_base_radius + 0.25 * weapon.blade_length()
 	var percussion := ContactMechanics.percussion_radius(weapon)
 	print("\nSwing speeds, rules v%d (swing_speed_full %.1f rad/s; forte %.3f m, CoP %.3f m, tip %.3f m from the pommel)" % [rules.version, weapon.swing_speed_full, forte, percussion, weapon.tip_radius])
 	print("  %-10s %10s %10s %10s %10s %10s %12s" % ["charge", "arc (deg)", "peak θ̇", "forte m/s", "CoP m/s", "tip m/s", "tip² / human²"])

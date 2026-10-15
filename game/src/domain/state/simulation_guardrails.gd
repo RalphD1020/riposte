@@ -30,7 +30,7 @@ static func validate_toi_monotonicity(elapsed: float, new_toi: float) -> bool:
 ##
 ## The weapon has two speeds that must not be confused. The motor never drives
 ## it past `swing_speed_full` (the actuated limit); a contact can legally knock
-## it far faster — a dash into the opponent's hilt whips a blade away — so the
+## it far faster — a dash into the opponent's forte whips a blade away — so the
 ## corruption bound is the physically valid one,
 ## `physical_weapon_speed_bound`, never the actuated one.
 static func validate_capacity(fighter: FighterState, rules: DuelRules) -> bool:

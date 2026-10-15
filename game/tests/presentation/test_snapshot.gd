@@ -208,9 +208,9 @@ func test_impact_feedback_from_contact_event() -> void:
 	assert_eq(fb.contact_type, DuelEventTypes.BODY_HIT, "event type")
 	assert_eq(fb.point_x, 1.0, "contact point x")
 	assert_eq(fb.point_y, 2.0, "contact point y")
-	assert_false(fb.hand, "a torso hit by default")
-	event.data[DuelEventKeys.REGION] = DuelEventKeys.REGION_HAND
-	assert_true(ImpactFeedback.from_event(event, rules.combat).hand, "the region a HAND wound carries")
+	assert_false(fb.grip, "a torso hit by default")
+	event.data[DuelEventKeys.REGION] = DuelEventKeys.REGION_GRIP
+	assert_true(ImpactFeedback.from_event(event, rules.combat).grip, "the region a GRIP wound carries")
 
 
 func test_impact_feedback_recognizes_contact_events() -> void:

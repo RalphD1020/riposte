@@ -41,14 +41,14 @@ static func bastard_sword_at(length_scale: float, mass: float, grip_radius: floa
 	weapon.id = ContentIds.WEAPON_BASTARD_SWORD
 	## The origin is the pommel at the wielder's grip, so the blade starts at
 	## `grip_radius` and `tip_radius` is grip plus blade.
-	weapon.hilt_radius = grip_radius
+	weapon.blade_base_radius = grip_radius
 	weapon.tip_radius = grip_radius + PhysicalBaseline.sword_blade(length_scale)
 	weapon.blade_radius = 0.022 * length_scale
 	## The crossguard sits where the model has it relative to the blade's
 	## start, and its bar scales with the sword (GUARD-CONTACT-001).
-	weapon.guard_centre_radius = grip_radius - (PhysicalBaseline.GRIP_RADIUS_M - PhysicalBaseline.GUARD_CENTRE_M)
-	weapon.guard_half_span = PhysicalBaseline.GUARD_HALF_SPAN_M * length_scale
-	weapon.guard_radius = PhysicalBaseline.GUARD_DEPTH_M * 0.5 * length_scale
+	weapon.crossguard_centre_radius = grip_radius - (PhysicalBaseline.GRIP_RADIUS_M - PhysicalBaseline.CROSSGUARD_CENTRE_M)
+	weapon.crossguard_half_span = PhysicalBaseline.CROSSGUARD_HALF_SPAN_M * length_scale
+	weapon.crossguard_radius = PhysicalBaseline.CROSSGUARD_DEPTH_M * 0.5 * length_scale
 	## The handle collides as itself — the model's grip, scaled with the
 	## sword. The hands around it are presentation, not collision.
 	weapon.handle_radius = PhysicalBaseline.GRIP_HALF_WIDTH_M * length_scale
@@ -70,7 +70,7 @@ static func bastard_sword_at(length_scale: float, mass: float, grip_radius: floa
 	var profile := reference_mass_profile()
 	weapon.inertia_coefficient = profile.inertia_coefficient(PhysicalBaseline.SWORD_LENGTH_M)
 	weapon.mass = mass
-	weapon.center_of_mass_radius = (weapon.hilt_radius + weapon.tip_radius) * 0.5
+	weapon.center_of_mass_radius = (weapon.blade_base_radius + weapon.tip_radius) * 0.5
 	var is_reference := is_equal_approx(length_scale, 1.0) and is_equal_approx(mass, PhysicalBaseline.SWORD_MASS_KG) and is_equal_approx(grip_radius, PhysicalBaseline.GRIP_RADIUS_M)
 	if is_reference:
 		weapon.apply_mass_profile(profile)

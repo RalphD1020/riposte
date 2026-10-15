@@ -25,9 +25,9 @@ extends RefCounted
 ## friction at all. μ = 0 is exactly the frictionless solve.
 ##
 ## The tick's first solve is warm-started from the last tick's accumulated
-## impulses, row by row, only when the row is still the same geometric feature
-## pair (a contact sliding along the blade keeps its identity; its fraction is a
-## reading). The warm start changes where the iterations begin, not the
+## impulses, row by row, only when the row is still the same geometric contact
+## (`SwordContactSet.assign`: a contact sliding along the blade keeps its
+## identity). The warm start changes where the iterations begin, not the
 ## problem: the normal block is solved exactly from it.
 ##
 ## Two different quantities, kept apart. The velocity stage's impulses are
@@ -63,10 +63,11 @@ extends RefCounted
 ## the other and only the opponent's weapon rotation — the one motion that
 ## separates them — makes progress. So each pass solves the rows' small
 ## complementarity problem exactly (`w = A·λ + q`, `w ≥ 0`, `λ ≥ 0`, `w·λ = 0`,
-## `ContactLcp`). Every touching point of every feature pair is a row
-## (`SwordContactSet`): a hilt lock's three constraints are three rows, never
-## the nearest two. Fixed iteration and pass counts and a fixed pivot cap: the
-## work is bounded and never "until converged".
+## `ContactLcp`). Every touching blade point is a row (`SwordContactSet`, at
+## most two): only blade on blade is steel (STEEL-TOPOLOGY-001), so no
+## crossguard, handle or hand ever reaches this solve. Fixed iteration and
+## pass counts and a fixed pivot cap: the work is bounded and never "until
+## converged".
 ##
 ## Implements: /spec/invariants.md#rigid-contact-001
 ## Implements: /spec/invariants.md#rigid-contact-003
@@ -87,13 +88,13 @@ const HOLDS_PER_TICK := 4
 ## Row order (fixed, and the order everything is solved in):
 ##
 ## ```text
-## 0 .. 17  ROW_BLADE + k   the swords' contact points, every feature pair, in
-##                          the set's canonical order (TWO-POINT-001)
-## 18       ROW_BODY        fighter 0's sword on fighter 1's torso
-## 19       ROW_BODY + 1    fighter 1's sword on fighter 0's torso
-## 20       ROW_BODIES      the two push circles
-## 21       ROW_STOP        fighter 0's sword against its guard stop
-## 22       ROW_STOP + 1    fighter 1's
+## 0 .. 5   ROW_BLADE + k   the steel contact points, two a steel pair, in the
+##                          set's canonical order (TWO-POINT-001)
+## 6        ROW_BODY        fighter 0's sword on fighter 1's torso
+## 7        ROW_BODY + 1    fighter 1's sword on fighter 0's torso
+## 8        ROW_BODIES      the two push circles
+## 9        ROW_STOP        fighter 0's sword against its guard stop
+## 10       ROW_STOP + 1    fighter 1's
 ## ```
 ##
 ## The body row joins the *position* stage only: a sword correction resting on
@@ -158,16 +159,12 @@ var _body_inverse := PackedFloat64Array([0.0, 0.0])
 var _stop_side := PackedFloat64Array([1.0, 1.0])
 ## Each fighter's own guard stop (rad), from their weapon.
 var _guard_limit := PackedFloat64Array([0.0, 0.0])
-## The geometric feature each sword row touches on its a and b side.
-var _feature_a := PackedInt32Array()
-var _feature_b := PackedInt32Array()
-## Per blade row (index = point): its features and its coordinates on them, in
-## the shape `SwordContactSet.assign` reads, and the hold record it is
-## the same contact as (`UNMATCHED` when new).
-var _blade_feature_a := PackedInt32Array()
-var _blade_feature_b := PackedInt32Array()
-var _blade_local_a := PackedFloat64Array()
-var _blade_local_b := PackedFloat64Array()
+## Per blade row (index = point): its fractions along each blade, in the shape
+## `SwordContactSet.assign` reads, and the hold record it is the same contact
+## as (`UNMATCHED` when new).
+var _blade_pair := PackedInt32Array()
+var _blade_fraction_a := PackedFloat64Array()
+var _blade_fraction_b := PackedFloat64Array()
 var _blade_rows: int = 0
 var _match := PackedInt32Array()
 ## Per blade row, the normal impulse the tick's first solve started from (N·s;
@@ -196,7 +193,7 @@ var _tangent_relax := 1.0
 ## The weapon-speed change each fighter's sword took from the last velocity
 ## solve (rad/s), for the consequences of being held (`ContactResolver`).
 var weapon_delta := PackedFloat64Array([0.0, 0.0])
-## Whether each fighter's sword met the opponent (blade, guard, hilt or torso)
+## Whether each fighter's sword met the opponent (blade or torso)
 ## with a positive normal impulse in the last velocity solve. Its own guard
 ## stop is not the opponent and never counts.
 var opponent_contact := PackedByteArray([0, 0])
@@ -233,8 +230,6 @@ func _init() -> void:
 	_tangent_step = _floats(ROWS, 0.0)
 	_active.resize(ROWS)
 	_active.fill(0)
-	_feature_a = _ints(ROWS, 0)
-	_feature_b = _ints(ROWS, 0)
 	_rows = _ints(ROWS, 0)
 	## Blade rows and the bodies: fighter 0 is a. Each sword-on-torso row and
 	## each stop row belongs to its own fighter.
@@ -244,10 +239,9 @@ func _init() -> void:
 	_b[ROW_BODY + 1] = 0
 	_b[ROW_STOP] = 0
 	_a[ROW_STOP + 1] = 1
-	_blade_feature_a = _ints(BLADE_ROWS, 0)
-	_blade_feature_b = _ints(BLADE_ROWS, 0)
-	_blade_local_a = _floats(BLADE_ROWS, 0.0)
-	_blade_local_b = _floats(BLADE_ROWS, 0.0)
+	_blade_pair = _ints(BLADE_ROWS, SwordContactSet.PAIR_BLADES)
+	_blade_fraction_a = _floats(BLADE_ROWS, 0.0)
+	_blade_fraction_b = _floats(BLADE_ROWS, 0.0)
 	_match = _ints(BLADE_ROWS, SwordContactSet.UNMATCHED)
 	warm_normal = _floats(BLADE_ROWS, 0.0)
 	_next_normal = _floats(BLADE_ROWS, 0.0)
@@ -286,7 +280,7 @@ func body_mass(slot: int) -> float:
 ## sliding there within the Coulomb cone. Returns the total accumulated normal
 ## impulse (N·s); zero means nothing was closing, and then there is no friction
 ## either. `warm` marks the tick's first solve, which starts each row from the
-## last tick's impulses on the same feature pair and records this tick's.
+## last tick's impulses at the same contact point and records this tick's.
 ##
 ## The normal rows are solved together, like the position stage, so opposed
 ## rows (a sword pinned between a blade and a torso) are stopped through the one
@@ -457,7 +451,7 @@ func _build_tangents(rules: DuelRules) -> void:
 		if _is_blade_row(row):
 			turn += _tangent_b[row] * _tangent_b[row] / _inertia_b[row]
 		_tangent_mass[row] = _inverse_mass_a[row] + _inverse_mass_b[row] + turn
-		_mu[row] = ContactMechanics.friction(_feature_a[row], _feature_b[row], combat) if _is_blade_row(row) else combat.blade_body_friction
+		_mu[row] = combat.blade_friction if _is_blade_row(row) else combat.blade_body_friction
 	_friction_count = 0
 	for k in _count:
 		if _has_friction(_rows[k]):
@@ -519,9 +513,9 @@ func _tangent_turn(row: int, fighter: int) -> float:
 ## (`SwordContactSet.assign`, CONTACT-IDENTITY-001) — by geometry, never
 ## by slot.
 func _match_holds(manifold: SwordContactSet) -> void:
-	SwordContactSet.assign(
-		_blade_rows, _blade_feature_a, _blade_feature_b, _blade_local_a, _blade_local_b,
-		manifold.hold_count(), manifold.hold_feature_a, manifold.hold_feature_b, manifold.hold_local_a, manifold.hold_local_b,
+	manifold.assign_pairs(
+		_blade_rows, _blade_pair, _blade_fraction_a, _blade_fraction_b,
+		manifold.hold_count(), manifold.hold_pair, manifold.hold_fraction_a, manifold.hold_fraction_b,
 		_match
 	)
 
@@ -554,8 +548,8 @@ func _warm_row(state: MatchState, row: int, normal: float, tangent: float) -> vo
 ## The tick's impulses per row, for the next tick's warm start, and this
 ## tick's readings. The first solve of a tick replaces the record; a mid-tick
 ## re-hold adds to the record of the same contact point (`_match`). The record
-## is rewritten compactly in row order, each row carrying the features and
-## coordinates the next match reads.
+## is rewritten compactly in row order, each row carrying the blade fractions
+## the next match reads.
 func _record(state: MatchState, first: bool) -> void:
 	var manifold := state.blade_contact
 	var held := manifold.hold_count()
@@ -573,10 +567,9 @@ func _record(state: MatchState, first: bool) -> void:
 			manifold.clear_hold(point)
 		for point in _blade_rows:
 			manifold.hold_active[point] = 1
-			manifold.hold_feature_a[point] = _blade_feature_a[point]
-			manifold.hold_feature_b[point] = _blade_feature_b[point]
-			manifold.hold_local_a[point] = _blade_local_a[point]
-			manifold.hold_local_b[point] = _blade_local_b[point]
+			manifold.hold_pair[point] = _blade_pair[point]
+			manifold.hold_fraction_a[point] = _blade_fraction_a[point]
+			manifold.hold_fraction_b[point] = _blade_fraction_b[point]
 			manifold.hold_normal[point] = _next_normal[point]
 			manifold.hold_tangent[point] = _next_tangent[point]
 			manifold.hold_slip[point] = _next_slip[point]
@@ -665,7 +658,7 @@ func _build(state: MatchState, rules: DuelRules, reach: float, bodies: bool) -> 
 	WeaponKinematics.pose_of(b, rules.combatant(1), _poses[1])
 	_blade_rows = 0
 	if a.is_alive() and b.is_alive() and state.blade_contact.phase != SwordContactSet.Phase.SEPARATED:
-		_blade_rows = _build_blades(a, b, rules, reach)
+		_blade_rows = _build_blades(a, b, rules, reach, state.blade_contact.guard_mode)
 		for k in _blade_rows:
 			_active[ROW_BLADE + k] = 1
 			mask |= 1 << (ROW_BLADE + k)
@@ -774,15 +767,16 @@ static func _is_persisted_body(lifecycle: WeaponBodyContact) -> bool:
 	)
 
 
-## The blade rows: every manifold point of the two swords
-## (`SwordContactGeometry`) whose surface gap is at most `reach`, in the
-## geometry's canonical order — the same points the sweep records, every
-## feature pair's — with both swords' inertia there. Returns how many rows were
-## built (0..`BLADE_ROWS`).
-func _build_blades(a: FighterState, b: FighterState, rules: DuelRules, reach: float) -> int:
+## The sword rows: every manifold point of the swords' steel
+## (`SwordContactGeometry`: blade on blade, and each guard pair at the side its
+## contact decided, `guard_modes`) whose surface gap is at most `reach`, in
+## the geometry's canonical order — the same points the sweep records — with
+## both swords' inertia there. Returns how many rows were built
+## (0..`BLADE_ROWS`).
+func _build_blades(a: FighterState, b: FighterState, rules: DuelRules, reach: float, guard_modes: PackedInt32Array) -> int:
 	var pose_a := _poses[0]
 	var pose_b := _poses[1]
-	_geometry.measure(a.x, a.y, pose_a.origin_x, pose_a.origin_y, pose_a.ux, pose_a.uy, pose_b.origin_x, pose_b.origin_y, pose_b.ux, pose_b.uy, rules.combatant(0).weapon, rules.combatant(1).weapon)
+	_geometry.measure(a.x, a.y, pose_a.origin_x, pose_a.origin_y, pose_a.ux, pose_a.uy, pose_b.origin_x, pose_b.origin_y, pose_b.ux, pose_b.uy, rules.combatant(0).weapon, rules.combatant(1).weapon, guard_modes)
 	var built := 0
 	for point in _geometry.count:
 		if _geometry.point_gap[point] > reach:
@@ -794,12 +788,9 @@ func _build_blades(a: FighterState, b: FighterState, rules: DuelRules, reach: fl
 		var py := (_geometry.point_ay[point] + _geometry.point_by[point]) * 0.5
 		_gap[row] = _geometry.point_gap[point]
 		_set_point(row, px, py, nx, ny)
-		_feature_a[row] = _geometry.point_feature_a[point]
-		_feature_b[row] = _geometry.point_feature_b[point]
-		_blade_feature_a[built] = _feature_a[row]
-		_blade_feature_b[built] = _feature_b[row]
-		_blade_local_a[built] = _geometry.point_local_a[point]
-		_blade_local_b[built] = _geometry.point_local_b[point]
+		_blade_pair[built] = _geometry.point_pair[point]
+		_blade_fraction_a[built] = _geometry.point_fraction_a[point]
+		_blade_fraction_b[built] = _geometry.point_fraction_b[point]
 		_lever_a[row] = WeaponKinematics.lever(a, pose_a, px, py, nx, ny)
 		_lever_b[row] = WeaponKinematics.lever(b, pose_b, px, py, nx, ny)
 		ContactMechanics.held_sword(a, pose_a, px, py, rules.combatant(0), _held)
@@ -819,8 +810,8 @@ func _build_body(row: int, wielder: FighterState, target: FighterState, rules: D
 	var struck := rules.spec_of(target)
 	var weapon := wielding.weapon
 	var pose := _poses[wielder.slot]
-	var hx := pose.point_x(weapon.hilt_radius)
-	var hy := pose.point_y(weapon.hilt_radius)
+	var hx := pose.point_x(weapon.blade_base_radius)
+	var hy := pose.point_y(weapon.blade_base_radius)
 	var tx := pose.point_x(weapon.tip_radius)
 	var ty := pose.point_y(weapon.tip_radius)
 	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, target.x, target.y)
@@ -840,8 +831,6 @@ func _build_body(row: int, wielder: FighterState, target: FighterState, rules: D
 		nx = nx / apart if apart > SimMath.EPSILON else 1.0
 		ny = ny / apart if apart > SimMath.EPSILON else 0.0
 	_set_point(row, px, py, nx, ny)
-	_feature_a[row] = SwordContactSet.Feature.BLADE
-	_feature_b[row] = SwordContactSet.Feature.BLADE
 	_lever_a[row] = WeaponKinematics.lever(wielder, pose, px, py, nx, ny)
 	_lever_b[row] = 0.0
 	_inertia_a[row] = ContactMechanics.weapon_inertia(pose, wielding)

@@ -22,7 +22,7 @@ var normal_y: float = 0.0
 ## and movement coherence; zero only at a degenerate origin contact.
 var strike_x: float = 0.0
 var strike_y: float = 0.0
-## Where on the blade, 0 = hilt, 1 = tip.
+## Where on the blade, 0 = crossguard, 1 = tip.
 var blade_fraction: float = 0.0
 
 ## Relative contact velocity: blade-point velocity minus target velocity.

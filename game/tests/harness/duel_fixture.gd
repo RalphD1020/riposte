@@ -35,12 +35,12 @@ static func with_loadouts(first: CombatantPhysicsSpec, second: CombatantPhysicsS
 ## golden corpus and the E2E suites (WEAPON-PATH-001).
 ## The body-centred pivot the hand-built mechanism scenes are written for. Its
 ## pommel is the wielder's centre, so a guard and handle there would sit inside
-## the wielder's own torso: on this pivot the sword is its blade alone (guard
-## and hilt contact are proven on the shipped orbit, GUARD).
+## the wielder's own torso: on this pivot the sword is its blade alone (the
+## guard root and the grip are proven on the shipped orbit, GRIP).
 static func revolute_rules() -> DuelRules:
 	var duel_rules := rules()
 	duel_rules.combatant(0).handling.attack_path = WeaponAttackPath.fixed_pivot()
-	duel_rules.combatant(0).weapon.guard_half_span = 0.0
+	duel_rules.combatant(0).weapon.crossguard_half_span = 0.0
 	duel_rules.combatant(0).weapon.handle_radius = 0.0
 	return duel_rules
 

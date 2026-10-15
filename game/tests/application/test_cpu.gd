@@ -462,7 +462,8 @@ func test_the_cpu_plays_the_mirrored_duel_from_the_other_slot_identically() -> v
 	var cpu_right := CpuController.create(rules, profile, 4, 1)
 	## ACT: the CPU drives slot 0 on the left and slot 1 on the right.
 	var mismatches := 0
-	var commands := 0
+	var moved := 0
+	var attacks := 0
 	for _i in 300:
 		if left.state.phase != MatchPhase.Id.ROUND_ACTIVE or right.state.phase != MatchPhase.Id.ROUND_ACTIVE:
 			break
@@ -470,13 +471,15 @@ func test_the_cpu_plays_the_mirrored_duel_from_the_other_slot_identically() -> v
 		var from_right := cpu_right.command_for(right.state, 1)
 		if from_left.move_x != from_right.move_x or from_left.move_y != from_right.move_y or from_left.attack_pressed != from_right.attack_pressed or from_left.attack_released != from_right.attack_released or from_left.dash_modifier != from_right.dash_modifier:
 			mismatches += 1
-		if not from_left.is_idle():
-			commands += 1
+		if from_left.move_x != 0.0 or from_left.move_y != 0.0:
+			moved += 1
+		if from_left.attack_pressed:
+			attacks += 1
 		left.push(from_left, PlayerCommand.idle(left.state.tick))
 		right.push(PlayerCommand.idle(right.state.tick), from_right)
 	## ASSERT
 	assert_true(cpu_left.traces.size() >= 4, "fixture: the CPU recorded whole decisions (%d; a decision while holding or recovering is not traced)" % cpu_left.traces.size())
-	assert_true(commands > 100, "fixture: and acted (%d non-idle commands)" % commands)
+	assert_true(moved > 0 and attacks > 0, "fixture: and acted — footwork and attacks, not an idle stream (%d moving commands, %d attack presses)" % [moved, attacks])
 	assert_eq(mismatches, 0, "every command from the other slot is the same frame-relative command")
 	assert_eq(cpu_right.traces.size(), cpu_left.traces.size(), "the same number of decisions")
 	for i in mini(cpu_left.traces.size(), cpu_right.traces.size()):
@@ -974,10 +977,12 @@ func test_an_open_line_is_taken_straight_in() -> void:
 
 ## The opponent's sword lies across the direct line but not the other side: the
 ## CPU capitalizes around it — beside the opponent on the side away from its
-## sword — never through it.
+## sword — never through it. (Searched on rules 50: the rules-49 scene, 1.7 m
+## at −60°, was blocked by the opponent's crossguard and handle, which no
+## longer stop a cut; here its blade is in the way.)
 func test_steel_in_the_direct_line_is_gone_around_on_the_side_away_from_it() -> void:
 	## ARRANGE + ACT: the CPU on the side of the opponent's line its sword is on.
-	var held := _held_capitalize_scene(1.7, 0.4, deg_to_rad(-60.0), CombatPhase.Id.RECOVERY)
+	var held := _held_capitalize_scene(2.2, 0.5, deg_to_rad(-105.0), CombatPhase.Id.RECOVERY)
 	## ASSERT
 	assert_true(held[3], "fixture: a detour clears the steel and is taken")
 	assert_ne(held[4], 0.0, "the direct line was blocked, so the route goes around")
@@ -985,6 +990,45 @@ func test_steel_in_the_direct_line_is_gone_around_on_the_side_away_from_it() -> 
 	assert_true(vectors[0].dot(vectors[1]) > 0.0, "it still closes")
 	## The opponent's sword is on the +y side; going around it steps toward −y.
 	assert_true(vectors[0].y < vectors[1].y, "and leans off the line away from the sword (step y %.3f, line y %.3f)" % [vectors[0].y, vectors[1].y])
+
+
+## THREAT-001 / FIRST-CONTACT-001 at its lowest owner: the predictor sweeps
+## steel between its ticks as the duel's substeps do, so a blade that crosses
+## the other inside one tick cannot be skipped. One predictor tick in which
+## slot 0's heading swings from +0.4 to −0.4 rad across slot 1's sword, slot 1
+## standing 1.4 m ahead: clear of steel at both of the tick's ends, crossing it
+## in between — the sweep finds it inside the tick; the same swing with slot 1
+## out of reach finds nothing. (The live witnesses — agreement-audit samples
+## where the sweep decided the reading — each went with a later change to live
+## play; on the final rules 52 the audit has none.)
+func test_a_fast_blade_cannot_skip_the_steel_inside_a_tick() -> void:
+	## ARRANGE
+	var rules := StandardDuelRules.create()
+	var spec := rules.combatant(0)
+	var before := PackedFloat64Array([0.0, 0.0, 0.4, 0.0, 1.4, 0.0, PI, 0.0])
+	var now := PackedFloat64Array([0.0, 0.0, -0.4, 0.0, 1.4, 0.0, PI, 0.0])
+	var mid := PackedFloat64Array([0.0, 0.0, 0.2, 0.0, 1.4, 0.0, PI, 0.0])
+	assert_true(_steel_clearance_at(before, spec) > 0.0 and _steel_clearance_at(now, spec) > 0.0, "fixture: clear of steel at both ends of the tick (%.4f, %.4f m)" % [_steel_clearance_at(before, spec), _steel_clearance_at(now, spec)])
+	assert_true(_steel_clearance_at(mid, spec) <= 0.0, "fixture: crossing it a quarter of the way through")
+	## PERTURB: the same swing, slot 1 stood out of reach.
+	var far_before := before.duplicate()
+	var far_now := now.duplicate()
+	far_before[4] = 4.0
+	far_now[4] = 4.0
+	## ACT
+	var found := InitiativeModel._steel_within(before, now, spec, spec, BladePose.new(), BladePose.new(), SwordContactGeometry.new())
+	var missed := InitiativeModel._steel_within(far_before, far_now, spec, spec, BladePose.new(), BladePose.new(), SwordContactGeometry.new())
+	## ASSERT
+	assert_true(found > 0.0 and found < 1.0, "the sweep finds the crossing inside the tick (at %.4f of it)" % found)
+	assert_eq(missed, 2.0, "and nothing where no steel is crossed")
+
+
+## The steel clearance between two swords posed at `at` ([x, y, φ, θ, target
+## x, target y, target φ, target θ]), both `spec`.
+static func _steel_clearance_at(at: PackedFloat64Array, spec: CombatantPhysicsSpec) -> float:
+	var pose := WeaponKinematics.pose_at(at[0], at[1], at[2], at[3], spec, BladePose.new())
+	var their := WeaponKinematics.pose_at(at[4], at[5], at[6], at[7], spec, BladePose.new())
+	return SwordContactGeometry.new().measure(at[0], at[1], pose.origin_x, pose.origin_y, pose.ux, pose.uy, their.origin_x, their.origin_y, their.ux, their.uy, spec.weapon, spec.weapon)
 
 
 ## The opponent's steel blocks the direct line and the detour alike: no route
@@ -1074,3 +1118,156 @@ func test_capitalizing_mirrors_exactly() -> void:
 		assert_eq(b.move_x, -a.move_x, "the lateral step mirrors")
 		assert_eq(b.move_y, a.move_y, "the forward step is the same")
 		assert_eq(b.attack_pressed, a.attack_pressed, "and so is the attack")
+
+
+# ── CPU-009: the range preference ───────────────────────────────────────────
+
+
+## A held range scene: a CPU in slot 0 playing `profile` and an opponent that
+## stands idle in Long Guard, `start` metres apart on the duel's own line,
+## after the intro: [runner, cpu].
+func _range_scene(profile: CpuProfile, start: float, seed_value: int) -> Array:
+	var rules := StandardDuelRules.create()
+	var runner := SimRunner.create(rules, seed_value)
+	runner.skip_intro()
+	var a := runner.state.fighter(0)
+	var b := runner.state.fighter(1)
+	var cx := (a.x + b.x) * 0.5
+	var cy := (a.y + b.y) * 0.5
+	var line := Vector2(b.x - a.x, b.y - a.y).normalized()
+	DuelFixture.place(a, cx - line.x * start * 0.5, cy - line.y * start * 0.5, atan2(line.y, line.x))
+	DuelFixture.place(b, cx + line.x * start * 0.5, cy + line.y * start * 0.5, atan2(-line.y, -line.x))
+	return [runner, CpuController.create(rules, profile, seed_value, 0)]
+
+
+## Run a range scene until the CPU releases its first attack (at most
+## `ticks`): the closest the two came before it, the tick of the CPU's first
+## burst (−1 none), the first tick it stood beyond `line` (−1 never), the
+## release tick (−1 none), and whether every tick was legal.
+func _until_release(scene: Array, ticks: int, line: float) -> Dictionary:
+	var runner: SimRunner = scene[0]
+	var cpu: CpuController = scene[1]
+	var out := {"closest": INF, "burst": -1, "beyond": -1, "released": -1}
+	for t in ticks:
+		var seen := runner.events.size()
+		runner.push(cpu.command_for(runner.state, 0), PlayerCommand.idle(runner.state.tick))
+		var d := DuelGeometry.distance(runner.state.fighter(0), runner.state.fighter(1))
+		if int(out["beyond"]) < 0 and d >= line:
+			out["beyond"] = t
+		for i in range(seen, runner.events.size()):
+			var event: DuelEvent = runner.events[i]
+			if event.actor != 0:
+				continue
+			if event.type == DuelEventTypes.BURST_STARTED and int(out["burst"]) < 0:
+				out["burst"] = t
+			elif event.type == DuelEventTypes.ATTACK_RELEASED:
+				out["released"] = t
+		if int(out["released"]) >= 0:
+			break
+		out["closest"] = minf(float(out["closest"]), d)
+	out["sound"] = runner.is_sound()
+	return out
+
+
+## CPU-009: a forward dash spends its whole travel at once — the burst and its
+## glide to rest — so the CPU takes one only when that travel still stops
+## outside the range it is closing to. Against an opponent standing in Long
+## Guard, with the dash made certain (`burst_weight` 1): from far enough that a
+## dash stops outside its ready range it still dashes, and comes no closer
+## than its smothered line before it strikes; from where one dash would carry
+## it inside its ready range it walks in instead, just as close. Seeds 1–3.
+func test_a_dash_in_never_carries_the_cpu_inside_its_own_range() -> void:
+	var dasher := CpuProfile.hard()
+	dasher.burst_weight = 1.0
+	for seed_value: int in [1, 2, 3]:
+		## ARRANGE: the distances from this CPU's own range and dash.
+		var sizing: CpuController = _range_scene(dasher, 3.0, seed_value)[1]
+		var ready := sizing.preferred_range(true)
+		var dash := sizing.dash_travel()
+		var smothered := sizing.smothered_line()
+		var far := ready + dash + 1.0
+		var near := ready + dash * 0.5
+		assert_true(near - dash < smothered and near > ready, "fixture: from %.2f m one dash (%.2f m) would carry it inside its smothered line (%.2f m)" % [near, dash, smothered])
+		## ACT
+		var from_far := _until_release(_range_scene(dasher, far, seed_value), 300, smothered)
+		var from_near := _until_release(_range_scene(dasher, near, seed_value), 300, smothered)
+		## ASSERT
+		var label := "seed %d" % seed_value
+		assert_true(int(from_far["released"]) >= 0 and int(from_near["released"]) >= 0, "%s fixture: both approaches end in an attack" % label)
+		assert_true(int(from_far["burst"]) >= 0, "%s: from %.2f m the CPU still dashes in" % [label, far])
+		assert_true(float(from_far["closest"]) >= smothered, "%s: and stops outside its smothered line (closest %.3f m)" % [label, float(from_far["closest"])])
+		assert_eq(int(from_near["burst"]), -1, "%s: from %.2f m it does not dash" % [label, near])
+		assert_true(float(from_near["closest"]) >= smothered, "%s: and walks in no closer than its smothered line (closest %.3f m)" % [label, float(from_near["closest"])])
+		assert_true(bool(from_far["sound"]) and bool(from_near["sound"]), "%s: every tick legal" % label)
+
+
+## CPU-009: a CPU free to act that finds itself inside its smothered line steps
+## back out of it before it attacks. Hard against an opponent standing in Long
+## Guard, started at 0.7 and 0.9 m with its sword at rest and able to strike —
+## a forced state such as a stagger is never asked to move. Seeds 1–3.
+func test_a_smothered_cpu_that_can_act_steps_back_out_before_it_attacks() -> void:
+	var hard := CpuProfile.hard()
+	for seed_value: int in [1, 2, 3]:
+		for start: float in [0.7, 0.9]:
+			## ARRANGE
+			var scene := _range_scene(hard, start, seed_value)
+			var runner: SimRunner = scene[0]
+			var cpu: CpuController = scene[1]
+			var me := runner.state.fighter(0)
+			var label := "seed %d from %.1f m" % [seed_value, start]
+			assert_true(start < cpu.smothered_line(), "%s fixture: inside the smothered line (%.2f m)" % [label, cpu.smothered_line()])
+			assert_true(me.weapon.phase == CombatPhase.Id.NEUTRAL and WeaponSystem.can_start_attack(me, runner.rules.spec_of(me).weapon), "%s fixture: free to act" % label)
+			## ACT
+			var outcome := _until_release(scene, 300, cpu.smothered_line())
+			## ASSERT
+			assert_true(int(outcome["beyond"]) >= 0, "%s: it steps back out of its smothered line" % label)
+			assert_true(int(outcome["released"]) < 0 or int(outcome["beyond"]) <= int(outcome["released"]), "%s: before it attacks (out at %d, release at %d)" % [label, int(outcome["beyond"]), int(outcome["released"])])
+			assert_true(bool(outcome["sound"]), "%s: every tick legal" % label)
+
+
+## THREAT-001 / FIRST-CONTACT-001 as the CPU sees it: in a constructed scene
+## the predictor's own reading needs its in-tick steel sweep — slot 0 at rest
+## and able to strike; slot 1 1.8 m ahead, 0.2 m to the side, its own cut in
+## flight (from −0.8 rad at 8 rad/s), so the two blades cross between the
+## predictor's ticks. The route estimate reads steel first, and on the tick the
+## duel meets it: the duel, continued as the estimate assumes (slot 0's route
+## tap, slot 1 carrying on), meets slot 1's blade before any flesh. (A copy of
+## the predictor without the sweep reads the torso here; the same scene at
+## 2.4 m reads the same, so the distance is no knife edge.)
+func test_the_route_estimate_sees_a_blade_crossing_between_its_ticks() -> void:
+	## ARRANGE
+	var rules := StandardDuelRules.create()
+	var runner := SimRunner.create(rules, 5)
+	runner.skip_intro()
+	var weapon := rules.combatant(0).weapon
+	ContactFixture.arm(runner.state.fighter(0), 0.0, 0.0, 0.0, -weapon.guard_angle, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	ContactFixture.arm(runner.state.fighter(1), 1.8, 0.2, PI, -0.8, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.5, weapon)
+	var me := runner.state.fighter(0)
+	var them := runner.state.fighter(1)
+	assert_true(WeaponSystem.can_start_attack(me, weapon), "fixture: slot 0 can strike")
+	assert_true(ContactGauge.blades(rules, runner.state).x > 0.0, "fixture: the blades start apart")
+	## ACT: the estimate, then the duel under its continuation.
+	var predicted := InitiativeModel.estimate(me, rules.spec_of(me), them, rules.spec_of(them), rules.combat, ThreatEstimate.new(), ThreatContinuation.route(1.0, 0.0))
+	var clash_tick := -1
+	var flesh := false
+	var launched := false
+	for t in 30:
+		var a := runner.state.fighter(0)
+		var step := CutGeometry.step_intent(a, runner.state.fighter(1), Vector2(1.0, 0.0))
+		var press := not launched and WeaponSystem.can_start_attack(a, rules.spec_of(a).weapon)
+		var seen := runner.events.size()
+		runner.push(PlayerCommand.create(runner.state.tick, step.x, step.y, press, press), PlayerCommand.idle(runner.state.tick))
+		launched = launched or press
+		for i in range(seen, runner.events.size()):
+			var event: DuelEvent = runner.events[i]
+			if clash_tick < 0 and event.type == DuelEventTypes.BLADE_CONTACT:
+				clash_tick = t + 1
+			elif clash_tick < 0 and event.type == DuelEventTypes.BODY_HIT and event.actor == 0:
+				flesh = true
+		if clash_tick >= 0:
+			break
+	## ASSERT
+	assert_true(clash_tick >= 0 and not flesh, "fixture: the duel's tap meets steel before any flesh (tick %d)" % clash_tick)
+	assert_eq(predicted.first_contact, ThreatEstimate.STEEL, "the estimate sees the steel, not the torso behind it")
+	assert_near(predicted.steel_time, float(clash_tick) * SimulationTimebase.TICK_SECONDS, SimulationTimebase.TICK_SECONDS * 0.5, "on the tick the duel meets it")
+	assert_true(runner.is_sound(), "every tick legal")

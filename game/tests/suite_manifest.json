@@ -110,10 +110,10 @@
       "budget_ms": 2000
     },
     {
-      "name": "GUARD",
-      "path": "res://tests/domain/test_guard.gd",
+      "name": "GRIP",
+      "path": "res://tests/domain/test_grip.gd",
       "tier": "focused",
-      "budget_ms": 2000
+      "budget_ms": 12000
     },
     {
       "name": "TWO-POINT",
@@ -137,7 +137,7 @@
       "name": "CONTACT",
       "path": "res://tests/domain/test_contact.gd",
       "tier": "focused",
-      "budget_ms": 2000
+      "budget_ms": 3000
     },
     {
       "name": "CONTACT-INTEGRITY",
@@ -445,7 +445,7 @@
         "COLLIDE",
         "POINT",
         "SEMANTICS",
-        "GUARD"
+        "GRIP"
       ]
     },
     "contact": {
@@ -465,7 +465,7 @@
         "CONTACT",
         "MANIFOLD",
         "FRICTION",
-        "GUARD",
+        "GRIP",
         "TWO-POINT",
         "IMPACT",
         "BODY-PUSH",
@@ -483,7 +483,7 @@
         "src/domain/combat/threat_continuation.gd",
         "src/domain/combat/exposure_model.gd"
       ],
-      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT", "LINE-GAME"]
+      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT", "LINE-GAME", "GRIP"]
     },
     "cpu": {
       "paths": ["src/application/cpu/"],

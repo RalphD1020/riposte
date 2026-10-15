@@ -20,30 +20,34 @@ const DUEL_TICKS := 1800
 const NUMERICAL_TOLERANCE := 2.0e-4
 
 
-## Surface gap between the two swords' nearest features — blade, guard or hilt
-## (m, negative = overlap) — and which side of blade 0's line blade 1's tip
-## lies on.
+## Surface gap between the two swords' steel — blade on blade, and each guard
+## root at the side its contact decided (m, negative = overlap): a blade the
+## guard is letting through from the grip side is not steel overlap — and
+## which side of blade 0's line blade 1's tip lies on.
 static func blades(rules: DuelRules, state: MatchState) -> Vector2:
 	var w := rules.combatant(0).weapon
 	var spec := rules.combatant(0)
 	var a := WeaponKinematics.pose_of(state.fighter(0), spec, BladePose.new())
 	var b := WeaponKinematics.pose_of(state.fighter(1), spec, BladePose.new())
-	var gap := SwordContactGeometry.new().measure(state.fighter(0).x, state.fighter(0).y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, w, w)
+	var gap := SwordContactGeometry.new().measure(state.fighter(0).x, state.fighter(0).y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, w, w, state.blade_contact.guard_mode)
 	var side := a.ux * (b.point_y(w.tip_radius) - a.origin_y) - a.uy * (b.point_x(w.tip_radius) - a.origin_x)
 	return Vector2(gap, signf(side))
 
 
-## Distance between the two blades' centrelines (m): zero means one blade has
-## crossed through the other.
+## Distance between the two steel blades' centrelines (m), each from its guard
+## root's apex to its point: zero means one blade has crossed through the
+## other. Below the apex is the guard root, which a blade from the grip side
+## passes by design (GUARD-PROTECTION-001).
 static func centrelines(rules: DuelRules, state: MatchState) -> float:
 	var w := rules.combatant(0).weapon
 	var spec := rules.combatant(0)
 	var a := WeaponKinematics.pose_of(state.fighter(0), spec, BladePose.new())
 	var b := WeaponKinematics.pose_of(state.fighter(1), spec, BladePose.new())
+	var from := w.guard_root_apex_radius()
 	var contact := SegmentContact.new()
 	SimMath.closest_segments(
-		a.point_x(w.hilt_radius), a.point_y(w.hilt_radius), a.point_x(w.tip_radius), a.point_y(w.tip_radius),
-		b.point_x(w.hilt_radius), b.point_y(w.hilt_radius), b.point_x(w.tip_radius), b.point_y(w.tip_radius),
+		a.point_x(from), a.point_y(from), a.point_x(w.tip_radius), a.point_y(w.tip_radius),
+		b.point_x(from), b.point_y(from), b.point_x(w.tip_radius), b.point_y(w.tip_radius),
 		contact
 	)
 	return contact.distance
@@ -54,8 +58,8 @@ static func body(rules: DuelRules, wielder: FighterState, target: FighterState) 
 	var w := rules.combatant(0).weapon
 	var spec := rules.combatant(0)
 	var pose := WeaponKinematics.pose_of(wielder, spec, BladePose.new())
-	var hx := pose.point_x(w.hilt_radius)
-	var hy := pose.point_y(w.hilt_radius)
+	var hx := pose.point_x(w.blade_base_radius)
+	var hy := pose.point_y(w.blade_base_radius)
 	var tx := pose.point_x(w.tip_radius)
 	var ty := pose.point_y(w.tip_radius)
 	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, target.x, target.y)

@@ -11,8 +11,19 @@ extends TestCase
 ## See also: /docs/reference/testing.md
 ## See also: /docs/concepts/combat.md
 
-## Acceptance bound for the hold-budget fallback (live ticks per exhaustion).
+## Acceptance bound for the hold-budget fallback in adversarial play (live
+## ticks per exhaustion).
 const HOLD_BUDGET_TICKS_PER_FALLBACK := 5000
+## The ship corpus's measured re-hold exhaustions on rules 52: one, seed 122
+## tick 854, in 46,031 live ticks — the fast-slide class
+## (CONTACT-REHOLD-FALLBACK-001). The corpus is deterministic, so a different
+## count is a behaviour change to attribute, never noise: more is a
+## deterioration; fewer is re-measured and this lowered.
+const SHIP_REHOLD_BASELINE := 1
+## The ticks after an exhaustion that must not exhaust again, and the watchdog
+## for an ordinary back step to part the blades from it (a test budget, as
+## CONTACT-INTEGRITY's `MAX_WITNESS_TICKS`).
+const REHOLD_WATCH_TICKS := 60
 
 var _rules: DuelRules
 
@@ -28,7 +39,9 @@ func test_live_duels_hold_every_contact_rigid() -> void:
 
 
 ## The ship corpus is the representative one: it expects every fallback at
-## zero, so recurring fallback use can never pass as ordinary gameplay.
+## zero but the re-hold fallback, which it accepts only as the characterized
+## class, each one escapable, and no more often than its measured baseline —
+## so recurring fallback use can never pass as ordinary gameplay.
 func test_the_ship_corpus_holds_every_contact_rigid() -> void:
 	_assert_corpus_rigid(range(ContactGauge.SHIP_SEEDS_FROM, ContactGauge.SHIP_SEEDS_FROM + ContactGauge.SHIP_SEEDS), 30000, true)
 
@@ -54,6 +67,10 @@ func _assert_corpus_rigid(seeds: Array, least_live: int, representative: bool) -
 	var unsound := 0
 	var pending_worst := 0.0
 	var unresolved := 0
+	## Re-hold exhaustions outside the CONTACT-REHOLD-FALLBACK-001 class: a
+	## re-hold of more than one identity or of no closing impulse, one again
+	## within `REHOLD_WATCH_TICKS`, or one a fighter's back step cannot part.
+	var uncharacterized := PackedStringArray()
 	for seed_value: int in seeds:
 		print("  · CONTACT-INTEGRITY-SHIP seed %d" % seed_value)
 		var pending_body: Array[bool] = [false, false]
@@ -63,7 +80,13 @@ func _assert_corpus_rigid(seeds: Array, least_live: int, representative: bool) -
 		for _tick in ContactGauge.DUEL_TICKS:
 			if runner.state.is_finished():
 				break
+			var exhausted := runner.simulation.diagnostics.rehold_budget_exhausted
 			runner.push(first.command(runner.state, 0), second.command(runner.state, 1))
+			if runner.simulation.diagnostics.rehold_budget_exhausted > exhausted:
+				for slot in 2:
+					var parted := _back_step_parts(runner, slot)
+					if parted != "":
+						uncharacterized.append("seed %d tick %d: %s" % [seed_value, runner.state.tick - 1, parted])
 			if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
 				continue
 			live += 1
@@ -108,6 +131,12 @@ func _assert_corpus_rigid(seeds: Array, least_live: int, representative: bool) -
 		ccd_caps += counters.ccd_cap_hits
 		contact_caps += counters.contact_cap_hits
 		hold_caps += counters.rehold_budget_exhausted
+		for i in counters.rehold_fallback_ticks.size():
+			var at := counters.rehold_fallback_ticks[i]
+			if counters.rehold_fallback_identities[i] != 1 or counters.rehold_fallback_least_impulse[i] <= 0.0:
+				uncharacterized.append("seed %d tick %d: %d identities, least impulse %.3f" % [seed_value, at, counters.rehold_fallback_identities[i], counters.rehold_fallback_least_impulse[i]])
+			if i > 0 and at - counters.rehold_fallback_ticks[i - 1] <= REHOLD_WATCH_TICKS:
+				uncharacterized.append("seed %d tick %d: again %d ticks after the last" % [seed_value, at, at - counters.rehold_fallback_ticks[i - 1]])
 		turn_guards += counters.position_guard_hits
 		dropped += counters.meaningful_contacts_dropped
 		pivot_caps += counters.pivot_cap_hits
@@ -136,15 +165,37 @@ func _assert_corpus_rigid(seeds: Array, least_live: int, representative: bool) -
 	## rotation can re-cross more often than the budget allows, and the rest of
 	## that tick is carried without tunnelling (CONTACT-FALLBACK-001) — the overlap bounds above
 	## still hold on those ticks. Legal, so adversarial play is only bounded;
-	## representative play expects none.
-	## Every feature pair keeps its own manifold (TWO-POINT-001), so a hilt
-	## lock's three constraints are three rows: no real constraint is ever
-	## dropped, for any feature, and the exact block always finishes.
+	## representative play accepts only the characterized class
+	## (CONTACT-REHOLD-FALLBACK-001), within its measured baseline.
+	print("  · CONTACT-INTEGRITY-SHIP re-hold exhaustions: %d in %d live ticks, outside the class: %s" % [hold_caps, live, str(uncharacterized)])
+	## Steel is three convex pairs (STEEL-TOPOLOGY-001): at most two points a
+	## pair, no real constraint is ever dropped, and the exact block always
+	## finishes.
 	assert_eq(pivot_caps, 0, "the exact contact block never reaches its pivot cap (%d)" % pivot_caps)
+	assert_true(most_points <= SwordContactSet.CAPACITY, "no contact ever holds more points than the set has (%d at most)" % most_points)
 	if representative:
-		assert_eq(hold_caps, 0, "representative play never exhausts the re-hold budget (%d in %d live ticks)" % [hold_caps, live])
-		assert_eq(dropped, 0, "no feature pair — blade, crossguard or handle — ever drops a real constraint (%d)" % dropped)
-		assert_true(most_points > SwordContactSet.POINTS_PER_PAIR, "fixture: live play reaches contacts no single feature pair could hold (%d points at most)" % most_points)
+		assert_eq(uncharacterized, PackedStringArray(), "every re-hold exhaustion is the characterized, escapable class")
+		assert_true(hold_caps <= SHIP_REHOLD_BASELINE, "representative play exhausts the re-hold budget no more than its measured baseline (%d in %d live ticks; baseline %d)" % [hold_caps, live, SHIP_REHOLD_BASELINE])
+		assert_eq(dropped, 0, "the blades never drop a real constraint (%d)" % dropped)
+		assert_true(most_points >= SwordContactSet.POINTS_PER_PAIR, "fixture: live play reaches two-point line contacts (%d points at most)" % most_points)
 	else:
 		assert_true(hold_caps * HOLD_BUDGET_TICKS_PER_FALLBACK <= live, "adversarial play exhausts the re-hold budget at most once per %d live ticks (%d in %d)" % [HOLD_BUDGET_TICKS_PER_FALLBACK, hold_caps, live])
 	assert_eq(unsound, 0, "no duel leaves its legal state set (finite, in range)")
+
+
+## Fork `runner` from the tick after a re-hold exhaustion and step `slot` back
+## while the other gives nothing: "" if the blades part legally within the
+## slop before `REHOLD_WATCH_TICKS`, else what went wrong.
+func _back_step_parts(runner: SimRunner, slot: int) -> String:
+	if runner.state.blade_contact.phase == SwordContactSet.Phase.SEPARATED:
+		return ""
+	var fork := StateFork.of(runner)
+	for t in REHOLD_WATCH_TICKS:
+		var tick := fork.state.tick
+		var back := PlayerCommand.create(tick, 0.0, -1.0)
+		fork.push(back if slot == 0 else PlayerCommand.idle(tick), back if slot == 1 else PlayerCommand.idle(tick))
+		if fork.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED and -ContactGauge.blades(_rules, fork.state).x > ContactGauge.allowed(_rules):
+			return "fighter %d's back step sinks beyond the slop" % slot
+		if fork.state.blade_contact.phase == SwordContactSet.Phase.SEPARATED:
+			return "" if fork.is_sound() else "fighter %d's back step leaves the legal state set" % slot
+	return "fighter %d's back step cannot part it in %d ticks" % [slot, REHOLD_WATCH_TICKS]

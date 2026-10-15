@@ -20,7 +20,7 @@ extends SceneTree
 ## a contact or whiff, and per swing against the opponent's hands: near misses
 ## (the blade's closest surface gap to a hand, sampled each tick, within
 ## `NEAR_MISS_M` and no hand wound) and saves by steel — a protective contact
-## (guard or blade) met before any hand wound where the same free sweep, carried
+## (the blade) met before any grip wound where the same free sweep, carried
 ## on from just before the contact at its own rates with nothing in the way,
 ## would have entered a hand within `FREE_SWEEP_TICKS`: the hand was safe
 ## because the steel was there. Parries are also read per released attack (the
@@ -42,14 +42,14 @@ extends SceneTree
 ## after a whiff (the other fighter or the whiffer). The first fork of each
 ## duel is checked against a re-simulation from the commands.
 ##
-## Every hold of `LONG_HOLD_TICKS` or more is classified: the feature pair it
-## began on, whether it ever held two or more points, whether it was
+## Every hold of `LONG_HOLD_TICKS` or more is classified: whether it began on
+## the blades (always, since rules 50), whether it ever held two points, whether it was
 ## *maintained* (a normal force of at least `PRESS_N` on most of its ticks) or
 ## merely resting, whether either fighter was driving (charging, swinging or
 ## holding the attack button) on most of its ticks, and whether the bodies were
 ## mostly closing, still or separating — so a long hold reads as pressure or as
-## a wedge nobody is holding. Every held tick is also read as BIND, SLIDE,
-## TANGLE or resting (PLANAR-BIND-001 readings, `_reading`), each end of a hold
+## a wedge nobody is holding. Every held tick is also read as BIND, SLIDE or
+## resting (PLANAR-BIND-001 readings, `_reading`), each end of a hold
 ## counts as a disengage, and any point with tangent impulse but no normal
 ## impulse is counted (`friction_without_normal`, a solver defect if ever > 0).
 ##
@@ -67,7 +67,6 @@ const ROOT_STILL_MPS := 0.05
 ## Slip speed (m/s) above which a held point at its friction limit reads SLIDE.
 const SLIDE_MPS := 0.05
 const CLOSING_BINS: Array[float] = [2.0, 5.0, 10.0]
-const FEATURE_LETTER: Array[String] = ["B", "G", "H"]
 const PUNISH_DELAYS: Array[int] = [0, 10]
 const PUNISH_TICKS := 45
 
@@ -83,7 +82,6 @@ func _initialize() -> void:
 	var punish := {}
 	if frictionless:
 		_rules.combat.blade_friction = 0.0
-		_rules.combat.guard_friction = 0.0
 		## A blade on a body may not grip harder than blade on blade.
 		_rules.combat.blade_body_friction = 0.0
 	if not _rules.is_valid():
@@ -161,7 +159,7 @@ func _initialize() -> void:
 							totals["attacks"] += 1
 							steel[event.actor] = false
 						DuelEventTypes.BODY_HIT:
-							if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_HAND:
+							if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP:
 								totals["hand_hits"] += 1
 								wounded[event.actor] = true
 							else:
@@ -208,7 +206,7 @@ func _initialize() -> void:
 				var contact := state.blade_contact
 				if contact.phase != SwordContactSet.Phase.SEPARATED:
 					if span == 0:
-						hold_pair = (FEATURE_LETTER[contact.feature_a[0]] + FEATURE_LETTER[contact.feature_b[0]]) if contact.point_count > 0 else "--"
+						hold_pair = "BB" if contact.point_count > 0 else "--"
 						hold_points = 0
 						hold_pressed = 0
 						hold_driven = 0
@@ -224,7 +222,7 @@ func _initialize() -> void:
 					var pressing := 0.0
 					for i in contact.point_count:
 						pressing += contact.hold_normal[i]
-						var mu := ContactMechanics.friction(contact.feature_a[i], contact.feature_b[i], _rules.combat)
+						var mu := _rules.combat.blade_friction
 						var jn := contact.normal_impulse[i]
 						if mu > 0.0 and jn > 1.0e-9:
 							var ratio := absf(contact.tangent_impulse[i]) / (mu * jn)
@@ -374,8 +372,8 @@ func _hand_gap(attacker: FighterState, defender: FighterState) -> float:
 	var defending := _rules.spec_of(defender)
 	var blade := WeaponKinematics.pose_of(attacker, attacking, BladePose.new())
 	var grip := WeaponKinematics.pose_of(defender, defending, BladePose.new())
-	var hx := blade.point_x(attacking.weapon.hilt_radius)
-	var hy := blade.point_y(attacking.weapon.hilt_radius)
+	var hx := blade.point_x(attacking.weapon.blade_base_radius)
+	var hy := blade.point_y(attacking.weapon.blade_base_radius)
 	var tx := blade.point_x(attacking.weapon.tip_radius)
 	var ty := blade.point_y(attacking.weapon.tip_radius)
 	var reach := defending.fighter.hand_radius + attacking.weapon.blade_radius
@@ -420,8 +418,8 @@ func _free_sweep_enters_hand(attacker: int) -> bool:
 		var t := dt * float(k)
 		WeaponKinematics.pose_at(_before[a] + _before[a + 4] * t, _before[a + 1] + _before[a + 5] * t, _before[a + 2] + _before[a + 6] * t, _before[a + 3] + _before[a + 7] * t, attacking, blade)
 		WeaponKinematics.pose_at(_before[d] + _before[d + 4] * t, _before[d + 1] + _before[d + 5] * t, _before[d + 2] + _before[d + 6] * t, _before[d + 3] + _before[d + 7] * t, defending, grip)
-		var hx := blade.point_x(attacking.weapon.hilt_radius)
-		var hy := blade.point_y(attacking.weapon.hilt_radius)
+		var hx := blade.point_x(attacking.weapon.blade_base_radius)
+		var hy := blade.point_y(attacking.weapon.blade_base_radius)
 		var tx := blade.point_x(attacking.weapon.tip_radius)
 		var ty := blade.point_y(attacking.weapon.tip_radius)
 		for radius: float in [defending.weapon.offhand_grip_radius, defending.weapon.dominant_grip_radius]:
@@ -434,14 +432,9 @@ func _free_sweep_enters_hand(attacker: int) -> bool:
 
 
 ## Whether the sword contact `attacker` just met is on steel that defends its
-## opponent (DEFENSE-ROLE-001: blade or guard, never the handle).
+## opponent (DEFENSE-ROLE-001: the blade, the only steel there is).
 func _steel_protects(state: MatchState, attacker: int) -> bool:
-	var contact := state.blade_contact
-	var defending := _rules.spec_of(state.opponent_of(attacker)).weapon
-	for i in contact.point_count:
-		if defending.protects(contact.feature_b[i] if attacker == 0 else contact.feature_a[i]):
-			return true
-	return false
+	return state.blade_contact.point_count > 0 and _rules.spec_of(state.opponent_of(attacker)).weapon.blade_protects
 
 
 ## Whether `fighter` is driving its sword: charging, swinging, or holding the
@@ -460,22 +453,16 @@ static func _radial_speed(a: FighterState, b: FighterState) -> float:
 
 
 ## What one held tick of the manifold reads as (PLANAR-BIND-001), a
-## description only: TANGLE — more than one feature pair, or several points;
-## SLIDE — a point sliding at the friction limit; BIND — normal pressure on
-## one primary constraint; RESTING — touching, nothing pressing.
+## description only: SLIDE — a point sliding at the friction limit; BIND —
+## normal pressure on the blades; RESTING — touching, nothing pressing.
 static func _reading(contact: SwordContactSet, combat: CombatTuning) -> String:
-	var pairs := {}
 	var pressed := false
 	var sliding := false
-	for i in contact.point_count:
-		pairs[contact.feature_a[i] * 3 + contact.feature_b[i]] = true
+	var mu := combat.blade_friction
 	for i in contact.hold_count():
 		var jn := contact.hold_normal[i]
 		pressed = pressed or jn / SimulationTimebase.TICK_SECONDS >= PRESS_N
-		var mu := ContactMechanics.friction(contact.hold_feature_a[i], contact.hold_feature_b[i], combat)
 		sliding = sliding or (contact.hold_slip[i] >= SLIDE_MPS and mu > 0.0 and absf(contact.hold_tangent[i]) >= 0.99 * mu * jn and jn > 0.0)
-	if pairs.size() > 1 or contact.point_count > 2:
-		return "tangle"
 	if sliding:
 		return "slide"
 	if pressed:

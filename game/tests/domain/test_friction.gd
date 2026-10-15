@@ -56,8 +56,8 @@ func _blade_frame(state: MatchState, rules: DuelRules = null) -> PackedFloat64Ar
 	var b := WeaponKinematics.pose_of(state.fighter(1), spec, BladePose.new())
 	var contact := SegmentContact.new()
 	SimMath.closest_segments(
-		a.point_x(w.hilt_radius), a.point_y(w.hilt_radius), a.point_x(w.tip_radius), a.point_y(w.tip_radius),
-		b.point_x(w.hilt_radius), b.point_y(w.hilt_radius), b.point_x(w.tip_radius), b.point_y(w.tip_radius),
+		a.point_x(w.blade_base_radius), a.point_y(w.blade_base_radius), a.point_x(w.tip_radius), a.point_y(w.tip_radius),
+		b.point_x(w.blade_base_radius), b.point_y(w.blade_base_radius), b.point_x(w.tip_radius), b.point_y(w.tip_radius),
 		contact
 	)
 	var nx := contact.ax - contact.bx
@@ -88,7 +88,6 @@ func _frictionless() -> DuelRules:
 	var rules := DuelFixture.rules()
 	rules.combat.blade_friction = 0.0
 	rules.combat.blade_body_friction = 0.0
-	rules.combat.guard_friction = 0.0
 	return rules
 
 
@@ -195,9 +194,10 @@ func test_a_sword_on_a_torso_grips_far_less_than_on_a_blade() -> void:
 	assert_true(lifecycle.hold_slip > 1.5, "and the reading says it slides (%.2f m/s)" % lifecycle.hold_slip)
 
 
-## Place hold record 0 at the swords' current touching point, as last tick's
-## solve would have (CONTACT-IDENTITY-001 matches by feature coordinates).
-func _hold_where_touching(state: MatchState) -> void:
+## Place hold record 0 at the blades' current touching point, as last tick's
+## solve would have (CONTACT-IDENTITY-001 matches by blade fractions), moved
+## `shift` along both blades.
+func _hold_where_touching(state: MatchState, shift: float = 0.0) -> void:
 	var weapon := _rules.combatant(0).weapon
 	var spec := _rules.combatant(0)
 	var a := WeaponKinematics.pose_of(state.fighter(0), spec, BladePose.new())
@@ -205,15 +205,13 @@ func _hold_where_touching(state: MatchState) -> void:
 	var geometry := SwordContactGeometry.new()
 	geometry.measure(state.fighter(0).x, state.fighter(0).y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, weapon, weapon)
 	var contact := state.blade_contact
-	contact.hold_feature_a[0] = geometry.feature_a
-	contact.hold_feature_b[0] = geometry.feature_b
-	contact.hold_local_a[0] = geometry.point_local_a[geometry.nearest]
-	contact.hold_local_b[0] = geometry.point_local_b[geometry.nearest]
+	contact.hold_fraction_a[0] = geometry.point_fraction_a[geometry.nearest] + shift
+	contact.hold_fraction_b[0] = geometry.point_fraction_b[geometry.nearest] + shift
 
 
-## A warm start is only for the same contact point — the same geometric
-## feature pair, at the same place on it: a record from a different feature
-## leaves the solve exactly cold.
+## A warm start is only for the same contact point — the same place along the
+## two blades: a record from a point farther away than one tick's match leaves
+## the solve exactly cold.
 ## A warm start can change the result only while friction is inside its cone
 ## (a saturated slide ends at μ·Jn whatever it started from) and the normal
 ## and tangent rows couple (uncoupled, each exact projection lands in one
@@ -223,7 +221,7 @@ const WARM_SLIDE := 0.1
 const WARM_OFFSET := 0.05
 
 
-func test_a_warm_start_reads_only_the_same_feature() -> void:
+func test_a_warm_start_reads_only_the_same_point() -> void:
 	var probe := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	var unsaturated := _solve(probe)
 	assert_true(unsaturated[0] > 0.0, "fixture: the press loads the contact (%.4f N·s)" % unsaturated[0])
@@ -231,19 +229,18 @@ func test_a_warm_start_reads_only_the_same_feature() -> void:
 	var cold := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	var foreign := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	foreign.blade_contact.hold_active[0] = 1
-	foreign.blade_contact.hold_feature_b[0] = SwordContactSet.Feature.GUARD
 	foreign.blade_contact.hold_normal[0] = 9.0
 	foreign.blade_contact.hold_tangent[0] = 1.5
-	_hold_where_touching(foreign)
-	foreign.blade_contact.hold_feature_b[0] = SwordContactSet.Feature.GUARD
+	## PERTURB: the record sits farther along the blades than one tick's match.
+	_hold_where_touching(foreign, SwordContactSet.MATCH_DISTANCE)
 	_solve(cold)
 	_solve(foreign)
 	for slot in 2:
 		var c := cold.fighter(slot)
 		var f := foreign.fighter(slot)
-		assert_eq([f.vx, f.vy, f.weapon.speed], [c.vx, c.vy, c.weapon.speed], "slot %d: another feature's record changes nothing" % slot)
-	## The same feature's record is used, and the solve still lands inside
-	## the same laws: non-closing, inside the cone.
+		assert_eq([f.vx, f.vy, f.weapon.speed], [c.vx, c.vy, c.weapon.speed], "slot %d: another point's record changes nothing" % slot)
+	## The same point's record is used, and the solve still lands inside the
+	## same laws: non-closing, inside the cone.
 	var warm := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	warm.blade_contact.hold_active[0] = 1
 	warm.blade_contact.hold_normal[0] = 9.0
@@ -284,11 +281,10 @@ func test_friction_mirrors_exactly() -> void:
 		assert_near(lf.weapon.speed, -rf.weapon.speed, 1e-9, "slot %d: reflected θ̇" % slot)
 
 
-## Through the real tick: a held contact's identity is the feature pair it
-## touches, so a contact sliding along the blades keeps its identity (and its
-## warm start) while the point migrates — the fraction is a reading. Sliding on
-## off the blade onto the guard is a new feature pair and so a new identity.
-func test_a_held_slide_keeps_its_feature_while_the_point_migrates() -> void:
+## Through the real tick: a held contact's identity is geometric
+## (CONTACT-IDENTITY-001), so a contact sliding along the blades keeps its
+## identity (and its warm start) while the point migrates.
+func test_a_held_slide_keeps_its_identity_while_the_point_migrates() -> void:
 	var runner := SimRunner.create(_rules, 1)
 	runner.skip_intro()
 	var state := runner.state
@@ -302,28 +298,18 @@ func test_a_held_slide_keeps_its_feature_while_the_point_migrates() -> void:
 	var warm_ticks := 0
 	var lowest := INF
 	var highest := -INF
-	var touched_before := []
+	var identity := -1
+	var kept := 0
 	for _tick in 40:
 		runner.push(PlayerCommand.create(state.tick, 0.6, 0.8), PlayerCommand.idle(state.tick))
 		var manifold := state.blade_contact
-		var pairs := []
-		var persisted := manifold.point_count > 0
-		for point in manifold.point_count:
-			persisted = persisted and manifold.is_persisted(point)
-			pairs.append([manifold.feature_a[point], manifold.feature_b[point]])
-		## Steady: the same pairs touch as last tick, each one persisted. Then
-		## every hold of this tick — at its start or re-held mid-tick — was of
-		## one of them; a tick that changes the pairs starts a new identity.
-		var steady := persisted and pairs == touched_before
-		touched_before = pairs
-		if manifold.hold_active[0] == 0:
-			continue
-		var held_pair := [manifold.hold_feature_a[0], manifold.hold_feature_b[0]]
-		if steady:
-			assert_true(pairs.has(held_pair), "the held row is a pair the blades touch now (%s in %s)" % [held_pair, pairs])
-		if held_pair != [SwordContactSet.Feature.BLADE, SwordContactSet.Feature.BLADE]:
+		if manifold.hold_active[0] == 0 or manifold.point_count == 0:
 			continue
 		on_blades += 1
+		## The same contact, tick after tick: persisted, under one id.
+		if manifold.is_persisted(0) and manifold.contact_id[0] == identity:
+			kept += 1
+		identity = manifold.contact_id[0]
 		## Where the point sits on the two blades together (each in [0, 1]).
 		var where := manifold.fraction_a[0] + manifold.fraction_b[0]
 		lowest = minf(lowest, where)
@@ -332,6 +318,7 @@ func test_a_held_slide_keeps_its_feature_while_the_point_migrates() -> void:
 			warm_ticks += 1
 	assert_true(on_blades >= 10, "fixture: the blades are held blade on blade while fighter 0 presses and slides (%d ticks)" % on_blades)
 	assert_true(warm_ticks >= 5, "and the hold carries real impulse into the next tick (%d ticks)" % warm_ticks)
+	assert_true(kept >= 5, "under one contact identity (%d ticks kept it)" % kept)
 	assert_true(highest - lowest > 0.05, "while the contact point migrates along the blade (%.3f → %.3f)" % [lowest, highest])
 
 

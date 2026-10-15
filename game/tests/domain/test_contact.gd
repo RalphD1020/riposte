@@ -61,6 +61,14 @@ func test_a_blade_contact_carries_its_own_geometry() -> void:
 	assert_eq(contact.text(DuelEventKeys.CONTACT_CLASS), String(ContactResolver.CLASS_STRONG), "and the class is still there for audio")
 
 
+## The canonical parry guard (rad): the defender's blade resting across the
+## tap's path at 120°, mid-way in the band (110°–130° on rules 50) where the
+## blade alone meets and arrests the tap. At the 135° limit the tap's point
+## now crosses the defender's quillon first — the crossguard is grip, never a
+## parry (GRIP-NONBLOCKING-001).
+const PARRY_GUARD := 2.0943951023931953
+
+
 ## A tap thrown from measure on the shipping rules at an idle defender whose
 ## guard rests at `guard` (rad); runs `ticks` ticks after the release, under
 ## `rules` (the shipping rules by default), appending each of those ticks'
@@ -94,17 +102,16 @@ func _tap_at_guard(guard: float, ticks: int, rules: DuelRules = null, trace: Arr
 ## PARRY alone — moves every body, sword, phase and contact identically on
 ## every tick. The only difference is the event.
 func test_a_parry_label_changes_no_physics() -> void:
-	var limit := _rules.combatant(1).weapon.guard_limit
 	## ARRANGE: the parry scene of test_tap_into_a_strong_guard_is_parried.
 	var labelled_trace: Array[String] = []
-	var labelled := _tap_at_guard(limit, 40, DuelFixture.rules(), labelled_trace)
+	var labelled := _tap_at_guard(PARRY_GUARD, 40, DuelFixture.rules(), labelled_trace)
 	## PERTURB: the defender's steel protects nothing.
 	var inert := DuelFixture.rules()
-	inert.combatant(1).weapon.feature_protects = PackedByteArray([0, 0, 0])
+	inert.combatant(1).weapon.blade_protects = false
 	assert_true(inert.is_valid(), "fixture: the declaration is still valid content")
 	## ACT
 	var silenced_trace: Array[String] = []
-	var silenced := _tap_at_guard(limit, 40, inert, silenced_trace)
+	var silenced := _tap_at_guard(PARRY_GUARD, 40, inert, silenced_trace)
 	## ASSERT
 	assert_true(labelled.first(DuelEventTypes.BLADE_CONTACT) != null, "control: the guard meets the tap")
 	assert_eq(labelled.count(DuelEventTypes.PARRY), 1, "control: labelled a parry")
@@ -129,7 +136,7 @@ func test_tap_into_a_strong_guard_is_parried() -> void:
 	assert_eq(control.count(DuelEventTypes.BLADE_CONTACT), 0, "control: no sword contact")
 	assert_true(landed != null and landed.actor == 0, "control: without the guard in its path the tap hits")
 	## PERTURB + ACT: the same tap, the guard resting in its path.
-	var runner := _tap_at_guard(limit, 40)
+	var runner := _tap_at_guard(PARRY_GUARD, 40)
 	## ASSERT: physically a parry...
 	var contact := runner.first(DuelEventTypes.BLADE_CONTACT)
 	assert_true(contact != null, "the guard meets the tap")
@@ -848,27 +855,6 @@ func test_where_the_blade_is_met_decides_its_response_through_the_lever() -> voi
 	assert_true(per_impulse[1] > per_impulse[0], "the foible turns the sword more per N·s than the forte (%.3f vs %.3f rad/s per N·s)" % [per_impulse[1], per_impulse[0]])
 
 
-## A cut at speed `speed` (rad/s) from the defender's right, the defender
-## `distance` ahead at `bearing`, stepping sideways (`lateral` = ±1) at walking
-## speed, its guard at `guard`; 30 ticks of the defender's step, appending
-## each tick's physical state to `trace` (`_physics`).
-func _redirected_cut(guard: float, rules: DuelRules, trace: Array[String] = []) -> SimRunner:
-	var runner := SimRunner.create(rules, 5)
-	runner.skip_intro()
-	var state := runner.state
-	var weapon := rules.combatant(0).weapon
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, deg_to_rad(-90.0), 16.0, CombatPhase.Id.ACTIVE_THREAT, 1.0, weapon)
-	var defender := state.fighter(1)
-	ContactFixture.arm(defender, 1.3, 0.0, PI, guard, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	var walk := rules.combatant(1).fighter.max_speed
-	defender.vx = -SimMath.sine(defender.facing) * walk
-	defender.vy = SimMath.cosine(defender.facing) * walk
-	for _i in 30:
-		runner.push(PlayerCommand.idle(state.tick), PlayerCommand.create(state.tick, 1.0, 0.0))
-		trace.append(_physics(state))
-	return runner
-
-
 ## Every physical quantity of both fighters — bodies, headings, swords,
 ## phases, health — and nothing a label gates (the state hash also covers the
 ## label flags, WHIFF-001 / DEFLECTION-001).
@@ -878,52 +864,6 @@ func _physics(state: MatchState) -> String:
 		var f := state.fighter(slot)
 		parts.append(var_to_str([f.x, f.y, f.vx, f.vy, f.facing, f.turn_rate, f.weapon.angle, f.weapon.speed, f.weapon.phase, f.weapon.commitment, f.weapon.recovery_left, f.health]))
 	return "|".join(parts)
-
-
-## DEFLECTION-001: a deflection is what a redirected attack did, never a
-## mechanic. The scene proves itself: with the guard seated away the same cut
-## lands on the stepping defender, so it was on the line. With the guard in
-## its path, protective steel takes a positive impulse that does not arrest
-## the cut, and the cut ends having struck nothing — so it is a deflection,
-## credited to the defender, once, and not a parry. Then NO-LABEL-PHYSICS-001:
-## the same scene with that steel declared non-protective moves identically on
-## every tick and emits no deflection.
-func test_a_redirected_cut_that_strikes_nothing_is_a_deflection() -> void:
-	var rules := DuelFixture.rules()
-	var limit := rules.combatant(1).weapon.guard_limit
-	## ARRANGE (control): the guard seated outside the sweep — the cut lands.
-	var control := _redirected_cut(-limit, rules)
-	var landed := control.first(DuelEventTypes.BODY_HIT)
-	assert_eq(control.count(DuelEventTypes.BLADE_CONTACT), 0, "control: no sword contact")
-	assert_true(landed != null and landed.actor == 0, "control: without the guard in its path the cut hits")
-	## PERTURB + ACT: the guard in its path.
-	var trace: Array[String] = []
-	var runner := _redirected_cut(deg_to_rad(20.0), DuelFixture.rules(), trace)
-	## ASSERT: physically a redirection that did not arrest...
-	var contact := runner.first(DuelEventTypes.BLADE_CONTACT)
-	assert_true(contact != null and contact.actor == 0, "the guard meets the cut")
-	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "with a solved, positive impulse")
-	assert_false(bool(contact.data[DuelEventKeys.ARRESTED_0]), "that does not arrest it")
-	for event in runner.events:
-		if event.type == DuelEventTypes.BODY_HIT:
-			assert_true(event.actor != 0, "and the cut strikes nothing")
-	## ...so it is labelled a deflection when the attack ends, never a parry.
-	var deflections := DuelFixture.of_type(runner.events, DuelEventTypes.DEFLECTION)
-	assert_eq(deflections.size(), 1, "a redirected cut that struck nothing is one deflection")
-	assert_true(deflections[0].tick >= contact.tick, "decided when the attack ended, not before the contact")
-	assert_eq(deflections[0].actor, 1, "credited to the defender")
-	assert_eq(deflections[0].target, 0, "against the attacker")
-	assert_eq(runner.count(DuelEventTypes.PARRY), 0, "an unarrested cut is not a parry")
-	assert_eq(runner.count(DuelEventTypes.ATTACK_WHIFFED), 0, "and having met steel it is not a whiff")
-	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
-	## NO-LABEL-PHYSICS-001: the label is a reading.
-	var inert := DuelFixture.rules()
-	inert.combatant(1).weapon.feature_protects = PackedByteArray([0, 0, 0])
-	var silenced_trace: Array[String] = []
-	var silenced := _redirected_cut(deg_to_rad(20.0), inert, silenced_trace)
-	assert_eq(silenced.count(DuelEventTypes.DEFLECTION), 0, "perturbed: non-protective steel deflects nothing")
-	assert_eq(silenced_trace.size(), trace.size(), "fixture: every tick traced")
-	assert_eq(silenced_trace, trace, "yet every tick moves identically")
 
 
 ## ACTIVE-DEFLECTION-001 (DEFLECTION-CONSEQUENCE-001), a relationship witness,
@@ -952,7 +892,7 @@ func test_an_active_beat_displaces_this_cut_more_than_a_resting_guard() -> void:
 ## it was a parry].
 func _beaten_tap(beat: float) -> Array:
 	var rules := DuelFixture.rules()
-	var runner := _tap_at_guard(rules.combatant(1).weapon.guard_limit, 0, rules)
+	var runner := _tap_at_guard(PARRY_GUARD, 0, rules)
 	var defender := runner.state.fighter(1)
 	for _i in 30:
 		if runner.first(DuelEventTypes.BLADE_CONTACT) == null:
@@ -975,12 +915,13 @@ func test_an_answer_after_a_parry_is_an_ordinary_attack() -> void:
 	var labelled_trace: Array[String] = []
 	var labelled := _riposte_after_parry(DuelFixture.rules(), labelled_trace)
 	var inert := DuelFixture.rules()
-	inert.combatant(1).weapon.feature_protects = PackedByteArray([0, 0, 0])
+	inert.combatant(1).weapon.blade_protects = false
 	var plain_trace: Array[String] = []
 	var plain := _riposte_after_parry(inert, plain_trace)
 	assert_eq(labelled.count(DuelEventTypes.PARRY), 1, "control: the defense is labelled a parry")
 	assert_eq(plain.count(DuelEventTypes.PARRY), 0, "perturbed: no label at all")
 	assert_true(labelled.count(DuelEventTypes.ATTACK_RELEASED) >= 2, "fixture: the defender answered with an attack")
+	assert_eq(plain_trace.size(), 90, "fixture: every tick traced")
 	assert_eq(plain_trace, labelled_trace, "every tick of the answer moves identically")
 	var answered := _consequences(labelled)
 	assert_true(answered.size() > 1, "fixture: the answer met the opponent")
@@ -1001,8 +942,7 @@ func _consequences(runner: SimRunner) -> Array[String]:
 ## defender answers: from the interception it steps aside and holds the
 ## attack, releasing it 8 ticks later.
 func _riposte_after_parry(rules: DuelRules, trace: Array[String]) -> SimRunner:
-	var limit := rules.combatant(1).weapon.guard_limit
-	var runner := _tap_at_guard(limit, 0, rules)
+	var runner := _tap_at_guard(PARRY_GUARD, 0, rules)
 	var met := -1
 	for _i in 90:
 		var tick := runner.state.tick
@@ -1011,5 +951,7 @@ func _riposte_after_parry(rules: DuelRules, trace: Array[String]) -> SimRunner:
 		var holding := met >= 0 and tick <= met + 8
 		var release := met >= 0 and tick == met + 8
 		runner.push(PlayerCommand.idle(tick), PlayerCommand.create(tick, 0.5 if met >= 0 else 0.0, 0.0, holding, release))
-		trace.append(StateHasher.hash_state(runner.state))
+		## Physics only: the hash also covers the readings a protective contact
+		## marks (DEFLECTION-001's pending flag), which differ by design.
+		trace.append(_physics(runner.state))
 	return runner

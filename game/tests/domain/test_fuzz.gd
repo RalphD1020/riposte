@@ -446,20 +446,15 @@ func _mirror_diff(straight: MatchState, reflected: MatchState) -> String:
 		_diff_float(lines, "blade_py%d" % point, s.point_y[point], r.point_y[point])
 		_diff_float(lines, "blade_pnx%d" % point, s.point_nx[point], r.point_nx[point])
 		_diff_float(lines, "blade_pny%d" % point, s.point_ny[point], r.point_ny[point])
-		_diff_float(lines, "blade_la%d" % point, s.local_a[point], _mirror_local(r.feature_a[point], r.local_a[point]))
-		_diff_float(lines, "blade_lb%d" % point, s.local_b[point], _mirror_local(r.feature_b[point], r.local_b[point]))
-		_diff_int(lines, "blade_fa%d" % point, s.feature_a[point], r.feature_a[point])
-		_diff_int(lines, "blade_fb%d" % point, s.feature_b[point], r.feature_b[point])
+		_diff_float(lines, "blade_fa%d" % point, s.fraction_a[point], r.fraction_a[point])
+		_diff_float(lines, "blade_fb%d" % point, s.fraction_b[point], r.fraction_b[point])
 		_diff_int(lines, "blade_id%d" % point, s.contact_id[point], r.contact_id[point])
 		_diff_int(lines, "blade_age%d" % point, s.age[point], r.age[point])
 		_diff_float(lines, "blade_vn%d" % point, _residual(straight, point), _residual(reflected, point))
 	for row in SwordContactSet.CAPACITY:
 		_diff_int(lines, "hold_active%d" % row, straight.blade_contact.hold_active[row], reflected.blade_contact.hold_active[row])
-		_diff_int(lines, "hold_feature_a%d" % row, straight.blade_contact.hold_feature_a[row], reflected.blade_contact.hold_feature_a[row])
-		_diff_int(lines, "hold_feature_b%d" % row, straight.blade_contact.hold_feature_b[row], reflected.blade_contact.hold_feature_b[row])
-		var held := reflected.blade_contact
-		_diff_float(lines, "hold_la%d" % row, straight.blade_contact.hold_local_a[row], _mirror_local(held.hold_feature_a[row], held.hold_local_a[row]))
-		_diff_float(lines, "hold_lb%d" % row, straight.blade_contact.hold_local_b[row], _mirror_local(held.hold_feature_b[row], held.hold_local_b[row]))
+		_diff_float(lines, "hold_fa%d" % row, straight.blade_contact.hold_fraction_a[row], reflected.blade_contact.hold_fraction_a[row])
+		_diff_float(lines, "hold_fb%d" % row, straight.blade_contact.hold_fraction_b[row], reflected.blade_contact.hold_fraction_b[row])
 	for slot in 2:
 		_diff_int(lines, "body_hold%d" % slot, int(straight.weapon_body_contacts[slot].hold_active), int(reflected.weapon_body_contacts[slot].hold_active))
 	_diff_float(lines, "body_nx", straight.body_contact.last_constraint_normal_x, reflected.body_contact.last_constraint_normal_x)
@@ -514,7 +509,7 @@ func _mirror_diff(straight: MatchState, reflected: MatchState) -> String:
 		_diff_float(lines, prefix + "fallen_yaw", 0.0, SimMath.wrap_angle(a.fallen.yaw - b.fallen.yaw))
 		_diff_float(lines, prefix + "fallen_spin", a.fallen.spin, b.fallen.spin)
 		_diff_int(lines, prefix + "attack_contacted", int(a.weapon.attack_contacted), int(b.weapon.attack_contacted))
-		_diff_int(lines, prefix + "hand_struck", int(a.weapon.hand_struck), int(b.weapon.hand_struck))
+		_diff_int(lines, prefix + "grip_struck", int(a.weapon.grip_struck), int(b.weapon.grip_struck))
 		_diff_int(lines, prefix + "mode", a.gesture.mode, b.gesture.mode)
 		_diff_int(lines, prefix + "burst", a.gesture.burst_kind, b.gesture.burst_kind)
 		_diff_int(lines, prefix + "burst_left", a.gesture.burst_ticks_remaining, b.gesture.burst_ticks_remaining)
@@ -530,16 +525,9 @@ func _mirror_diff(straight: MatchState, reflected: MatchState) -> String:
 
 ## The diagnostic band for a solve's internal decomposition: solved impulses
 ## are the output of a small linear solve, so the geometry's trig error reaches
-## them through its conditioning (a crossbar caught against blade and handle
-## beside a guard stop amplifies it a few hundred times).
+## them through its conditioning (a two-point line contact beside a guard stop
+## amplifies it a few hundred times).
 const _MIRROR_IMPULSE_REL := 1.0e-7
-
-
-## A feature coordinate as the mirror reads it: a crossbar runs from the
-## wielder's right quillon to the left, and the mirror swaps them (s → 1 − s);
-## along the blade or the handle nothing changes.
-static func _mirror_local(feature: int, value: float) -> float:
-	return 1.0 - value if feature == SwordContactSet.Feature.GUARD else value
 
 
 ## A contact's residual normal velocity after the tick (m/s, from blade b toward

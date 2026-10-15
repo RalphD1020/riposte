@@ -254,7 +254,12 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 	## Once the budget is spent, the rest of the tick is carried without
 	## letting a held contact be driven through (CONTACT-FALLBACK-001).
 	var fallback := false
+	## What this tick's re-holds held, for the diagnostics' characterization of
+	## an exhausted budget (CONTACT-REHOLD-FALLBACK-001); never read by play.
+	var reheld := PackedInt32Array()
+	var least_rehold := INF
 	state.blade_contact.begin_search()
+	_collision.begin_tick()
 	for lifecycle in state.weapon_body_contacts:
 		lifecycle.normal_impulse = 0.0
 	_hold_persistent_contacts(state, tick, events)
@@ -267,7 +272,7 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 			_update_body_contact_separation(state, had_body_push)
 			_settle_overlap(state, tick, events)
 			return
-		var held := not (_report.blade or _report.body[0] or _report.body[1] or _report.hand[0] or _report.hand[1] or _report.body_push)
+		var held := not (_report.blade or _report.body[0] or _report.body[1] or _report.grip[0] or _report.grip[1] or _report.body_push)
 		if not held:
 			resolved += 1
 		else:
@@ -279,17 +284,25 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 		if not SimulationGuardrails.validate_toi_monotonicity(elapsed, toi):
 			_fail_closed(state, &"toi_regression", events)
 			return
-		_wound_hands(state, tick, events, elapsed)
+		_wound_grips(state, tick, events, elapsed)
 		_seek(state, _report.fraction)
 		_start[0].write(state.fighter(0), rules.combatant(0))
 		_start[1].write(state.fighter(1), rules.combatant(1))
 		ContactResolver.resolve(state, _report, rules, tick, toi, events, _scratch, rigid_solver.lcp)
 		## Whatever was resolved here changed velocities; every held contact is
 		## held again from them before the remainder is carried.
-		if rigid_solver.solve_velocity(state, rules) > 0.0:
+		var solved := rigid_solver.solve_velocity(state, rules)
+		if solved > 0.0:
 			ContactResolver.interrupt_held_swings(state, rules, rigid_solver.weapon_delta, rigid_solver.opponent_contact, _scratch)
 		elif held:
 			drifting = true
+		if held:
+			least_rehold = minf(least_rehold, solved)
+			for point in state.blade_contact.point_count:
+				if not reheld.has(state.blade_contact.contact_id[point]):
+					reheld.append(state.blade_contact.contact_id[point])
+			if holds == 0:
+				diagnostics.record_rehold_fallback(tick, reheld.size(), least_rehold)
 		if _report.body_push:
 			had_body_push = true
 			if state.body_contact.phase == BodyContactState.Phase.SEPARATED:
@@ -392,17 +405,17 @@ func _update_body_contact_separation(state: MatchState, had_body_push: bool) -> 
 ## Rewind both fighters to the pose at sub-interval fraction `s`. Velocities
 ## are untouched: they are what this tick already settled on, and the contact
 ## is about to change them.
-## Wound each hand the sweep entered, in the order they were entered, each at
+## Wound each grip the sweep entered, in the order they were entered, each at
 ## its own instant: a chronological query, never a contact — nothing moves, no
-## budget is spent (HAND-CONTACT-001).
-func _wound_hands(state: MatchState, tick: int, events: Array[DuelEvent], elapsed: float) -> void:
-	var first := 0 if _report.hand_fraction[0] <= _report.hand_fraction[1] else 1
+## budget is spent (GRIP-NONBLOCKING-001).
+func _wound_grips(state: MatchState, tick: int, events: Array[DuelEvent], elapsed: float) -> void:
+	var first := 0 if _report.grip_fraction[0] <= _report.grip_fraction[1] else 1
 	for i in 2:
 		var slot := first if i == 0 else 1 - first
-		if _report.hand[slot]:
-			var at := _report.hand_fraction[slot]
+		if _report.grip[slot]:
+			var at := _report.grip_fraction[slot]
 			_seek(state, at)
-			ContactResolver.wound_hand(state, rules, slot, _report.hand_grip[slot], elapsed + (1.0 - elapsed) * at, tick, events)
+			ContactResolver.wound_grip(state, rules, slot, _report.grip_along[slot], _report.grip_across[slot], _report.grip_source[slot], elapsed + (1.0 - elapsed) * at, tick, events)
 
 
 func _seek(state: MatchState, s: float) -> void:
@@ -455,7 +468,8 @@ func _carry(state: MatchState, share: float) -> void:
 ## and every other motion carry on; no velocity is touched, θ̇ included; there is
 ## no snap and no bind. Bounded, deterministic, counted only as
 ## `rehold_budget_exhausted`; the next tick starts with a full budget. It is not
-## a combat mechanic, and representative play never reaches it.
+## a combat mechanic; representative play reaches it only as the bounded
+## fast-slide class (CONTACT-REHOLD-FALLBACK-001).
 func _carry_without_tunnelling(state: MatchState, share: float) -> void:
 	var dt := SimulationTimebase.TICK_SECONDS * share
 	var travel := 0.0

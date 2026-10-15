@@ -28,14 +28,16 @@ const WALK_IN_GAP := 0.08
 ## The re-hold storm (CONTACT-FALLBACK-001), found by searching adversarial
 ## point-symmetric states: separation (m), heading off the line (rad), each
 ## body's closing and lateral speed (m/s), heading spin (rad/s), sword angle
-## (rad) and swing (rad/s), and how long it is followed (ticks).
-const STORM_DISTANCE := 0.913
-const STORM_FACING := 0.296
-const STORM_CLOSING := 6.92
-const STORM_LATERAL := 0.12
-const STORM_TURN := 8.18
-const STORM_ANGLE := -0.912
-const STORM_SWING := -3.36
+## (rad) and swing (rad/s), and how long it is followed (ticks). Re-searched
+## on rules 50 (blade-only steel): the rules-49 storm spent its budget on the
+## crossguards and handles, and its blades no longer meet.
+const STORM_DISTANCE := 1.43
+const STORM_FACING := 0.559
+const STORM_CLOSING := 3.21
+const STORM_LATERAL := -0.15
+const STORM_TURN := -1.3
+const STORM_ANGLE := -0.948
+const STORM_SWING := -7.5
 const STORM_TICKS := 8
 
 var _rules: DuelRules
@@ -114,17 +116,28 @@ func test_walking_pressure_never_drives_a_blade_through_a_held_blade() -> void:
 	assert_eq(_blades(runner.state).y, float(held[1]), "and the point is still on the side it met the blade from")
 
 
+## Torso hits among `runner`'s events — the body behind a blocking sword. A
+## cut that slides along the blocking blade into its grip is a GRIP hit
+## (GRIP-NONBLOCKING-001), not a cut driven through the blade.
+static func _torso_hits(runner: SimRunner) -> int:
+	var hits := 0
+	for event in runner.events:
+		if event.type == DuelEventTypes.BODY_HIT and event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_TORSO:
+			hits += 1
+	return hits
+
+
 func test_motor_pressure_never_drives_a_cut_through_a_blocking_sword() -> void:
 	## A driven cut meets a sword held between it and the body, and its motor
 	## keeps driving. Defence first in time is defence for as long as it holds.
 	var open: SimRunner = _pressed_cut(deg_to_rad(-135.0))[0]
 	assert_eq(open.count(DuelEventTypes.BLADE_CONTACT), 0, "control: with the guard wound back nothing meets the cut")
-	assert_eq(open.count(DuelEventTypes.BODY_HIT), 1, "control: and the cut lands")
+	assert_eq(_torso_hits(open), 1, "control: and the cut lands on the body")
 	var blocked := _pressed_cut(deg_to_rad(50.0))
 	var runner: SimRunner = blocked[0]
 	assert_true(float(blocked[2]) > 0.05, "fixture: the cut starts clear of the guard (%.3f m)" % float(blocked[2]))
 	assert_true(runner.count(DuelEventTypes.BLADE_CONTACT) >= 1, "fixture: the guard is met")
-	assert_eq(runner.count(DuelEventTypes.BODY_HIT), 0, "and the cut never reaches the body behind it")
+	assert_eq(_torso_hits(runner), 0, "and the cut never reaches the body behind it")
 	assert_true(float(blocked[1]) <= _allowed(), "nor sinks into the guard beyond the slop (worst %.4f m)" % float(blocked[1]))
 
 
@@ -339,39 +352,6 @@ func test_the_motors_that_press_a_held_contact_are_bounded() -> void:
 	assert_true(walker.speed() <= step + 1.0e-9, "by at most one tick of force over mass (%.3f of %.3f m/s)" % [walker.speed(), step])
 
 
-## The whole sword is solid (GUARD-CONTACT-001): a blade lying across the
-## opponent's handle — the gripped hilt — is a held sword contact on that hilt,
-## never a cut and never a pass-through.
-func test_a_blade_across_a_handle_is_held_on_the_hilt() -> void:
-	var runner := SimRunner.create(_rules, 1)
-	runner.skip_intro()
-	var weapon := _rules.combatant(0).weapon
-	var spec := _rules.combatant(0)
-	var state := runner.state
-	ContactFixture.arm(state.fighter(0), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	var held := WeaponKinematics.pose_of(state.fighter(0), spec, BladePose.new())
-	var handle_x := held.point_x(weapon.hilt_radius * 0.5)
-	var handle_y := held.point_y(weapon.hilt_radius * 0.5)
-	## Slot 1's blade crosses slot 0's handle at its middle, square to it.
-	var across := WeaponKinematics.pose_at(0.0, 0.0, PI / 2.0, 0.0, spec, BladePose.new())
-	var reach := (weapon.hilt_radius + weapon.tip_radius) * 0.5
-	ContactFixture.arm(state.fighter(1), handle_x - across.point_x(reach), handle_y - across.point_y(reach), PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	var crossing := WeaponKinematics.pose_of(state.fighter(1), spec, BladePose.new())
-	var on_handle := SegmentContact.new()
-	SimMath.closest_segments(
-		held.origin_x, held.origin_y, held.point_x(weapon.hilt_radius), held.point_y(weapon.hilt_radius),
-		crossing.point_x(weapon.hilt_radius), crossing.point_y(weapon.hilt_radius), crossing.point_x(weapon.tip_radius), crossing.point_y(weapon.tip_radius),
-		on_handle
-	)
-	assert_true(on_handle.distance < SimMath.EPSILON, "fixture: slot 1's blade lies across slot 0's handle")
-	assert_true(_centrelines(state) - 2.0 * weapon.blade_radius > 0.02, "fixture: and clear of slot 0's blade (%.3f m)" % (_centrelines(state) - 2.0 * weapon.blade_radius))
-	runner.idle(1)
-	assert_eq(runner.count(DuelEventTypes.BODY_HIT), 0, "a blade across a handle is no cut")
-	assert_ne(state.blade_contact.phase, SwordContactSet.Phase.SEPARATED, "it is a sword contact")
-	assert_eq(state.blade_contact.feature_a[0], SwordContactSet.Feature.HILT, "on slot 0's hilt")
-	assert_eq(state.blade_contact.feature_b[0], SwordContactSet.Feature.BLADE, "by slot 1's blade")
-
-
 ## The swing-interrupt law is a lifecycle rule, not a force: it changes what
 ## the weapon is doing, never how anything is moving.
 func test_interrupting_a_held_swing_moves_nothing() -> void:
@@ -450,7 +430,10 @@ func _traced_cut(distance: float, guard: float, ticks: int) -> Array:
 ## *held* blade rarely stops a cut — it slides; the held branch is pinned by
 ## the law table above and the hold's own scenes below.)
 func test_a_contact_that_reverses_a_cut_ends_it() -> void:
-	var traced := _traced_cut(2.0, deg_to_rad(-75.0), 16)
+	## Searched on rules 50 (the middle of a band from 1.9 to 2.2 m): the
+	## rules-49 scene (2.0 m, −75°) reversed the cut on the defender's handle,
+	## which is grip now — the cut wounds it on the way to the blade.
+	var traced := _traced_cut(2.1, deg_to_rad(30.0), 16)
 	var runner: SimRunner = traced[0]
 	var rows: Array = traced[1]
 	var clash := runner.first(DuelEventTypes.BLADE_CONTACT)
@@ -492,7 +475,7 @@ func test_pressure_against_a_stopped_guard_stays_a_cut_while_it_progresses() -> 
 	var runner: SimRunner = traced[0]
 	var rows: Array = traced[1]
 	assert_eq(runner.count(DuelEventTypes.BLADE_CONTACT), 1, "fixture: one clash, then only the hold")
-	assert_eq(runner.count(DuelEventTypes.BODY_HIT), 0, "fixture: the cut never reaches the body")
+	assert_eq(_torso_hits(runner), 0, "fixture: the cut never reaches the body (sliding into the grip is a grip graze)")
 	var stopped := -1
 	for i in range(1, rows.size()):
 		if float(rows[i][6]) < 0.5 * float(rows[i - 1][6]) and float(rows[i - 1][6]) > 1.0:
@@ -650,7 +633,10 @@ func test_beating_a_long_guard_aside_lets_the_body_close() -> void:
 	for tick in 180:
 		var walk := PlayerCommand.create(state.tick, 0.0, 1.0) if tick >= 8 else PlayerCommand.idle(state.tick)
 		runner.push(walk, PlayerCommand.idle(state.tick))
-		closest = minf(closest, DuelGeometry.distance(state.fighter(0), state.fighter(1)))
+		## Bodies on the platform; one pushed over its edge no longer stands
+		## against the other.
+		if not (state.fighter(0).is_falling or state.fighter(1).is_falling):
+			closest = minf(closest, DuelGeometry.distance(state.fighter(0), state.fighter(1)))
 		displaced = displaced or absf(state.fighter(1).weapon.angle) > GuardPoseField.THRUST_LEAVE
 	assert_true(runner.count(DuelEventTypes.BLADE_CONTACT) >= 1, "fixture: the cut meets the Long Guard's blade")
 	assert_true(displaced, "the clash beats the point out of the corridor")
@@ -681,7 +667,9 @@ func test_held_pressure_mirrors_exactly() -> void:
 ## beyond the slop, no centreline ever crossing, the blade staying on the side
 ## it met from, θ̇ left as the contact left it rather than zeroed, the duel
 ## still each other's exact reflection, and the next tick back to the full
-## budget. The ship corpus never reaches this (above); this is its bound.
+## budget. Representative play reaches the fallback only as the fast-slide
+## class (`test_the_seed_122_fast_slide_fallback_is_bounded_and_escapable`);
+## this is its bound.
 func test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored() -> void:
 	## ARRANGE: the point-symmetric storm.
 	var runner := SimRunner.create(_rules, 1)
@@ -733,92 +721,200 @@ func test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored() -> v
 	assert_eq(runner.count(DuelEventTypes.CONTACT_SATURATED), 0, "and the contact loop never saturates")
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
 
-# ── PLANAR-BIND-001: a bind is equilibrium, never an authored escape ───────
+# ── CONTACT-REHOLD-FALLBACK-001: the fast-slide fallback, as play reaches it ─
 
 
-## Ticks each bind branch is followed, and how long the cut runs into the
-## guard before the bind is read (the wedge of the lost-line corpus).
-const BIND_TICKS := 40
-const BIND_SETTLE_TICKS := 10
+## The one re-hold exhaustion representative play reaches on rules 52: ship
+## seed 122 between wander pilots 11 and 23. On tick `REHOLD_TICK` the second
+## fighter's tip slides fast along the first's blade while the blade turns, so
+## one contact closes again after each of the four re-holds (its normal turns
+## about 9° across the tick) and the budget runs out. Production input from tick
+## 0; nothing is placed.
+const REHOLD_SEED := 122
+const REHOLD_PILOTS := [11, 23]
+const REHOLD_TICK := 854
 
 
-## PLANAR-BIND-001: the crossguard wedge a tap leaves on a Long Guard is a
-## physical equilibrium, and it answers changed forces. Held still by both, it
-## stays bound — no crossing, no hit, every tick sound. Forked into the
-## ordinary inputs a fencer has (the defender stepping back, stepping either
-## way, winding the blade back; either side pressing), every branch moves the
-## contact away from the equilibrium's within the window, and at least one
-## ordinary action takes the swords apart. Nothing is timed: how long a bind
-## lasts is the players', never the solver's.
-func test_a_bind_holds_in_equilibrium_and_answers_changed_forces() -> void:
-	## ARRANGE: the wedge.
-	var wedge := _crossguard_wedge()
-	var start := wedge.state.blade_contact
-	assert_eq(start.phase, SwordContactSet.Phase.CONTACTING, "fixture: the swords are in contact")
-	assert_true(start.point_count > 0, "fixture: with a manifold point")
-	assert_eq(wedge.count(DuelEventTypes.BODY_HIT), 0, "fixture: nobody was hit")
-	## ACT: equilibrium, then every branch from the same state.
-	var still := _bind_trace(wedge, "idle", "idle")
-	var branches := {
-		"defender steps back": ["idle", "back"],
-		"defender steps right": ["idle", "right"],
-		"defender steps left": ["idle", "left"],
-		"defender winds the blade back": ["idle", "wind"],
-		"both press": ["press", "press"],
-		"the cutter presses alone": ["press", "idle"],
-	}
-	var parted := 0
+## Seed 122 driven from tick 0 to `through`: [the runner, each tick's state
+## hash, the deepest held blade overlap from `REHOLD_TICK` − 4 on].
+func _seed_122(through: int) -> Array:
+	var runner := SimRunner.create(_rules, REHOLD_SEED)
+	var first := Pilot.wander(REHOLD_SEED, int(REHOLD_PILOTS[0]))
+	var second := Pilot.wander(REHOLD_SEED, int(REHOLD_PILOTS[1]))
+	var hashes := PackedStringArray()
+	var deepest := 0.0
+	while runner.state.tick < through:
+		runner.push(first.command(runner.state, 0), second.command(runner.state, 1))
+		hashes.append(StateHasher.hash_state(runner.state))
+		if runner.state.tick >= REHOLD_TICK - 4 and runner.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED:
+			deepest = maxf(deepest, -_blades(runner.state).x)
+	return [runner, hashes, deepest]
+
+
+## CONTACT-REHOLD-FALLBACK-001: an exhausted re-hold budget in play is the
+## characterized class — one persistent contact identity, genuinely closing on
+## every re-hold — and is bounded: reproducible, every tick legal, held overlap
+## within the slop, counted once, no second exhaustion in the ticks after, and
+## the contact still answers ordinary input (a back step from either side, or
+## nothing at all, parts it). The fallback touching no velocity is its
+## constructed law (`test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored`).
+func test_the_seed_122_fast_slide_fallback_is_bounded_and_escapable() -> void:
+	## ARRANGE: through the exhaustion and `MAX_WITNESS_TICKS` after, twice.
+	var through := REHOLD_TICK + 1 + MAX_WITNESS_TICKS
+	var played := _seed_122(through)
+	var again := _seed_122(through)
+	var runner := played[0] as SimRunner
+	var diagnostics := runner.simulation.diagnostics
+	assert_eq(diagnostics.rehold_fallback_ticks, PackedInt32Array([REHOLD_TICK]), "fixture: the duel exhausts the re-hold budget on tick %d and no other" % REHOLD_TICK)
+	## PERTURB: from the tick after it, a fighter steps back — or neither acts.
+	var at := _seed_122(REHOLD_TICK + 1)[0] as SimRunner
+	assert_true(at.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED, "fixture: the blades are still in contact after the fallback")
+	## ACT
+	var exits: Array = []
+	for kinds: Array in [["back", "idle"], ["idle", "back"], ["idle", "idle"]]:
+		exits.append([kinds, _escape(at, kinds)])
 	## ASSERT
-	assert_false(still["separated"], "held still by both, the bind stays bound")
-	assert_eq(int(still["hits"]), 0, "and nothing crosses into a body")
-	assert_true(still["sound"], "every tick legal")
-	for name: String in branches:
-		var kinds: Array = branches[name]
-		var branch := _bind_trace(wedge, kinds[0], kinds[1])
-		var trace: Array = branch["trace"]
-		var held_still: Array = still["trace"]
-		assert_ne(trace, held_still, "%s: the contact answers the changed force" % name)
-		assert_true(branch["sound"], "%s: every tick legal (no tunnelling, no overlap past the slop)" % name)
-		parted += 1 if branch["separated"] else 0
-	assert_true(parted > 0, "an ordinary action takes the swords apart (%d of %d branches)" % [parted, branches.size()])
+	assert_eq(played[1], again[1], "deterministic: the same input replays the same states, tick for tick")
+	assert_eq(diagnostics.rehold_budget_exhausted, 1, "counted once, as the fallback, never as a converged hold")
+	assert_eq(diagnostics.rehold_fallback_identities[0], 1, "one persistent contact identity across the re-holds, neither stale nor duplicated")
+	assert_true(diagnostics.rehold_fallback_least_impulse[0] > 0.0, "each re-hold solved a real closing impulse (least %.3f N·s)" % diagnostics.rehold_fallback_least_impulse[0])
+	assert_true(float(played[2]) <= _allowed(), "no held overlap beyond the slop around and after it (worst %.4f m)" % float(played[2]))
+	assert_eq(runner.count(DuelEventTypes.CONTACT_SATURATED), 0, "the contact loop never saturates")
+	assert_true(runner.is_sound(), "every tick finite and physically possible (%s)" % runner.violation_summary())
+	for exit: Array in exits:
+		var result := exit[1] as Array
+		assert_true(int(result[0]) > 0, "%s parts the blades before the watchdog (%d ticks)" % [str(exit[0]), int(result[0])])
+		assert_eq(int(result[2]), 0, "%s: nothing is held once they are apart" % str(exit[0]))
+		assert_true(bool(result[4]) and float(result[5]) <= _allowed(), "%s: legal and within the slop on the way out" % str(exit[0]))
 
 
-## A tap thrown into a Long Guard 2.2 m away, followed until it has been
-## stopped crossing it on the guard (the lost-line corpus's wedge).
-func _crossguard_wedge() -> SimRunner:
-	var rules := DuelFixture.rules()
-	var weapon := rules.combatant(0).weapon
-	var runner := SimRunner.create(rules, 1)
+# ── BLADE-ESCAPE-001: a bind may last while it is maintained, never trap ───
+
+
+## The test-harness watchdog: an escape witness fails rather than runs on
+## forever. A test budget, never a combat rule — how long a bind lasts is the
+## players'.
+const MAX_WITNESS_TICKS := 60
+## A witness bind holds at least this long with both fighters idle: it is a
+## bind, not a contact already coming apart.
+const HELD_IDLE_TICKS := 20
+## The canonical bind, constructed: crossed diagonal guards (±45°,
+## `ContactFixture.crossed_guard_separation`) stood 5 mm apart, both fighters
+## walking straight in for `BIND_WALK_TICKS` so the solver itself forms the
+## contact — then a bind, held with real impulse, that stays bound idle and
+## while both press. `side` mirrors it. Each witness is the ordinary input that
+## is a free route out: [the escaping slot, the input, what it is]. (The
+## rules-50 to rules-52 witnesses were live wander binds, re-searched three
+## times as the steel changed; a constructed bind keeps the law independent of
+## where a duel happens to go. The wander corpus is still read by the probe:
+## on rules 52, every one of 33 binds that held 20 idle ticks in seeds 1–6
+## opened to an ordinary input — in two, every way out also struck a torso or
+## later met steel again.)
+const BIND_WALK_TICKS := 4
+const ESCAPE_WITNESSES := [
+	[1, "back", "retreat"],
+	[1, "left", "a lateral step"],
+	[1, "wind", "winding the blade back off the other"],
+]
+
+
+## The constructed bind on `side` (+1 or −1, its mirror).
+func _bind(side: float) -> SimRunner:
+	var runner := SimRunner.create(_rules, 5)
 	runner.skip_intro()
-	ContactFixture.arm(runner.state.fighter(0), 0.0, 0.0, PI / 2.0, -weapon.guard_angle - weapon.arc(0.0) * 0.25, weapon.achievable_swing_speed(0.0, 1.0), CombatPhase.Id.ACTIVE_THREAT, 0.0, weapon)
-	runner.state.fighter(0).weapon.swing_dir = 1.0
-	ContactFixture.arm(runner.state.fighter(1), 0.0, 2.2, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	for _i in BIND_TICKS:
-		runner.idle(1)
-		if runner.count(DuelEventTypes.BLADE_CONTACT) > 0:
-			break
-	runner.idle(BIND_SETTLE_TICKS)
+	var spec := _rules.combatant(0)
+	var a := runner.state.fighter(0)
+	var b := runner.state.fighter(1)
+	DuelFixture.place(a, 0.0, 0.0, PI / 2.0)
+	a.weapon.reset(side * deg_to_rad(45.0))
+	DuelFixture.place(b, 0.0, ContactFixture.crossed_guard_separation(spec, 0.005, side), -PI / 2.0)
+	b.weapon.reset(side * deg_to_rad(-45.0))
+	for _t in BIND_WALK_TICKS:
+		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0), PlayerCommand.create(runner.state.tick, 0.0, 1.0))
 	return runner
 
 
-## Fork `wedge` and drive the cutter (slot 0) and the defender (slot 1) with
-## `cutter` / `defender` for `BIND_TICKS`: the contact's phase, point count,
-## held normal impulse and fractions per tick, whether it ever separated, the
-## body hits and soundness.
-func _bind_trace(wedge: SimRunner, cutter: String, defender: String) -> Dictionary:
-	var fork := StateFork.of(wedge)
-	var trace: Array[String] = []
-	var separated := false
-	for t in BIND_TICKS:
+## Fork `bind` and drive the fighters with `kinds` for up to
+## `MAX_WITNESS_TICKS`: [the tick it separated (−1 never), the blades' surface
+## gap at the end, held rows and points at the end, torso hits, sound, deepest
+## overlap].
+func _escape(bind: SimRunner, kinds: Array) -> Array:
+	var fork := StateFork.of(bind)
+	var parted := -1
+	var deepest := 0.0
+	for t in MAX_WITNESS_TICKS:
 		var tick := fork.state.tick
-		fork.push(_bind_command(cutter, tick, t), _bind_command(defender, tick, t))
-		var contact := fork.state.blade_contact
-		var held := 0.0
-		for i in contact.hold_count():
-			held += contact.hold_normal[i]
-		trace.append("%d|%d|%.9f|%s" % [contact.phase, contact.point_count, held, str(contact.fraction_a)])
-		separated = separated or contact.phase == SwordContactSet.Phase.SEPARATED
-	return {"trace": trace, "separated": separated, "hits": fork.count(DuelEventTypes.BODY_HIT), "sound": fork.is_sound()}
+		fork.push(_bind_command(String(kinds[0]), tick, t), _bind_command(String(kinds[1]), tick, t))
+		if fork.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED:
+			deepest = maxf(deepest, -_blades(fork.state).x)
+		if parted < 0 and fork.state.blade_contact.phase == SwordContactSet.Phase.SEPARATED:
+			parted = t + 1
+			## A few more ticks: nothing held may linger once the swords are apart.
+			for after in 3:
+				fork.push(_bind_command(String(kinds[0]), fork.state.tick, t + 1 + after), _bind_command(String(kinds[1]), fork.state.tick, t + 1 + after))
+			break
+	var contact := fork.state.blade_contact
+	return [parted, _blades(fork.state).x, contact.hold_count() + contact.point_count, _torso_hits(fork), fork.is_sound(), deepest]
+
+
+## BLADE-ESCAPE-001: a blade-only bind may persist while it is maintained, but
+## physically separating input — a route the bind's own geometry leaves free —
+## takes the swords apart: the contact responds, the gap opens
+## past the separation epsilon before the watchdog, and nothing is held once
+## they are apart. Pressing in is allowed to keep the bind: it stays legal and
+## never tunnels, and nothing requires it to part.
+func test_ordinary_separating_input_takes_a_bind_apart() -> void:
+	for witness: Array in ESCAPE_WITNESSES:
+		var label := String(witness[2])
+		## ARRANGE: the constructed bind, and that it is one.
+		var bind := _bind(1.0)
+		var contact := bind.state.blade_contact
+		assert_true(contact.hold_count() > 0 and contact.point_count > 0, "%s fixture: the blades are held in contact" % label)
+		var idle := _escape(bind, ["idle", "idle"])
+		assert_true(int(idle[0]) < 0 or int(idle[0]) >= HELD_IDLE_TICKS, "%s fixture: idle, it stays bound (%d)" % [label, int(idle[0])])
+		## PERTURB: the escaping fighter's input; the other gives none.
+		var kinds := ["idle", "idle"]
+		kinds[int(witness[0])] = witness[1]
+		## ACT
+		var escaped := _escape(bind, kinds)
+		var pressed := _escape(bind, ["press", "press"])
+		var mirrored := _escape(_bind(-1.0), kinds)
+		## ASSERT
+		assert_true(int(escaped[0]) > 0, "%s: the swords part before the watchdog (%d ticks)" % [label, int(escaped[0])])
+		assert_true(float(escaped[1]) > _rules.combat.separation_epsilon, "%s: with a real gap (%.4f m)" % [label, float(escaped[1])])
+		assert_eq(int(escaped[2]), 0, "%s: and nothing is held once they are apart" % label)
+		assert_eq(int(escaped[3]), 0, "%s: no torso is struck on the way out" % label)
+		assert_true(bool(escaped[4]), "%s: every tick legal" % label)
+		assert_eq(int(mirrored[0]), int(escaped[0]), "%s: the mirrored bind parts on the same tick" % label)
+		assert_true(bool(pressed[4]) and float(pressed[5]) <= _allowed(), "%s: pressing in is legal and never tunnels (worst %.4f m)" % [label, float(pressed[5])])
+
+
+## BLADE-CONTACT-RELEASE-001: a held blade contact whose geometry has genuinely
+## separated keeps nothing — no point, no held row, no warm start — on the
+## very tick the gap opens, whatever its history.
+func test_a_separated_blade_contact_keeps_nothing() -> void:
+	## ARRANGE: the constructed bind, held with real impulse.
+	var bind := _bind(1.0)
+	var contact := bind.state.blade_contact
+	var held := 0.0
+	for i in contact.hold_count():
+		held += absf(contact.hold_normal[i])
+	assert_true(contact.hold_count() > 0, "fixture: the blades are held")
+	## PERTURB: the second fighter stood well clear of the first, in one step,
+	## along the held point's normal (from the second sword toward the first).
+	var fork := StateFork.of(bind)
+	var b := fork.state.fighter(1)
+	var away := Vector2(contact.point_nx[0], contact.point_ny[0]) * -0.25
+	b.x += away.x
+	b.y += away.y
+	## ACT
+	fork.push(PlayerCommand.idle(fork.state.tick), PlayerCommand.idle(fork.state.tick))
+	## ASSERT
+	assert_true(_blades(fork.state).x > _rules.combat.separation_epsilon, "fixture: the blades are apart (%.4f m)" % _blades(fork.state).x)
+	assert_eq(fork.state.blade_contact.point_count, 0, "no contact point survives the gap")
+	assert_eq(fork.state.blade_contact.hold_count(), 0, "nor any held row (%.4f N·s were held)" % held)
+	assert_eq(fork.state.blade_contact.phase == SwordContactSet.Phase.CONTACTING, false, "and the contact is no longer touching")
+	assert_true(fork.is_sound(), "every tick legal")
 
 
 static func _bind_command(kind: String, tick: int, t: int) -> PlayerCommand:
@@ -834,3 +930,114 @@ static func _bind_command(kind: String, tick: int, t: int) -> PlayerCommand:
 		"left":
 			return PlayerCommand.create(tick, -1.0, 0.0)
 	return PlayerCommand.idle(tick)
+
+
+# ── DEFLECTION-001: the production-input witness ─────────────────────────────
+
+
+## Each tick's physical state, for comparing a scene with its relabelled twin.
+func _deflection_physics(state: MatchState) -> String:
+	var parts := PackedStringArray()
+	for slot in 2:
+		var f := state.fighter(slot)
+		parts.append(var_to_str([f.x, f.y, f.vx, f.vy, f.facing, f.turn_rate, f.weapon.angle, f.weapon.speed, f.weapon.phase, f.weapon.commitment, f.weapon.recovery_left, f.health]))
+	return "|".join(parts)
+
+
+## The canonical deflection, a production-input witness: the wander duel of
+## seed 5 (pilots 11 / 23 on the standard rules), its one deflection on rules
+## 52 — slot 0's cut meeting slot 1's blade at tick 905, labelled when the
+## attack ends at tick 916 — forked one tick before the clash and carried on
+## with the duel's own commands. A seed, because a deflection needs a guard in
+## motion: constructed scenes with a resting guard (a scan of distance,
+## guard angle, cut start and speed) either miss, are arrested by the hold, or
+## strike. The witness moved with each change to the steel (rules 51: tick
+## 776; first rules-52 candidates: 997, then 508), each time re-read in this
+## same seed, never searched for in another.
+const DEFLECTION_SEED := 5
+const DEFLECTION_CLASH_TICK := 905
+const DEFLECTION_LEAD := 1
+const DEFLECTION_CUTTER := 0
+const DEFLECTION_TICKS := 30
+
+
+## The witness duel played to one tick before the clash, and the commands its
+## pilots give over the next `DEFLECTION_TICKS`: [runner, [[command_0,
+## command_1], ...]].
+func _before_deflection() -> Array:
+	var played := SimRunner.create(DuelFixture.rules(), DEFLECTION_SEED)
+	var pilots: Array[Pilot] = [Pilot.wander(DEFLECTION_SEED, 11), Pilot.wander(DEFLECTION_SEED, 23)]
+	while played.state.tick < DEFLECTION_CLASH_TICK - DEFLECTION_LEAD:
+		played.push(pilots[0].command(played.state, 0), pilots[1].command(played.state, 1))
+	var live := StateFork.of(played)
+	var commands: Array = []
+	for _i in DEFLECTION_TICKS:
+		var pair := [pilots[0].command(live.state, 0), pilots[1].command(live.state, 1)]
+		commands.append(pair)
+		live.push(pair[0], pair[1])
+	return [played, commands]
+
+
+## The witness `played` forked under `rules` and fed `commands`, appending each
+## tick's physical state to `trace` (`_physics`).
+func _deflected_cut(played: SimRunner, commands: Array, rules: DuelRules, trace: Array[String] = []) -> SimRunner:
+	var fork := SimRunner.create(rules, DEFLECTION_SEED)
+	StateFork.copy(played.state, fork.state)
+	for pair: Array in commands:
+		fork.push(pair[0], pair[1])
+		trace.append(_deflection_physics(fork.state))
+	return fork
+
+
+## DEFLECTION-001: a deflection is what a redirected attack did, never a
+## mechanic. The scene proves itself: before the clash the cut is on the line
+## (its own planted sweep reaches the defender, the reading DEFLECTION-001
+## marks on). Protective steel takes a positive impulse that does not arrest
+## the cut, and the cut ends having struck nothing — so it is a deflection,
+## credited to the defender, once, and not a parry. Then NO-LABEL-PHYSICS-001:
+## the same scene with that steel declared non-protective moves identically on
+## every tick and emits no deflection.
+func test_a_redirected_cut_that_strikes_nothing_is_a_deflection() -> void:
+	## ARRANGE: the cut on the line, just before the clash.
+	var rules := DuelFixture.rules()
+	var witness := _before_deflection()
+	var played: SimRunner = witness[0]
+	var commands: Array = witness[1]
+	var cutter := played.state.fighter(DEFLECTION_CUTTER)
+	var defender := played.state.fighter(1 - DEFLECTION_CUTTER)
+	var reading := InitiativeModel.estimate(cutter, rules.spec_of(cutter), defender, rules.spec_of(defender), rules.combat, ThreatEstimate.new(), ThreatContinuation.planted())
+	assert_true(CombatPhase.is_swinging(cutter.weapon.phase), "fixture: slot %d's cut is in flight" % DEFLECTION_CUTTER)
+	assert_true(reading.within_horizon, "fixture: and on the line — its planted sweep reaches the defender")
+	## ACT
+	var trace: Array[String] = []
+	var runner := _deflected_cut(played, commands, rules, trace)
+	## ASSERT: physically a redirection that did not arrest...
+	var contact := runner.first(DuelEventTypes.BLADE_CONTACT)
+	assert_true(contact != null and contact.actor == DEFLECTION_CUTTER, "the guard meets the cut")
+	if contact == null:
+		return
+	assert_true(contact.number(DuelEventKeys.IMPULSE) > 0.0, "with a solved, positive impulse")
+	assert_false(bool(contact.data[DuelEventKeys.ARRESTED_1 if DEFLECTION_CUTTER == 1 else DuelEventKeys.ARRESTED_0]), "that does not arrest it")
+	for event in runner.events:
+		if event.type == DuelEventTypes.BODY_HIT:
+			assert_true(event.actor != DEFLECTION_CUTTER, "and the cut strikes nothing")
+	## ...so it is labelled a deflection when the attack ends, never a parry.
+	var deflections := DuelFixture.of_type(runner.events, DuelEventTypes.DEFLECTION)
+	assert_eq(deflections.size(), 1, "a redirected cut that struck nothing is one deflection")
+	if deflections.is_empty():
+		return
+	assert_true(deflections[0].tick >= contact.tick, "decided when the attack ended, not before the contact")
+	assert_eq(deflections[0].actor, 1 - DEFLECTION_CUTTER, "credited to the defender")
+	assert_eq(deflections[0].target, DEFLECTION_CUTTER, "against the attacker")
+	assert_eq(runner.count(DuelEventTypes.PARRY), 0, "an unarrested cut is not a parry")
+	assert_eq(runner.count(DuelEventTypes.ATTACK_WHIFFED), 0, "and having met steel it is not a whiff")
+	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+	## NO-LABEL-PHYSICS-001: the label is a reading.
+	var inert := DuelFixture.rules()
+	inert.combatant(1 - DEFLECTION_CUTTER).weapon.blade_protects = false
+	inert.combatant(1 - DEFLECTION_CUTTER).weapon.crossguard_protects = false
+	var silenced_trace: Array[String] = []
+	var silenced := _deflected_cut(played, commands, inert, silenced_trace)
+	assert_eq(silenced.count(DuelEventTypes.DEFLECTION), 0, "perturbed: non-protective steel deflects nothing")
+	assert_eq(silenced_trace.size(), trace.size(), "fixture: every tick traced")
+	assert_eq(silenced_trace, trace, "yet every tick moves identically")

@@ -118,7 +118,7 @@ static func phase_progress(weapon: WeaponState) -> float:
 
 ## How well the contact geometry served the strike, in [0, 1]: the right part
 ## of the blade, led by the edge. The two factors are separate questions — a
-## perfectly aligned edge at the hilt and a flat slap at the sweet spot are
+## perfectly aligned edge at the crossguard and a flat slap at the sweet spot are
 ## both poor contacts, for different reasons.
 static func contact_quality(blade_efficiency: float, edge_alignment: float, weapon: WeaponDefinition) -> float:
 	return SimMath.clamp01(blade_efficiency) * SimMath.mix(weapon.edge_floor, 1.0, SimMath.clamp01(edge_alignment))
@@ -128,7 +128,7 @@ static func contact_quality(blade_efficiency: float, edge_alignment: float, weap
 ## against a reference strong clash (`reference_clash_energy`), as an
 ## amplitude (`√(E / E_ref)`). For two swords meeting square at their centres of
 ## percussion that is exactly the closing speed over `blade_strong_speed`;
-## where the solve gave way differently — a crash at the hilts that the bodies
+## where the solve gave way differently — a crash at the fortes that the bodies
 ## take, a flick off a free point — it reads as hard as it really was. A
 ## bounded fraction rather than a class name, so feedback is one continuous
 ## curve from a graze to a full deflection, never a louder label (COMBAT-009).

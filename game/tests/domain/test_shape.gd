@@ -132,7 +132,7 @@ func test_no_hand_or_any_part_of_the_sword_ever_enters_the_torso() -> void:
 		var gap := WeaponKinematics.hand_gap_at(_rules.combatant(0), deg_to_rad(degrees))
 		assert_true(gap >= VISIBLE_AIR, "the hands keep visible air at the %d° posture (%.4f m)" % [int(degrees), gap])
 		assert_true(WeaponKinematics.sword_gap_at(_rules.combatant(0), deg_to_rad(degrees)) >= 0.0, "and the sword clears the torso there")
-		assert_true(WeaponKinematics.guard_gap_at(_rules.combatant(0), deg_to_rad(degrees)) >= 0.0, "and so does the crossguard")
+		assert_true(WeaponKinematics.crossguard_gap_at(_rules.combatant(0), deg_to_rad(degrees)) >= 0.0, "and so does the crossguard")
 	var tight := DuelFixture.rules()
 	tight.combatant(0).fighter.hurt_radius += least + 0.01
 	## A hurt torso may never exceed the push body (CONTACT-ROLES-001), so the

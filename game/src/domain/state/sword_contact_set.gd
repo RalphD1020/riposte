@@ -5,21 +5,21 @@ extends RefCounted
 ## CONTACT-MANIFOLD-001): whether the swords are touching, whether a touch is a
 ## new contact, and where and how they touch.
 ##
-## A sword is a compound rigid body of three convex features — BLADE, GUARD,
-## HILT — so two swords touch through up to nine feature pairs. Each pair is
-## its own small manifold of at most `POINTS_PER_PAIR` points, exactly as a
-## rigid-body engine gives every shape pair of two compound bodies its own
-## manifold: two convex features in the plane never need more than two points,
-## but two compound swords can (a hilt lock — the handles along each other
-## while each crossguard catches the other's handle — is three). The set keeps
-## every one of them; nothing real is dropped to fit a global count
-## (TWO-POINT-001).
+## Steel is the two blades and each sword's guard root (STEEL-TOPOLOGY-001):
+## three contact pairs — blade on blade, sword 0's blade on sword 1's guard,
+## sword 0's guard under sword 1's blade — and never guard on guard. A guard
+## pair exists only on the guard's protected side (GUARD-PROTECTION-001). The
+## handle and the hands are hurt geometry that can be struck but never block
+## (GRIP-NONBLOCKING-001). Each pair is two convex shapes, which touch at one
+## point when they cross and at the two ends of their overlap when they lie
+## along each other — never more — so each pair holds at most `POINTS_PER_PAIR`
+## (two) points and the set `CAPACITY` (TWO-POINT-001). Every point carries its
+## pair; identity never crosses pairs.
 ##
 ## Two swords that touch are not a sequence of independent strikes. A single
 ## clash lasts several ticks, and whether the next tick is "still that clash"
 ## or "a fresh one" is a real question with a real answer: the parts must
-## genuinely come apart first. That lifecycle belongs to the sword pair, not to
-## a feature pair:
+## genuinely come apart first. That lifecycle belongs to the sword pair:
 ##
 ## ```text
 ## SEPARATED  --gap <= touch-------------->  CONTACTING   (a new contact)
@@ -32,20 +32,18 @@ extends RefCounted
 ## distance would otherwise re-strike every tick. Separation is physical, a
 ## timer is not.
 ##
-## Points are fixed capacity (`CAPACITY`, every pair full) and stored compactly
-## in the geometry's canonical order — feature pair (`PAIR_A` / `PAIR_B`), then
-## distance from each sword's origin — so nothing here allocates or iterates in
-## an order the data does not fix.
+## Points are fixed capacity and stored compactly in the geometry's canonical
+## order — by distance from each sword's origin — so nothing here allocates or
+## iterates in an order the data does not fix.
 ##
 ## A point's index is a storage slot, never its identity (CONTACT-IDENTITY-001).
-## Identity is geometric: the same feature pair — blade, guard or hilt on each
-## side, never the strong/middle/weak band its fraction falls in — and the
-## least movement of the point along both features (`assign`). One matcher
-## decides it for everything that asks "is this the same contact as before?":
-## the warm-start impulses, `persisted`, a point's `age` and its `contact_id`,
-## which presentation keys sparks and scrape loops on. When one end of a line
-## contact leaves, the survivor keeps its own history even though its slot
-## changes.
+## Identity is geometric: the least movement of the point along both blades
+## (`assign`), never the strong/middle/weak band its fraction falls in. One
+## matcher decides it for everything that asks "is this the same contact as
+## before?": the warm-start impulses, `persisted`, a point's `age` and its
+## `contact_id`, which presentation keys sparks and scrape loops on. When one
+## end of a line contact leaves, the survivor keeps its own history even though
+## its slot changes.
 ##
 ## There is no bind phase: a bind is a contact that persists, solved every
 ## tick by `RigidContactSolver` (RIGID-CONTACT-002). The point geometry is a
@@ -55,6 +53,7 @@ extends RefCounted
 ## Implements: /spec/invariants.md#combat-002
 ## Implements: /spec/invariants.md#contact-identity-001
 ## Implements: /spec/invariants.md#two-point-001
+## Implements: /spec/invariants.md#steel-topology-001
 ## See also: /docs/concepts/combat.md
 
 enum Phase {
@@ -63,31 +62,20 @@ enum Phase {
 	SEPARATING,
 }
 
-## The geometric part of a weapon a contact point lies on.
-enum Feature {
-	BLADE,
-	GUARD,
-	HILT,
-}
-
-const FEATURES := 3
-## Feature pairs in their canonical order: (PAIR_A[i], PAIR_B[i]) —
-## blade/blade, blade/guard, guard/blade, guard/guard, blade/hilt, hilt/blade,
-## guard/hilt, hilt/guard, hilt/hilt.
-const PAIR_A: PackedInt32Array = [0, 0, 1, 1, 0, 2, 1, 2, 2]
-const PAIR_B: PackedInt32Array = [0, 1, 0, 1, 2, 0, 2, 1, 2]
-## The pair index of (a, b) at `a * FEATURES + b`.
-const PAIR_INDEX: PackedInt32Array = [0, 1, 4, 2, 3, 6, 5, 7, 8]
-const PAIRS := 9
-## Two convex features touch at one point when they cross, at the two ends of
+## The contact pairs: the two blades; sword 0's blade on sword 1's guard
+## root; sword 0's guard root under sword 1's blade. Guard on guard is never a
+## pair (STEEL-TOPOLOGY-001).
+const PAIR_BLADES := 0
+const PAIR_BLADE_ON_GUARD := 1
+const PAIR_GUARD_ON_BLADE := 2
+const PAIRS := 3
+## Two convex shapes touch at one point when they cross, at the two ends of
 ## their overlap when they lie along each other — never more.
 const POINTS_PER_PAIR := 2
-## Every feature pair at its most.
 const CAPACITY := PAIRS * POINTS_PER_PAIR
-## The most a point may move along its two features in one tick and still be
-## the same contact: the sum of its parameter changes on each feature's centre
-## segment (0..1 along the blade, across the crossbar, along the handle), so
-## the bound is relative to each feature's own length. Farther is a new point.
+## The most a point may move along the two blades in one tick and still be the
+## same contact: the sum of its fraction changes on each blade (0 at the
+## crossguard, 1 at the point). Farther is a new point.
 const MATCH_DISTANCE := 0.25
 ## No match (`assign`).
 const UNMATCHED := -1
@@ -101,22 +89,16 @@ var point_count: int = 0
 ## The normal the last first impact was named by, from sword 1 toward sword 0.
 var normal_x: float = 0.0
 var normal_y: float = 0.0
-var feature_a := PackedInt32Array()
-var feature_b := PackedInt32Array()
 var point_x := PackedFloat64Array()
 var point_y := PackedFloat64Array()
-## Where along each blade the point lies: 0 at the guard, 1 at the point (a
-## guard or hilt contact reads 0).
+## Each point's contact pair (`PAIR_*`).
+var pair := PackedInt32Array()
+## Where along each blade the point lies: 0 at the blade's base, 1 at the
+## point; a point on a guard reads 0 on that side, the base of its blade. Also
+## the point's coordinate for identity (within its pair) and for presentation.
 var fraction_a := PackedFloat64Array()
 var fraction_b := PackedFloat64Array()
-## Where on each touched feature the point lies: its parameter (0..1) on that
-## feature's centre segment (`SwordContactGeometry.local_segment`) — along the
-## blade, across the crossbar, along the handle. What presentation needs to put
-## a guard or hilt contact on the drawn sword; a reading, never solved on.
-var local_a := PackedFloat64Array()
-var local_b := PackedFloat64Array()
-## Each point's own unit normal, from b toward a. Points of different feature
-## pairs need not share a normal (a blade on the handle and on the other blade).
+## Each point's own unit normal, from b toward a.
 var point_nx := PackedFloat64Array()
 var point_ny := PackedFloat64Array()
 ## Impulses the solver applied at each point this tick (N·s).
@@ -132,17 +114,16 @@ var contact_id := PackedInt32Array()
 var age := PackedInt32Array()
 
 ## The held-contact solver's physical impulses over the last tick, per sword
-## row, with the feature pair and feature coordinates each row was solved at
-## (RIGID-CONTACT-003). This is the warm start: the next tick's first velocity
-## solve starts a row from the record `assign` matches it to — the same
-## physical point, never whichever slot it lands in. Kept compact (slots
-## `0..hold_count() − 1`, canonical order). Carried state, so it is hashed. Only
-## the velocity stage writes it — never the position stage's pseudo-impulse.
+## row, with the blade fractions each row was solved at (RIGID-CONTACT-003).
+## This is the warm start: the next tick's first velocity solve starts a row
+## from the record `assign` matches it to — the same physical point, never
+## whichever slot it lands in. Kept compact (slots `0..hold_count() − 1`,
+## canonical order). Carried state, so it is hashed. Only the velocity stage
+## writes it — never the position stage's pseudo-impulse.
 var hold_active := PackedByteArray()
-var hold_feature_a := PackedInt32Array()
-var hold_feature_b := PackedInt32Array()
-var hold_local_a := PackedFloat64Array()
-var hold_local_b := PackedFloat64Array()
+var hold_pair := PackedInt32Array()
+var hold_fraction_a := PackedFloat64Array()
+var hold_fraction_b := PackedFloat64Array()
 var hold_normal := PackedFloat64Array()
 var hold_tangent := PackedFloat64Array()
 ## How fast the row still slides after that solve (m/s) — a reading for
@@ -151,26 +132,35 @@ var hold_slip := PackedFloat64Array()
 
 ## Next `contact_id` to hand out.
 var next_contact_id: int = 1
+## Each guard pair's side (`PAIR_BLADE_ON_GUARD`, then `PAIR_GUARD_ON_BLADE`),
+## decided when it first touches and kept until it parts
+## (GUARD-PROTECTION-001): 0 free, 1 protected (steel), 2 passing (the blade
+## came from the grip side and goes on). Carried state, so it is hashed.
+var guard_mode := PackedInt32Array([0, 0])
 
 var _previous_count: int = 0
-var _previous_a := PackedInt32Array()
-var _previous_b := PackedInt32Array()
-var _previous_local_a := PackedFloat64Array()
-var _previous_local_b := PackedFloat64Array()
+var _previous_pair := PackedInt32Array()
+var _previous_a := PackedFloat64Array()
+var _previous_b := PackedFloat64Array()
 var _previous_id := PackedInt32Array()
 var _previous_age := PackedInt32Array()
 var _match := PackedInt32Array()
+## `assign_pairs` scratch: one pair's points gathered (≤ `POINTS_PER_PAIR`).
+var _pair_new := PackedInt32Array([0, 0])
+var _pair_old := PackedInt32Array([0, 0])
+var _pair_new_a := PackedFloat64Array([0.0, 0.0])
+var _pair_new_b := PackedFloat64Array([0.0, 0.0])
+var _pair_old_a := PackedFloat64Array([0.0, 0.0])
+var _pair_old_b := PackedFloat64Array([0.0, 0.0])
+var _pair_out := PackedInt32Array([0, 0])
 
 
 func _init() -> void:
-	feature_a = _ints(Feature.BLADE)
-	feature_b = _ints(Feature.BLADE)
 	contact_id = _ints(0)
 	age = _ints(0)
-	hold_feature_a = _ints(Feature.BLADE)
-	hold_feature_b = _ints(Feature.BLADE)
-	_previous_a = _ints(Feature.BLADE)
-	_previous_b = _ints(Feature.BLADE)
+	pair = _ints(PAIR_BLADES)
+	hold_pair = _ints(PAIR_BLADES)
+	_previous_pair = _ints(PAIR_BLADES)
 	_previous_id = _ints(0)
 	_previous_age = _ints(0)
 	_match = _ints(UNMATCHED)
@@ -178,19 +168,17 @@ func _init() -> void:
 	point_y = _floats(0.0)
 	fraction_a = _floats(0.0)
 	fraction_b = _floats(0.0)
-	local_a = _floats(0.0)
-	local_b = _floats(0.0)
 	point_nx = _floats(0.0)
 	point_ny = _floats(1.0)
 	normal_impulse = _floats(0.0)
 	tangent_impulse = _floats(0.0)
-	hold_local_a = _floats(0.0)
-	hold_local_b = _floats(0.0)
+	hold_fraction_a = _floats(0.0)
+	hold_fraction_b = _floats(0.0)
 	hold_normal = _floats(0.0)
 	hold_tangent = _floats(0.0)
 	hold_slip = _floats(0.0)
-	_previous_local_a = _floats(0.0)
-	_previous_local_b = _floats(0.0)
+	_previous_a = _floats(0.0)
+	_previous_b = _floats(0.0)
 	persisted.resize(CAPACITY)
 	persisted.fill(0)
 	hold_active.resize(CAPACITY)
@@ -217,6 +205,8 @@ func reset() -> void:
 	point_count = 0
 	_previous_count = 0
 	next_contact_id = 1
+	guard_mode[0] = 0
+	guard_mode[1] = 0
 	for i in CAPACITY:
 		contact_id[i] = 0
 		age[i] = 0
@@ -226,10 +216,9 @@ func reset() -> void:
 
 func clear_hold(index: int) -> void:
 	hold_active[index] = 0
-	hold_feature_a[index] = Feature.BLADE
-	hold_feature_b[index] = Feature.BLADE
-	hold_local_a[index] = 0.0
-	hold_local_b[index] = 0.0
+	hold_pair[index] = PAIR_BLADES
+	hold_fraction_a[index] = 0.0
+	hold_fraction_b[index] = 0.0
 	hold_normal[index] = 0.0
 	hold_tangent[index] = 0.0
 	hold_slip[index] = 0.0
@@ -244,64 +233,27 @@ func hold_count() -> int:
 	return held
 
 
-## The canonical index of feature pair (`a`, `b`).
-static func pair_of(a: int, b: int) -> int:
-	return PAIR_INDEX[a * FEATURES + b]
-
-
 ## The one rule for "the same contact point as before" (CONTACT-IDENTITY-001).
-## Each of `new_count` new points (features `new_a`/`new_b`, feature
-## coordinates `new_la`/`new_lb`) is matched to at most one of `old_count` old
-## points, one to one, into `out` (`UNMATCHED` for a new contact). A pair can
-## match only on the same features and within `MATCH_DISTANCE` of movement
-## (`|Δlocal_a| + |Δlocal_b|`), so the problem splits by feature pair into at
-## most nine independent ones of at most two points each (`_assign_pair`). The
-## result never depends on which slot a point happened to occupy. A mirror
-## reverses a crossbar's coordinate (s → 1 − s), which leaves every movement,
-## and so the assignment, unchanged.
+## Each of `new_count` new points (blade fractions `new_a`/`new_b`) is matched
+## to at most one of `old_count` old points, one to one, into `out`
+## (`UNMATCHED` for a new contact). A pair can match only within
+## `MATCH_DISTANCE` of movement (`|Δfraction_a| + |Δfraction_b|`). Of every
+## legal assignment — at most seven for two points — the one matching the most
+## points wins, then the least total movement, then the first in a fixed order
+## (identity before swap). The result never depends on which slot a point
+## happened to occupy, and a mirror leaves every fraction, and so the
+## assignment, unchanged.
 static func assign(
-	new_count: int, new_a: PackedInt32Array, new_b: PackedInt32Array, new_la: PackedFloat64Array, new_lb: PackedFloat64Array,
-	old_count: int, old_a: PackedInt32Array, old_b: PackedInt32Array, old_la: PackedFloat64Array, old_lb: PackedFloat64Array,
+	new_count: int, new_a: PackedFloat64Array, new_b: PackedFloat64Array,
+	old_count: int, old_a: PackedFloat64Array, old_b: PackedFloat64Array,
 	out: PackedInt32Array
 ) -> void:
 	for i in new_count:
 		out[i] = UNMATCHED
-	for pair in PAIRS:
-		var fa := PAIR_A[pair]
-		var fb := PAIR_B[pair]
-		var n0 := _nth(new_count, new_a, new_b, fa, fb, 0)
-		if n0 == UNMATCHED:
-			continue
-		var o0 := _nth(old_count, old_a, old_b, fa, fb, 0)
-		if o0 == UNMATCHED:
-			continue
-		var n1 := _nth(new_count, new_a, new_b, fa, fb, 1)
-		var o1 := _nth(old_count, old_a, old_b, fa, fb, 1)
-		_assign_pair(n0, n1, o0, o1, new_la, new_lb, old_la, old_lb, out)
-
-
-## The `nth` index (0 or 1) of `count` points on features (`fa`, `fb`), or
-## `UNMATCHED`.
-static func _nth(count: int, a: PackedInt32Array, b: PackedInt32Array, fa: int, fb: int, nth: int) -> int:
-	var seen := 0
-	for i in count:
-		if a[i] == fa and b[i] == fb:
-			if seen == nth:
-				return i
-			seen += 1
-	return UNMATCHED
-
-
-## One feature pair's matching: new points `n0`, `n1` against old `o0`, `o1`
-## (`UNMATCHED` when absent). Of every legal assignment — at most seven — the
-## one matching the most points wins, then the least total movement, then the
-## first in a fixed order (identity before swap).
-static func _assign_pair(
-	n0: int, n1: int, o0: int, o1: int,
-	new_la: PackedFloat64Array, new_lb: PackedFloat64Array, old_la: PackedFloat64Array, old_lb: PackedFloat64Array,
-	out: PackedInt32Array
-) -> void:
-	var olds := PackedInt32Array([UNMATCHED, o0, o1])
+	if new_count == 0 or old_count == 0:
+		return
+	var n1 := 1 if new_count > 1 else UNMATCHED
+	var olds := PackedInt32Array([UNMATCHED, 0, 1 if old_count > 1 else UNMATCHED])
 	var best_matches := 0
 	var best_cost := INF
 	var best_0 := UNMATCHED
@@ -312,7 +264,7 @@ static func _assign_pair(
 			continue
 		var cost0 := 0.0
 		if m0 != UNMATCHED:
-			cost0 = _movement(n0, m0, new_la, new_lb, old_la, old_lb)
+			cost0 = _movement(0, m0, new_a, new_b, old_a, old_b)
 			if cost0 > MATCH_DISTANCE:
 				continue
 		for c1 in (3 if n1 != UNMATCHED else 1):
@@ -321,7 +273,7 @@ static func _assign_pair(
 				continue
 			var cost1 := 0.0
 			if m1 != UNMATCHED:
-				cost1 = _movement(n1, m1, new_la, new_lb, old_la, old_lb)
+				cost1 = _movement(n1, m1, new_a, new_b, old_a, old_b)
 				if cost1 > MATCH_DISTANCE:
 					continue
 			var matches := int(m0 != UNMATCHED) + int(m1 != UNMATCHED)
@@ -331,15 +283,46 @@ static func _assign_pair(
 				best_cost = cost
 				best_0 = m0
 				best_1 = m1
-	out[n0] = best_0
+	out[0] = best_0
 	if n1 != UNMATCHED:
 		out[n1] = best_1
 
 
-## How far new point `n` moved from old point `o` along their (shared)
-## features.
-static func _movement(n: int, o: int, new_la: PackedFloat64Array, new_lb: PackedFloat64Array, old_la: PackedFloat64Array, old_lb: PackedFloat64Array) -> float:
-	return absf(new_la[n] - old_la[o]) + absf(new_lb[n] - old_lb[o])
+## `assign` within each contact pair: a point matches only a point of its own
+## pair (at most `POINTS_PER_PAIR` of each), so identity never crosses from
+## blade to guard. `new_pair`/`old_pair` name each point's pair.
+func assign_pairs(
+	new_count: int, new_pair: PackedInt32Array, new_a: PackedFloat64Array, new_b: PackedFloat64Array,
+	old_count: int, old_pair: PackedInt32Array, old_a: PackedFloat64Array, old_b: PackedFloat64Array,
+	out: PackedInt32Array
+) -> void:
+	for i in new_count:
+		out[i] = UNMATCHED
+	for p in PAIRS:
+		var fresh := 0
+		for i in new_count:
+			if new_pair[i] == p and fresh < POINTS_PER_PAIR:
+				_pair_new[fresh] = i
+				_pair_new_a[fresh] = new_a[i]
+				_pair_new_b[fresh] = new_b[i]
+				fresh += 1
+		var prior := 0
+		for i in old_count:
+			if old_pair[i] == p and prior < POINTS_PER_PAIR:
+				_pair_old[prior] = i
+				_pair_old_a[prior] = old_a[i]
+				_pair_old_b[prior] = old_b[i]
+				prior += 1
+		if fresh == 0:
+			continue
+		assign(fresh, _pair_new_a, _pair_new_b, prior, _pair_old_a, _pair_old_b, _pair_out)
+		for k in fresh:
+			out[_pair_new[k]] = UNMATCHED if _pair_out[k] == UNMATCHED else _pair_old[_pair_out[k]]
+
+
+## How far new point `n` moved from old point `o` along the two blades.
+static func _movement(n: int, o: int, new_a: PackedFloat64Array, new_b: PackedFloat64Array, old_a: PackedFloat64Array, old_b: PackedFloat64Array) -> float:
+	return absf(new_a[n] - old_a[o]) + absf(new_b[n] - old_b[o])
 
 
 func set_phase(next: Phase) -> void:
@@ -359,10 +342,9 @@ func tick() -> void:
 func begin_search() -> void:
 	_previous_count = point_count
 	for i in point_count:
-		_previous_a[i] = feature_a[i]
-		_previous_b[i] = feature_b[i]
-		_previous_local_a[i] = local_a[i]
-		_previous_local_b[i] = local_b[i]
+		_previous_pair[i] = pair[i]
+		_previous_a[i] = fraction_a[i]
+		_previous_b[i] = fraction_b[i]
 		_previous_id[i] = contact_id[i]
 		_previous_age[i] = age[i]
 		next_contact_id = maxi(next_contact_id, contact_id[i] + 1)
@@ -408,17 +390,14 @@ func observe(gap: float, touch: float, separation_epsilon: float) -> bool:
 ## Record the touching point at `index` for this tick. A later substep of the
 ## same tick overwrites an earlier one: the set describes where the swords
 ## ended up touching, not every place they passed through.
-func record_point(index: int, a_feature: Feature, b_feature: Feature, x: float, y: float, a_fraction: float, b_fraction: float, nx: float = 0.0, ny: float = 1.0, a_local: float = 0.0, b_local: float = 0.0) -> void:
-	feature_a[index] = a_feature
-	feature_b[index] = b_feature
+func record_point(index: int, x: float, y: float, a_fraction: float, b_fraction: float, nx: float = 0.0, ny: float = 1.0, point_pair: int = PAIR_BLADES) -> void:
 	point_x[index] = x
 	point_y[index] = y
+	pair[index] = point_pair
 	fraction_a[index] = a_fraction
 	fraction_b[index] = b_fraction
 	point_nx[index] = nx
 	point_ny[index] = ny
-	local_a[index] = a_local
-	local_b[index] = b_local
 	normal_impulse[index] = 0.0
 	tangent_impulse[index] = 0.0
 	point_count = maxi(point_count, index + 1)
@@ -430,7 +409,7 @@ func record_point(index: int, a_feature: Feature, b_feature: Feature, x: float, 
 ## takes the next id. Re-run as each point is recorded, so the final answer is
 ## the one-to-one assignment over all of them.
 func _identify() -> void:
-	assign(point_count, feature_a, feature_b, local_a, local_b, _previous_count, _previous_a, _previous_b, _previous_local_a, _previous_local_b, _match)
+	assign_pairs(point_count, pair, fraction_a, fraction_b, _previous_count, _previous_pair, _previous_a, _previous_b, _match)
 	var fresh := next_contact_id
 	for i in point_count:
 		var prior := _match[i]

@@ -9,7 +9,7 @@ extends SceneTree
 ## - **line** — the line-change matrix (ATTACK-SIDE-001, LINE-CHANGE-001):
 ##   inside strike reach, a planted tap from rest at a defender who walks
 ##   behind the blade (origin side), into it (end side) or stands, over
-##   distance × timing. Per cell: what the tap met (body / hand / steel /
+##   distance × timing. Per cell: what the tap met (body / grip / steel /
 ##   none), and who lands the first body hit afterwards when the defender walks
 ##   straight in pressing whenever its sword is free and the attacker is then a
 ##   Hard CPU. `LINE_RESULT {json}`.
@@ -19,7 +19,7 @@ extends SceneTree
 ##   fork of the same state rolled on with the same continuation (the fighter
 ##   walks the line pressing its tap as soon as it can; the opponent gives no
 ##   input, so its sword follows the law of its phase). A confusion matrix of
-##   BODY / HAND / STEEL / NONE, split by whether the blades started bound.
+##   BODY / GRIP / STEEL / NONE, split by whether the blades started bound.
 ##   `AGREEMENT_RESULT {json}`.
 ## - **capitalize** — CPU-008 conversion: Hard–Medium duels, each seed in both
 ##   slot orders; capitalize starts, and how many are followed by the
@@ -63,7 +63,7 @@ func _line() -> void:
 			for side: String in ["origin", "none", "end"]:
 				var run := _line_run(d0, lead, side)
 				var key := "%s" % side
-				var cell: Dictionary = cells.get(key, {"runs": 0, "body": 0, "hand": 0, "steel": 0, "none": 0, "defender_first": 0, "attacker_first": 0})
+				var cell: Dictionary = cells.get(key, {"runs": 0, "body": 0, "grip": 0, "steel": 0, "none": 0, "defender_first": 0, "attacker_first": 0})
 				cell["runs"] += 1
 				cell[run[0]] += 1
 				if run[1] != "":
@@ -112,7 +112,7 @@ func _line_run(d0: float, lead: int, side: String) -> Array:
 			var event: DuelEvent = runner.events[i]
 			if met == "":
 				if event.type == DuelEventTypes.BODY_HIT and event.actor == 0:
-					met = "hand" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_HAND else "body"
+					met = "grip" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP else "body"
 					## The tap itself landed first.
 					first = "attacker"
 				elif event.type == DuelEventTypes.BLADE_CONTACT:
@@ -158,9 +158,9 @@ func _agreement() -> void:
 				sensitivity[idle_key] = int(sensitivity.get(idle_key, 0)) + 1
 				## The dangerous disagreement, by mechanism: the opponent's phase
 				## and the features that actually met.
-				var flesh := predicted.first_contact == ThreatEstimate.BODY or predicted.first_contact == ThreatEstimate.HAND
+				var flesh := predicted.first_contact == ThreatEstimate.BODY or predicted.first_contact == ThreatEstimate.GRIP
 				if flesh and not predicted.starts_bound and actual.begins_with("STEEL"):
-					var why := "false_clear opp=%s predicted=%s spent_hand=%s %s seed=%d tick=%d slot=%d" % [CombatPhase.label(them.weapon.phase), _name(predicted.first_contact), str(me.weapon.hand_struck), actual.substr(6), seed_value, duel.state.tick, slot]
+					var why := "false_clear opp=%s predicted=%s spent_grip=%s %s seed=%d tick=%d slot=%d" % [CombatPhase.label(them.weapon.phase), _name(predicted.first_contact), str(me.weapon.grip_struck), actual.substr(6), seed_value, duel.state.tick, slot]
 					matrix[why] = int(matrix.get(why, 0)) + 1
 				samples += 1
 		print("  · agreement seed %d (%d samples)" % [seed_value, samples])
@@ -173,7 +173,8 @@ func _agreement() -> void:
 ## keeps its current velocity (its stick held along that velocity, at its
 ## share of top speed), its heading and sword following their own laws; without
 ## it the opponent gives no input and brakes (continuation sensitivity). What
-## `slot`'s strike meets first.
+## `slot`'s strike meets first, or DIVERGED when the matched opponent's held
+## stick started a burst (it stopped continuing at its velocity).
 func _rolled(duel: MatchSession, slot: int, line: Vector2, matched: bool) -> String:
 	var fork := SimRunner.create(duel.config.rules, duel.state.seed_value)
 	StateFork.copy(duel.state, fork.state)
@@ -203,12 +204,15 @@ func _rolled(duel: MatchSession, slot: int, line: Vector2, matched: bool) -> Str
 		launched = launched or CombatPhase.is_swinging(me.weapon.phase) or me.weapon.phase == CombatPhase.Id.LAUNCH
 		for i in range(seen, fork.events.size()):
 			var event: DuelEvent = fork.events[i]
+			## The held stick read as a gesture: the opponent no longer
+			## continues at its velocity, so this roll answers a different
+			## question than the prediction asked. Its own bucket, never an error.
+			if matched and event.type == DuelEventTypes.BURST_STARTED and event.actor != slot:
+				return "DIVERGED"
 			if event.type == DuelEventTypes.BLADE_CONTACT and launched and touched_steel == "":
-				var mine_feature := int(event.data[DuelEventKeys.FEATURE_0 if slot == 0 else DuelEventKeys.FEATURE_1])
-				var their_feature := int(event.data[DuelEventKeys.FEATURE_1 if slot == 0 else DuelEventKeys.FEATURE_0])
-				touched_steel = "STEEL mine=%d theirs=%d at=%d" % [mine_feature, their_feature, tick - duel.state.tick]
+				touched_steel = "STEEL at=%d" % (tick - duel.state.tick)
 			if event.type == DuelEventTypes.BODY_HIT and event.actor == slot:
-				return "HAND" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_HAND else "BODY"
+				return "GRIP" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP else "BODY"
 		## Steel that stopped the strike: it is over, and no flesh was struck.
 		if touched_steel != "" and launched and not CombatPhase.is_swinging(me.weapon.phase) and me.weapon.phase != CombatPhase.Id.LAUNCH:
 			return touched_steel
@@ -218,7 +222,7 @@ func _rolled(duel: MatchSession, slot: int, line: Vector2, matched: bool) -> Str
 
 
 static func _name(contact: int) -> String:
-	return ["NONE", "BODY", "HAND", "STEEL"][contact]
+	return ["NONE", "BODY", "GRIP", "STEEL"][contact]
 
 
 # ── capitalize ────────────────────────────────────────────────────────────────

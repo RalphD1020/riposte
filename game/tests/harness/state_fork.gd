@@ -51,7 +51,7 @@ static func _punish_with(runner: SimRunner, slot: int, window: int, verb: String
 		for e in range(seen, runner.events.size()):
 			var event: DuelEvent = runner.events[e]
 			if event.type == DuelEventTypes.BODY_HIT and event.actor == slot:
-				return [t, "h" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_HAND else "t"]
+				return [t, "h" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP else "t"]
 		if runner.state.phase != MatchPhase.Id.ROUND_ACTIVE:
 			break
 	return [-1, ""]

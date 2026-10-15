@@ -18,35 +18,41 @@ extends RefCounted
 
 var id: StringName = &""
 
-## Geometry. The blade segment spans hilt_radius → tip_radius from the origin,
-## which sits at the pommel, so `tip_radius` *is* the weapon's overall length
-## and the effective rotational length. Geometry scales linearly with weapon
-## size; it is never a function of mass (PHYS-005).
-var hilt_radius: float = 0.0
+## Geometry. The sword is blade, crossguard and handle. The blade spans
+## `blade_base_radius` (where it leaves the crossguard) → `tip_radius` from the
+## origin, which sits at the pommel, so `tip_radius` *is* the weapon's overall
+## length and the effective rotational length. Geometry scales linearly with
+## weapon size; it is never a function of mass (PHYS-005).
+##
+## Only the blade is steel that blocks a sword (STEEL-TOPOLOGY-001); it is also
+## the only part that wounds.
+var blade_base_radius: float = 0.0
 var tip_radius: float = 0.0
 var blade_radius: float = 0.0
-## The crossguard (GUARD-CONTACT-001): a rigid bar across the blade, centred
-## `guard_centre_radius` from the origin, reaching `guard_half_span` either side
-## of the blade, `guard_radius` thick. A collidable sword feature exactly like
-## the blade, only of another material and never a cutting edge. Zero span is
-## a sword with no guard.
-var guard_centre_radius: float = 0.0
-var guard_half_span: float = 0.0
-var guard_radius: float = 0.0
-## The handle — pommel to guard centre, as thick as the sword's own grip — is
-## the third collidable feature (HILT) at its real thickness; the hands around
-## it are hurt geometry, never steel (HAND-CONTACT-001). Zero makes the handle
-## non-collidable.
+## The crossguard: a bar across the blade, centred `crossguard_centre_radius`
+## from the origin, reaching `crossguard_half_span` either side of the blade,
+## `crossguard_radius` thick. It is drawn and it carries its mass. As steel it
+## is the guard root (`guard_root_apex_radius`): it stops an enemy blade that
+## comes from its protected side and lets one from the grip side pass on to
+## whatever it meets (GUARD-PROTECTION-001); it never touches another
+## crossguard and is never hurt geometry. Zero span is a sword with no
+## crossguard.
+var crossguard_centre_radius: float = 0.0
+var crossguard_half_span: float = 0.0
+var crossguard_radius: float = 0.0
+## The handle — pommel to crossguard centre, as thick as the sword's own grip.
+## Grip-region hurt geometry, beside the hands on it; never steel. Zero makes
+## the bare handle unhittable (the hands on it still are).
 var handle_radius: float = 0.0
 
-## What each feature (indexed by `SwordContactSet.Feature`: BLADE, GUARD,
-## HILT) means when it is touched and when it strikes (DEFENSE-ROLE-001).
-## Collidable is not protective: every feature is solved as rigid contact, but
-## only a feature that `protects_wielder` can be a successful defense (a PARRY),
-## and only one whose `damage_role` is not NONE can wound. Authored content.
-enum DamageRole { NONE, WEAPON_BLADE }
-var feature_protects := PackedByteArray([1, 1, 0])
-var feature_damage_role := PackedInt32Array([DamageRole.WEAPON_BLADE, DamageRole.NONE, DamageRole.NONE])
+## Whether a blade-on-blade contact on this weapon's blade can be a successful
+## defense of its wielder (DEFENSE-ROLE-001): a reading the PARRY
+## classification takes, never physics — the contact is solved identically
+## either way. Authored content.
+var blade_protects: bool = true
+## Whether a contact on the crossguard's protected side defends its wielder —
+## the same reading as `blade_protects`, for the guard root. Authored content.
+var crossguard_protects: bool = true
 ## Mass is a **measured fact** about the object, authored directly. It is
 ## never generated from length at runtime: a longer sword is usually a thinner
 ## one, so a cubic rule would quietly invent a crowbar.
@@ -69,7 +75,7 @@ const MASS_PROFILE_TOLERANCE := 1.0e-9
 ## `m·(|P′|² + 2·d_c·P′·perp(û))` to the weapon coordinate's inertia.
 var center_of_mass_radius: float = 0.0
 ## Distance (m) from the origin down the blade to each grip station: the off
-## hand on the pommel side, the dominant hand on the guard side, always in that
+## hand on the pommel side, the dominant hand on the crossguard side, always in that
 ## order. Where the handle is held is the handle's geometry; how the arms then
 ## carry it is the handling's.
 var offhand_grip_radius: float = 0.0
@@ -133,7 +139,7 @@ var restitution_threshold_speed: float = 0.0
 
 ## Body strike quality (COMBAT §34–§39, §51).
 var reference_closing_speed: float = 0.0
-## Blade efficiency by blade fraction (0 = hilt, 1 = tip).
+## Blade efficiency by blade fraction (0 = crossguard, 1 = tip).
 var efficiency_fractions: PackedFloat64Array = PackedFloat64Array()
 var efficiency_values: PackedFloat64Array = PackedFloat64Array()
 var edge_floor: float = 0.0
@@ -149,7 +155,7 @@ var stagger_scale_ticks: float = 0.0
 ## and physical severity. Only weapons that `supports_thrust` can produce a
 ## lethal-thrust classification; the other fields are ignored when false.
 var supports_thrust: bool = false
-## Normalized blade coordinate at which the tip region begins (0 = hilt,
+## Normalized blade coordinate at which the tip region begins (0 = crossguard,
 ## 1 = tip). A thrust candidate requires contact at or beyond this fraction.
 var tip_region_start: float = 0.95
 ## Weapon-specific modifier on how efficiently this blade converts axial
@@ -158,33 +164,21 @@ var tip_region_start: float = 0.95
 var thrust_efficiency: float = 0.0
 
 
-## Whether a contact on `feature` can be a successful defense of the wielder.
-func protects(feature: int) -> bool:
-	return feature_protects[feature] != 0
-
-
-## Whether `feature` wounds what it strikes.
-func wounds(feature: int) -> bool:
-	return feature_damage_role[feature] != DamageRole.NONE
-
-
 func is_valid() -> bool:
 	return (
-		tip_radius > hilt_radius
-		and hilt_radius >= 0.0
+		tip_radius > blade_base_radius
+		and blade_base_radius >= 0.0
 		and blade_radius > 0.0
-		and guard_half_span >= 0.0
+		and crossguard_half_span >= 0.0
 		and handle_radius >= 0.0
-		and feature_protects.size() == SwordContactSet.FEATURES
-		and feature_damage_role.size() == SwordContactSet.FEATURES
-		and (guard_half_span == 0.0 or (guard_radius > 0.0 and guard_centre_radius > dominant_grip_radius and guard_centre_radius <= hilt_radius))
+		and (crossguard_half_span == 0.0 or (crossguard_radius > 0.0 and crossguard_centre_radius > dominant_grip_radius and crossguard_centre_radius <= blade_base_radius))
 		and mass > 0.0
 		and inertia_coefficient > 0.0
 		and center_of_mass_radius > 0.0
 		and center_of_mass_radius < tip_radius
 		and offhand_grip_radius >= 0.0
 		and offhand_grip_radius < dominant_grip_radius
-		and dominant_grip_radius < hilt_radius
+		and dominant_grip_radius < blade_base_radius
 		and guard_limit > guard_angle
 		and max_arc > min_arc
 		and min_arc > 0.0
@@ -223,7 +217,31 @@ func length() -> float:
 
 
 func blade_length() -> float:
-	return tip_radius - hilt_radius
+	return tip_radius - blade_base_radius
+
+
+## The guard root's apex on the sword's axis (m from the origin): the convex
+## steel of the guard is the rounded triangle from the crossguard's two ends to
+## here, every edge at the bar's own thickness, so the corner between bar and
+## blade is never a right angle a blade can wedge in (STEEL-TOPOLOGY-001). It
+## rises only as far as keeps the root within the bar's own rounded edge: its
+## surface stands out beyond the drawn bar and blade by at most
+## `crossguard_radius` (GUARD-PROTECTION-001). The blade's own steel starts
+## here. A sword with no crossguard has no root: its blade starts at its base.
+func guard_root_apex_radius() -> float:
+	if crossguard_half_span <= 0.0:
+		return blade_base_radius
+	return maxf(blade_base_radius, crossguard_centre_radius + crossguard_half_span * guard_root_rise())
+
+
+## The guard root's rise above the bar as a share of its half-span: the most
+## for which no point of its slanted edges stands farther than the bar's
+## half-depth beyond both the drawn bar and the drawn blade. Along an edge the
+## overhang is min(k·h·t − r_g, h·(1 − t) − r_b) + r_g, largest where the two
+## agree, at k·(h − r_b + r_g)/(1 + k); setting that to r_g gives
+## k = r_g / (h − r_b).
+func guard_root_rise() -> float:
+	return crossguard_radius / maxf(crossguard_half_span - blade_radius, crossguard_radius)
 
 
 ## Derive `mass`, `center_of_mass_radius` and `inertia_coefficient` from

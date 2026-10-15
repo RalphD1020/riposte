@@ -34,7 +34,7 @@ func _combatant(fanfare_present: bool = true, line_present: bool = true) -> Comb
 
 
 func _director(combatant: CombatantPresentationKit) -> VictoryDirector:
-	var director := VictoryDirector.create(combatant, DuelSide.Id.LIGHT_SOUTH, _rules.combatant(0).fighter.push_radius, _rules.combatant(0).weapon.hilt_radius, _rules.combatant(0).weapon.tip_radius)
+	var director := VictoryDirector.create(combatant, DuelSide.Id.LIGHT_SOUTH, _rules.combatant(0).fighter.push_radius, _rules.combatant(0).weapon.blade_base_radius, _rules.combatant(0).weapon.tip_radius)
 	(Engine.get_main_loop() as SceneTree).root.add_child(director)
 	return director
 

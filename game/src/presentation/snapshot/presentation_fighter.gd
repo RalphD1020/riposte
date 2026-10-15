@@ -99,7 +99,7 @@ var body_lying: bool = false
 var body_yaw: float = 0.0
 var body_spin: float = 0.0
 var body_over_edge: bool = false
-var hilt_radius: float = 0.0
+var blade_base_radius: float = 0.0
 var tip_radius: float = 0.0
 ## The fighter's immutable rules weapon, so presentation poses the planar sword
 ## with the same `WeaponKinematics` collision uses, at the interpolated angle

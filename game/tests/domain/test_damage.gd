@@ -724,10 +724,11 @@ func test_the_threat_follows_the_side_the_blade_will_commit_to() -> void:
 	assert_eq(estimates[0].residual_gap, estimates[1].residual_gap, "with the same residual")
 
 
-## HAND-CONTACT-001: a hand wound is the ordinary damage model at the target's
-## hand share. The same wound against a share of 1 differs only by that share:
-## the same quality, and health falls by exactly the damage reported.
-func test_a_hand_wound_is_the_ordinary_strike_at_the_hand_share() -> void:
+## GRIP-NONBLOCKING-001: a grip wound (here on the off hand) is the ordinary
+## damage model at the target's grip share. The same wound against a share of
+## 1 differs only by that share: the same quality, and health falls by exactly
+## the damage reported.
+func test_a_grip_wound_is_the_ordinary_strike_at_the_grip_share() -> void:
 	var wounds: Array[DuelEvent] = []
 	var lost: Array[float] = []
 	for share: float in [-1.0, 1.0]:
@@ -735,8 +736,8 @@ func test_a_hand_wound_is_the_ordinary_strike_at_the_hand_share() -> void:
 		## a centimetre into the disc, driving in at 3 m/s.
 		var rules := DuelFixture.rules()
 		if share > 0.0:
-			## PERTURB: the whole wound, no hand share.
-			rules.combatant(1).fighter.hand_damage_factor = share
+			## PERTURB: the whole wound, no grip share.
+			rules.combatant(1).fighter.grip_damage_factor = share
 		var state := DuelFixture.state(rules)
 		var holder := state.fighter(1)
 		DuelFixture.place(holder, 0.0, 0.0, 0.0)
@@ -756,17 +757,18 @@ func test_a_hand_wound_is_the_ordinary_strike_at_the_hand_share() -> void:
 		var before := holder.health
 		## ACT
 		var events: Array[DuelEvent] = []
-		ContactResolver.wound_hand(state, rules, 0, grip, 0.5, 1, events)
+		ContactResolver.wound_grip(state, rules, 0, grip, 0.0, DuelEventKeys.SOURCE_HAND_OFF, 0.5, 1, events)
 		## ASSERT
 		assert_eq(events.size(), 1, "fixture (share %s): one wound" % str(share))
-		assert_eq(events[0].text(DuelEventKeys.REGION), DuelEventKeys.REGION_HAND, "on the hand")
+		assert_eq(events[0].text(DuelEventKeys.REGION), DuelEventKeys.REGION_GRIP, "on the grip")
+		assert_eq(events[0].text(DuelEventKeys.SOURCE_REGION), DuelEventKeys.SOURCE_HAND_OFF, "entered at the off hand")
 		assert_true(holder.is_alive(), "never an instant kill")
-		assert_true(striker.weapon.hand_struck, "the attack's hand episode is spent")
+		assert_true(striker.weapon.grip_struck, "the attack's grip episode is spent")
 		wounds.append(events[0])
 		lost.append(before - holder.health)
 	var shipped := wounds[0].number(DuelEventKeys.DAMAGE)
 	var whole := wounds[1].number(DuelEventKeys.DAMAGE)
 	assert_true(whole > 0.0, "fixture: the blade wounds (%.4f)" % whole)
 	assert_eq(wounds[0].number(DuelEventKeys.QUALITY), wounds[1].number(DuelEventKeys.QUALITY), "the same strike quality either way")
-	assert_near(shipped, whole * DuelFixture.rules().combatant(1).fighter.hand_damage_factor, 1e-12, "the shipped wound is the hand share of the whole")
+	assert_near(shipped, whole * DuelFixture.rules().combatant(1).fighter.grip_damage_factor, 1e-12, "the shipped wound is the grip share of the whole")
 	assert_near(lost[0], shipped, 1e-12, "and health falls by exactly that")

@@ -7,14 +7,14 @@ extends RefCounted
 ## three meet at one place.
 ##
 ## The combat plane owns the contact: its XY on the arena plane, each sword's
-## yaw θ and each hilt's horizontal place `C(θ)`. Presentation adds only a
+## yaw θ and each grip's horizontal place `C(θ)`. Presentation adds only a
 ## height. A pitched blade's ground projection is shorter than the blade
 ## (`d·cos p`), so a sword can pass through the authoritative contact point
 ## only while it is level there. So:
 ##
 ## ```text
 ## no contact   each sword at its own free lift (height, pitch, roll)
-## contact      hilt XY and yaw unchanged (authority)
+## contact      grip XY and yaw unchanged (authority)
 ##              pitch → 0 on each contacted sword
 ##              both swords at one shared height
 ##                  z_contact = mean over touching points of
@@ -34,14 +34,13 @@ extends RefCounted
 
 var _field := CombatPresentationField.new()
 var _pose := BladePose.new()
-var _segment := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
 
 
-## Distance from the pommel along the blade axis (m) of a contact at `local` on
-## `feature` — where on the drawn sword the contact lies.
-func along(feature: int, local: float, weapon: WeaponDefinition) -> float:
-	SwordContactGeometry.local_segment(feature, weapon, _segment)
-	return lerpf(_segment[0], _segment[2], clampf(local, 0.0, 1.0))
+## Distance from the pommel along the blade axis (m) of a contact at blade
+## `fraction` (0 at the crossguard, 1 at the point) — where on the drawn sword
+## the contact lies.
+static func along(fraction: float, weapon: WeaponDefinition) -> float:
+	return lerpf(weapon.blade_base_radius, weapon.tip_radius, clampf(fraction, 0.0, 1.0))
 
 
 ## Height above the platform (m) of `row`'s drawn sword `distance` from its
@@ -65,7 +64,7 @@ func contact_height(snapshot: PresentationSnapshot, blade_height: float) -> floa
 		return NAN
 	var total := 0.0
 	for contact in snapshot.contacts:
-		var free_a := free_height(a, along(contact.feature_a, contact.local_a, a.weapon_definition), blade_height)
-		var free_b := free_height(b, along(contact.feature_b, contact.local_b, b.weapon_definition), blade_height)
+		var free_a := free_height(a, along(contact.fraction_a, a.weapon_definition), blade_height)
+		var free_b := free_height(b, along(contact.fraction_b, b.weapon_definition), blade_height)
 		total += (free_a + free_b) * 0.5
 	return total / float(snapshot.contacts.size())

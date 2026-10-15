@@ -99,7 +99,7 @@ func test_normal_swing_is_slash() -> void:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
-	var mid_radius: float = _rules.combatant(0).weapon.hilt_radius + _rules.combatant(0).weapon.blade_length() * 0.5
+	var mid_radius: float = _rules.combatant(0).weapon.blade_base_radius + _rules.combatant(0).weapon.blade_length() * 0.5
 	DuelFixture.place(b, mid_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.speed = 15.0
@@ -146,7 +146,7 @@ func test_poke_requires_tip_region() -> void:
 	var state := _thrust_pair()
 	var a := state.fighter(0)
 	var b := state.fighter(1)
-	var mid_x := a.x + _rules.combatant(0).weapon.hilt_radius + _rules.combatant(0).weapon.blade_length() * 0.3
+	var mid_x := a.x + _rules.combatant(0).weapon.blade_base_radius + _rules.combatant(0).weapon.blade_length() * 0.3
 	var impact := ImpactModel.resolve(a, b, mid_x, 0.0, _rules)
 	var kind := DamageModel.classify_contact(impact, a, _rules)
 	assert_ne(kind, StrikeResult.ContactKind.POKE, "mid-blade contact is not a POKE even with forward motion")
@@ -218,7 +218,7 @@ func test_weapon_without_supports_thrust_cannot_poke() -> void:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
-	var mid_radius: float = no_thrust.combatant(0).weapon.hilt_radius + no_thrust.combatant(0).weapon.blade_length() * 0.5
+	var mid_radius: float = no_thrust.combatant(0).weapon.blade_base_radius + no_thrust.combatant(0).weapon.blade_length() * 0.5
 	DuelFixture.place(b, mid_radius + no_thrust.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.speed = 15.0
@@ -318,7 +318,7 @@ func test_slash_emits_no_point_strike_event() -> void:
 	var a := state.fighter(0)
 	var b := state.fighter(1)
 	DuelFixture.place(a, 0.0, 0.0, 0.0)
-	var mid_radius: float = _rules.combatant(0).weapon.hilt_radius + _rules.combatant(0).weapon.blade_length() * 0.5
+	var mid_radius: float = _rules.combatant(0).weapon.blade_base_radius + _rules.combatant(0).weapon.blade_length() * 0.5
 	DuelFixture.place(b, mid_radius + _rules.combatant(0).fighter.push_radius, 0.0, PI)
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	a.weapon.speed = 15.0

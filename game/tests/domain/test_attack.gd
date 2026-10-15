@@ -614,19 +614,20 @@ const MEASURE_TOLERANCE := 1.0e-3
 ## attacker stands at the origin facing the defender 1.5 m away; a planted tap
 ## from rest (θ −45° → +45°, swing_dir +1, 90°). The defender, reading it,
 ## starts walking 4 ticks before the press and holds 8 ticks of pure lateral
-## walk. CONTROL (no step): the tap strikes the body. BEHIND THE BLADE (toward
-## the cut's origin side): the sweep misses the body and meets the defender's
-## steel. INTO THE BLADE (the same walk toward the end side): it strikes the
-## body. Both steps end at the same distance, inside reach, so the side alone
-## decided it; the mirrored scene does the same at the same distance. Inside
-## reach the defender's own guard lies in the sweep, so a line change turns a
-## hit into a contact on steel — it does not make the cut meet nothing.
+## walk. CONTROL (no step): the tap's first contact is the torso. BEHIND THE
+## BLADE (toward the cut's origin side): the defender's own grip — the hands it
+## carries into the sweep — is met first. INTO THE BLADE (the same walk toward
+## the end side): the torso. Both steps end at the same distance, inside reach,
+## so the side alone decided it; the mirrored scene does the same at the same
+## distance. (Rules 49's "behind the blade meets steel" was crossguard and
+## handle steel; on blade-only steel the hands are met, and whether the line
+## then wins the exchange is LINE-CHANGE-CAPITALIZATION-001, open.)
 func test_the_side_of_the_sweep_decides_what_a_cut_meets() -> void:
 	var rules := StandardDuelRules.create()
 	var reach := WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1))
 	## ARRANGE (control): no line change.
 	var control := _lined_tap(rules, "none", false)
-	assert_eq(control.result, "body", "control: without a line change the tap strikes the body")
+	assert_eq(control.result, DuelEventKeys.REGION_TORSO, "control: without a line change the tap's first contact is the torso")
 	assert_true(control.distance < reach, "fixture: the defender stands inside strike reach (%.3f < %.3f m)" % [control.distance, reach])
 	## PERTURB + ACT: the same tap, the defender behind the blade, then into it.
 	var behind := _lined_tap(rules, "origin", false)
@@ -638,9 +639,8 @@ func test_the_side_of_the_sweep_decides_what_a_cut_meets() -> void:
 	assert_near(behind.distance, into.distance, MEASURE_TOLERANCE, "both steps end at the same distance (%.4f m)" % behind.distance)
 	assert_true(behind.distance < reach, "still inside strike reach after the step — measure did not decide it")
 	assert_true(absf(behind.bearing_change) > 0.02, "the step changed the line (bearing %.3f rad)" % behind.bearing_change)
-	assert_eq(behind.result, "steel", "behind the blade, the sweep misses the body and meets the defender's steel")
-	assert_false(behind.body_struck, "and the body is never struck by that cut")
-	assert_eq(into.result, "body", "into the blade, the same walk is struck")
+	assert_eq(behind.result, DuelEventKeys.REGION_GRIP, "behind the blade, the tap meets the defender's grip first, not the torso")
+	assert_eq(into.result, DuelEventKeys.REGION_TORSO, "into the blade, the same walk is struck on the torso")
 	## MIRROR: the whole scene reflected.
 	var mirrored := _lined_tap(rules, "origin", true)
 	assert_eq(mirrored.result, behind.result, "the mirrored scene meets the same thing")
@@ -649,23 +649,26 @@ func test_the_side_of_the_sweep_decides_what_a_cut_meets() -> void:
 
 
 ## FIRST-CONTACT-001 (THREAT-001): the steel-aware estimate tells a cut that
-## will meet the body from one that will meet steel, from the state at the
-## press alone — the defender's sword under its own known law, no future
-## input. On the line-change scenes it predicts what the real tap then meets:
-## the body with no step and into the blade, steel behind it, and the same in
-## the mirror.
+## will meet flesh from one that will meet steel, from the state at the press
+## alone — the defender's sword under its own known law, no future input. On
+## the line-change scenes it predicts what the real tap then meets — flesh
+## (the torso or the grip) or steel — and the same in the mirror. Which flesh
+## is met first is a finer reading the estimate takes at tick resolution.
 func test_the_threat_estimate_sees_the_steel_in_the_way() -> void:
 	var rules := StandardDuelRules.create()
 	for side: String in ["none", "origin", "end"]:
 		## ARRANGE + ACT
 		var scene := _lined_tap(rules, side, false)
-		var expected := ThreatEstimate.STEEL if scene.result == "steel" else ThreatEstimate.BODY
+		var steel_met := scene.result == "steel"
+		var steel_seen := scene.predicted == ThreatEstimate.STEEL
 		## ASSERT
 		assert_true(scene.result != "", "fixture (%s): the tap met something" % side)
-		assert_eq(scene.predicted, expected, "%s: predicted %d, the tap met %s" % [side, scene.predicted, scene.result])
+		assert_eq(steel_seen, steel_met, "%s: predicted %d, the tap met %s" % [side, scene.predicted, scene.result])
+		assert_true(steel_met or scene.predicted == ThreatEstimate.BODY or scene.predicted == ThreatEstimate.GRIP, "%s: flesh is predicted as flesh" % side)
 	## PERTURB: the mirrored scene.
+	var straight := _lined_tap(rules, "origin", false)
 	var mirrored := _lined_tap(rules, "origin", true)
-	assert_eq(mirrored.predicted, ThreatEstimate.STEEL, "mirrored: the steel is seen just the same")
+	assert_eq(mirrored.predicted, straight.predicted, "mirrored: the same is seen")
 
 
 ## One planted tap at the defender 1.5 m ahead, the defender walking toward
@@ -708,7 +711,7 @@ func _lined_tap(rules: DuelRules, side: String, mirror: bool) -> LinedTap:
 			if event.type == DuelEventTypes.BODY_HIT and event.actor == 0:
 				out.body_struck = true
 				if out.result == "":
-					out.result = "body"
+					out.result = event.text(DuelEventKeys.REGION)
 			elif event.type == DuelEventTypes.BLADE_CONTACT and out.result == "":
 				out.result = "steel"
 		if out.result != "" and attacker.weapon.phase == CombatPhase.Id.RECOVERY:
@@ -718,12 +721,13 @@ func _lined_tap(rules: DuelRules, side: String, mirror: bool) -> LinedTap:
 	return out
 
 
-## What one `_lined_tap` did: the cut's first contact ("body", "steel" or ""),
-## whether its body was ever struck, and where the step left the defender.
+## What one `_lined_tap` did: the cut's first contact (the region struck —
+## "torso" or "grip" — "steel", or ""), whether it ever struck the opponent,
+## and where the step left the defender.
 class LinedTap:
 	var result := ""
 	## What the steel-aware threat estimate, read at the press, said the tap
-	## would meet first (`ThreatEstimate.NONE` / `BODY` / `HAND` / `STEEL`).
+	## would meet first (`ThreatEstimate.NONE` / `BODY` / `GRIP` / `STEEL`).
 	var predicted := ThreatEstimate.NONE
 	var body_struck := false
 	var distance := 0.0

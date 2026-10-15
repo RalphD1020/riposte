@@ -26,7 +26,7 @@ const BEATS := {
 func _init() -> void:
 	var rules := StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), rules)
-	var director := VictoryDirector.create(kits.combatant(0), DuelSide.Id.LIGHT_SOUTH, rules.combatant(0).fighter.push_radius, rules.combatant(0).weapon.hilt_radius, rules.combatant(0).weapon.tip_radius)
+	var director := VictoryDirector.create(kits.combatant(0), DuelSide.Id.LIGHT_SOUTH, rules.combatant(0).fighter.push_radius, rules.combatant(0).weapon.blade_base_radius, rules.combatant(0).weapon.tip_radius)
 	root.add_child(director)
 	var card := VictoryCard.create()
 	var layer := CanvasLayer.new()

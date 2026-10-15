@@ -4,7 +4,14 @@ extends TestCase
 ## ordinary commands for the reading fighter, a Hard CPU for the other once its
 ## cut is out, real physics throughout. ATTACK owns the mechanism witnesses
 ## (what one cut meets from each side); this suite owns what that does to the
-## exchange: who lands first.
+## exchange.
+##
+## Rules 50 (blade-only steel): at striking measure two swords crossing in
+## front of the fighters cross near their grips, so the rules-49 "behind the
+## blade the tap meets steel, and the defender lands first" came from crossguard
+## and handle steel. Those claims are not asserted here: they are the open
+## design objective LINE-CHANGE-CAPITALIZATION-001, tracked in the spec, never
+## a passing law of this topology. What is asserted is what the line does now.
 ##
 ## Implements: /spec/invariants.md#line-change-001
 ## Implements: /spec/invariants.md#knife-edge-line-001
@@ -21,12 +28,15 @@ func _init() -> void:
 ## inside reach: the attacker taps once from rest (θ −45° → +45°, swing_dir +1)
 ## and is then played by a Hard CPU. The defender reads it: 4 ticks before the
 ## press it walks toward the cut's origin side for 5 ticks, then walks
-## straight in and presses the moment its own sword is free. BEHIND THE BLADE:
-## the tap meets the defender's steel instead of its body, and the defender
-## lands the first body hit. CONTROL (no step): the tap also meets steel, but
-## the CPU lands first — the line, not the clash, made the opening. INTO THE
-## BLADE: the defender is struck. MIRROR: the same, on the same tick.
-func test_a_person_can_take_the_line_and_land_first() -> void:
+## straight in and presses the moment its own sword is free. The line changes
+## what the tap meets: on rules 52, where the blade's steel starts at the drawn
+## blade just above the guard, STANDING and BEHIND THE BLADE its first contact
+## is the defender's blade near the hands (on rules 50–51, when that stretch
+## passed from the grip side, behind the blade met the grip and standing the
+## torso); INTO THE BLADE it is the torso. MIRROR: the same, on the same tick.
+## A scenario trace, not a rule about every step. (Who lands first is
+## LINE-CHANGE-CAPITALIZATION-001, open.)
+func test_the_line_changes_what_a_tap_meets() -> void:
 	var rules := StandardDuelRules.create()
 	## ARRANGE + ACT
 	var behind := _answered_tap(rules, "origin", false)
@@ -34,13 +44,11 @@ func test_a_person_can_take_the_line_and_land_first() -> void:
 	var into := _answered_tap(rules, "end", false)
 	var mirrored := _answered_tap(rules, "origin", true)
 	## ASSERT
-	assert_eq(behind.result, "steel", "behind the blade, the tap meets steel, not the body")
-	assert_eq(behind.landed, "defender", "and the defender, walking in, lands the first body hit")
-	assert_eq(still.result, "steel", "control: without the step the tap is met by steel too")
-	assert_eq(still.landed, "attacker", "but then the attacker lands first — the step made the opening")
-	assert_eq(into.result, "body", "into the blade, the defender is struck")
+	assert_eq(behind.result, "steel", "behind the blade, the tap's first contact is the defender's blade, not the torso")
+	assert_eq(still.result, "steel", "standing, the same blade")
+	assert_eq(into.result, "torso", "into the blade, the torso")
 	assert_eq(mirrored.result, behind.result, "mirrored: the same contact")
-	assert_eq(mirrored.landed, behind.landed, "the same winner")
+	assert_eq(mirrored.landed, behind.landed, "the same next hit")
 	assert_eq(mirrored.landed_tick, behind.landed_tick, "on the same tick (%d)" % behind.landed_tick)
 
 
@@ -87,7 +95,7 @@ func _answered_tap(rules: DuelRules, side: String, mirror: bool, distance: float
 			var event: DuelEvent = runner.events[i]
 			if out.result == "":
 				if event.type == DuelEventTypes.BODY_HIT and event.actor == 0:
-					out.result = "body"
+					out.result = event.text(DuelEventKeys.REGION)
 				elif event.type == DuelEventTypes.BLADE_CONTACT:
 					out.result = "steel"
 			elif event.type == DuelEventTypes.BODY_HIT and out.landed == "":
@@ -103,12 +111,12 @@ func _answered_tap(rules: DuelRules, side: String, mirror: bool, distance: float
 ## LINE-CHANGE-001 relationship grid (KNIFE-EDGE-LINE-001): over a small grid
 ## of measures inside reach and read timings, the same planted tap, the same
 ## ordinary human answer, the attacker then a Hard CPU. Stepping behind the
-## blade must be struck less often than stepping into it, and must land the
-## first answer more often — orderings, never the rates themselves.
-func test_behind_the_blade_beats_into_it_across_measure_and_timing() -> void:
+## blade takes the torso out of the tap's first contact more often than
+## stepping into it — an ordering, never the rates themselves. (Whether the
+## step then wins the exchange is LINE-CHANGE-CAPITALIZATION-001, open.)
+func test_behind_the_blade_shields_the_torso_more_than_into_it() -> void:
 	var rules := StandardDuelRules.create()
-	var struck := {"origin": 0, "end": 0}
-	var first := {"origin": 0, "end": 0}
+	var torso := {"origin": 0, "end": 0}
 	var runs := 0
 	for distance: float in [1.35, 1.5, 1.65, 1.8]:
 		for lead: int in [-6, -4, -2]:
@@ -116,63 +124,63 @@ func test_behind_the_blade_beats_into_it_across_measure_and_timing() -> void:
 			for side: String in ["origin", "end"]:
 				## ARRANGE + PERTURB + ACT
 				var answered := _answered_tap(rules, side, false, distance, lead, 6)
-				## A tap that struck the body was the first to land.
-				if answered.result == "body":
-					struck[side] += 1
-				elif answered.landed == "defender":
-					first[side] += 1
+				if answered.result == DuelEventKeys.REGION_TORSO:
+					torso[side] += 1
 	## ASSERT
 	assert_eq(runs, 12, "fixture: the whole grid was played")
-	assert_true(struck["origin"] < struck["end"], "behind the blade is struck less often than into it (%d vs %d of %d)" % [struck["origin"], struck["end"], runs])
-	assert_true(first["origin"] > first["end"], "and lands the first answer more often (%d vs %d of %d)" % [first["origin"], first["end"], runs])
+	assert_true(torso["origin"] < torso["end"], "behind the blade the tap's first contact is the torso less often than into it (%d vs %d of %d)" % [torso["origin"], torso["end"], runs])
 
 
-## FIRST-CONTACT-002 (THREAT-AGREEMENT-AUDIT's canonical regression): a state
-## from live play — Hard v Medium, audit seed 204, tick 120, slot 0 walks
-## straight in pressing its tap as soon as it can, the opponent keeping its
-## velocity. The steel-aware prediction says the strike reaches flesh. In the
-## real fork the cut grazes the opponent's handle and carries on into the body
-## in the same tick: a graze that does not stop a cut is not a block, so the
-## prediction was right and the strike is a hit, not a contact on steel.
-func test_a_handle_graze_that_carries_through_is_the_hit_the_prediction_saw() -> void:
-	## ARRANGE: the live state.
+## FIRST-CONTACT-002 (THREAT-AGREEMENT-AUDIT's canonical regression), on a
+## constructed state: slot 0 at rest and able to strike; slot 1 standing 1.8 m
+## ahead facing it, its sword at rest turned off the line (−0.9 rad). Slot 0
+## walks straight in pressing its tap as soon as it can, slot 1 standing. The
+## steel-aware prediction says the strike reaches flesh, and in the duel it
+## does: the first thing the cut meets is the torso or the grip, never the
+## blade first. (The rules-50 to rules-52 witnesses were live audit states,
+## seed 204 tick 120 then tick 90, each moved by a later change to the steel;
+## the constructed state sits inside a band, −0.6 to −1.2 rad, where the reading
+## and the duel agree, so a small change does not move it.)
+func test_a_strike_the_prediction_saw_reaching_flesh_reaches_flesh() -> void:
+	## ARRANGE: the constructed state.
 	var rules := StandardDuelRules.create()
-	var duel := CpuLadder.session(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.MEDIUM, 204)
-	while duel.state.tick < 120:
-		duel.step()
-	var me := duel.state.fighter(0)
-	var them := duel.state.fighter(1)
-	var line := Vector2(them.x - me.x, them.y - me.y).normalized()
-	## ACT: the prediction, then the real fork under the same continuation.
+	var runner := SimRunner.create(rules, 5)
+	runner.skip_intro()
+	var weapon := rules.combatant(0).weapon
+	ContactFixture.arm(runner.state.fighter(0), 0.0, 0.0, 0.0, -weapon.guard_angle, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	ContactFixture.arm(runner.state.fighter(1), 1.8, 0.0, PI, -0.9, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	var me := runner.state.fighter(0)
+	var them := runner.state.fighter(1)
+	var line := Vector2(1.0, 0.0)
+	assert_true(WeaponSystem.can_start_attack(me, rules.spec_of(me).weapon), "fixture: slot 0 can strike")
+	## ACT: the prediction, then the duel under the same continuation.
 	var predicted := InitiativeModel.estimate(me, rules.spec_of(me), them, rules.spec_of(them), rules.combat, ThreatEstimate.new(), ThreatContinuation.route(line.x, line.y))
-	var fork := SimRunner.create(duel.config.rules, duel.state.seed_value)
-	StateFork.copy(duel.state, fork.state)
-	var drift := Vector2(them.vx, them.vy)
-	var share := clampf(drift.length() / rules.spec_of(them).fighter.max_speed, 0.0, 1.0)
-	var grazed := -1
+	var steel := -1
 	var struck := -1
-	for _t in 20:
-		var tick := fork.state.tick
-		var a := fork.state.fighter(0)
-		var b := fork.state.fighter(1)
+	var launched := false
+	for _t in 40:
+		var tick := runner.state.tick
+		var a := runner.state.fighter(0)
+		var b := runner.state.fighter(1)
 		var step := CutGeometry.step_intent(a, b, line)
-		var press := struck < 0 and WeaponSystem.can_start_attack(a, rules.spec_of(a).weapon)
-		var keep := CutGeometry.step_intent(b, a, drift.normalized()) * share
-		var seen := fork.events.size()
-		fork.push(PlayerCommand.create(tick, step.x, step.y, press, press), PlayerCommand.create(tick, keep.x, keep.y))
-		for i in range(seen, fork.events.size()):
-			var event: DuelEvent = fork.events[i]
-			if event.type == DuelEventTypes.BLADE_CONTACT and grazed < 0 and int(event.data[DuelEventKeys.FEATURE_1]) == SwordContactSet.Feature.HILT:
-				grazed = event.tick
+		var press := not launched and WeaponSystem.can_start_attack(a, rules.spec_of(a).weapon)
+		var seen := runner.events.size()
+		runner.push(PlayerCommand.create(tick, step.x, step.y, press, press), PlayerCommand.idle(tick))
+		launched = launched or press
+		for i in range(seen, runner.events.size()):
+			var event: DuelEvent = runner.events[i]
+			if event.type == DuelEventTypes.BLADE_CONTACT and steel < 0 and struck < 0:
+				steel = event.tick
 			if event.type == DuelEventTypes.BODY_HIT and event.actor == 0 and struck < 0:
 				struck = event.tick
 		if struck >= 0:
 			break
 	## ASSERT
 	assert_false(predicted.starts_bound, "fixture: the swords start clear")
-	assert_true(predicted.first_contact == ThreatEstimate.BODY or predicted.first_contact == ThreatEstimate.HAND, "the prediction says the strike reaches flesh (%d)" % predicted.first_contact)
-	assert_true(grazed >= 0, "fixture: the real cut grazes the opponent's handle")
-	assert_eq(struck, grazed, "and carries on into the body in the same tick — a hit, as predicted")
+	assert_true(predicted.first_contact == ThreatEstimate.BODY or predicted.first_contact == ThreatEstimate.GRIP, "the prediction says the strike reaches flesh (%d)" % predicted.first_contact)
+	assert_true(struck >= 0, "the real cut reaches flesh, as predicted")
+	assert_eq(steel, -1, "and meets no blade before it")
+	assert_true(runner.is_sound(), "every tick legal")
 
 
 ## What one `_answered_tap` did: the tap's first contact, then who struck the

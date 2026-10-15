@@ -38,7 +38,8 @@ const RULES_20 := {
 	"forces": "1760 / 2400 / 5600",
 	"burst_speed": "8.4",
 	"hurt": "whole body 0.27",
-	"hand": "—",
+	"grip": "—",
+	"steel": "blade only",
 	"exposure": "damage × 0.75–1.5",
 	"tap_swing": "—",
 	"tap_control": "—",
@@ -78,7 +79,8 @@ static func table(rules: DuelRules) -> String:
 		["forces", "Locomotion / brake / burst force", "N", "%s / %s / %s" % [_n(fighter.locomotion_force, 0), _n(fighter.braking_force, 0), _n(fighter.burst_force, 0)]],
 		["burst_speed", "Burst speed (axial)", "m/s", _n(fighter.burst_speed_axial, 1)],
 		["hurt", "Hurt target radius", "m", "torso %s" % _n(fighter.hurt_radius, 3)],
-		["hand", "Hand hurt discs", "m", "2 × %s, wound share %s" % [_n(fighter.hand_radius, 3), _n(fighter.hand_damage_factor, 2)]],
+		["grip", "Grip hurt region (hands, handle)", "m", "hands 2 × %s, handle %s; wound share %s" % [_n(fighter.hand_radius, 3), _n(weapon.handle_radius, 3), _n(fighter.grip_damage_factor, 2)]],
+		["steel", "Sword-vs-sword steel", "—", "blade only (STEEL-TOPOLOGY-001)"],
 		["exposure", "Exposure in damage", "—", "reading only (PHYS-004)"],
 		["tap_swing", "Tap from the guard: release → overswing", "ticks", str(tap[0])],
 		["tap_control", "Tap whiff: release → under control", "ticks", str(tap[1])],
@@ -92,9 +94,10 @@ static func table(rules: DuelRules) -> String:
 	return "\n".join(lines)
 
 
-## The committed page's table, between its markers; empty if unreadable.
+## The committed page's table, between its markers; empty if unreadable. Read
+## with LF line endings, whatever the checkout wrote.
 static func committed() -> String:
-	var text := FileAccess.get_file_as_string(ProjectSettings.globalize_path("res://").path_join(DOC))
+	var text := FileAccess.get_file_as_string(ProjectSettings.globalize_path("res://").path_join(DOC)).replace("\r\n", "\n")
 	var from := text.find(BEGIN)
 	var to := text.find(END)
 	if from < 0 or to < from:
@@ -102,13 +105,16 @@ static func committed() -> String:
 	return text.substr(from + BEGIN.length(), to - from - BEGIN.length()).strip_edges()
 
 
-## The page with its table replaced by `table(rules)`.
+## The page with its table replaced by `table(rules)`, in the page's own line
+## endings, so a CRLF checkout is never left with mixed ones.
 static func rewritten(rules: DuelRules) -> String:
 	var path := ProjectSettings.globalize_path("res://").path_join(DOC)
 	var text := FileAccess.get_file_as_string(path)
+	var eol := "\r\n" if text.contains("\r\n") else "\n"
 	var from := text.find(BEGIN)
 	var to := text.find(END)
-	return text.substr(0, from + BEGIN.length()) + "\n\n" + table(rules) + "\n\n" + text.substr(to)
+	var block := (eol + eol + table(rules) + eol + eol).replace("\r\n", "\n").replace("\n", eol)
+	return text.substr(0, from + BEGIN.length()) + block + text.substr(to)
 
 
 ## A tap from the right guard, idle: [release → overswing, release → neutral].

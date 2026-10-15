@@ -55,17 +55,13 @@ static func project(state: MatchState, rules: DuelRules, threat_readings: bool =
 
 ## A read-only copy of manifold point `point` (CONTACT-PRESENTATION-001). Its
 ## slip is the held record's reading at the same contact (the record is stored
-## in row order, so it is found by the same features and the nearest place).
+## in row order, so it is found by the nearest place along the blades).
 static func _contact(contact: SwordContactSet, point: int) -> PresentationContact:
 	var row := PresentationContact.new()
 	row.x = contact.point_x[point]
 	row.y = contact.point_y[point]
-	row.feature_a = contact.feature_a[point]
-	row.feature_b = contact.feature_b[point]
 	row.fraction_a = contact.fraction_a[point]
 	row.fraction_b = contact.fraction_b[point]
-	row.local_a = contact.local_a[point]
-	row.local_b = contact.local_b[point]
 	row.normal_x = contact.point_nx[point]
 	row.normal_y = contact.point_ny[point]
 	row.normal_impulse = contact.normal_impulse[point]
@@ -74,9 +70,7 @@ static func _contact(contact: SwordContactSet, point: int) -> PresentationContac
 	row.contact_id = contact.contact_id[point]
 	var nearest := INF
 	for held in contact.hold_count():
-		if contact.hold_feature_a[held] != row.feature_a or contact.hold_feature_b[held] != row.feature_b:
-			continue
-		var moved := absf(contact.hold_local_a[held] - row.local_a) + absf(contact.hold_local_b[held] - row.local_b)
+		var moved := absf(contact.hold_fraction_a[held] - row.fraction_a) + absf(contact.hold_fraction_b[held] - row.fraction_b)
 		if moved < nearest:
 			nearest = moved
 			row.slip = contact.hold_slip[held]
@@ -140,7 +134,7 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	row.body_yaw = fighter.fallen.yaw
 	row.body_spin = fighter.fallen.spin
 	row.body_over_edge = fighter.fallen.over_edge
-	row.hilt_radius = spec.weapon.hilt_radius
+	row.blade_base_radius = spec.weapon.blade_base_radius
 	row.tip_radius = spec.weapon.tip_radius
 	row.weapon_definition = spec.weapon
 	row.combatant_spec = spec

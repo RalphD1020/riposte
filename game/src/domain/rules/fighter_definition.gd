@@ -51,13 +51,14 @@ var hand_radius: float = 0.0
 var hand_mass: float = 0.0
 ## Distance from the swing origin to the guard, where this fighter's hands
 ## hold any weapon. Authored gameplay reach, never measured from a model:
-## `WeaponDefinition.hilt_radius` is this, and `tip_radius` adds the blade.
+## `WeaponDefinition.blade_base_radius` is this, and `tip_radius` adds the blade.
 var grip_radius: float = 0.0
 var max_health: float = 0.0
 ## The target's region table: the share of a strike's damage each vulnerable
-## region takes (anatomy — armor would modify it here). A blade on the hands
-## (HAND-CONTACT-001) wounds through the ordinary damage model at this share.
-var hand_damage_factor: float = 0.0
+## region takes (anatomy — armor would modify it here). A blade on the grip
+## region — the hands and the handle (GRIP-NONBLOCKING-001) —
+## wounds through the ordinary damage model at this share.
+var grip_damage_factor: float = 0.0
 ## Mass resists *everything*: acceleration, displacement under impulse,
 ## turning. It is never a damage multiplier — a heavy fighter does not hit
 ## harder with the same sword at the same speed, they are merely harder to
@@ -170,8 +171,8 @@ func is_valid() -> bool:
 		and lying_half_length > 0.0
 		and lying_radius > 0.0
 		and max_speed > 0.0
-		and hand_damage_factor > 0.0
-		and hand_damage_factor <= 1.0
+		and grip_damage_factor > 0.0
+		and grip_damage_factor <= 1.0
 		and locomotion_force > 0.0
 		and braking_force > locomotion_force
 		and burst_force > braking_force

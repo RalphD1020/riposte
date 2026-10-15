@@ -110,7 +110,7 @@ func test_the_authored_kits_load_with_their_contract() -> void:
 		assert_true(sword.find_child(marker, true, false) is Node3D, "weapon marker %s exists" % marker)
 	var tip := SwordRig3D._marker(sword, &"Tip", 0.0)
 	assert_near(tip.z, _rules.combatant(0).weapon.tip_radius, 1e-3, "the authored tip is exactly the rules' reach")
-	assert_near(SwordRig3D._marker(sword, &"TrailStart", 0.0).z, _rules.combatant(0).weapon.hilt_radius, 1e-3, "and the blade starts at the duelist's grip")
+	assert_near(SwordRig3D._marker(sword, &"TrailStart", 0.0).z, _rules.combatant(0).weapon.blade_base_radius, 1e-3, "and the blade starts at the duelist's grip")
 	sword.free()
 
 
@@ -128,7 +128,7 @@ func test_the_grip_is_a_right_handed_hand_and_a_half_grip() -> void:
 	var hand := _rules.combatant(0).fighter.hand_radius
 	assert_near(offhand, _rules.combatant(0).weapon.offhand_grip_radius, 1e-3, "the authored off hand is the rules' (%.4f m)" % offhand)
 	assert_near(dominant, _rules.combatant(0).weapon.dominant_grip_radius, 1e-3, "and so is the dominant hand (%.4f m)" % dominant)
-	assert_true(PhysicalBaseline.POMMEL_SHOULDER_M <= offhand - hand and dominant + hand <= PhysicalBaseline.GUARD_UNDERSIDE_M and PhysicalBaseline.GUARD_UNDERSIDE_M < _rules.combatant(0).weapon.hilt_radius, "pommel < off hand < dominant hand < guard, both on the handle")
+	assert_true(PhysicalBaseline.POMMEL_SHOULDER_M <= offhand - hand and dominant + hand <= PhysicalBaseline.GUARD_UNDERSIDE_M and PhysicalBaseline.GUARD_UNDERSIDE_M < _rules.combatant(0).weapon.blade_base_radius, "pommel < off hand < dominant hand < guard, both on the handle")
 	assert_between(PhysicalBaseline.GUARD_UNDERSIDE_M - (dominant + hand), 0.005, 0.015, "the dominant hand sits just under the guard")
 	assert_between(offhand - hand - PhysicalBaseline.POMMEL_SHOULDER_M, 0.0, 0.01, "the off hand just above the pommel")
 	assert_true(dominant - offhand > 2.0 * hand + 0.03, "and the fists are apart, not bunched (%.3f m between centres)" % (dominant - offhand))
@@ -609,7 +609,7 @@ func test_a_dropped_sword_leaves_the_hands_and_returns_next_round() -> void:
 	assert_true(proxy.is_weapon_dropped(), "the hands let go")
 	assert_false(proxy.sword_carriage().visible, "the held sword is hidden")
 	assert_eq(proxy.sword_carriage().get_child_count(), held_children, "nothing is lifted out of the live carriage")
-	var look := CombatantVisuals.weapon_look(proxy.combatant_kit(), proxy.side, row.hilt_radius, row.tip_radius)
+	var look := CombatantVisuals.weapon_look(proxy.combatant_kit(), proxy.side, row.blade_base_radius, row.tip_radius)
 	assert_true(look.get_child_count() > 0, "the prop gets a look built fresh from the kits")
 	if proxy.weapon_model() != null:
 		assert_true(look.get_child(0) != proxy.weapon_model(), "not the held model itself")

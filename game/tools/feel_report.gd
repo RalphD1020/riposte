@@ -88,20 +88,6 @@ class Clash:
 	var last_fraction: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
 
 
-## Where a first impact happened (the hilt-contact diagnosis): which region of
-## each sword the named point lay on, how far apart the fighters stood, each
-## sword's θ, who was swinging, where along the blades, how fast they closed.
-class Impact:
-	## 0 blade on blade, 1 blade on a hilt region (crossguard or handle), 2 a
-	## hilt region on both swords.
-	var region: int = 0
-	var separation: float = 0.0
-	var theta: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
-	var swinging: int = 0
-	var fraction: PackedFloat64Array = PackedFloat64Array([0.0, 0.0])
-	var closing: float = 0.0
-
-
 class TorsoEpisode:
 	var ticks: int = 0
 	var drive_ticks: int = 0
@@ -129,8 +115,6 @@ class TorsoEpisode:
 
 var _pose := BladePose.new()
 var _frictionless := false
-var _impacts: Array[Impact] = []
-var _ranges := {}
 
 
 func _initialize() -> void:
@@ -142,7 +126,7 @@ func _initialize() -> void:
 			_frictionless = true
 	var clashes: Array[Clash] = []
 	var episodes: Array[TorsoEpisode] = []
-	var totals := {"hits": 0, "kills": 0, "damage": 0.0, "binds": 0, "rounds": 0, "round_ticks": 0, "attacks": 0, "whiffs": 0, "whiffs_countered": 0, "first_hit_rounds": 0, "first_hit_wins": 0, "deficit_rounds": [0, 0, 0], "deficit_wins": [0, 0, 0], "creep_episodes": 0, "creep_ticks": 0, "creep_long": 0, "creep_longest": 0, "rules": 0, "pairs_first": {}, "pairs_held": {}, "dropped": 0, "pivot_caps": 0, "held_ticks": 0, "held_multi": 0, "most_points": 0}
+	var totals := {"hits": 0, "kills": 0, "damage": 0.0, "binds": 0, "rounds": 0, "round_ticks": 0, "attacks": 0, "whiffs": 0, "whiffs_countered": 0, "first_hit_rounds": 0, "first_hit_wins": 0, "deficit_rounds": [0, 0, 0], "deficit_wins": [0, 0, 0], "creep_episodes": 0, "creep_ticks": 0, "creep_long": 0, "creep_longest": 0, "rules": 0, "dropped": 0, "pivot_caps": 0, "held_ticks": 0, "held_multi": 0, "most_points": 0}
 	for index in limit:
 		_duel(SEEDS[index], index % 2 == 1, clashes, episodes, totals)
 	_print(clashes, episodes, totals, limit)
@@ -157,21 +141,10 @@ func _duel(match_seed: int, swap: bool, clashes: Array[Clash], episodes: Array[T
 	if _frictionless:
 		config.rules.combat.blade_friction = 0.0
 		config.rules.combat.blade_body_friction = 0.0
-		config.rules.combat.guard_friction = 0.0
 	totals.rules = config.rules.version
 	var controllers: Array[FighterController] = []
 	for slot in 2:
 		controllers.append(CpuController.create(config.rules, CpuProfile.for_difficulty(levels[slot]), match_seed, slot))
-	if _ranges.is_empty():
-		var scale := WeaponKinematics.strike_reach(config.rules.combatant(0), config.rules.combatant(1)) / CpuController.calibration_reach()
-		_ranges["strike reach"] = WeaponKinematics.strike_reach(config.rules.combatant(0), config.rules.combatant(1))
-		for level: MatchConfig.Difficulty in [MatchConfig.Difficulty.MEDIUM, MatchConfig.Difficulty.HARD]:
-			var profile := CpuProfile.for_difficulty(level)
-			var name := "medium" if level == MatchConfig.Difficulty.MEDIUM else "hard"
-			_ranges["%s tap" % name] = profile.tap_range * scale
-			_ranges["%s smothered" % name] = profile.tap_range * scale - CpuController.SMOTHERED_MARGIN
-			_ranges["%s engage" % name] = profile.engage_range * scale
-			_ranges["%s charge" % name] = profile.charge_range * scale
 	var session := MatchSession.create(config, controllers)
 	var open: Array[Clash] = []
 	var round_start := 0
@@ -197,13 +170,10 @@ func _duel(match_seed: int, swap: bool, clashes: Array[Clash], episodes: Array[T
 		var dirs := PackedFloat64Array([state.fighter(0).weapon.swing_dir, state.fighter(1).weapon.swing_dir])
 		var events := session.step()
 		state = session.state
-		var contact := state.blade_contact
-		var held := contact.hold_count()
-		for row in held:
-			_tally(totals.pairs_held, contact.hold_feature_a[row], contact.hold_feature_b[row])
+		var held := state.blade_contact.hold_count()
 		if held > 0:
 			totals.held_ticks += 1
-			if held > SwordContactSet.POINTS_PER_PAIR:
+			if held > 1:
 				totals.held_multi += 1
 		for slot in 2:
 			var lifecycle := state.weapon_body_contacts[slot]
@@ -248,9 +218,6 @@ func _duel(match_seed: int, swap: bool, clashes: Array[Clash], episodes: Array[T
 					)
 					clash.last_fraction[0] = state.blade_contact.fraction_a[0]
 					clash.last_fraction[1] = state.blade_contact.fraction_b[0]
-					for point in state.blade_contact.point_count:
-						_tally(totals.pairs_first, state.blade_contact.feature_a[point], state.blade_contact.feature_b[point])
-					_impacts.append(_impact(event, state, swinging))
 					clashes.append(clash)
 					open.append(clash)
 				DuelEventTypes.BODY_HIT:
@@ -302,93 +269,6 @@ func _duel(match_seed: int, swap: bool, clashes: Array[Clash], episodes: Array[T
 	totals.most_points = maxi(int(totals.most_points), counters.max_manifold_points)
 
 
-func _impact(event: DuelEvent, state: MatchState, swinging: PackedByteArray) -> Impact:
-	var impact := Impact.new()
-	var hilt_a := int(event.number(DuelEventKeys.FEATURE_0)) != SwordContactSet.Feature.BLADE
-	var hilt_b := int(event.number(DuelEventKeys.FEATURE_1)) != SwordContactSet.Feature.BLADE
-	impact.region = int(hilt_a) + int(hilt_b)
-	impact.separation = DuelGeometry.distance(state.fighter(0), state.fighter(1))
-	for slot in 2:
-		impact.theta[slot] = absf(rad_to_deg(state.fighter(slot).weapon.angle))
-	impact.swinging = swinging[0] + swinging[1]
-	impact.fraction[0] = event.number(DuelEventKeys.FRACTION_0)
-	impact.fraction[1] = event.number(DuelEventKeys.FRACTION_1)
-	impact.closing = event.number(DuelEventKeys.CLOSING_SPEED)
-	return impact
-
-
-## Diagnostic only: do hilt-region first impacts happen at legitimately closed
-## (inside-sword) range — CPU spacing — or at fencing distance, where the hilt
-## geometry or candidates would be suspect? Read against the CPUs' own
-## preferred distances.
-func _hilt_diagnosis() -> void:
-	print("\n  first impacts by region (named point)        blade/blade  blade/hilt   hilt/hilt")
-	var by_region: Array = [[], [], []]
-	for impact in _impacts:
-		by_region[impact.region].append(impact)
-	var counts := ""
-	for region in 3:
-		counts += " %11d" % by_region[region].size()
-	print("  %-44s%s" % ["count", counts])
-	for metric: String in ["separation (m) p10", "separation (m) median", "separation (m) p90", "|θ| either sword (deg) median", "swinging swords (mean)", "blade fraction median", "closing speed (m/s) median"]:
-		var row := ""
-		for region in 3:
-			var values := PackedFloat64Array()
-			for impact: Impact in by_region[region]:
-				match metric:
-					"separation (m) p10", "separation (m) median", "separation (m) p90":
-						values.append(impact.separation)
-					"|θ| either sword (deg) median":
-						values.append(impact.theta[0])
-						values.append(impact.theta[1])
-					"swinging swords (mean)":
-						values.append(float(impact.swinging))
-					"blade fraction median":
-						values.append(impact.fraction[0])
-						values.append(impact.fraction[1])
-					_:
-						values.append(impact.closing)
-			var stat := _mean(values) if metric.ends_with("(mean)") else _percentile(values, 0.1 if metric.ends_with("p10") else (0.9 if metric.ends_with("p90") else 0.5))
-			row += " %11.2f" % stat
-		print("  %-44s%s" % [metric, row])
-	var inside := PackedInt32Array([0, 0, 0])
-	var smothered := minf(float(_ranges.get("medium smothered", 0.0)), float(_ranges.get("hard smothered", 0.0)))
-	for impact in _impacts:
-		if impact.separation < smothered:
-			inside[impact.region] += 1
-	print("  %-44s %10.0f%% %10.0f%% %10.0f%%" % ["closer than the CPUs' smothered measure", _pct(inside[0], by_region[0].size()), _pct(inside[1], by_region[1].size()), _pct(inside[2], by_region[2].size())])
-	var reference := ""
-	for key: String in _ranges:
-		reference += "%s %.2f  " % [key, float(_ranges[key])]
-	print("  CPU distances (m): %s" % reference)
-
-
-static func _percentile(values: PackedFloat64Array, share: float) -> float:
-	if values.is_empty():
-		return 0.0
-	var sorted := values.duplicate()
-	sorted.sort()
-	return sorted[clampi(int(share * float(sorted.size() - 1)), 0, sorted.size() - 1)]
-
-
-static func _mean(values: PackedFloat64Array) -> float:
-	var sum := 0.0
-	for value in values:
-		sum += value
-	return sum / maxf(float(values.size()), 1.0)
-
-
-## Unordered feature-pair label (BLADE/GUARD and GUARD/BLADE are one row).
-const _FEATURE_NAMES := ["BLADE", "GUARD", "HILT"]
-
-
-static func _tally(into: Dictionary, a: int, b: int) -> void:
-	var low := mini(a, b)
-	var high := maxi(a, b)
-	var label := "%s/%s" % [_FEATURE_NAMES[low], _FEATURE_NAMES[high]]
-	into[label] = int(into.get(label, 0)) + 1
-
-
 ## One tick of a sword held on the opponent's torso: where the contact is,
 ## how fast it slides, how hard it presses, whether the cut is still driven.
 func _sample_torso(episode: TorsoEpisode, state: MatchState, slot: int, rules: DuelRules) -> void:
@@ -396,8 +276,8 @@ func _sample_torso(episode: TorsoEpisode, state: MatchState, slot: int, rules: D
 	var wielder := state.fighter(slot)
 	var target := state.opponent_of(slot)
 	WeaponKinematics.pose_of(wielder, rules.spec_of(wielder), _pose)
-	var hx := _pose.point_x(weapon.hilt_radius)
-	var hy := _pose.point_y(weapon.hilt_radius)
+	var hx := _pose.point_x(weapon.blade_base_radius)
+	var hy := _pose.point_y(weapon.blade_base_radius)
 	var tx := _pose.point_x(weapon.tip_radius)
 	var ty := _pose.point_y(weapon.tip_radius)
 	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, target.x, target.y)
@@ -523,20 +403,15 @@ func _print(clashes: Array[Clash], episodes: Array[TorsoEpisode], totals: Dictio
 	_row("blade contact migration (fractions)", migration)
 	_row("ticks to next attack (≤ 30)", to_attack)
 	_row("body |Δv| at clash (m/s)", body)
-	_pairs(totals)
-	_hilt_diagnosis()
+	_holds(totals)
 	_torso(episodes)
 
 
-## Diagnostic only (not gated): which features meet — first-impact points and
-## held-contact row ticks — how often a held contact needs more rows than one
-## feature pair could hold, and whether any real constraint was dropped.
-func _pairs(totals: Dictionary) -> void:
-	print("\n  feature pairs %-24s %10s %10s" % ["", "first", "held ticks"])
-	for label: String in ["BLADE/BLADE", "BLADE/GUARD", "BLADE/HILT", "GUARD/GUARD", "GUARD/HILT", "HILT/HILT"]:
-		print("  %-38s %10d %10d" % [label, int(totals.pairs_first.get(label, 0)), int(totals.pairs_held.get(label, 0))])
-	print("  held ticks %d | with more than %d rows %d (%.1f%%) | most points at once %d" % [
-		totals.held_ticks, SwordContactSet.POINTS_PER_PAIR, totals.held_multi, _pct(totals.held_multi, totals.held_ticks), totals.most_points,
+## Diagnostic only (not gated): held blade contact — how often a held contact
+## is a two-point line contact, and whether any real constraint was dropped.
+func _holds(totals: Dictionary) -> void:
+	print("\n  held blade ticks %d | two-point line contacts %d (%.1f%%) | most points at once %d" % [
+		totals.held_ticks, totals.held_multi, _pct(totals.held_multi, totals.held_ticks), totals.most_points,
 	])
 	print("  meaningful contacts dropped: %d | pivot cap hits: %d" % [totals.dropped, totals.pivot_caps])
 

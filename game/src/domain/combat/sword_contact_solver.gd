@@ -9,8 +9,8 @@ extends RefCounted
 ## it: `Δθ̇ = J·lever / inertia`; and the sword is held, so each wielder's body
 ## takes the same impulse through its mass: `Δv = J / m`. Along a long lever the
 ## weapon term dominates and the body barely moves; near the hands, where the
-## lever vanishes, the bodies carry it — two crossed hilts stop the fighters
-## instead of spinning both swords. The normal stage removes closing velocity with
+## lever vanishes, the bodies carry it — two blades crossed at their fortes
+## stop the fighters instead of spinning both swords. The normal stage removes closing velocity with
 ## restitution and never pulls (`Jn ≥ 0`); the tangent stage then opposes
 ## sliding within the Coulomb cone (`|Jt| ≤ μ·Jn`). The iteration count is a
 ## constant — the solver never "works until converged", so a pathological
@@ -129,11 +129,9 @@ static func solve(
 	return normal_total
 
 
-## Solve a first impact on every touching point of every feature pair at once
-## (TWO-POINT-001): a line contact, a blade on the handle and on the other
-## blade, or a hilt lock's three constraints are all rows from the first
-## instant — never one midpoint impulse that becomes several constraints a
-## tick later. The normal rows are one block solved exactly (`ContactLcp`: each
+## Solve a first impact on every touching blade point at once (TWO-POINT-001):
+## a line contact's two ends are both rows from the first instant — never one
+## midpoint impulse that becomes two constraints a tick later. The normal rows are one block solved exactly (`ContactLcp`: each
 ## row's separation at least its restitution target, `Jn ≥ 0`, complementary),
 ## then a Coulomb tangent on every row at once, at one relaxation
 ## (FRICTION-ORDER-001), for the same fixed iteration count as one row. One
@@ -190,7 +188,7 @@ static func solve_points(
 		tangent_a[i] = WeaponKinematics.lever(a, pose_a, px, py, -ny, nx)
 		tangent_b[i] = WeaponKinematics.lever(b, pose_b, px, py, -ny, nx)
 		tangent_mass[i] = tangent_a[i] * tangent_a[i] / inertia_a + tangent_b[i] * tangent_b[i] / inertia_b + bodies
-		mu[i] = ContactMechanics.friction(manifold.feature_a[i], manifold.feature_b[i], combat)
+		mu[i] = combat.blade_friction
 		closing[i] = closing_speed(a, b, pose_a, pose_b, px, py, nx, ny)
 		var approach := maxf(closing[i], 0.0)
 		bias[i] = ContactMechanics.weapon_restitution(weapon_a, weapon_b, approach) * approach

@@ -355,9 +355,9 @@ func _launch_drop(drop: WeaponDropRequest) -> void:
 	var proxy := _fighters[drop.slot]
 	var row := _current.fighter(drop.slot)
 	var at := proxy.sword_carriage().global_transform
-	var length := row.tip_radius - row.hilt_radius
-	var look := CombatantVisuals.weapon_look(proxy.combatant_kit(), proxy.side, row.hilt_radius, row.tip_radius)
-	var body := DroppedWeapon3D.create(look, row.weapon_mass, length, _kits.weapon.blade_width, row.hilt_radius + length * 0.5)
+	var length := row.tip_radius - row.blade_base_radius
+	var look := CombatantVisuals.weapon_look(proxy.combatant_kit(), proxy.side, row.blade_base_radius, row.tip_radius)
+	var body := DroppedWeapon3D.create(look, row.weapon_mass, length, _kits.weapon.blade_width, row.blade_base_radius + length * 0.5)
 	proxy.detach_weapon()
 	add_child(body)
 	body.launch(Transform3D(at.basis.orthonormalized(), at.origin), drop.linear_velocity + proxy.root_velocity(), drop.angular_velocity)

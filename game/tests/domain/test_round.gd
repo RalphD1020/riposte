@@ -5,6 +5,11 @@ extends TestCase
 ##
 ## See also: /docs/concepts/simulation.md
 
+## How far short of the victim the killer stands in the cut-at-the-edge scene
+## (m): the blade starts 4.6 cm clear of the torso and the kill lands near a
+## third of the way through the tick (body hits resolve at substep ends).
+const CUT_STANDOFF := 1.30
+
 
 func _init() -> void:
 	suite_name = "ROUND"
@@ -122,7 +127,9 @@ func _ended(runner: SimRunner) -> DuelEvent:
 ## COMBAT-014 through the real solver: a cut lands on a fighter drifting over
 ## the edge, `gap` metres inside it, in the same tick. The blade's geometry is
 ## identical for every gap (the scene only translates), so the kill instant is
-## fixed and only the crossing instant moves. Returns the runner one tick in.
+## fixed and only the crossing instant moves. The blade starts clear of the
+## torso, so the kill is a crossing the sweep finds mid-tick, not an overlap it
+## inherited. Returns the runner one tick in.
 func _cut_at_the_edge(gap: float) -> SimRunner:
 	var runner := _runner()
 	runner.skip_intro()
@@ -130,9 +137,10 @@ func _cut_at_the_edge(gap: float) -> SimRunner:
 	var edge := rules.platform_radius - gap
 	var killer := runner.state.fighter(0)
 	var victim := runner.state.fighter(1)
-	ContactFixture.arm(killer, edge - 1.15, 0.0, 0.0, deg_to_rad(-20.0), 18.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, rules.combatant(0).weapon)
+	ContactFixture.arm(killer, edge - CUT_STANDOFF, 0.0, 0.0, deg_to_rad(-20.0), 18.0, CombatPhase.Id.ACTIVE_THREAT, 0.0, rules.combatant(0).weapon)
 	DuelFixture.place(victim, edge, 0.0, PI)
 	DuelFixture.weapon_clear_of(victim, killer.x, killer.y)
+	assert_true(ContactGauge.body(rules, killer, victim) > 0.0, "fixture: the cut starts clear of the torso (%.4f m)" % ContactGauge.body(rules, killer, victim))
 	victim.vx = 3.0
 	victim.health = 0.5
 	runner.idle(1)

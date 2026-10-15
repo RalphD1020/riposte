@@ -243,7 +243,7 @@ static func _resolve_blades(
 		var restitution := ContactMechanics.weapon_restitution(spec_a.weapon, spec_b.weapon, closing)
 		impulse = SwordContactSolver.solve(
 			manifold, 0, a, b, pose_a, pose_b, px, py, closing, cross_a, cross_b, inertia_a, inertia_b,
-			restitution, ContactMechanics.friction(manifold.feature_a[0], manifold.feature_b[0], rules.combat), deltas, inverse_mass_a, inverse_mass_b
+			restitution, rules.combat.blade_friction, deltas, inverse_mass_a, inverse_mass_b
 		)
 	else:
 		impulse = SwordContactSolver.solve_points(manifold, a, b, pose_a, pose_b, spec_a.weapon, spec_b.weapon, rules.combat, inertia_a, inertia_b, inverse_mass_a, inverse_mass_b, deltas, closing_rows, separation_rows, lcp)
@@ -262,19 +262,15 @@ static func _resolve_blades(
 	var energy := maxf(energy_before - SwordContactSolver.kinetic_energy(a, b, inertia_a, inertia_b, inverse_mass_a, inverse_mass_b), 0.0)
 	var nx := manifold.normal_x
 	var ny := manifold.normal_y
-	## Where on each blade the event says the contact was: the named point's
-	## feature pair — a line contact (both its points) at its middle, like its
-	## location.
+	## Where on each blade the event says the contact was: a line contact
+	## (both its points) at its middle, like its location.
 	var fraction_a := 0.0
 	var fraction_b := 0.0
-	var on_pair := 0
 	for i in points:
-		if manifold.feature_a[i] == manifold.feature_a[primary] and manifold.feature_b[i] == manifold.feature_b[primary]:
-			fraction_a += manifold.fraction_a[i]
-			fraction_b += manifold.fraction_b[i]
-			on_pair += 1
-	fraction_a /= float(on_pair)
-	fraction_b /= float(on_pair)
+		fraction_a += manifold.fraction_a[i]
+		fraction_b += manifold.fraction_b[i]
+	fraction_a /= float(points)
+	fraction_b /= float(points)
 	var tangent_a := ContactMechanics.contact_tangent(px - a.x, py - a.y, a.turn_rate + a.weapon.speed, a.weapon.swing_dir)
 	var tangent_b := ContactMechanics.contact_tangent(px - b.x, py - b.y, b.turn_rate + b.weapon.speed, b.weapon.swing_dir)
 	_read_outcome(outcome, manifold, a, b, pose_a, pose_b, root_vx, root_vy, deltas, rules)
@@ -294,8 +290,7 @@ static func _resolve_blades(
 		DuelEventKeys.ENERGY: energy,
 		DuelEventKeys.FRACTION_0: fraction_a,
 		DuelEventKeys.FRACTION_1: fraction_b,
-		DuelEventKeys.FEATURE_0: manifold.feature_a[primary],
-		DuelEventKeys.FEATURE_1: manifold.feature_b[primary],
+		DuelEventKeys.STEEL_PAIR: manifold.pair[primary],
 		DuelEventKeys.POINT_COUNT: points,
 		DuelEventKeys.INTENSITY: SwingSemantics.clash_intensity(energy, rules.combat),
 		DuelEventKeys.CONTACT_CLASS: String(classify(closing, rules)),
@@ -325,10 +320,11 @@ static func _resolve_blades(
 	## `WeaponSystem`). A cut that carries on and lands is neither.
 	if attacker == DuelEvent.NONE:
 		return
-	## Only steel that protects its wielder defends (DEFENSE-ROLE-001): a cut
-	## stopped on the bare handle met steel, but not a defense.
-	var guarding := manifold.feature_b[primary] if attacker == 0 else manifold.feature_a[primary]
-	var protective := rules.spec_of(state.opponent_of(attacker)).weapon.protects(guarding)
+	## Only steel that protects its wielder defends (DEFENSE-ROLE-001): the
+	## defender's blade, or its guard root when the contact named it — whether
+	## either counts is the weapon's authored reading.
+	var defender_weapon := rules.spec_of(state.opponent_of(attacker)).weapon
+	var protective := defender_weapon.crossguard_protects if _on_defenders_guard(manifold.pair[primary], 1 - attacker) else defender_weapon.blade_protects
 	var striker := state.fighter(attacker)
 	if first_contact and outcome.redirects(protective):
 		striker.weapon.deflection_pending = true
@@ -340,6 +336,11 @@ static func _resolve_blades(
 	var defender := state.opponent_of(attacker)
 	var advantage := InitiativeModel.time_to_threat(striker, defender, rules) - InitiativeModel.time_to_threat(defender, striker, rules)
 	events.append(DuelEvent.create(DuelEventTypes.PARRY, tick, defender.slot, striker.slot, {DuelEventKeys.MARGIN: advantage, DuelEventKeys.X: px, DuelEventKeys.Y: py}))
+
+
+## Whether a contact of `pair` was on the guard of sword `defender`.
+static func _on_defenders_guard(pair: int, defender: int) -> bool:
+	return (pair == SwordContactSet.PAIR_BLADE_ON_GUARD and defender == 1) or (pair == SwordContactSet.PAIR_GUARD_ON_BLADE and defender == 0)
 
 
 ## Whether `slot`'s cut in flight reaches the opponent's body with its own
@@ -377,7 +378,7 @@ static func _read_outcome(
 		## The tangent is the normal turned +90° (`SwordContactSolver`).
 		outcome.impulse_x += jn * nx - jt * ny
 		outcome.impulse_y += jn * ny + jt * nx
-		var mu := ContactMechanics.friction(manifold.feature_a[i], manifold.feature_b[i], rules.combat)
+		var mu := rules.combat.blade_friction
 		if mu > 0.0 and jn > 0.0:
 			outcome.friction_saturation = maxf(outcome.friction_saturation, absf(jt) / (mu * jn))
 		outcome.closing_after = maxf(outcome.closing_after, SwordContactSolver.closing_speed(a, b, pose_a, pose_b, manifold.point_x[i], manifold.point_y[i], nx, ny))
@@ -389,30 +390,32 @@ static func _read_outcome(
 	outcome.delta_weapon_speed[1] = deltas[1]
 
 
-## The HAND strike `attacker`'s blade makes entering the opponent's hand disc
-## at grip radius `grip` (HAND-CONTACT-001), or null without real closing. The
-## ordinary damage model at the blade point, against the hand's own motion —
-## the grip marker moving with its sword (root, heading, θ̇, the attack track)
-## — and the effective mass it answers with, its held sword at the grip; at
-## the target's HAND region share, and never an instant kill by
-## classification: only the ordinary health path.
-static func _hand_strike(state: MatchState, rules: DuelRules, attacker: int, grip: float, toi: float) -> StrikeResult:
+## The GRIP strike `attacker`'s blade makes entering the opponent's grip
+## region (GRIP-NONBLOCKING-001) at the point `along` down the opponent's
+## sword from the pommel and `across` it (+ toward perp(û)) — a hand or the
+## handle — or null without real closing. The ordinary damage
+## model at the blade point, against the struck point's own motion — riding
+## its sword (root, heading, θ̇, the attack track) — and the effective mass it
+## answers with, the held sword there; at the target's grip region share, and
+## never an instant kill by classification: only the ordinary health path.
+static func _grip_strike(state: MatchState, rules: DuelRules, attacker: int, along: float, across: float, toi: float) -> StrikeResult:
 	var striker := state.fighter(attacker)
 	var holder := state.opponent_of(attacker)
 	var held_spec := rules.spec_of(holder)
 	var pose := WeaponKinematics.pose_of(holder, held_spec, BladePose.new())
-	var gx := pose.point_x(grip)
-	var gy := pose.point_y(grip)
-	## Where the blade is on the hand at this instant: its nearest point to the grip.
+	var gx := pose.point_x(along) - pose.uy * across
+	var gy := pose.point_y(along) + pose.ux * across
+	## Where the blade is on the grip at this instant: its nearest point to the
+	## struck point.
 	var striking := rules.spec_of(striker).weapon
 	var blade := WeaponKinematics.pose_of(striker, rules.spec_of(striker), BladePose.new())
-	var hx := blade.point_x(striking.hilt_radius)
-	var hy := blade.point_y(striking.hilt_radius)
+	var hx := blade.point_x(striking.blade_base_radius)
+	var hy := blade.point_y(striking.blade_base_radius)
 	var tx := blade.point_x(striking.tip_radius)
 	var ty := blade.point_y(striking.tip_radius)
-	var along := SimMath.closest_param_on_segment(hx, hy, tx, ty, gx, gy)
-	var px := SimMath.mix(hx, tx, along)
-	var py := SimMath.mix(hy, ty, along)
+	var on_blade := SimMath.closest_param_on_segment(hx, hy, tx, ty, gx, gy)
+	var px := SimMath.mix(hx, tx, on_blade)
+	var py := SimMath.mix(hy, ty, on_blade)
 	WeaponKinematics.velocity_into(holder, pose, gx, gy)
 	var nx := gx - px
 	var ny := gy - py
@@ -427,36 +430,39 @@ static func _hand_strike(state: MatchState, rules: DuelRules, attacker: int, gri
 	if impact.normal_speed <= 0.0:
 		return null
 	var strike := DamageModel.consequence(impact, striker, holder, rules)
-	strike.region = StrikeResult.Region.HAND
+	strike.region = StrikeResult.Region.GRIP
 	strike.lethal = false
-	strike.damage = rules.combat.damage_for(strike.quality) * held_spec.fighter.hand_damage_factor
+	strike.damage = rules.combat.damage_for(strike.quality) * held_spec.fighter.grip_damage_factor
 	strike.toi = toi
 	return strike
 
 
-## Wound the opponent's hand on grip `grip` that `attacker`'s blade entered,
-## read from the state as it is at that instant `toi` — the caller seeks there
-## and back; the wound moves nothing (HAND-CONTACT-001).
-static func wound_hand(state: MatchState, rules: DuelRules, attacker: int, grip: float, toi: float, tick: int, events: Array[DuelEvent]) -> void:
-	var wound := _hand_strike(state, rules, attacker, grip, toi)
+## Wound the opponent's grip region where `attacker`'s blade entered it
+## (`along`, `across` on the opponent's sword; `source` the part, a
+## `DuelEventKeys.SOURCE_*`), read from the state as it is at that instant
+## `toi` — the caller seeks there and back; the wound moves nothing
+## (GRIP-NONBLOCKING-001).
+static func wound_grip(state: MatchState, rules: DuelRules, attacker: int, along: float, across: float, source: String, toi: float, tick: int, events: Array[DuelEvent]) -> void:
+	var wound := _grip_strike(state, rules, attacker, along, across, toi)
 	if wound != null:
-		_apply_hand_strike(state, wound, rules, tick, events)
+		_apply_grip_strike(state, wound, source, rules, tick, events)
 
 
-## Apply one HAND strike: the wound only. A hand is hurt geometry, never a
-## constraint — no impulse; whatever steel lies behind it is met, and solved,
-## by the sweep that carries on (HAND-CONTACT-001).
-static func _apply_hand_strike(state: MatchState, strike: StrikeResult, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
+## Apply one GRIP strike: the wound only. The grip is hurt geometry, never a
+## constraint — no impulse; whatever steel or body lies behind it is met, and
+## solved, by the sweep that carries on (GRIP-NONBLOCKING-001).
+static func _apply_grip_strike(state: MatchState, strike: StrikeResult, source: String, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
 	var attacker := state.fighter(strike.attacker)
 	var target := state.fighter(strike.target)
 	target.health = maxf(0.0, target.health - strike.damage)
-	attacker.weapon.hand_struck = true
+	attacker.weapon.grip_struck = true
 	attacker.weapon.attack_contacted = true
 	attacker.weapon.deflection_pending = false
 	var payload := strike.to_payload()
 	payload[DuelEventKeys.PUSH] = 0.0
 	payload[DuelEventKeys.HEALTH] = target.health
-	payload[DuelEventKeys.REGION] = DuelEventKeys.REGION_HAND
+	payload[DuelEventKeys.REGION] = DuelEventKeys.REGION_GRIP
+	payload[DuelEventKeys.SOURCE_REGION] = source
 	events.append(DuelEvent.create(DuelEventTypes.BODY_HIT, tick, attacker.slot, target.slot, payload))
 	if not target.is_alive():
 		WeaponSystem.kill(target, strike.toi, SimMath.arctan2(strike.impact.normal_y, strike.impact.normal_x), rules.combat.fallen_settle_ticks_cut)

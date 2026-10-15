@@ -172,7 +172,7 @@ static func create(
 	proxy._weapon_kit = combatant.weapon
 	proxy._spec = spec
 	proxy._weapon = spec.weapon
-	proxy._hilt = spec.weapon.hilt_radius
+	proxy._hilt = spec.weapon.blade_base_radius
 	proxy._tip = spec.weapon.tip_radius
 	proxy._field.carriage_radius = spec.handling.carriage_radius
 	proxy._build(push_radius)

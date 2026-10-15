@@ -283,7 +283,7 @@ func test_sweet_spot_is_outer_middle() -> void:
 
 func test_broken_rules_fail_validation() -> void:
 	var rules := StandardDuelRules.create()
-	rules.combatant(0).weapon.tip_radius = rules.combatant(0).weapon.hilt_radius
+	rules.combatant(0).weapon.tip_radius = rules.combatant(0).weapon.blade_base_radius
 	assert_false(rules.is_valid(), "zero-length blade is invalid")
 	var empty := DuelRules.new()
 	assert_false(empty.is_valid(), "neutral defaults are invalid until content fills them")
@@ -304,7 +304,7 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 49, "rules version tracks gameplay-affecting changes (49: the knife-edge injury re-seed — the reference strike is two reference-quality wounds)")
+	assert_eq(rules.version, 52, "rules version tracks gameplay-affecting changes (52: each crossguard protects its blade side as a guard-root steel pair)")
 
 
 ## IMPACT-PHYSICS-001 (rules 42): the injury calibration is a named physical

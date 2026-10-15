@@ -186,7 +186,7 @@ func test_reach_is_the_wielders_grip_plus_the_blade() -> void:
 	assert_near(held_long.blade_length(), held.blade_length(), 1e-12, "the blade is the same blade")
 	assert_near(held_long.length() - held.length(), long_arms.grip_radius - base.grip_radius, 1e-12, "only the grip added reach")
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.combatant(0).weapon.hilt_radius, rules.combatant(0).fighter.grip_radius, "standard rules mount the sword at the duelist's grip")
+	assert_eq(rules.combatant(0).weapon.blade_base_radius, rules.combatant(0).fighter.grip_radius, "standard rules mount the sword at the duelist's grip")
 	assert_true(rules.is_valid(), "precondition: and validate")
 	rules.combatant(0).weapon = held_long
 	assert_false(rules.is_valid(), "a weapon mounted for a different grip is refused")
@@ -333,7 +333,7 @@ func test_a_weapon_must_be_physically_possible() -> void:
 	no_inertia.inertia_coefficient = 0.0
 	assert_false(no_inertia.is_valid(), "a sword with no resistance to turning is impossible")
 	var overlong_blade := _weapon()
-	overlong_blade.hilt_radius = -0.1
+	overlong_blade.blade_base_radius = -0.1
 	assert_false(overlong_blade.is_valid(), "a blade longer than the weapon is impossible")
 	var no_coverage := _weapon()
 	no_coverage.guard_limit = no_coverage.guard_angle

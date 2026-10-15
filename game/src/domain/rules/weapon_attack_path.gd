@@ -131,20 +131,51 @@ func sample_into(angle: float, out: BladePose) -> void:
 		return
 	var side := 1.0 if angle >= 0.0 else -1.0
 	var at := minf(absf(angle), _limit)
-	var position := at / _step
-	var index := mini(floori(position), _forward.size() - 1)
+	var index := mini(floori(at / _step), _forward.size() - 1)
 	var next := mini(index + 1, _forward.size() - 1)
-	var t := position - float(index)
-	var forward_slope := SimMath.mix(_forward_slope[index], _forward_slope[next], t)
-	var lateral_slope := SimMath.mix(_lateral_slope[index], _lateral_slope[next], t)
+	## The last interval ends at the limit, so it may be shorter than a step.
+	var span := minf(float(next) * _step, _limit) - float(index) * _step
+	var t := 0.0 if span <= 0.0 else clampf((at - float(index) * _step) / span, 0.0, 1.0)
+	## Between samples the carriage is the cubic Hermite through their values
+	## and slopes, and its slope is that cubic's own derivative: the velocity a
+	## contact is solved with is the motion the sweep carries (BLADE-COLLISION-
+	## PARITY-001), and inside an authored segment the cubic is the authored
+	## curve exactly.
+	var forward := _hermite_sample(_forward, _forward_slope, index, next, span, t)
+	var lateral := _hermite_sample(_lateral, _lateral_slope, index, next, span, t)
+	var forward_slope := _hermite_sample_slope(_forward, _forward_slope, index, next, span, t)
+	var lateral_slope := _hermite_sample_slope(_lateral, _lateral_slope, index, next, span, t)
 	if absf(angle) > _limit:
 		forward_slope = 0.0
 		lateral_slope = 0.0
 	## C(θ) = (f(|θ|), side·l(|θ|)); dC/dθ = (side·f′, l′).
-	out.carriage_forward = SimMath.mix(_forward[index], _forward[next], t)
-	out.carriage_left = side * SimMath.mix(_lateral[index], _lateral[next], t)
+	out.carriage_forward = forward
+	out.carriage_left = side * lateral
 	out.d_carriage_forward = side * forward_slope
 	out.d_carriage_left = lateral_slope
+
+
+static func _hermite_sample(values: PackedFloat64Array, slopes: PackedFloat64Array, index: int, next: int, span: float, t: float) -> float:
+	var t2 := t * t
+	var t3 := t2 * t
+	return (
+		(2.0 * t3 - 3.0 * t2 + 1.0) * values[index]
+		+ (t3 - 2.0 * t2 + t) * span * slopes[index]
+		+ (-2.0 * t3 + 3.0 * t2) * values[next]
+		+ (t3 - t2) * span * slopes[next]
+	)
+
+
+static func _hermite_sample_slope(values: PackedFloat64Array, slopes: PackedFloat64Array, index: int, next: int, span: float, t: float) -> float:
+	if span <= 0.0:
+		return slopes[index]
+	var t2 := t * t
+	return (
+		(6.0 * t2 - 6.0 * t) * values[index] / span
+		+ (3.0 * t2 - 4.0 * t + 1.0) * slopes[index]
+		+ (-6.0 * t2 + 6.0 * t) * values[next] / span
+		+ (3.0 * t2 - 2.0 * t) * slopes[next]
+	)
 
 
 ## The carriage's combat-frame position at `angle`: forward and left. For

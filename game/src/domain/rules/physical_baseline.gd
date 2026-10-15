@@ -60,14 +60,15 @@ const POMMEL_SHOULDER_M := 0.030
 const GUARD_UNDERSIDE_M := 0.2315
 ## The crossguard on the same model: 2.5 cm deep along the blade, so centred
 ## 1.25 cm above its underside, and 14.4 cm either side of the blade to the
-## outer faces of the quillon caps (GUARD-CONTACT-001).
-const GUARD_DEPTH_M := 0.025
-const GUARD_CENTRE_M := GUARD_UNDERSIDE_M + GUARD_DEPTH_M * 0.5
-const GUARD_HALF_SPAN_M := 0.144
+## outer faces of the quillon caps. It is steel on its blade side only
+## (GUARD-PROTECTION-001), and never hurt geometry (GRIP-NONBLOCKING-001).
+const CROSSGUARD_DEPTH_M := 0.025
+const CROSSGUARD_CENTRE_M := GUARD_UNDERSIDE_M + CROSSGUARD_DEPTH_M * 0.5
+const CROSSGUARD_HALF_SPAN_M := 0.144
 ## The handle's own thickness on the same model: the `Grip` mesh's cross
-## section is 2.6 × 3.0 cm, so it is enclosed by a 1.5 cm radius. The handle's
-## collision is the handle (HILT, GUARD-CONTACT-001) — the hands around it are
-## presentation until hand collision is deliberately added.
+## section is 2.6 × 3.0 cm, so it is enclosed by a 1.5 cm radius: the bare
+## handle's hurt geometry, beside the hand discs around it
+## (GRIP-NONBLOCKING-001).
 const GRIP_HALF_WIDTH_M := 0.015
 ## How much air each hand keeps from the pommel and the guard.
 const POMMEL_HAND_CLEARANCE_M := 0.005

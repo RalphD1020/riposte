@@ -9,7 +9,7 @@ extends RefCounted
 
 var impulse01: float = 0.0           ## Normalized impulse [0, 1]
 var severity01: float = 0.0          ## Normalized kinetic severity [0, 1]
-var blade_fraction: float = 0.0      ## 0 = hilt, 1 = tip
+var blade_fraction: float = 0.0      ## 0 = crossguard, 1 = tip
 var edge_alignment: float = 0.0      ## 0 = flat, 1 = perfect edge
 var attacker: int = DuelEvent.NONE
 var target: int = DuelEvent.NONE
@@ -18,7 +18,7 @@ var point_x: float = 0.0
 var point_y: float = 0.0
 var normal_x: float = 0.0
 var normal_y: float = 0.0
-var hand: bool = false              ## A HAND wound rather than the torso (HAND-CONTACT-001)
+var grip: bool = false              ## A GRIP wound (hands, handle) rather than the torso (GRIP-NONBLOCKING-001)
 
 
 static func from_event(event: DuelEvent, tuning: CombatTuning) -> ImpactFeedback:
@@ -34,7 +34,7 @@ static func from_event(event: DuelEvent, tuning: CombatTuning) -> ImpactFeedback
 	fb.point_y = event.number(DuelEventKeys.Y)
 	fb.normal_x = event.number(DuelEventKeys.NORMAL_X)
 	fb.normal_y = event.number(DuelEventKeys.NORMAL_Y)
-	fb.hand = event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_HAND
+	fb.grip = event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP
 	return fb
 
 

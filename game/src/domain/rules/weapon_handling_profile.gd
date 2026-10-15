@@ -44,10 +44,10 @@ func problem(fighter: FighterDefinition, weapon: WeaponDefinition) -> String:
 		return "the handling %s was authored for %s with %s, not %s with %s" % [id, fighter_id, weapon_id, fighter.id, weapon.id]
 	if attack_path == null:
 		return "the handling has no attack track"
-	if not (carriage_radius >= 0.0 and carriage_radius < weapon.hilt_radius):
+	if not (carriage_radius >= 0.0 and carriage_radius < weapon.blade_base_radius):
 		return "the carriage is not on the weapon's handle"
 	## The weapon's origin is its pommel at the wielder's grip, so its handle
 	## length must be the distance this fighter's hands hold any weapon.
-	if weapon.hilt_radius != fighter.grip_radius:
-		return "the weapon's hilt is not at the fighter's grip"
+	if weapon.blade_base_radius != fighter.grip_radius:
+		return "the weapon's blade base is not at the fighter's grip"
 	return ""

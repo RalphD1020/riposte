@@ -303,16 +303,22 @@ func test_two_identical_fighters_pressing_keep_their_midpoint() -> void:
 
 
 ## SYMMETRIC-PRESS-001: the same press through the swords. Two identical
-## fighters from the point-symmetric opening, guards resting, driving into each
-## other for four seconds: their blades meet and are held, and the duel stays
-## the exact point reflection of itself — midpoint, bodies, headings and swords
-## — on every tick. No slot, stored contact point or update order wins.
+## fighters from the point-symmetric opening, both in Long Guard (θ = 0, the
+## blades on the centreline), driving into each other for four seconds: their
+## blades meet point to point and are held, and the duel stays the exact point
+## reflection of itself — midpoint, bodies, headings and swords — on every
+## tick. No slot, stored contact point or update order wins. (With guards
+## resting the blades never meet: each passes over the other's crossguard to
+## the grip, STEEL-TOPOLOGY-001; the held contact of earlier rules was
+## crossguard on handle.)
 func test_two_identical_fighters_pressing_through_their_swords_stay_mirrored() -> void:
 	## ARRANGE
 	var runner := SimRunner.create(_rules, 1)
 	runner.skip_intro()
 	var a := runner.state.fighter(0)
 	var b := runner.state.fighter(1)
+	a.weapon.angle = 0.0
+	b.weapon.angle = 0.0
 	var start_x := (a.x + b.x) * 0.5
 	var start_y := (a.y + b.y) * 0.5
 	## ACT

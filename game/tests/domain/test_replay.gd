@@ -78,14 +78,15 @@ func test_a_recording_is_refused_across_a_state_layout_change() -> void:
 ## Pinned final hashes. Presentation work of any size must leave these alone;
 ## only a deliberate rules change (with its `DuelRules.version` bump) may
 ## re-record them, and only beside a reviewed metrics re-pin (below).
-## Last re-recorded for rules 49 with the re-hold crossing refinement and state
-## layout 4 (`deflection_pending`). See the metrics re-pin below.
+## Last re-recorded for rules 52 (each crossguard protects its blade side as a
+## guard-root steel pair, the root within the bar's half-depth) on state
+## layout 6. See the metrics re-pin below.
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
-		3: "a9482b6288c7df1f48acec12fb70bf87f5261656e9cea9d9169222fef2cee54f",
-		5: "2b1025a7615bb8c89284fd9cbf53a32c75dd56452f5abd9de0a6a05478018fd7",
-		9: "7a1d1c29ec002f29e39e91c81d45cb7141e2021e3ede5ecff0b2e4744aab275b",
-		17: "3a06f52132a283cd659835c5940c70c1e5b517996eced68e8ce0836550459652",
+		3: "3a26d6a13e829d2e1d833813cef226e9c0b58619df41174ae106848e49fe58a8",
+		5: "343393663daeeacbfbacceaff5b53388baec8da3d512f99de0d8f27630aa6c96",
+		9: "cb73bb626ae6b49f78eba0eff108ac21a3f869445c56ec32e092e12930ad4195",
+		17: "256a50e231a2eab98a69ebdd48b3bcf5ffb02a679a983609b7db7d7a2a6eedba",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -513,12 +514,62 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## - ContactOutcome, DEFLECTION and state layout 4 (`deflection_pending`):
 ##   readings only — every count above is the same with them; every hash moves
 ##   with the layout; `deflection` joins the counts (seed 9: one).
+##
+## Rules 50 (blade-only steel; the crossguard passes through, the hands and
+## handle are the grip region; state layout 5), attributed by tracing both
+## builds tick by tick: every duel is identical until the first contact on
+## crossguard or handle steel, and diverges exactly there —
+## - 3: tick 119, a blade on the handle (rules 49 steel) is a grip wound on
+##   the handle, then the torso;
+## - 5: tick 125, a held blade contact that slid onto both crossguards cannot
+##   (no event that tick); grip wounds follow two ticks later;
+## - 9: tick 128, a blade on the handle is a grip wound, then the torso and a
+##   kill;
+## - 17: tick 126, a crossguard-on-crossguard clash is nothing — both pass
+##   through.
+## `body_hit` now counts grip wounds too. Golden totals v49 → v50: attacks
+## 141 → 108, blade collisions 96 → 63, parries 10 → 16, deflections 1 → 3,
+## body hits 28 → 91, pokes 2 → 5, criticals 5 → 5, kills 6 → 8, rounds
+## 6 → 8, ring-outs 0 → 0. No golden duel faulted.
+##
+## Rules 51 (the attack track's slope is the derivative of the carriage it
+## interpolates, BLADE-COLLISION-PARITY-001): traced tick by tick against
+## rules 50, every duel is identical until its first attack release (3: tick
+## 114, 5: 91, 9: 121, 17: 115), where only the swinging sword's θ and θ̇
+## differ, in the sixth or seventh digit — the track's slope feeds the weapon's
+## generalized inertia and lever. Bodies, headings, health and events are
+## identical on that tick. Every count below is unchanged; only the hashes
+## moved.
+##
+## Rules 52 (each crossguard protects its blade side: two guard-root steel
+## pairs beside blade on blade, the root a shallow wedge standing out at most
+## the bar's half-depth and the blade capsule starting at its apex, just above
+## the drawn guard; state layout 6 hashes each pair's latch and every point's
+## pair), attributed by tracing both builds tick by tick on physical state (the
+## layouts differ, so hashes cannot be compared): every duel is identical
+## until its first steel the new topology reads differently, and diverges
+## exactly there —
+## - 3: tick 259, 9: tick 493 and 17: tick 688, the same blade-on-blade
+##   contact rules 51 met at fighter 0's blade base (fraction 0), now at the
+##   blade's new start (fraction 0.009), so it solves a little differently
+##   (17's is a parry either way);
+## - 5: tick 125, inside a held one-point blade contact a guard root meets
+##   the other blade from its protected side and joins as steel.
+## Two earlier rules-52 candidates were re-pinned and then superseded: one kept
+## a protected guard steel after its blade had slipped round the quillon (the
+## ship corpus caught a degenerate pin against the bar's underside), and one
+## had a root rising half its half-span, standing out 5.4 cm beyond the drawn
+## sword. Golden totals v51 → v52: attacks 108 → 107, blade collisions
+## 63 → 47, parries 16 → 9, deflections 3 → 1, body hits 91 → 97, pokes
+## 5 → 7, criticals 5 → 7, kills 8 → 11, rounds 8 → 10, ring-outs 0 → 0 —
+## the duels re-roll from their divergence and resolve sooner (3: four kills
+## in three rounds; 9 and 17: a third round each). No golden duel faulted.
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
-		3: {"attack_released": 48, "blade_collision": 11, "parry": 0, "deflection": 0, "body_hit": 6, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		5: {"attack_released": 42, "blade_collision": 36, "parry": 6, "deflection": 0, "body_hit": 4, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		9: {"attack_released": 25, "blade_collision": 21, "parry": 0, "deflection": 1, "body_hit": 12, "body_poke": 1, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
-		17: {"attack_released": 26, "blade_collision": 28, "parry": 4, "deflection": 0, "body_hit": 6, "body_poke": 1, "body_thrust": 0, "critical_hit": 4, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		3: {"attack_released": 23, "blade_collision": 3, "parry": 0, "deflection": 0, "body_hit": 33, "body_poke": 1, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 4, "ring_out": 0, "round_ended": 3},
+		5: {"attack_released": 40, "blade_collision": 28, "parry": 7, "deflection": 1, "body_hit": 25, "body_poke": 1, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		9: {"attack_released": 25, "blade_collision": 9, "parry": 1, "deflection": 0, "body_hit": 19, "body_poke": 3, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
+		17: {"attack_released": 19, "blade_collision": 7, "parry": 1, "deflection": 0, "body_hit": 20, "body_poke": 2, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
 		var metrics := CombatMetrics.of(_played(seed_value))

@@ -212,12 +212,10 @@ func test_the_manifold_records_where_the_blades_touch() -> void:
 	collision.detect(state, near, near, _revolute, manifold, report)
 	assert_true(report.blade, "fixture: the crossing blades touch")
 	assert_eq(manifold.point_count, 1, "crossing blades touch at one point")
-	assert_eq(manifold.feature_a[0], SwordContactSet.Feature.BLADE, "on fighter 0's blade")
-	assert_eq(manifold.feature_b[0], SwordContactSet.Feature.BLADE, "and fighter 1's")
 	assert_false(manifold.is_persisted(0), "a first touch is not persisted")
 	var fraction := manifold.fraction_a[0]
-	var expected := (manifold.point_x[0] - weapon.hilt_radius) / (weapon.tip_radius - weapon.hilt_radius)
-	assert_near(fraction, expected, 1e-6, "the fraction runs guard (0) → point (1) along the blade")
+	var expected := (manifold.point_x[0] - weapon.blade_base_radius) / (weapon.tip_radius - weapon.blade_base_radius)
+	assert_near(fraction, expected, 1e-6, "the fraction runs crossguard (0) → point (1) along the blade")
 	assert_between(manifold.fraction_b[0], 0.0, 1.0, "and is a fraction on the other blade too")
 	## Slide the crossing toward fighter 0's point; the contact stays the same one.
 	var slid := _crossing_poses(1.8)

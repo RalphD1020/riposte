@@ -417,8 +417,14 @@ func test_both_thumbs_work_at_the_same_time() -> void:
 
 ## MOVE-002 through a thumb. The gesture is "the same direction twice" in duel
 ## axes, so this taps the sector and comes to rest, never a screen point.
+## The opponent stands: the recognizer only sees a rest the simulation
+## actually ticks through, and a live CPU's cut landing mid-gesture holds the
+## clock for hitstop, so the lift between taps would never reach a tick.
 func test_a_thumb_double_tap_bursts_in_the_duel_direction() -> void:
 	var booted := await _boot_ready()
+	booted.app.compose_session = func(config: MatchConfig, human: HumanController, sink: TelemetrySink) -> MatchSession:
+		var controllers: Array[FighterController] = [human, ScenarioController.standing()]
+		return MatchSession.create(config, controllers, sink)
 	var screen := await _active_duel(booted)
 	var touch := screen.touch
 	var stick := touch.move_zone().get_center()
@@ -438,7 +444,9 @@ func test_a_thumb_double_tap_bursts_in_the_duel_direction() -> void:
 			## Lifting the thumb *is* coming to rest; the recognizer requires
 			## it between taps, so a held push can never dash.
 			touch.handle(_finger(0, stick, false))
+			var resting_from := screen.session.state.tick
 			screen.advance_frame(FRAME)
+			assert_true(screen.session.state.tick > resting_from, "fixture: the rest between taps reaches a tick")
 		var launched := _bursts(screen)
 		assert_eq(launched.size(), before.size() + 1, "one burst per double tap, not two")
 		assert_eq(launched[launched.size() - 1], kind, "and it is the direction the thumb pushed")

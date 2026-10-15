@@ -132,7 +132,7 @@ func test_the_blade_points_where_the_simulated_blade_points() -> void:
 	assert_true(SimMath.length(pose.origin_x - fighter.x, pose.origin_y - fighter.y) > 0.01, "fixture: so the old body-centred circle would be the wrong answer")
 	var proxy := mount.presenter.fighter_proxy(0)
 	var height := proxy.blade_height()
-	var hilt := ArenaTransform.to_world(pose.point_x(_rules.combatant(0).weapon.hilt_radius), pose.point_y(_rules.combatant(0).weapon.hilt_radius), height)
+	var hilt := ArenaTransform.to_world(pose.point_x(_rules.combatant(0).weapon.blade_base_radius), pose.point_y(_rules.combatant(0).weapon.blade_base_radius), height)
 	var tip := ArenaTransform.to_world(pose.point_x(_rules.combatant(0).weapon.tip_radius), pose.point_y(_rules.combatant(0).weapon.tip_radius), height)
 	var authoritative := proxy.authoritative_blade_points()
 	assert_true(authoritative[0].distance_to(hilt) < 1e-4 and authoritative[1].distance_to(tip) < 1e-4, "the reference blade is the collision blade (hilt %s vs %s, tip %s vs %s)" % [authoritative[0], hilt, authoritative[1], tip])
@@ -989,13 +989,13 @@ func test_variants_are_picked_deterministically_and_layers_play_with_their_cue()
 func _hold_point(mount: Mount, age: int, jt: float, slip: float, id: int = 1) -> PresentationSnapshot:
 	var contact: SwordContactSet = mount.state.blade_contact
 	contact.set_phase(SwordContactSet.Phase.CONTACTING)
-	contact.record_point(0, SwordContactSet.Feature.BLADE, SwordContactSet.Feature.BLADE, 1.0, 0.5, 0.5, 0.5)
+	contact.record_point(0, 1.0, 0.5, 0.5, 0.5)
 	contact.age[0] = age
 	contact.contact_id[0] = id
 	contact.tangent_impulse[0] = jt
 	contact.hold_active[0] = 1
-	contact.hold_feature_a[0] = SwordContactSet.Feature.BLADE
-	contact.hold_feature_b[0] = SwordContactSet.Feature.BLADE
+	contact.hold_fraction_a[0] = 0.5
+	contact.hold_fraction_b[0] = 0.5
 	contact.hold_slip[0] = slip
 	return SnapshotProjector.project(mount.state, _rules)
 

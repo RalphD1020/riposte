@@ -11,8 +11,9 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/combat.md
 
-## Which hurt shape it struck (DEFENSE-ROLE-001, HAND-CONTACT-001).
-enum Region { TORSO, HAND }
+## Which hurt region it struck (DEFENSE-ROLE-001, GRIP-NONBLOCKING-001): the
+## torso, or the grip — the hands and the handle.
+enum Region { TORSO, GRIP }
 var region: Region = Region.TORSO
 var attacker: int = -1
 var target: int = -1

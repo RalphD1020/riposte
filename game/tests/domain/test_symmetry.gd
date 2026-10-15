@@ -37,8 +37,8 @@ func test_mirrored_attacks_produce_mirrored_outcomes() -> void:
 		return
 	## Self-validating preconditions (the measure share is fixture setup, never
 	## a gameplay invariant): both scenarios reach the same interaction by the
-	## same route — the same tap, the same blade contacts before the hit, of the
-	## same feature pairs, and no body collision contaminating it.
+	## same route — the same tap, the same blade contacts before the hit, at
+	## mirrored places on the blades, and no body collision contaminating it.
 	assert_eq(left.count(DuelEventTypes.ATTACK_RELEASED), 1, "fixture: one tap in the left scenario")
 	assert_eq(right.count(DuelEventTypes.ATTACK_RELEASED), 1, "fixture: one tap in the right scenario")
 	assert_eq(_before(left, DuelEventTypes.BODY_PUSH, left_hit.tick).size(), 0, "fixture: no body collision precedes the left hit")
@@ -48,8 +48,8 @@ func test_mirrored_attacks_produce_mirrored_outcomes() -> void:
 	assert_eq(right_clashes.size(), left_clashes.size(), "fixture: the same blade contacts on the way in")
 	for i in mini(left_clashes.size(), right_clashes.size()):
 		assert_eq(right_clashes[i].tick, left_clashes[i].tick, "fixture: clash %d on the same tick" % i)
-		assert_eq(int(right_clashes[i].number(DuelEventKeys.FEATURE_0)), int(left_clashes[i].number(DuelEventKeys.FEATURE_1)), "fixture: clash %d on the mirrored feature pair" % i)
-		assert_eq(int(right_clashes[i].number(DuelEventKeys.FEATURE_1)), int(left_clashes[i].number(DuelEventKeys.FEATURE_0)), "fixture: and its partner")
+		assert_near(right_clashes[i].number(DuelEventKeys.FRACTION_0), left_clashes[i].number(DuelEventKeys.FRACTION_1), 1e-6, "fixture: clash %d at the mirrored place on the blades" % i)
+		assert_near(right_clashes[i].number(DuelEventKeys.FRACTION_1), left_clashes[i].number(DuelEventKeys.FRACTION_0), 1e-6, "fixture: and its partner")
 	assert_eq(left_hit.tick, right_hit.tick, "same tick")
 	assert_eq(left_hit.actor, 0, "slot 0 struck in its scenario")
 	assert_eq(right_hit.actor, 1, "slot 1 struck in its scenario")

@@ -40,10 +40,9 @@ const DEFLECTION_TAIL_DB := -10.0
 ## against a clean-parry ceiling. A threshold deflection already reads; a
 ## decisive one is razor-bright. Presentation interpretation, not a measurement.
 const PARRY_QUALITY_CEIL := 0.16
-## Clang pitch by where the swords met: forte → foible, and a hilt knock.
+## Clang pitch by where the blades met: forte → foible.
 const CLASH_PITCH_FORTE := 0.92
 const CLASH_PITCH_FOIBLE := 1.08
-const CLASH_PITCH_HILT := 0.8
 const PARRY_SPARKS_MIN := 4
 const PARRY_SPARKS_MAX := 14
 const PARRY_SPARK_SPEED := 3.2
@@ -232,14 +231,10 @@ static func _on_deflection(event: DuelEvent, snapshot: PresentationSnapshot, fra
 	frame.audio_requests.append(AudioCueRequest.create(PresentationKit.CUE_METAL_TAIL, _fighter_world(snapshot, event.target), DEFLECTION_TAIL_DB, 1.0, AudioCueRequest.KitSource.WEAPON, variant_key(event)))
 
 
-## The clang's timbre from where the swords met (7C): steel struck near the
-## guard rings lower than steel struck toward the point, and a crossguard or a
-## handle in the contact gives a dull, low knock. Read from the contact's own
-## features and blade fractions — never from charge or speed.
+## The clang's timbre from where the blades met (7C): steel struck near the
+## crossguard rings lower than steel struck toward the point. Read from the
+## contact's own blade fractions — never from charge or speed.
 static func clash_pitch(event: DuelEvent) -> float:
-	var blade := SwordContactSet.Feature.BLADE
-	if int(event.number(DuelEventKeys.FEATURE_0)) != blade or int(event.number(DuelEventKeys.FEATURE_1)) != blade:
-		return CLASH_PITCH_HILT
 	var fraction := clampf((event.number(DuelEventKeys.FRACTION_0) + event.number(DuelEventKeys.FRACTION_1)) * 0.5, 0.0, 1.0)
 	return lerpf(CLASH_PITCH_FORTE, CLASH_PITCH_FOIBLE, fraction)
 

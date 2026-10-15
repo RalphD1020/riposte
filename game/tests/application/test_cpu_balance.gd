@@ -23,19 +23,27 @@ func _init() -> void:
 ## than Hard. An emergent mix of where the fight goes and what each profile
 ## decides there, so it moves with geometry and contact rules; the law itself
 ## — same situation, lighter commitment — is CPU's
-## `test_easy_overcharges_and_hard_stays_quick`.
+## `test_easy_overcharges_and_hard_stays_quick`. Read pooled over the smoke
+## tier's calibration corpus — every charge over every release, so a short duel
+## weighs what it played — never as a mean of a few per-seed ratios, which one
+## seed can carry (rules 52: three seeds, one of them outside the corpus, read
+## Easy 0.42 against Hard 0.51 while the corpus read 0.320 against 0.255).
 func test_easy_holds_more_often_than_hard_over_whole_duels() -> void:
-	var ratios := PackedFloat64Array([0.0, 0.0])
-	var samples := 0
-	for seed_value: int in [3, 7, 11]:
-		var easy := _played(MatchConfig.Difficulty.EASY, MatchConfig.Difficulty.MEDIUM, seed_value)
-		var hard := _played(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.MEDIUM, seed_value)
-		if easy.summary(0).attacks > 0 and hard.summary(0).attacks > 0:
-			ratios[0] += _hold_ratio(easy, 0)
-			ratios[1] += _hold_ratio(hard, 0)
-			samples += 1
-	assert_true(samples >= 2, "precondition: at least 2 seeds produced attacks")
-	assert_true(ratios[0] > ratios[1], "Easy holds more often than Hard (%.2f vs %.2f)" % [ratios[0] / float(maxi(samples, 1)), ratios[1] / float(maxi(samples, 1))])
+	var charges := PackedInt32Array([0, 0])
+	var releases := PackedInt32Array([0, 0])
+	for seed_value: int in CpuLadder.CALIBRATION_SEEDS:
+		var duels := [
+			_played(MatchConfig.Difficulty.EASY, MatchConfig.Difficulty.MEDIUM, seed_value),
+			_played(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.MEDIUM, seed_value),
+		]
+		for k in 2:
+			var counts := _holds(duels[k], 0)
+			charges[k] += counts.x
+			releases[k] += counts.y
+	assert_true(releases[0] > 20 and releases[1] > 20, "precondition: both attack enough to read (%d, %d releases)" % [releases[0], releases[1]])
+	var easy := float(charges[0]) / float(maxi(releases[0], 1))
+	var hard := float(charges[1]) / float(maxi(releases[1], 1))
+	assert_true(easy > hard, "Easy holds more often than Hard (%.3f vs %.3f)" % [easy, hard])
 
 
 ## A CPU mirror match is decided by blows, not by the clock. Emergent: it
@@ -71,7 +79,8 @@ func _played(first: MatchConfig.Difficulty, second: MatchConfig.Difficulty, seed
 	return duel
 
 
-func _hold_ratio(duel: MatchSession, slot: int) -> float:
+## `slot`'s charges started and attacks released in `duel`.
+func _holds(duel: MatchSession, slot: int) -> Vector2i:
 	var charges := 0
 	var releases := 0
 	for event in duel.events:
@@ -81,4 +90,4 @@ func _hold_ratio(duel: MatchSession, slot: int) -> float:
 			charges += 1
 		elif event.type == DuelEventTypes.ATTACK_RELEASED:
 			releases += 1
-	return 0.0 if releases == 0 else float(charges) / float(releases)
+	return Vector2i(charges, releases)

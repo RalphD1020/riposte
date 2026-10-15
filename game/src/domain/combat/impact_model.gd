@@ -35,8 +35,8 @@ static func resolve(attacker: FighterState, target: FighterState, point_x: float
 
 ## The same impact against any hurt shape of `target`: its centre (the normal
 ## points into it), the velocity of its surface, and the effective mass it
-## answers with — the torso's body, or a hand's held sword at the grip
-## (HAND-CONTACT-001), so a hand moving with its sword is struck at its own
+## answers with — the torso's body, or the held sword at the struck grip point
+## (GRIP-NONBLOCKING-001), so a grip moving with its sword is struck at its own
 ## speed, never as a still point of the torso.
 static func resolve_at(attacker: FighterState, point_x: float, point_y: float, centre_x: float, centre_y: float, target_vx: float, target_vy: float, target_mass: float, rules: DuelRules) -> ImpactResult:
 	var wielding := rules.spec_of(attacker)
@@ -51,7 +51,7 @@ static func resolve_at(attacker: FighterState, point_x: float, point_y: float, c
 	var bx := point_x - pose.origin_x
 	var by := point_y - pose.origin_y
 	var radius := SimMath.length(bx, by)
-	impact.blade_fraction = SimMath.clamp01((radius - weapon.hilt_radius) / weapon.blade_length())
+	impact.blade_fraction = SimMath.clamp01((radius - weapon.blade_base_radius) / weapon.blade_length())
 
 	## Body rotation and weapon rotation both turn the contact point about the
 	## fighter, so they add; the attack path adds its own share on top.

@@ -54,7 +54,7 @@ func _build_victory(session: MatchSession, winner: int) -> void:
 		kits.combatant(winner),
 		session.state.fighter(winner).side,
 		rules.combatant(winner).fighter.push_radius,
-		rules.combatant(winner).weapon.hilt_radius,
+		rules.combatant(winner).weapon.blade_base_radius,
 		rules.combatant(winner).weapon.tip_radius,
 		options.flash_scale(),
 		options.particle_intensity

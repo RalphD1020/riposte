@@ -105,6 +105,9 @@ var _spec: CombatantPhysicsSpec
 ## This duel's strike reach, and the reference duel's (see `calibration_reach`).
 var _reach_m: float = 0.0
 var _calibration_m: float = 0.0
+## How far one forward dash carries the CPU's own body before it can stop
+## (m), at full condition: the burst, then its glide to rest under the brake.
+var _dash_m: float = 0.0
 ## The longest any hold could still be earning charge (ticks), from the
 ## weapon coordinate's peak inertia — a release valve, never physics.
 var _windback_limit_ticks: int = 0
@@ -158,6 +161,8 @@ static func create(rules: DuelRules, cpu_profile: CpuProfile, match_seed: int, s
 	## smaller target moves every preferred distance with it.
 	controller._reach_m = WeaponKinematics.strike_reach(controller._spec, rules.combatant(1 - slot))
 	controller._calibration_m = calibration_reach()
+	var body := controller._spec.fighter
+	controller._dash_m = body.burst_speed_axial * float(body.burst_ticks) * SimulationTimebase.TICK_SECONDS + body.burst_speed_axial * body.burst_speed_axial / (2.0 * body.brake_accel())
 	controller._windback_limit_ticks = controller._spec.weapon.windback_limit_ticks(controller._spec.fighter.weapon_torque_scale, WeaponKinematics.peak_motor_inertia(controller._spec))
 	controller.profile = cpu_profile
 	controller._opponent_push = rules.combatant(1 - slot).fighter.push_radius
@@ -212,6 +217,24 @@ static func calibration_reach() -> float:
 
 func _reach() -> float:
 	return _reach_m
+
+
+## The range an approach closes to (m): just past tap range when this CPU can
+## strike, its engage range otherwise (CPU-009).
+func preferred_range(ready: bool) -> float:
+	return _range(profile.tap_range) + READY_RANGE_LEAD if ready else _range(profile.engage_range)
+
+
+## Closer than this (m) is smothered measure, which a CPU free to act steps
+## back out of (CPU-009).
+func smothered_line() -> float:
+	return _range(profile.tap_range) - SMOTHERED_MARGIN
+
+
+## How far one forward dash carries this CPU before it can stop (m), at full
+## condition (CPU-009).
+func dash_travel() -> float:
+	return _dash_m
 
 
 ## A profile's preferred distance (authored in metres at `calibration_reach`)
@@ -277,12 +300,12 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 	var striking := CombatPhase.is_striking(me.weapon.phase)
 	var ready := WeaponSystem.can_start_attack(me, _spec.weapon)
 	var pressure := SimMath.clamp01(float(_idle_ticks) / float(PRESSURE_TICKS)) * profile.pressure_weight
-	var desired := _range(profile.tap_range) + READY_RANGE_LEAD if ready else _range(profile.engage_range)
+	var desired := preferred_range(ready)
 	## Measure is judged where the bodies will be once this approach can be
 	## stopped, not where they stand: both still close until the next decision,
 	## and the CPU's own stride takes its braking distance to stop. Judged on
 	## the distance alone, two approaching fighters overshoot into each other's
-	## hilts.
+	## grips.
 	var arriving := perceived - _closing_lead(seen, me)
 	var utilities := PackedFloat64Array([HOLD_UTILITY, 0.0, 0.0, 0.0, 0.0])
 	utilities[Move.APPROACH] = (profile.aggression + pressure) * SimMath.clamp01((arriving - desired) / APPROACH_RAMP)
@@ -303,7 +326,7 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 	if seen.opp_point_threat > 0.3 and perceived < reach + THREAT_RANGE and not striking:
 		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.point_threat_weight * seen.opp_point_threat)
 		utilities[Move.ORBIT] = maxf(utilities[Move.ORBIT], profile.point_threat_weight * seen.opp_point_threat * 0.6)
-	if perceived < _range(profile.tap_range) - SMOTHERED_MARGIN and not striking:
+	if perceived < smothered_line() and not striking:
 		utilities[Move.RETREAT] = maxf(utilities[Move.RETREAT], profile.spacing_weight)
 	var initiative := seen.opp_threat_time - seen.my_threat_time
 	if initiative < -INITIATIVE_MARGIN and perceived < reach + INITIATIVE_RANGE and not striking:
@@ -336,7 +359,7 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 		## Dash in only when the gap still needs closing.
 		if perceived > reach:
 			burst_utility = maxf(burst_utility, BURST_UTILITY_MIN)
-	_consider_burst(burst_utility, striking, assessment, me)
+	_consider_burst(burst_utility, striking, assessment, me, arriving - desired)
 	_attack = Attack.NONE
 	if _holding or not ready:
 		return
@@ -383,8 +406,11 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 ## orbit triggers a lateral dash (side-step) when the profile allows it.
 ## Bait never dashes — baiting holds spacing, dashing spends it.
 ## EdgeSafetyEvaluator filters any burst whose predicted trajectory crosses
-## the platform edge.
-func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessment, me: FighterState) -> void:
+## the platform edge. A forward dash spends its whole distance at once, so it
+## is taken only when `to_close` — how much farther than the range this
+## approach closes to the bodies will be once it can stop — is at least one
+## dash: the dash never carries the CPU inside its own preferred measure.
+func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessment, me: FighterState, to_close: float) -> void:
 	if profile.burst_weight <= 0.0 or _burst_cursor < BURST_SCRIPT.size() or striking:
 		return
 	if utility < BURST_UTILITY_MIN:
@@ -394,6 +420,8 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 	if _move == Move.APPROACH or _move == Move.RETREAT:
 		var sign_for_move := 1.0 if _move == Move.APPROACH else -1.0
 		if _rng.next_float() >= profile.burst_weight:
+			return
+		if _move == Move.APPROACH and to_close < dash_travel():
 			return
 		var kind := MovementGestureState.BurstKind.FORWARD_DASH if sign_for_move > 0.0 else MovementGestureState.BurstKind.BACK_DASH
 		var safety := EdgeSafetyEvaluator.evaluate_burst(me, kind, _rules, condition)
@@ -513,7 +541,7 @@ func _clear_route(seen: CpuObservation, me: FighterState) -> float:
 ## a bound route is never taken as clear — the bind is decided by the ordinary
 ## utilities and by physics, not by an invented forecast.
 static func _reaches_flesh(reading: ThreatEstimate) -> bool:
-	return not reading.starts_bound and (reading.first_contact == ThreatEstimate.BODY or reading.first_contact == ThreatEstimate.HAND)
+	return not reading.starts_bound and (reading.first_contact == ThreatEstimate.BODY or reading.first_contact == ThreatEstimate.GRIP)
 
 
 ## The side of the opponent's line (its heading, as perceived; +1

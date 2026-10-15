@@ -34,7 +34,7 @@ func _scene(angle: float, fraction: float, spin: float = SPIN, rules: DuelRules 
 	a.weapon.speed = spin
 	a.weapon.phase = CombatPhase.Id.ACTIVE_THREAT
 	var pose := WeaponKinematics.pose_of(a, rules.combatant(0), BladePose.new())
-	var r := rules.combatant(0).weapon.hilt_radius + fraction * rules.combatant(0).weapon.blade_length()
+	var r := rules.combatant(0).weapon.blade_base_radius + fraction * rules.combatant(0).weapon.blade_length()
 	var side := signf(spin) if spin != 0.0 else 1.0
 	DuelFixture.place(b, pose.point_x(r) - pose.uy * 0.3 * side, pose.point_y(r) + pose.ux * 0.3 * side, PI)
 	return [state, pose.point_x(r), pose.point_y(r)]
@@ -65,7 +65,7 @@ func test_the_carriage_moving_along_its_orbit_reaches_the_contact_speed() -> voi
 		var angle := deg_to_rad(degrees)
 		var scene := _scene(angle, 0.6)
 		var impact := _impact(scene)
-		var r := _rules.combatant(0).weapon.hilt_radius + 0.6 * _rules.combatant(0).weapon.blade_length()
+		var r := _rules.combatant(0).weapon.blade_base_radius + 0.6 * _rules.combatant(0).weapon.blade_length()
 		var h := 1e-6
 		var ahead := WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle + h, _rules.combatant(0), BladePose.new())
 		var behind := WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle - h, _rules.combatant(0), BladePose.new())
@@ -121,16 +121,16 @@ func _crossing(fraction_a: float, fraction_b: float) -> PackedFloat64Array:
 	a.weapon.angle = 0.0
 	b.weapon.angle = 0.0
 	var pose_a := WeaponKinematics.pose_of(a, spec, BladePose.new())
-	var px := pose_a.point_x(weapon.hilt_radius + fraction_a * weapon.blade_length())
-	var py := pose_a.point_y(weapon.hilt_radius + fraction_a * weapon.blade_length())
+	var px := pose_a.point_x(weapon.blade_base_radius + fraction_a * weapon.blade_length())
+	var py := pose_a.point_y(weapon.blade_base_radius + fraction_a * weapon.blade_length())
 	## B at guard-centre too, its blade along its own heading, placed so the
 	## point `fraction_b` down it is exactly that contact point.
 	var heading := deg_to_rad(120.0)
-	var down := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new()).origin_x + weapon.hilt_radius + fraction_b * weapon.blade_length()
+	var down := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new()).origin_x + weapon.blade_base_radius + fraction_b * weapon.blade_length()
 	DuelFixture.place(b, px - cos(heading) * down, py - sin(heading) * down, heading)
 	var pose_b := WeaponKinematics.pose_of(b, spec, BladePose.new())
-	assert_near(pose_b.point_x(weapon.hilt_radius + fraction_b * weapon.blade_length()), px, 1e-9, "fixture: the point is on B's blade too (x)")
-	assert_near(pose_b.point_y(weapon.hilt_radius + fraction_b * weapon.blade_length()), py, 1e-9, "(y)")
+	assert_near(pose_b.point_x(weapon.blade_base_radius + fraction_b * weapon.blade_length()), px, 1e-9, "fixture: the point is on B's blade too (x)")
+	assert_near(pose_b.point_y(weapon.blade_base_radius + fraction_b * weapon.blade_length()), py, 1e-9, "(y)")
 	var nx := -pose_a.uy
 	var ny := pose_a.ux
 	var sides := PackedFloat64Array()
@@ -448,7 +448,7 @@ func _touching() -> Array:
 	a.weapon.speed = 0.0
 	a.turn_rate = 0.0
 	var pose_a := WeaponKinematics.pose_of(a, spec, BladePose.new())
-	var r := weapon.hilt_radius + 0.55 * weapon.blade_length()
+	var r := weapon.blade_base_radius + 0.55 * weapon.blade_length()
 	var px := pose_a.point_x(r)
 	var py := pose_a.point_y(r)
 	var heading := deg_to_rad(90.0)

@@ -99,21 +99,18 @@ func test_director_produces_empty_frame_with_no_events() -> void:
 	assert_false(frame.has_requests(), "no events = no requests")
 
 
-## The clang's timbre comes from where the swords met (7C): forte lower than
-## foible, a crossguard or handle a dull knock, and nothing about charge.
-func test_a_clash_rings_by_where_the_swords_met() -> void:
-	var blade := SwordContactSet.Feature.BLADE
-	var at := func(f0: float, f1: float, a: int, b: int, charge: float) -> float:
+## The clang's timbre comes from where the blades met (7C): forte lower than
+## foible, and nothing about charge.
+func test_a_clash_rings_by_where_the_blades_met() -> void:
+	var at := func(f0: float, f1: float, charge: float) -> float:
 		return CombatFeedbackDirector.clash_pitch(DuelEvent.create(DuelEventTypes.BLADE_CONTACT, 1, 0, 1, {
-			DuelEventKeys.FRACTION_0: f0, DuelEventKeys.FRACTION_1: f1,
-			DuelEventKeys.FEATURE_0: a, DuelEventKeys.FEATURE_1: b, DuelEventKeys.CHARGE: charge,
+			DuelEventKeys.FRACTION_0: f0, DuelEventKeys.FRACTION_1: f1, DuelEventKeys.CHARGE: charge,
 		}))
-	var forte: float = at.call(0.1, 0.1, blade, blade, 0.0)
-	var foible: float = at.call(0.9, 0.9, blade, blade, 0.0)
+	var forte: float = at.call(0.1, 0.1, 0.0)
+	var foible: float = at.call(0.9, 0.9, 0.0)
 	assert_true(foible > forte, "steel struck toward the point rings higher than at the forte (%.3f vs %.3f)" % [foible, forte])
-	var hilt: float = at.call(0.0, 0.5, SwordContactSet.Feature.GUARD, blade, 0.0)
-	assert_true(hilt < forte, "a crossguard in the contact knocks lower still (%.3f)" % hilt)
-	assert_eq(at.call(0.9, 0.9, blade, blade, 1.0), foible, "and a full charge changes nothing about it")
+	assert_eq(at.call(0.0, 0.0, 0.0), CombatFeedbackDirector.CLASH_PITCH_FORTE, "at the crossguard end it is the forte's ring")
+	assert_eq(at.call(0.9, 0.9, 1.0), foible, "and a full charge changes nothing about it")
 
 
 func test_director_classifies_blade_contact_into_typed_requests() -> void:
@@ -567,7 +564,7 @@ func test_a_released_blade_carries_its_own_spin() -> void:
 	var row := PresentationFighter.new()
 	row.blade_speed = 5.0
 	row.swing_dir = -1.0
-	row.hilt_radius = 0.25
+	row.blade_base_radius = 0.25
 	row.tip_radius = 1.25
 	var drop := WeaponDropRequest.from_blade(0, 0.0, row, 1)
 	assert_eq(drop.angular_velocity, Vector3(0.0, -5.0, 0.0), "the spin keeps its direction")

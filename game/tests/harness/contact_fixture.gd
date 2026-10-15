@@ -43,7 +43,7 @@ static func arm(
 ## How far up the y axis fighter 1 (facing −y, sword at −`side`·45°) must stand
 ## from fighter 0 (at the origin facing +y, sword at +`side`·45°) for their
 ## crossed diagonal guards to sit `surface_gap` apart (m; negative overlaps) —
-## the swords' nearest features, as `SwordContactGeometry.measure` reads them.
+## the blades, as `SwordContactGeometry.measure` reads them.
 ## Derived from the track rather than pinned, so a rules change to `C(θ)` moves
 ## the scene with it instead of silently pulling the guards apart. `offset_x`
 ## stands fighter 1 that far along x.
@@ -89,7 +89,7 @@ static func blade_report(state: MatchState, ax: float, ay: float, bx: float, by:
 	var length := SimMath.length(ax - bx, ay - by)
 	var manifold := state.blade_contact
 	manifold.begin_substep()
-	manifold.record_point(0, SwordContactSet.Feature.BLADE, SwordContactSet.Feature.BLADE, (ax + bx) * 0.5, (ay + by) * 0.5, 0.5, 0.5, (ax - bx) / length, (ay - by) / length)
+	manifold.record_point(0, (ax + bx) * 0.5, (ay + by) * 0.5, 0.5, 0.5, (ax - bx) / length, (ay - by) / length)
 	return report
 
 

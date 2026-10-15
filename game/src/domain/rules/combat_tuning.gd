@@ -55,12 +55,12 @@ var contact_slop: float = 0.0
 var contact_max_correction: float = 0.0
 ## Coulomb friction between a sword and what it touches (BLADE-FRICTION-001):
 ## the tangent impulse at a contact never exceeds μ times its normal impulse.
-## One coefficient per material pair — blade on blade, blade on a living body,
-## and anything on a guard crossbar. They are gameplay calibration, not steel
-## tables, and they select no other behaviour: μ = 0 is the frictionless solve.
+## One coefficient per material pair — blade on blade and blade on a living
+## body (only blades are steel, STEEL-TOPOLOGY-001). They are gameplay
+## calibration, not steel tables, and they select no other behaviour: μ = 0 is
+## the frictionless solve.
 var blade_friction: float = 0.0
 var blade_body_friction: float = 0.0
-var guard_friction: float = 0.0
 
 ## A solid reference impact, for consumers that need impulse and severity as
 ## bounded signals rather than raw kg·m/s and joules. The injury calibration:
@@ -201,8 +201,6 @@ func is_valid() -> bool:
 		and blade_friction >= 0.0
 		and blade_body_friction >= 0.0
 		and blade_body_friction <= blade_friction
-		and guard_friction >= 0.0
-		and guard_friction <= 1.0
 		and blade_friction <= 1.0
 		and condition_force_floor >= 0.5
 		and condition_force_floor <= 1.0
@@ -260,7 +258,6 @@ func _all_finite() -> bool:
 		and is_finite(separation_epsilon)
 		and is_finite(contact_slop) and is_finite(contact_max_correction)
 		and is_finite(blade_friction) and is_finite(blade_body_friction)
-		and is_finite(guard_friction)
 		and is_finite(reference_impulse) and is_finite(reference_thrust_severity)
 		and is_finite(reference_severity) and is_finite(blade_solid_speed)
 		and is_finite(blade_strong_speed)

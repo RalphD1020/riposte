@@ -64,8 +64,8 @@ func _long_weapon(fighter: FighterDefinition) -> WeaponDefinition:
 	var weapon := WeaponCatalog.bastard_sword_at(1.15, 2.1, fighter.grip_radius)
 	weapon.id = LONG_ID
 	## A longer blade with the reference crossguard: the bar does not grow.
-	weapon.guard_half_span = PhysicalBaseline.GUARD_HALF_SPAN_M
-	weapon.guard_radius = PhysicalBaseline.GUARD_DEPTH_M * 0.5
+	weapon.crossguard_half_span = PhysicalBaseline.CROSSGUARD_HALF_SPAN_M
+	weapon.crossguard_radius = PhysicalBaseline.CROSSGUARD_DEPTH_M * 0.5
 	return weapon
 
 
@@ -166,7 +166,7 @@ func test_one_contact_solve_uses_each_sides_own_masses() -> void:
 	attacker.weapon.angle = 0.0
 	attacker.weapon.speed = 8.0
 	var pose := WeaponKinematics.pose_of(attacker, rules.combatant(0), BladePose.new())
-	var r := (rules.combatant(0).weapon.hilt_radius + rules.combatant(0).weapon.tip_radius) * 0.5
+	var r := (rules.combatant(0).weapon.blade_base_radius + rules.combatant(0).weapon.tip_radius) * 0.5
 	## ACT
 	var impact := ImpactModel.resolve(attacker, target, pose.point_x(r), pose.point_y(r), rules)
 	## ASSERT
@@ -201,16 +201,24 @@ func test_only_the_long_weapon_reaches_between_the_two_reaches() -> void:
 	assert_false(heavy_aims.blade or light_aims.blade, "fixture: the swords do not touch")
 	assert_true(heavy_aims.body[1], "the long sword in Long Guard reaches the light torso at %.3f m" % measure)
 	assert_false(light_aims.body[0], "the short sword cannot reach the heavy torso from there")
-	## PERTURB: on the line, the light fighter's threat estimate must close the
-	## gap first.
+	## PERTURB: the same two scenes, read by the threat estimate — the light
+	## fighter's must close the gap first. (Both in Long Guard on one line the
+	## swords would lie through each other, a state no tick reaches; each
+	## target stands side-on, as above.)
+	var light_threat := _threat_down_the_line(rules, measure, 0)
+	var heavy_threat := _threat_down_the_line(rules, measure, 1)
+	assert_true(heavy_threat < light_threat, "so the long sword threatens first (%.3f vs %.3f s)" % [heavy_threat, light_threat])
+
+
+## `aimer`'s time to threaten the other fighter (`InitiativeModel`) with its
+## sword in Long Guard down the line at `measure`, the other side-on.
+func _threat_down_the_line(rules: DuelRules, measure: float, aimer: int) -> float:
 	var state := DuelFixture.state(rules)
-	DuelFixture.place(state.fighter(0), 0.0, 0.0, 0.0)
-	DuelFixture.place(state.fighter(1), measure, 0.0, PI)
+	DuelFixture.place(state.fighter(0), 0.0, 0.0, 0.0 if aimer == 0 else PI / 2.0)
+	DuelFixture.place(state.fighter(1), measure, 0.0, PI if aimer == 1 else PI / 2.0)
 	state.fighter(0).weapon.angle = 0.0
 	state.fighter(1).weapon.angle = 0.0
-	var light_threat := InitiativeModel.time_to_threat(state.fighter(0), state.fighter(1), rules)
-	var heavy_threat := InitiativeModel.time_to_threat(state.fighter(1), state.fighter(0), rules)
-	assert_true(heavy_threat < light_threat, "so the long sword threatens first (%.3f vs %.3f s)" % [heavy_threat, light_threat])
+	return InitiativeModel.time_to_threat(state.fighter(aimer), state.fighter(1 - aimer), rules)
 
 
 ## The collision report with `aimer`'s sword in Long Guard down the line at

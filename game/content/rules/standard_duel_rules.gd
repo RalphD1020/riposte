@@ -51,7 +51,7 @@ static func create() -> DuelRules:
 static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter_1: StringName, weapon_1: StringName) -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 49
+	rules.version = 52
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
 	rules.arena_id = ContentIds.ARENA_STANDARD
@@ -148,10 +148,9 @@ static func combat_tuning() -> CombatTuning:
 	## Coulomb friction (BLADE-FRICTION-001), gameplay calibration seeds for
 	## 7B.8: steel on steel grips enough that a press has consequence and a fast
 	## glance still slides; a blade on cloth and flesh barely grips, so a cut
-	## resting on a torso keeps sliding; a crossbar catches.
+	## resting on a torso keeps sliding.
 	combat.blade_friction = 0.2
 	combat.blade_body_friction = 0.05
-	combat.guard_friction = 0.4
 	## Condition (rules 45). Damage alone drives it, linearly: at zero health a
 	## fighter keeps 70 % of their voluntary force, 85 % of their voluntary
 	## speeds and 80 % of their tracking rate (0.85 / 0.925 / 0.90 at half

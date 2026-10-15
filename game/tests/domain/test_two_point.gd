@@ -1,14 +1,12 @@
 extends TestCase
 
-## TWO-POINT: every feature pair of two compound swords (BLADE / GUARD / HILT
-## on each side) is its own manifold of at most two contact points
-## (TWO-POINT-001, CONTACT-MANIFOLD-001): its candidates, duplicates merged,
-## the two nearest distinct constraints kept. The sword pair keeps every pair's
-## points, so a lock with more constraints than two keeps them all. Every point
-## is a row from its first impact, solved like a held contact — never a
-## midpoint impulse that becomes several constraints a tick later. The event is
-## placed at the touching points' centroid; the solve uses the points
-## themselves.
+## TWO-POINT: two blades — the only steel (STEEL-TOPOLOGY-001) — are one
+## manifold of at most two contact points (TWO-POINT-001,
+## CONTACT-MANIFOLD-001): the candidates, duplicates merged, the two nearest
+## distinct constraints kept. Every point is a row from its first impact,
+## solved like a held contact — never a midpoint impulse that becomes two
+## constraints a tick later. The event is placed at the touching points'
+## centroid; the solve uses the points themselves.
 ##
 ## See also: /docs/reference/testing.md
 ## See also: /docs/concepts/combat.md
@@ -47,8 +45,10 @@ func _lying_along(rules: DuelRules, lateral: float, mirror: bool = false, short:
 	var state := DuelFixture.state(rules)
 	ContactFixture.arm(state.fighter(1), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new())
-	var guard_x := pose.point_x(weapon.guard_centre_radius)
-	var tip_x := guard_x + weapon.guard_radius + weapon.blade_radius + short
+	## The overlap ends `short` beyond the guard root's apex, where each blade's
+	## own steel starts: two blades along each other, clear of either guard.
+	var root_x := pose.point_x(weapon.guard_root_apex_radius())
+	var tip_x := root_x + weapon.blade_radius + short
 	var at := _stand_for(tip_x, lateral * flip, PI, weapon.tip_radius, spec)
 	ContactFixture.arm(state.fighter(0), at.x, at.y, PI, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	return state
@@ -63,7 +63,7 @@ func _record_touching(state: MatchState, geometry: SwordContactGeometry) -> int:
 	for point in geometry.count:
 		if geometry.point_gap[point] > 0.0:
 			continue
-		manifold.record_point(index, geometry.point_feature_a[point] as SwordContactSet.Feature, geometry.point_feature_b[point] as SwordContactSet.Feature, (geometry.point_ax[point] + geometry.point_bx[point]) * 0.5, (geometry.point_ay[point] + geometry.point_by[point]) * 0.5, geometry.point_fraction_a[point], geometry.point_fraction_b[point], geometry.point_nx[point], geometry.point_ny[point], geometry.point_local_a[point], geometry.point_local_b[point])
+		manifold.record_point(index, (geometry.point_ax[point] + geometry.point_bx[point]) * 0.5, (geometry.point_ay[point] + geometry.point_by[point]) * 0.5, geometry.point_fraction_a[point], geometry.point_fraction_b[point], geometry.point_nx[point], geometry.point_ny[point])
 		index += 1
 	manifold.observe(geometry.gap, 0.0, _rules.combat.separation_epsilon)
 	return index
@@ -75,14 +75,15 @@ func test_crossing_blades_touch_at_one_point() -> void:
 	var state := DuelFixture.state(_rules)
 	ContactFixture.arm(state.fighter(1), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new())
-	var r := (weapon.hilt_radius + weapon.tip_radius) * 0.5
+	var r := (weapon.blade_base_radius + weapon.tip_radius) * 0.5
 	var at := _stand_for(pose.point_x(r), pose.point_y(r) + 2.0 * weapon.blade_radius - 0.001, deg_to_rad(-120.0), r, spec)
 	ContactFixture.arm(state.fighter(0), at.x, at.y, deg_to_rad(-120.0), 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	var geometry := SwordContactGeometry.new()
 	assert_true(_measure(state, _rules, geometry) < 0.0, "fixture: the blades cross and touch")
 	var where := PackedFloat64Array([0.0, 0.0])
 	assert_eq(geometry.centroid(0.0, where), 1, "crossing blades touch at one point")
-	assert_eq([geometry.feature_a, geometry.feature_b], [SwordContactSet.Feature.BLADE, SwordContactSet.Feature.BLADE], "blade on blade")
+	assert_between(geometry.fraction_a, 0.0, 1.0, "on fighter 0's blade")
+	assert_between(geometry.fraction_b, 0.0, 1.0, "and fighter 1's")
 
 
 func test_blades_lying_along_each_other_touch_at_both_ends_of_the_overlap() -> void:
@@ -93,7 +94,6 @@ func test_blades_lying_along_each_other_touch_at_both_ends_of_the_overlap() -> v
 	var where := PackedFloat64Array([0.0, 0.0])
 	assert_eq(geometry.centroid(0.0, where), 2, "a line contact is two points")
 	for point in 2:
-		assert_eq([geometry.point_feature_a[point], geometry.point_feature_b[point]], [SwordContactSet.Feature.BLADE, SwordContactSet.Feature.BLADE], "point %d is blade on blade" % point)
 		assert_near(geometry.point_ny[point], 1.0, 1e-9, "point %d pushes straight apart" % point)
 	var spread := absf(geometry.point_ax[1] - geometry.point_ax[0])
 	assert_true(spread > 0.5, "at the two ends of the overlap, not one midpoint (%.3f m apart)" % spread)
@@ -126,33 +126,6 @@ func test_a_near_parallel_line_contact_is_held_at_both_ends() -> void:
 		assert_eq(geometry.dropped_within(0.0), 0, "tilt %s: and nothing real is left out" % tilt)
 
 
-## A blade caught in the corner between the crossbar and the handle touches
-## both, pushed two ways: two constraints, though they meet at one place.
-func test_a_blade_in_the_corner_of_guard_and_handle_is_two_constraints() -> void:
-	var weapon := _rules.combatant(0).weapon
-	var spec := _rules.combatant(0)
-	var state := DuelFixture.state(_rules)
-	ContactFixture.arm(state.fighter(1), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new())
-	var corner_x := pose.point_x(weapon.guard_centre_radius) - weapon.guard_radius - weapon.blade_radius + 0.0003
-	var corner_y := weapon.handle_radius + weapon.blade_radius - 0.0003
-	var direction := -PI / 4.0
-	var at := _stand_for(corner_x, corner_y, direction, weapon.tip_radius, spec)
-	ContactFixture.arm(state.fighter(0), at.x, at.y, direction, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	var geometry := SwordContactGeometry.new()
-	assert_true(_measure(state, _rules, geometry) < 0.0, "fixture: the point sits in the corner")
-	var where := PackedFloat64Array([0.0, 0.0])
-	assert_eq(geometry.centroid(0.0, where), 2, "two touching points")
-	var touching := _touching(geometry)
-	var pairs := []
-	for point in touching:
-		pairs.append([geometry.point_feature_a[point], geometry.point_feature_b[point]])
-	assert_true(pairs.has([SwordContactSet.Feature.BLADE, SwordContactSet.Feature.GUARD]), "one on the crossbar (%s)" % [pairs])
-	assert_true(pairs.has([SwordContactSet.Feature.BLADE, SwordContactSet.Feature.HILT]), "one on the handle (%s)" % [pairs])
-	var dot := geometry.point_nx[touching[0]] * geometry.point_nx[touching[1]] + geometry.point_ny[touching[0]] * geometry.point_ny[touching[1]]
-	assert_true(absf(dot) < 0.2, "pushed two different ways (cos %.3f)" % dot)
-
-
 ## The geometry's touching points (gap ≤ 0), in its canonical order.
 static func _touching(geometry: SwordContactGeometry) -> PackedInt32Array:
 	var out := PackedInt32Array()
@@ -173,7 +146,7 @@ func test_the_manifold_mirrors_exactly() -> void:
 	assert_eq(reflected.count, straight.count, "the same number of points")
 	for point in straight.count:
 		assert_near(reflected.point_gap[point], straight.point_gap[point], 1e-12, "point %d: the same gap" % point)
-		assert_eq(reflected.point_feature_a[point], straight.point_feature_a[point], "point %d: the same feature on a" % point)
+		assert_near(reflected.point_fraction_a[point], straight.point_fraction_a[point], 1e-12, "point %d: the same place on a's blade" % point)
 		assert_near(reflected.point_ax[point], straight.point_ax[point], 1e-9, "point %d: the same x" % point)
 		assert_near(reflected.point_ay[point], -straight.point_ay[point], 1e-9, "point %d: the reflected y" % point)
 		assert_near(reflected.point_ny[point], -straight.point_ny[point], 1e-9, "point %d: the reflected normal" % point)
@@ -188,7 +161,7 @@ func _record_touching_reversed(state: MatchState, geometry: SwordContactGeometry
 	touching.reverse()
 	var index := 0
 	for point: int in touching:
-		manifold.record_point(index, geometry.point_feature_a[point] as SwordContactSet.Feature, geometry.point_feature_b[point] as SwordContactSet.Feature, (geometry.point_ax[point] + geometry.point_bx[point]) * 0.5, (geometry.point_ay[point] + geometry.point_by[point]) * 0.5, geometry.point_fraction_a[point], geometry.point_fraction_b[point], geometry.point_nx[point], geometry.point_ny[point], geometry.point_local_a[point], geometry.point_local_b[point])
+		manifold.record_point(index, (geometry.point_ax[point] + geometry.point_bx[point]) * 0.5, (geometry.point_ay[point] + geometry.point_by[point]) * 0.5, geometry.point_fraction_a[point], geometry.point_fraction_b[point], geometry.point_nx[point], geometry.point_ny[point])
 		index += 1
 	manifold.observe(geometry.gap, 0.0, _rules.combat.separation_epsilon)
 	return index
@@ -263,65 +236,12 @@ func test_a_line_contact_is_two_rows_from_its_first_impact() -> void:
 	assert_near(contacts[0].number(DuelEventKeys.X), middle, 1e-9, "the event sits at the line's middle")
 
 
-## Two swords lying along each other, each point resting on the other's
-## crossbar: the blades touch along a line (two points) and each point is
-## stopped by a guard (one point per guard, pushed along the blades) — four
-## independent constraints across three feature pairs, more than any one
-## manifold of two could hold (TWO-POINT-001). Every one is kept and every one
-## is solved from the first impact and in the hold; none is left closing.
-func test_a_sword_lock_keeps_every_independent_constraint() -> void:
-	var weapon := _rules.combatant(0).weapon
-	var spec := _rules.combatant(0)
-	var state := _lying_along(_rules, 2.0 * weapon.blade_radius - 0.0005, false, -0.0005)
-	var geometry := SwordContactGeometry.new()
-	assert_true(_measure(state, _rules, geometry) < 0.0, "fixture: the swords touch")
-	var touching := _touching(geometry)
-	var pairs := {}
-	for point in touching:
-		pairs[SwordContactSet.pair_of(geometry.point_feature_a[point], geometry.point_feature_b[point])] = true
-	assert_true(touching.size() > SwordContactSet.POINTS_PER_PAIR, "fixture: more constraints than one feature pair could hold (%d)" % touching.size())
-	assert_true(pairs.size() >= 3, "fixture: the line and both guards (%d feature pairs)" % pairs.size())
-	assert_eq(geometry.dropped_within(0.0), 0, "no feature pair leaves a constraint out")
-	var held := _lying_along(_rules, 2.0 * weapon.blade_radius - 0.0005, false, -0.0005)
-	## Perturb: drive fighter 0 into everything at once — along the blades
-	## into both guards, across them into the line.
-	for scene: MatchState in [state, held]:
-		scene.fighter(0).vx = -1.2
-		scene.fighter(0).vy = -0.6
-		scene.fighter(0).weapon.speed = 0.4
-		_measure(scene, _rules, geometry)
-		assert_eq(_record_touching(scene, geometry), touching.size(), "fixture: the sweep records every touching point")
-	var events: Array[DuelEvent] = []
-	var report := ContactReport.new()
-	report.blade = true
-	ContactResolver.resolve(state, report, _rules, 1, 0.0, events)
-	var contacts := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)
-	assert_eq(contacts.size(), 1, "one blade contact")
-	if contacts.is_empty():
-		return
-	assert_eq(int(contacts[0].number(DuelEventKeys.POINT_COUNT)), touching.size(), "solved on every point")
-	RigidContactSolver.new().solve_velocity(held, _rules)
-	for scene: MatchState in [state, held]:
-		var label := "impact" if scene == state else "hold"
-		var pose_a := WeaponKinematics.pose_of(scene.fighter(0), spec, BladePose.new())
-		var pose_b := WeaponKinematics.pose_of(scene.fighter(1), spec, BladePose.new())
-		var contact := scene.blade_contact
-		var guards := 0.0
-		for point in contact.point_count:
-			var closing := SwordContactSolver.closing_speed(scene.fighter(0), scene.fighter(1), pose_a, pose_b, contact.point_x[point], contact.point_y[point], contact.point_nx[point], contact.point_ny[point])
-			assert_true(closing <= 1.0e-6, "%s: point %d is no longer closing (%.6f m/s)" % [label, point, closing])
-			if contact.feature_a[point] == SwordContactSet.Feature.GUARD or contact.feature_b[point] == SwordContactSet.Feature.GUARD:
-				guards += contact.normal_impulse[point]
-		assert_true(guards > 0.0, "%s: the guards take part of the push (%.4f N·s)" % [label, guards])
-
-
 ## Impact and hold are one mechanics: a slow (inelastic) two-point first
 ## impact and the held solver, from the same velocities, leave the same
 ## velocities. Frictionless, both are exactly one block solve.
 func test_a_slow_two_point_impact_is_solved_exactly_like_a_hold() -> void:
 	var rules := DuelFixture.rules()
 	rules.combat.blade_friction = 0.0
-	rules.combat.guard_friction = 0.0
 	var weapon := rules.combatant(0).weapon
 	var impact := _lying_along(rules, 2.0 * weapon.blade_radius - 0.0005)
 	var held := _lying_along(rules, 2.0 * weapon.blade_radius - 0.0005)
@@ -344,36 +264,26 @@ func test_a_slow_two_point_impact_is_solved_exactly_like_a_hold() -> void:
 
 
 ## CONTACT-IDENTITY-001, the law itself: a point is the same contact as the
-## old point on the same features it moved least from, one to one, whatever
-## slot either occupies; a different feature pair or a jump past
-## `MATCH_DISTANCE` is a new contact.
+## old point it moved least from along the two blades, one to one, whatever
+## slot either occupies; a jump past `MATCH_DISTANCE` is a new contact.
 func test_contact_identity_follows_the_point_not_the_slot() -> void:
-	var blade := SwordContactSet.Feature.BLADE
-	var guard := SwordContactSet.Feature.GUARD
-	var old_a := PackedInt32Array([blade, blade])
-	var old_b := PackedInt32Array([blade, blade])
-	var old_la := PackedFloat64Array([0.20, 0.70])
-	var old_lb := PackedFloat64Array([0.80, 0.30])
+	var old_a := PackedFloat64Array([0.20, 0.70])
+	var old_b := PackedFloat64Array([0.80, 0.30])
 	var out := PackedInt32Array([0, 0])
 	## ARRANGE: two old points of one line contact, far apart on both blades.
-	assert_true(absf(old_la[0] - old_la[1]) + absf(old_lb[0] - old_lb[1]) > SwordContactSet.MATCH_DISTANCE, "fixture: the old points are distinguishable")
+	assert_true(absf(old_a[0] - old_a[1]) + absf(old_b[0] - old_b[1]) > SwordContactSet.MATCH_DISTANCE, "fixture: the old points are distinguishable")
 	## One survivor, now in slot 0, near old point 1.
-	SwordContactSet.assign(1, PackedInt32Array([blade, 0]), PackedInt32Array([blade, 0]), PackedFloat64Array([0.69, 0.0]), PackedFloat64Array([0.31, 0.0]), 2, old_a, old_b, old_la, old_lb, out)
+	SwordContactSet.assign(1, PackedFloat64Array([0.69, 0.0]), PackedFloat64Array([0.31, 0.0]), 2, old_a, old_b, out)
 	assert_eq(out[0], 1, "the survivor in slot 0 is old point 1, not whatever was in slot 0")
 	## Both points, in swapped slots.
-	SwordContactSet.assign(2, PackedInt32Array([blade, blade]), PackedInt32Array([blade, blade]), PackedFloat64Array([0.71, 0.21]), PackedFloat64Array([0.29, 0.79]), 2, old_a, old_b, old_la, old_lb, out)
+	SwordContactSet.assign(2, PackedFloat64Array([0.71, 0.21]), PackedFloat64Array([0.29, 0.79]), 2, old_a, old_b, out)
 	assert_eq([out[0], out[1]], [1, 0], "swapped slots keep their own contacts")
-	## PERTURB: another feature pair, or a jump, is a new contact.
-	SwordContactSet.assign(1, PackedInt32Array([guard, 0]), PackedInt32Array([blade, 0]), PackedFloat64Array([0.69, 0.0]), PackedFloat64Array([0.31, 0.0]), 2, old_a, old_b, old_la, old_lb, out)
-	assert_eq(out[0], SwordContactSet.UNMATCHED, "a crossbar touch is never the blade touch it replaced")
-	SwordContactSet.assign(1, PackedInt32Array([blade, 0]), PackedInt32Array([blade, 0]), PackedFloat64Array([0.45, 0.0]), PackedFloat64Array([0.55, 0.0]), 2, old_a, old_b, old_la, old_lb, out)
+	## PERTURB: a jump is a new contact.
+	SwordContactSet.assign(1, PackedFloat64Array([0.45, 0.0]), PackedFloat64Array([0.55, 0.0]), 2, old_a, old_b, out)
 	assert_eq(out[0], SwordContactSet.UNMATCHED, "a point that jumped past the match distance is new")
-	## A mirror reverses a crossbar's coordinate; the assignment is unchanged.
-	var guard_a := PackedInt32Array([guard, guard])
-	SwordContactSet.assign(2, guard_a, old_b, PackedFloat64Array([0.72, 0.18]), old_lb, 2, guard_a, old_b, old_la, old_lb, out)
-	var straight := [out[0], out[1]]
-	SwordContactSet.assign(2, guard_a, old_b, PackedFloat64Array([0.28, 0.82]), old_lb, 2, guard_a, old_b, PackedFloat64Array([0.80, 0.30]), old_lb, out)
-	assert_eq([out[0], out[1]], straight, "the mirrored crossbar matches the same way")
+	## Nothing old: everything is new.
+	SwordContactSet.assign(2, PackedFloat64Array([0.20, 0.70]), PackedFloat64Array([0.80, 0.30]), 0, old_a, old_b, out)
+	assert_eq([out[0], out[1]], [SwordContactSet.UNMATCHED, SwordContactSet.UNMATCHED], "with no old points every point is a new contact")
 
 
 ## A line contact slides apart: the blades lie along each other (two points),
@@ -400,7 +310,7 @@ func test_a_surviving_endpoint_keeps_its_own_history() -> void:
 	state.fighter(0).weapon.speed = 0.3
 	solver.solve_velocity(state, rules, true)
 	assert_eq(manifold.hold_count(), 2, "fixture: both points are held")
-	var tip_end := 1 if manifold.local_a[1] > manifold.local_a[0] else 0
+	var tip_end := 1 if manifold.fraction_a[1] > manifold.fraction_a[0] else 0
 	assert_eq(tip_end, 1, "fixture: the end at fighter 0's point is slot 1 (farther from its origin)")
 	var held_normal := manifold.hold_normal[tip_end]
 	assert_true(absf(manifold.hold_normal[0] - manifold.hold_normal[1]) > 1.0e-4, "fixture: the two ends were held with different impulses (%.4f vs %.4f)" % [manifold.hold_normal[0], manifold.hold_normal[1]])
@@ -480,7 +390,7 @@ func test_a_sliding_two_point_impact_keeps_every_normal_and_its_cone() -> void:
 	pose_b = WeaponKinematics.pose_of(b, spec, BladePose.new())
 	var saturated := false
 	for point in 2:
-		var mu := ContactMechanics.friction(manifold.feature_a[point], manifold.feature_b[point], rules.combat)
+		var mu := rules.combat.blade_friction
 		var separation := -SwordContactSolver.closing_speed(a, b, pose_a, pose_b, manifold.point_x[point], manifold.point_y[point], manifold.point_nx[point], manifold.point_ny[point])
 		assert_true(separation >= targets[point] - 1.0e-9, "point %d meets its restitution target (%.6f ≥ %.6f m/s)" % [point, separation, targets[point]])
 		assert_true(absf(manifold.tangent_impulse[point]) <= mu * manifold.normal_impulse[point] + 1.0e-12, "point %d stays inside its cone (|%.5f| ≤ %.5f)" % [point, manifold.tangent_impulse[point], mu * manifold.normal_impulse[point]])
@@ -502,7 +412,7 @@ func test_a_frictionless_crossing_takes_out_the_closed_form_energy() -> void:
 	var state := DuelFixture.state(rules)
 	ContactFixture.arm(state.fighter(1), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new())
-	var r := (weapon.hilt_radius + weapon.tip_radius) * 0.5
+	var r := (weapon.blade_base_radius + weapon.tip_radius) * 0.5
 	var at := _stand_for(pose.point_x(r), pose.point_y(r) + 2.0 * weapon.blade_radius - 0.001, deg_to_rad(-120.0), r, spec)
 	ContactFixture.arm(state.fighter(0), at.x, at.y, deg_to_rad(-120.0), 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	state.fighter(0).vy = -3.0
@@ -569,47 +479,39 @@ func test_the_broadphase_is_exact_near_contact_and_conservative_beyond() -> void
 	assert_eq(wrong.size(), 0, "the broadphase never changes an answer a caller reads:\n%s" % "\n".join(wrong.slice(0, 5)))
 
 
-## Independent reference: every present feature pair, measured exactly.
+## Independent reference, every segment pair measured exactly with no
+## broadphase: the two blade capsules (guard-root apex to point), and each
+## guard root — its bar at the crossguard's thickness, its two edges at the
+## blade's — against the other blade when that blade comes from its protected
+## side.
 func _brute_gap(pax: float, pay: float, ux: float, uy: float, pbx: float, pby: float, vx: float, vy: float, weapon: WeaponDefinition) -> float:
 	var contact := SegmentContact.new()
-	var la := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
-	var lb := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
-	var best := INF
-	for fa in 3:
-		for fb in 3:
-			if not SwordContactGeometry.has_feature(fa, weapon) or not SwordContactGeometry.has_feature(fb, weapon):
-				continue
-			SwordContactGeometry.local_segment(fa, weapon, la)
-			SwordContactGeometry.local_segment(fb, weapon, lb)
-			SimMath.closest_segments(
-				pax + ux * la[0] - uy * la[1], pay + uy * la[0] + ux * la[1], pax + ux * la[2] - uy * la[3], pay + uy * la[2] + ux * la[3],
-				pbx + vx * lb[0] - vy * lb[1], pby + vy * lb[0] + vx * lb[1], pbx + vx * lb[2] - vy * lb[3], pby + vy * lb[2] + vx * lb[3],
-				contact
-			)
-			best = minf(best, contact.distance - _feature_radius(fa, weapon) - _feature_radius(fb, weapon))
-	return best
-
-
-static func _feature_radius(feature: int, weapon: WeaponDefinition) -> float:
-	match feature:
-		SwordContactSet.Feature.GUARD:
-			return weapon.guard_radius
-		SwordContactSet.Feature.HILT:
-			return weapon.handle_radius
-	return weapon.blade_radius
-
-
-## HAND-CONTACT-001: steel keeps its real size. The handle collides as the
-## sword's own grip — never as the fists around it, which are hurt geometry
-## (two discs at the grip markers), not part of the sword.
-func test_the_hilt_is_the_handle_not_the_hands() -> void:
-	var weapon := _rules.combatant(0).weapon
-	var hand := _rules.combatant(0).fighter.hand_radius
-	assert_eq(weapon.handle_radius, PhysicalBaseline.GRIP_HALF_WIDTH_M, "the hilt is the measured grip")
-	assert_true(weapon.handle_radius < hand, "thinner than the fists around it")
-	assert_true(SwordContactGeometry.has_feature(SwordContactSet.Feature.HILT, weapon), "and collidable")
-	assert_false(weapon.protects(SwordContactSet.Feature.HILT), "but not steel that defends its wielder")
-	assert_true(weapon.protects(SwordContactSet.Feature.GUARD) and weapon.protects(SwordContactSet.Feature.BLADE), "as the guard and the blade are")
+	var apex := weapon.guard_root_apex_radius()
+	var blade_a := PackedFloat64Array([pax + ux * apex, pay + uy * apex, pax + ux * weapon.tip_radius, pay + uy * weapon.tip_radius])
+	var blade_b := PackedFloat64Array([pbx + vx * apex, pby + vy * apex, pbx + vx * weapon.tip_radius, pby + vy * weapon.tip_radius])
+	SimMath.closest_segments(blade_a[0], blade_a[1], blade_a[2], blade_a[3], blade_b[0], blade_b[1], blade_b[2], blade_b[3], contact)
+	var gap := contact.distance - 2.0 * weapon.blade_radius
+	for guard_on_b: bool in [true, false]:
+		var blade := blade_a if guard_on_b else blade_b
+		var ox := pbx if guard_on_b else pax
+		var oy := pby if guard_on_b else pay
+		var gx := vx if guard_on_b else ux
+		var gy := vy if guard_on_b else uy
+		if SwordContactGeometry.guard_side(ox, oy, gx, gy, weapon, blade) != 1:
+			continue
+		var bar_x := gx * weapon.crossguard_centre_radius
+		var bar_y := gy * weapon.crossguard_centre_radius
+		var ends := PackedFloat64Array([
+			ox + bar_x + gy * weapon.crossguard_half_span, oy + bar_y - gx * weapon.crossguard_half_span,
+			ox + bar_x - gy * weapon.crossguard_half_span, oy + bar_y + gx * weapon.crossguard_half_span,
+			ox + gx * apex, oy + gy * apex,
+		])
+		for edge in 3:
+			var to := (edge + 1) % 3
+			SimMath.closest_segments(blade[0], blade[1], blade[2], blade[3], ends[2 * edge], ends[2 * edge + 1], ends[2 * to], ends[2 * to + 1], contact)
+			var edge_radius := weapon.crossguard_radius
+			gap = minf(gap, contact.distance - weapon.blade_radius - edge_radius)
+	return gap
 
 
 ## RIGID-CONTACT-001 passivity at a stop: a two-point line contact pressed

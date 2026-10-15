@@ -46,17 +46,6 @@ static func weapon_inertia(pose: BladePose, spec: CombatantPhysicsSpec) -> float
 	return WeaponKinematics.held_inertia(spec, pose)
 
 
-## The Coulomb coefficient between two sword features (BLADE-FRICTION-001).
-## Material is the only thing a feature changes: the hilt furniture — the
-## crossbar and the gripped handle — on either side grips at `guard_friction`,
-## blade on blade at `blade_friction`. Nothing here knows strong, weak, bind or
-## glance.
-static func friction(feature_a: int, feature_b: int, combat: CombatTuning) -> float:
-	if feature_a != SwordContactSet.Feature.BLADE or feature_b != SwordContactSet.Feature.BLADE:
-		return combat.guard_friction
-	return combat.blade_friction
-
-
 ## The restitution of a new contact between two weapons closing at `closing`
 ## (m/s): the less elastic of the two materials decides (each weapon's own
 ## threshold applies to itself), so a soft weapon never rings like steel. For
@@ -124,7 +113,7 @@ static func percussion_radius(weapon: WeaponDefinition) -> float:
 
 ## The percussion radius as a blade fraction (0 = guard, 1 = tip).
 static func percussion_fraction(weapon: WeaponDefinition) -> float:
-	return SimMath.clamp01((percussion_radius(weapon) - weapon.hilt_radius) / weapon.blade_length())
+	return SimMath.clamp01((percussion_radius(weapon) - weapon.blade_base_radius) / weapon.blade_length())
 
 
 ## The reference strike's inverse effective mass: `attacker`'s fully coupled,

@@ -76,7 +76,7 @@ func _rebuild(snapshot: PresentationSnapshot) -> void:
 		_segment(body, body + Vector3(row.vx, 0.0, -row.vy) * VELOCITY_SCALE, RiposteTheme.SPARK)
 		## The authoritative blade, posed where collision has it.
 		WeaponKinematics.pose_at(row.x, row.y, row.facing, row.weapon_angle, row.combatant_spec, _pose)
-		var hilt := ArenaTransform.to_world(_pose.point_x(row.hilt_radius), _pose.point_y(row.hilt_radius), _blade_height)
+		var hilt := ArenaTransform.to_world(_pose.point_x(row.blade_base_radius), _pose.point_y(row.blade_base_radius), _blade_height)
 		var tip := ArenaTransform.to_world(_pose.point_x(row.tip_radius), _pose.point_y(row.tip_radius), _blade_height)
 		## The tip's own travel — rotation, footwork and the carriage's slide
 		## along the orbit together. This is the vector that decides

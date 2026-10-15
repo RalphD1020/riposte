@@ -11,10 +11,14 @@ extends RefCounted
 ## Which fields the hash covers, in which order. A schema change that is not a
 ## rules change (2: the stamina pool left state, STAMINA-003) moves every hash
 ## without changing the game, so recordings name it and are refused across it.
-## (3: a swing's HAND episode, `WeaponState.hand_struck`, DEFENSE-ROLE-001.)
+## (3: a swing's grip episode, `WeaponState.grip_struck`, DEFENSE-ROLE-001.)
 ## (4: a swing's pending deflection, `WeaponState.deflection_pending`,
-## DEFLECTION-001.)
-const LAYOUT_VERSION := 4
+## DEFLECTION-001.) (5: a hold record row is blade fractions only — the
+## feature pair it carried is gone with the crossguard and handle steel,
+## STEEL-TOPOLOGY-001.) (6: steel is blade and guard root again — a hold row
+## and a point carry their contact pair, and each guard pair its decided side,
+## GUARD-PROTECTION-001.)
+const LAYOUT_VERSION := 6
 
 
 static func hash_state(state: MatchState) -> String:
@@ -43,15 +47,15 @@ static func hash_state(state: MatchState) -> String:
 	## state (RIGID-CONTACT-003).
 	var manifold := state.blade_contact
 	## So is contact identity (CONTACT-IDENTITY-001): which hold record a row
-	## matches reads its feature coordinates, and a point's id and age carry.
-	## The hold record is compact, so its length and its entries are all of it.
+	## matches reads its blade fractions, and a point's id and age carry. The
+	## hold record is compact, so its length and its entries are all of it.
 	var held := manifold.hold_count()
-	ints.append_array(PackedInt64Array([manifold.point_count, manifold.next_contact_id, held]))
+	ints.append_array(PackedInt64Array([manifold.point_count, manifold.next_contact_id, held, manifold.guard_mode[0], manifold.guard_mode[1]]))
 	for i in held:
-		ints.append_array(PackedInt64Array([manifold.hold_active[i], manifold.hold_feature_a[i], manifold.hold_feature_b[i]]))
-		floats.append_array(PackedFloat64Array([manifold.hold_normal[i], manifold.hold_tangent[i], manifold.hold_local_a[i], manifold.hold_local_b[i]]))
+		ints.append_array(PackedInt64Array([manifold.hold_active[i], manifold.hold_pair[i]]))
+		floats.append_array(PackedFloat64Array([manifold.hold_normal[i], manifold.hold_tangent[i], manifold.hold_fraction_a[i], manifold.hold_fraction_b[i]]))
 	for i in manifold.point_count:
-		ints.append_array(PackedInt64Array([manifold.contact_id[i], manifold.age[i]]))
+		ints.append_array(PackedInt64Array([manifold.contact_id[i], manifold.age[i], manifold.pair[i]]))
 	for lifecycle in state.weapon_body_contacts:
 		ints.append(int(lifecycle.hold_active))
 		floats.append_array(PackedFloat64Array([lifecycle.hold_normal, lifecycle.hold_tangent]))
@@ -114,7 +118,7 @@ static func hash_state(state: MatchState) -> String:
 			weapon.phase,
 			weapon.phase_ticks,
 			int(weapon.attack_contacted),
-			int(weapon.hand_struck),
+			int(weapon.grip_struck),
 			int(weapon.deflection_pending),
 			weapon.recovery_ticks,
 			weapon.recovery_left,

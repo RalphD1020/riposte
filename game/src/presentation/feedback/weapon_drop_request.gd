@@ -46,7 +46,7 @@ static func create(p_slot: int, p_delay: float, p_linear: Vector3, p_angular: Ve
 ## The blade, mid-spin, as the hands release it: from a fighter's snapshot row.
 static func from_blade(p_slot: int, p_delay: float, row: PresentationFighter, p_key: int) -> WeaponDropRequest:
 	var omega := row.blade_speed * row.swing_dir
-	var radius := (row.hilt_radius + row.tip_radius) * 0.5
+	var radius := (row.blade_base_radius + row.tip_radius) * 0.5
 	return create(p_slot, p_delay, blade_velocity(row.blade_angle, omega, radius), Vector3(0.0, omega, 0.0), p_key)
 
 

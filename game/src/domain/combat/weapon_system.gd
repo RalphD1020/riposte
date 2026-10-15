@@ -231,7 +231,7 @@ static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick
 	weapon.swing_start = weapon.angle
 	weapon.swing_end = clampf(weapon.angle + weapon.swing_dir * definition.arc(charge), -definition.guard_limit, definition.guard_limit)
 	weapon.attack_contacted = false
-	weapon.hand_struck = false
+	weapon.grip_struck = false
 	weapon.deflection_pending = false
 	weapon.set_phase(CombatPhase.Id.LAUNCH)
 	events.append(DuelEvent.create(DuelEventTypes.ATTACK_RELEASED, tick, fighter.slot, DuelEvent.NONE, {

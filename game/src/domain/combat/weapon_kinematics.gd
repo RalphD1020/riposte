@@ -181,24 +181,24 @@ static func least_surface_gap(spec: CombatantPhysicsSpec) -> float:
 
 ## The least surface gap at one |θ| (radians): hands, sword and crossguard.
 static func surface_gap_at(spec: CombatantPhysicsSpec, angle: float) -> float:
-	return minf(minf(hand_gap_at(spec, angle), sword_gap_at(spec, angle)), guard_gap_at(spec, angle))
+	return minf(minf(hand_gap_at(spec, angle), sword_gap_at(spec, angle)), crossguard_gap_at(spec, angle))
 
 
 ## The crossguard bar's surface gap to the wielder's own torso at one |θ|
 ## (radians); +INF for a sword without a guard or on the fixed pivot.
-static func guard_gap_at(spec: CombatantPhysicsSpec, angle: float) -> float:
+static func crossguard_gap_at(spec: CombatantPhysicsSpec, angle: float) -> float:
 	var weapon := spec.weapon
-	if spec.handling.attack_path.is_fixed() or weapon.guard_half_span <= 0.0:
+	if spec.handling.attack_path.is_fixed() or weapon.crossguard_half_span <= 0.0:
 		return INF
 	var pose := pose_at(0.0, 0.0, 0.0, angle, spec, BladePose.new())
-	var cx := pose.point_x(weapon.guard_centre_radius)
-	var cy := pose.point_y(weapon.guard_centre_radius)
-	var x0 := cx + pose.uy * weapon.guard_half_span
-	var y0 := cy - pose.ux * weapon.guard_half_span
-	var x1 := cx - pose.uy * weapon.guard_half_span
-	var y1 := cy + pose.ux * weapon.guard_half_span
+	var cx := pose.point_x(weapon.crossguard_centre_radius)
+	var cy := pose.point_y(weapon.crossguard_centre_radius)
+	var x0 := cx + pose.uy * weapon.crossguard_half_span
+	var y0 := cy - pose.ux * weapon.crossguard_half_span
+	var x1 := cx - pose.uy * weapon.crossguard_half_span
+	var y1 := cy + pose.ux * weapon.crossguard_half_span
 	var t := SimMath.closest_param_on_segment(x0, y0, x1, y1, 0.0, 0.0)
-	return SimMath.length(SimMath.mix(x0, x1, t), SimMath.mix(y0, y1, t)) - spec.fighter.hurt_radius - weapon.guard_radius
+	return SimMath.length(SimMath.mix(x0, x1, t), SimMath.mix(y0, y1, t)) - spec.fighter.hurt_radius - weapon.crossguard_radius
 
 
 ## The hands' surface gap at one |θ| (radians).
@@ -240,7 +240,7 @@ static func _least_over_track(spec: CombatantPhysicsSpec, part: int) -> float:
 			1:
 				least = minf(least, sword_gap_at(spec, at))
 			_:
-				least = minf(least, guard_gap_at(spec, at))
+				least = minf(least, crossguard_gap_at(spec, at))
 	return least
 
 

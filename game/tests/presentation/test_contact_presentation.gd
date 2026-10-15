@@ -2,7 +2,7 @@ extends TestCase
 
 ## PRES-CONTACT: the drawn swords meet where the simulation says they touch
 ## (CONTACT-PRESENTATION-001). The combat plane owns the contact's XY, each
-## sword's yaw and hilt; presentation adds one shared height. A contacted sword
+## sword's yaw and grip; presentation adds one shared height. A contacted sword
 ## is level at that height, so it passes through the authoritative contact
 ## point; apart, each sword keeps its free lift; leaving a contact eases back.
 ## Sparks and the grind sit at the same rendered contact. Presentation never
@@ -50,7 +50,7 @@ func _crossing(touching: bool) -> MatchState:
 	var state := DuelSetup.new_state(_rules, 1)
 	ContactFixture.arm(state.fighter(1), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, BladePose.new())
-	var r := (weapon.hilt_radius + weapon.tip_radius) * 0.5
+	var r := (weapon.blade_base_radius + weapon.tip_radius) * 0.5
 	var direction := deg_to_rad(-120.0)
 	var reach := WeaponKinematics.pose_at(0.0, 0.0, direction, 0.0, spec, BladePose.new())
 	var lift := 2.0 * weapon.blade_radius - 0.001 if touching else 0.6
@@ -66,7 +66,7 @@ func _crossing(touching: bool) -> MatchState:
 	for point in geometry.count:
 		if geometry.point_gap[point] > 0.0:
 			continue
-		manifold.record_point(point, geometry.point_feature_a[point] as SwordContactSet.Feature, geometry.point_feature_b[point] as SwordContactSet.Feature, (geometry.point_ax[point] + geometry.point_bx[point]) * 0.5, (geometry.point_ay[point] + geometry.point_by[point]) * 0.5, geometry.point_fraction_a[point], geometry.point_fraction_b[point], geometry.point_nx[point], geometry.point_ny[point], geometry.point_local_a[point], geometry.point_local_b[point])
+		manifold.record_point(point, (geometry.point_ax[point] + geometry.point_bx[point]) * 0.5, (geometry.point_ay[point] + geometry.point_by[point]) * 0.5, geometry.point_fraction_a[point], geometry.point_fraction_b[point], geometry.point_nx[point], geometry.point_ny[point])
 	manifold.observe(gap, 0.0, _rules.combat.separation_epsilon)
 	return state
 
@@ -83,8 +83,8 @@ func test_the_snapshot_carries_every_touching_point_read_only() -> void:
 	assert_eq(snapshot.contacts.size(), state.blade_contact.point_count, "every touching point is projected")
 	var contact := snapshot.contacts[0]
 	assert_eq(contact.contact_id, state.blade_contact.contact_id[0], "with its stable identity")
-	assert_eq(contact.feature_a, state.blade_contact.feature_a[0], "its features")
-	assert_near(contact.local_a, state.blade_contact.local_a[0], 0.0, "and its place on each feature")
+	assert_near(contact.fraction_a, state.blade_contact.fraction_a[0], 0.0, "and its place on each blade")
+	assert_near(contact.fraction_b, state.blade_contact.fraction_b[0], 0.0, "on both")
 	var mount := _mount(state)
 	mount.presenter.push(snapshot, [] as Array[DuelEvent])
 	mount.presenter.render(1.0, 1.0 / 60.0)
@@ -95,7 +95,7 @@ func test_the_snapshot_carries_every_touching_point_read_only() -> void:
 
 
 ## The core parity: both drawn swords level, at one height, through the
-## authoritative contact; hilt and yaw stay where the plane put them.
+## authoritative contact; grip and yaw stay where the plane put them.
 func test_contacted_swords_are_level_and_meet_at_the_authoritative_point() -> void:
 	var state := _crossing(true)
 	var snapshot := SnapshotProjector.project(state, _rules)
@@ -107,15 +107,13 @@ func test_contacted_swords_are_level_and_meet_at_the_authoritative_point() -> vo
 	assert_false(is_nan(height), "fixture: a contact to draw")
 	assert_near(height, ContactPresentation.new().contact_height(snapshot, kits.weapon.blade_height), 1e-12, "the presenter draws the one shared height")
 	var contact := snapshot.contacts[0]
-	var shape := ContactPresentation.new()
 	var world := ArenaTransform.to_world(contact.x, contact.y, height)
 	for slot in 2:
 		var proxy := mount.presenter.fighter_proxy(slot)
 		assert_true(proxy.is_contact_anchored(), "slot %d: the sword is anchored at the contact" % slot)
 		assert_near(_proxy_pitch(mount, slot), 0.0, 1e-12, "slot %d: and level" % slot)
-		var feature := contact.feature_a if slot == 0 else contact.feature_b
-		var local := contact.local_a if slot == 0 else contact.local_b
-		var drawn := proxy.drawn_point(shape.along(feature, local, _rules.combatant(0).weapon))
+		var fraction := contact.fraction_a if slot == 0 else contact.fraction_b
+		var drawn := proxy.drawn_point(ContactPresentation.along(fraction, _rules.combatant(0).weapon))
 		assert_near(drawn.y, height, 1e-6, "slot %d: at the shared height" % slot)
 		var across := Vector2(drawn.x - world.x, drawn.z - world.z).length()
 		assert_true(across <= _rules.combatant(0).weapon.blade_radius + 0.002, "slot %d: its axis passes the contact within the blade's own radius (%.4f m)" % [slot, across])

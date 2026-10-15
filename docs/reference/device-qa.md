@@ -118,6 +118,20 @@ Then prove the negatives, which is where a gesture recognizer actually fails:
 - Push, wait past the window, push again. No dash.
 - Drag the thumb from forward around to back without resting. No dash.
 
+Open acceptance question — a double tap during hitstop. Hitstop holds the
+match clock (`FixedTickDriver.hold`: wall-clock time passes and no tick runs;
+the scene tree is not paused, so input callbacks still run). Attack edges are
+accumulated and reach the next tick, but the move stick is read as a level at
+each tick, so a rest that begins and ends inside a hold never reaches one and
+the two pushes read as one held push: no dash. Decide whether a gesture made
+during hitstop should reach the next tick (each edge still assigned to one
+exact tick, never applied to the authoritative state from the callback) or be
+ignored because the duel did not advance. Try it on touch, keyboard and a
+controller right after landing a hit and right after being hit; record the
+input edges, the ticks, what was recognized and the movement. This is a
+responsiveness question, not a blade-topology one; the input semantics stay
+as they are until it is decided.
+
 ## Touch cancellation
 
 - Swipe up to the notification shade mid-charge. The charge drops; no swing.
