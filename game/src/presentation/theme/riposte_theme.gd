@@ -77,6 +77,8 @@ const FONT_H1 := 44
 const FONT_DISPLAY := 56
 ## Restrained bars: condition is read primarily from the fighter's body.
 const HEALTH_BAR_HEIGHT := 8.0
+## Thinner than the health bar, so the two reads are not the same shape.
+const STAMINA_BAR_HEIGHT := 4.0
 ## Ornamental plates.
 const PLATE_RULE := 2
 const PLATE_SWEPT := 14

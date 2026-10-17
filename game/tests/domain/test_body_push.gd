@@ -326,7 +326,7 @@ func test_body_push_detected_during_fast_approach() -> void:
 
 
 func test_tick_order_version_bumped_for_body_push() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 14, "body push in contact loop bumps tick order (14: the stamina step is gone)")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 16, "body push stays in the contact loop (16: authority recovers after contacts, then stamina settles, STAMINA-004)")
 
 
 ## --- Rest epsilon (BODY-CONTACT-OWNERSHIP-001) -------------------------------
@@ -357,41 +357,72 @@ func test_the_body_rest_epsilon_is_hysteresis_not_physics() -> void:
 
 
 ## A long hold is stable: two fighters walking into each other for five
-## seconds, swords held back out of the way, stay in one continuous body
-## contact — never interpenetrating, never flickering apart and re-impacting
-## (which would re-apply first-contact restitution every few ticks).
+## seconds, blades on the settled neutral guard the return already tracks,
+## stay in one continuous body contact — never interpenetrating, never
+## flickering apart and re-impacting. A 45° guard on this line reaches past
+## the bodies, so the swords do meet; that meeting is not a failure of the
+## body hold. Parking the blades at the hard stop is a different contract
+## (`test_a_hard_stop_returns_into_the_press`): the return does not leave
+## them there.
 func test_a_long_body_hold_is_stable() -> void:
 	var runner := SimRunner.create(_rules, 1)
 	runner.skip_intro()
 	var state := runner.state
 	var touch := 2.0 * _rules.combatant(0).fighter.push_radius
+	var guard := _rules.combatant(0).weapon.guard_angle
 	DuelFixture.place(state.fighter(0), 0.0, -0.4, PI * 0.5)
 	DuelFixture.place(state.fighter(1), 0.0, 0.4, -PI * 0.5)
 	for slot in 2:
-		state.fighter(slot).weapon.angle = _rules.combatant(0).weapon.guard_limit * (1.0 if slot == 0 else -1.0)
-	var swords := 0
+		var weapon := state.fighter(slot).weapon
+		weapon.stable_side = -1.0
+		weapon.angle = -guard
+		weapon.speed = 0.0
+	var started := state.tick
 	var touched := -1
 	var flickers := 0
 	var deepest := INF
 	var widest := 0.0
-	for tick in 300:
-		var commands: Array[PlayerCommand] = [PlayerCommand.create(state.tick, 0.0, 1.0), PlayerCommand.create(state.tick, 0.0, 1.0)]
-		for event in runner.simulation.step(state, commands[0], commands[1]):
-			if event.type == DuelEventTypes.BLADE_CONTACT or event.type == DuelEventTypes.BODY_HIT:
-				swords += 1
+	for _tick in 300:
+		runner.push(PlayerCommand.create(state.tick, 0.0, 1.0), PlayerCommand.create(state.tick, 0.0, 1.0))
 		if touched < 0 and state.body_contact.phase == BodyContactState.Phase.CONTACTING:
-			touched = tick
+			touched = state.tick - started
 		if touched >= 0:
 			if state.body_contact.phase != BodyContactState.Phase.CONTACTING:
 				flickers += 1
 			var gap := DuelGeometry.distance(state.fighter(0), state.fighter(1)) - touch
 			deepest = minf(deepest, gap)
 			widest = maxf(widest, gap)
-	assert_eq(swords, 0, "fixture: the swords stay out of it")
 	assert_true(touched >= 0 and touched < 120, "fixture: the bodies meet (tick %d)" % touched)
 	assert_eq(flickers, 0, "one continuous contact for the whole hold")
 	assert_true(deepest >= -1.0e-12, "never interpenetrating (deepest %s m)" % str(deepest))
 	assert_true(widest <= 1.0e-4, "never drifting visibly apart (widest %s m)" % str(widest))
+	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+
+
+## Blades planted at the hard stop are not a stance. The return starts them
+## inward; on this head-on press the steel then meets and can hold them at
+## the stop again. The witness is that motion and that contact, not a blade
+## that stays parked.
+func test_a_hard_stop_returns_into_the_press() -> void:
+	var runner := SimRunner.create(_rules, 1)
+	runner.skip_intro()
+	var state := runner.state
+	var limit := _rules.combatant(0).weapon.guard_limit
+	DuelFixture.place(state.fighter(0), 0.0, -0.4, PI * 0.5)
+	DuelFixture.place(state.fighter(1), 0.0, 0.4, -PI * 0.5)
+	for slot in 2:
+		var weapon := state.fighter(slot).weapon
+		weapon.angle = limit * (1.0 if slot == 0 else -1.0)
+		weapon.speed = 0.0
+		weapon.stable_side = 1.0 if weapon.angle > 0.0 else -1.0
+	var planted := absf(state.fighter(0).weapon.angle)
+	runner.push(PlayerCommand.create(state.tick, 0.0, 1.0), PlayerCommand.create(state.tick, 0.0, 1.0))
+	var left_stop := absf(state.fighter(0).weapon.angle) < planted - 0.01 or absf(state.fighter(1).weapon.angle) < planted - 0.01
+	for _tick in 40:
+		runner.push(PlayerCommand.create(state.tick, 0.0, 1.0), PlayerCommand.create(state.tick, 0.0, 1.0))
+	assert_true(left_stop, "the return moves a blade off the hard stop on the first tick")
+	assert_true(runner.count(DuelEventTypes.BLADE_CONTACT) > 0, "and the press meets steel (%d)" % runner.count(DuelEventTypes.BLADE_CONTACT))
+	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
 
 
 ## --- Body contact lifecycle (PHYS-009) ---------------------------------------

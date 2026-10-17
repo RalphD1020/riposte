@@ -243,7 +243,11 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 
 
 ## Interpolate one fighter between the last two snapshots, pose its proxy
-## and trail, and return where it stands in the world.
+## and trail, and return where it stands in the world. The blade angle is
+## the chord between those snapshots. A reversal inside the tick can draw a
+## crossing the two end poses do not contain. That is presentation. It does
+## not write the weapon, and engine physics interpolation is not also applied
+## to these proxies.
 func _pose(slot: int, weight: float, real_delta: float, scaled_delta: float, height: float = NAN) -> Vector3:
 	var from := _previous.fighter(slot)
 	var to := _current.fighter(slot)

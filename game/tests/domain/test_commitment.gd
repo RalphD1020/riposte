@@ -113,7 +113,20 @@ func test_recovery_restores_control_gradually() -> void:
 		previous = rig.fighter.weapon.commitment
 	assert_false(rose, "K only falls during recovery")
 	assert_eq(rig.fighter.weapon.commitment, 0.0, "back to uncommitted")
-	assert_eq(_authority(rig.fighter), 1.0, "full tracking restored")
+	var weapon := rig.fighter.weapon
+	assert_true(absf(weapon.speed) <= _rules.combatant(0).weapon.control_speed, "recovery ended with the blade under control")
+	var at_exit := _authority(rig.fighter)
+	assert_true(at_exit > _rules.combat.commit_turn_torque_floor and at_exit <= 1.0, "exit authority stays inside the turn share (%.6f)" % at_exit)
+	## Full authority is a stopped blade, not the recovery-exit tick. The
+	## return may still be moving inside control speed, and that speed is
+	## redirect debt (DIRECTIONAL-COMMIT-001). Zeroing it is the documented
+	## terminal condition; the exit value itself is not a golden number.
+	var leftover := weapon.speed
+	weapon.speed = 0.0
+	weapon.motor_torque = 0.0
+	assert_eq(_authority(rig.fighter), 1.0, "a stopped blade has full tracking")
+	if at_exit < 1.0:
+		assert_true(absf(leftover) > 0.0, "any shortfall at exit is leftover blade speed")
 
 
 ## Ticks a combat heading needs to come within `tolerance` of a target bearing
@@ -168,6 +181,10 @@ func test_a_forward_dash_holds_its_heading_then_recovers_tracking_smoothly() -> 
 		if fighter.gesture.recovery_ticks_remaining <= 0:
 			fighter.gesture.mode = MovementGestureState.Mode.NORMAL
 	assert_true(smooth, "authority climbs back in small steps, never a snap")
+	## This fighter is planted: no forward speed, no blade speed. Gesture
+	## recovery therefore ends at full turn authority. A body that is still
+	## moving keeps its forward redirect debt (DIRECTIONAL-COMMIT-001); that
+	## debt is not a weapon-settling delay and is not this assertion.
 	assert_eq(_authority(fighter), 1.0, "and is whole again after recovery")
 
 

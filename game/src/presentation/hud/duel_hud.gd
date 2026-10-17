@@ -26,6 +26,7 @@ var _frame: MarginContainer
 ## coaching prompt sit outside it, so an intro card or a caption still reads.
 var _chrome: Control
 var _bars: Array[ProgressBar] = []
+var _stamina: Array[ProgressBar] = []
 var _condition_labels: Array[Label] = []
 var _condition_icons: Array[TextureRect] = []
 var _pips: Array[PipRow] = []
@@ -50,6 +51,7 @@ var _prompt_title: Label
 var _prompt_detail: Label
 var _pause: Button
 var _shown_health: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
+var _shown_stamina: PackedFloat64Array = PackedFloat64Array([-1.0, -1.0])
 var _shown_condition: PackedInt32Array = PackedInt32Array([-1, -1])
 var _shown_wins: PackedInt32Array = PackedInt32Array([-1, -1])
 var _shown_round: int = -1
@@ -91,6 +93,14 @@ func update(snapshot: PresentationSnapshot) -> void:
 			bar.max_value = fighter.max_health
 			bar.value = fighter.health
 			bar.accessibility_description = HudCopy.HEALTH_VALUE % [ceili(fighter.health), ceili(fighter.max_health)]
+		if fighter.stamina != _shown_stamina[side]:
+			_shown_stamina[side] = fighter.stamina
+			var stamina := _stamina[side]
+			stamina.max_value = 1.0
+			stamina.value = fighter.stamina
+			var points := HudCopy.STAMINA_VALUE % ceili(fighter.stamina * 100.0)
+			var afford := HudCopy.STAMINA_DASH if fighter.stamina + 1.0e-9 >= fighter.dash_cost else HudCopy.STAMINA_SPENT
+			stamina.accessibility_description = afford % points
 		var cond_int := int(fighter.condition)
 		if cond_int != _shown_condition[side]:
 			_shown_condition[side] = cond_int
@@ -218,6 +228,10 @@ func clock_text() -> String:
 
 func health_bar(side: int) -> ProgressBar:
 	return _bars[side]
+
+
+func stamina_bar(side: int) -> ProgressBar:
+	return _stamina[side]
 
 
 func condition_label(side: int) -> Label:
@@ -350,6 +364,21 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	bar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
 	stack.add_child(bar)
 	_bars.append(bar)
+	var stamina := ProgressBar.new()
+	stamina.theme_type_variation = _health_variation(side)
+	stamina.show_percentage = false
+	stamina.min_value = 0.0
+	stamina.max_value = 1.0
+	stamina.value = 1.0
+	## Range's default step would snap the fill to a hundredth. Stamina is a
+	## continuous resource; the accessible name is what rounds it to points.
+	stamina.step = 0.0
+	stamina.custom_minimum_size = Vector2(0.0, RiposteTheme.STAMINA_BAR_HEIGHT)
+	stamina.mouse_filter = MOUSE_FILTER_IGNORE
+	stamina.accessibility_name = HudCopy.STAMINA % _labels[side]
+	stamina.fill_mode = bar.fill_mode
+	stack.add_child(stamina)
+	_stamina.append(stamina)
 	var condition_row := HBoxContainer.new()
 	condition_row.mouse_filter = MOUSE_FILTER_IGNORE
 	condition_row.alignment = BoxContainer.ALIGNMENT_END if side == 1 else BoxContainer.ALIGNMENT_BEGIN

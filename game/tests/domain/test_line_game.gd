@@ -177,7 +177,7 @@ func test_a_strike_the_prediction_saw_reaching_flesh_reaches_flesh() -> void:
 			break
 	## ASSERT
 	assert_false(predicted.starts_bound, "fixture: the swords start clear")
-	assert_true(predicted.first_contact == ThreatEstimate.BODY or predicted.first_contact == ThreatEstimate.GRIP, "the prediction says the strike reaches flesh (%d)" % predicted.first_contact)
+	assert_true(predicted.first_contact == ThreatEstimate.BODY, "the prediction says the strike reaches the torso (%d)" % predicted.first_contact)
 	assert_true(struck >= 0, "the real cut reaches flesh, as predicted")
 	assert_eq(steel, -1, "and meets no blade before it")
 	assert_true(runner.is_sound(), "every tick legal")

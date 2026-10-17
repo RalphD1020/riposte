@@ -153,7 +153,7 @@ static func weapon_commitment(fighter: FighterState, spec: CombatantPhysicsSpec,
 
 ## The body's velocity along its combat heading (m/s, + forward).
 static func forward_speed(fighter: FighterState) -> float:
-	return fighter.vx * SimMath.cosine(fighter.facing) + fighter.vy * SimMath.sine(fighter.facing)
+	return fighter.vx * SimMath.heading_cosine(fighter.facing) + fighter.vy * SimMath.heading_sine(fighter.facing)
 
 
 ## Signed seconds of healthy braking the body's directional debt costs: its
@@ -164,7 +164,7 @@ static func root_redirect_time(fighter: FighterState, spec: CombatantPhysicsSpec
 	if body.braking_force <= SimMath.EPSILON:
 		return 0.0
 	var momentum := body.mass * forward_speed(fighter)
-	var drive := body.mass * (fighter.ax * SimMath.cosine(fighter.facing) + fighter.ay * SimMath.sine(fighter.facing))
+	var drive := body.mass * (fighter.ax * SimMath.heading_cosine(fighter.facing) + fighter.ay * SimMath.heading_sine(fighter.facing))
 	return (momentum + drive * combat.commit_lookahead_seconds) / body.braking_force
 
 

@@ -19,8 +19,8 @@ extends RefCounted
 ##   1. guard: a finished match accepts no further steps
 ##   2. dispatch on match phase
 ##   3. ROUND_ACTIVE: advance phase and round counters
-##   4. freeze condition for both fighters (from start-of-tick health only,
-##      CONDITION-001)
+##   4. freeze condition for both fighters (from start-of-tick health and
+##      stamina, CONDITION-001, STAMINA-004): scales and stamina gates
 ##   5. capture start poses for both fighters
 ##   6. consume attack input edges for both fighters
 ##   7. compute tracking multipliers from start-of-tick state
@@ -40,16 +40,24 @@ extends RefCounted
 ##      c. persisted overlap beyond contact_slop pushed out (position stage,
 ##         bodies kept apart in the same block)
 ##  13. contact lifecycle upkeep (blade manifold + weapon-body)
-##  14. round end evaluation
-##  15. advance the tick counter
-##  16. validate invariants; fail closed on violation
+##  14. impact authority recovers toward 1, except a sword this tick's steel
+##      episode dipped (IMPACT-AUTHORITY-001)
+##  15. settle stamina once from the motors' own work over the tick (measured
+##      in steps 8–9, before any contact) and a dash start (STAMINA-004)
+##  16. round end evaluation
+##  17. advance the tick counter
+##  18. validate invariants; fail closed on violation
 ##
 ## Implements: /spec/invariants.md#sim-001
 ## Implements: /spec/invariants.md#combat-008
 ## See also: /docs/concepts/simulation.md
 
 ## Bump deliberately when the sequence above changes.
-const TICK_ORDER_VERSION := 14
+## 15 (rules 53) added the stamina settle after contacts. 16 (rules 57)
+## inserts impact-authority recovery between contact lifecycle and that
+## settle. Rules 56 kept 15: the dip stayed inside the contact step, and
+## authority did not recover until the round reset.
+const TICK_ORDER_VERSION := 16
 
 var rules: DuelRules
 ## Contact-cap counters for this simulation (never hashed, never read back).
@@ -66,6 +74,12 @@ var _finish: Array[FighterPose] = [FighterPose.new(), FighterPose.new()]
 var _impact: Array[FighterPose] = [FighterPose.new(), FighterPose.new()]
 var _scratch: Array[FighterTickScratch] = [FighterTickScratch.new(), FighterTickScratch.new()]
 var _healthy := ConditionState.healthy()
+## Each combatant's reference energies for stamina (footwork, heading, blade),
+## derived once from its own physics (STAMINA-004). Three scalars: a vector
+## would be a tuple of unrelated energies.
+var _move_reference := PackedFloat64Array([0.0, 0.0])
+var _turn_reference := PackedFloat64Array([0.0, 0.0])
+var _swing_reference := PackedFloat64Array([0.0, 0.0])
 
 
 func _init() -> void:
@@ -79,6 +93,11 @@ static func create(duel_rules: DuelRules) -> DuelSimulation:
 		return null
 	var simulation := DuelSimulation.new()
 	simulation.rules = duel_rules
+	for slot in 2:
+		var spec := duel_rules.combatant(slot)
+		simulation._move_reference[slot] = StaminaModel.move_reference(spec.fighter)
+		simulation._turn_reference[slot] = StaminaModel.turn_reference(spec.fighter)
+		simulation._swing_reference[slot] = StaminaModel.swing_reference(spec)
 	return simulation
 
 
@@ -140,8 +159,16 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 	## any motor runs (CONDITION-001): every system reads the same state and
 	## nothing recomputes it mid-tick.
 	for slot in 2:
-		_freeze_condition(state.fighter(slot), _scratch[slot])
-		_scratch[slot].weapon_start_speed = state.fighter(slot).weapon.speed
+		var starting := state.fighter(slot)
+		var scratch := _scratch[slot]
+		_freeze_condition(starting, scratch)
+		scratch.weapon_start_speed = starting.weapon.speed
+		scratch.start_vx = starting.vx
+		scratch.start_vy = starting.vy
+		scratch.start_turn_rate = starting.turn_rate
+		scratch.exertion = 0.0
+		scratch.dashed = false
+		scratch.authority_dipped = false
 	_start[0].write(a, rules.combatant(0))
 	_start[1].write(b, rules.combatant(1))
 	for slot in 2:
@@ -161,7 +188,7 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 	## own combat frame, its heading at the start of the tick, read before any
 	## heading turns (MOVEMENT-FRAME-001, FRICTION-ORDER-001).
 	var targets := PackedFloat64Array([b.x, b.y, a.x, a.y])
-	var frames := PackedFloat64Array([SimMath.cosine(a.facing), SimMath.sine(a.facing), SimMath.cosine(b.facing), SimMath.sine(b.facing)])
+	var frames := PackedFloat64Array([SimMath.heading_cosine(a.facing), SimMath.heading_sine(a.facing), SimMath.heading_cosine(b.facing), SimMath.heading_sine(b.facing)])
 	for slot in 2:
 		var fighter := state.fighter(slot)
 		var body := rules.combatant(slot).fighter
@@ -171,7 +198,9 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 			## the heading motor takes them as final.
 			FacingSystem.step(fighter, targets[slot * 2], targets[slot * 2 + 1], tracking[slot], body, null, rate_tracking[slot])
 			var burst := MovementSystem.step_in_frame(fighter, frames[slot * 2], frames[slot * 2 + 1], commands[slot].axis_x(), commands[slot].axis_y(), tick, body, condition, commands[slot].dash_modifier)
+			_measure_body_work(fighter, body, slot)
 			if burst != MovementGestureState.BurstKind.NONE:
+				_scratch[slot].dashed = true
 				events.append(
 					DuelEvent.create(
 						DuelEventTypes.BURST_STARTED,
@@ -188,7 +217,8 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 		else:
 			MovementSystem.coast(fighter, body)
 	for slot in 2:
-		WeaponSystem.step(state.fighter(slot), rules, tick, events, _scratch[slot].condition, _scratch[slot])
+		WeaponSystem.step(state.fighter(slot), rules, tick, events, _scratch[slot].condition, _scratch[slot], _guard_return_scale(state, slot), diagnostics)
+		_measure_blade_work(state.fighter(slot), slot)
 	## Step 10: edge crossing detection. The arena is open — no confinement.
 	## Body separation shares the TOI chronology (COMBAT-007) rather than
 	## running before sword contacts, because a separation pass can move a
@@ -217,15 +247,64 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 	_resolve_contacts(state, tick, events)
 	state.blade_contact.tick()
 	state.body_contact.tick()
+	_recover_impact_authority(state)
+	_settle_stamina(state)
 	_check_round_end(state, events)
 
 
-## Freeze `fighter`'s condition for this tick into `scratch` (CONDITION-001).
+## Footwork and heading work over the tick, from the motors' own output: the
+## force or torque each applied times its mid-step velocity (STAMINA-004).
+## Read right after the footwork step, before any contact moves the body.
+func _measure_body_work(fighter: FighterState, body: FighterDefinition, slot: int) -> void:
+	var dt := SimulationTimebase.TICK_SECONDS
+	var scratch := _scratch[slot]
+	var move_power := body.mass * (fighter.ax * (scratch.start_vx + fighter.vx) + fighter.ay * (scratch.start_vy + fighter.vy)) * 0.5
+	var turn_power := body.moment_of_inertia() * (fighter.turn_rate - scratch.start_turn_rate) / dt * (scratch.start_turn_rate + fighter.turn_rate) * 0.5
+	scratch.exertion += StaminaModel.channel(move_power, dt, _move_reference[slot], rules.combat.stamina_move_cost, rules.combat)
+	scratch.exertion += StaminaModel.channel(turn_power, dt, _turn_reference[slot], rules.combat.stamina_turn_cost, rules.combat)
+
+
+## The blade motor's work over the tick: its torque times the blade's
+## mid-step speed, read right after the motor, before any contact.
+func _measure_blade_work(fighter: FighterState, slot: int) -> void:
+	if not fighter.is_alive():
+		return
+	var scratch := _scratch[slot]
+	var power := fighter.weapon.motor_torque * (scratch.weapon_start_speed + fighter.weapon.speed) * 0.5
+	scratch.exertion += StaminaModel.channel(power, SimulationTimebase.TICK_SECONDS, _swing_reference[slot], rules.combat.stamina_swing_cost, rules.combat)
+
+
+## One recovery step toward full impact authority, after the contact dip and
+## before stamina. A sword this tick's steel episode already dipped does not
+## also recover (IMPACT-AUTHORITY-001). The rate is the guard return's ωn.
+func _recover_impact_authority(state: MatchState) -> void:
+	var dt := SimulationTimebase.TICK_SECONDS
+	var wn := rules.combat.guard_return_natural_frequency
+	for slot in 2:
+		if _scratch[slot].authority_dipped:
+			continue
+		var fighter := state.fighter(slot)
+		if not fighter.is_alive():
+			continue
+		fighter.impact_authority = ImpactAuthority.recover(fighter.impact_authority, wn, dt)
+
+
+## Settle each living fighter's stamina once (STAMINA-004): this tick's
+## capability came from its starting value; the settled one is the next tick's.
+func _settle_stamina(state: MatchState) -> void:
+	for slot in 2:
+		var fighter := state.fighter(slot)
+		if fighter.is_alive():
+			fighter.stamina = StaminaModel.settle(fighter.stamina, _scratch[slot].exertion, _scratch[slot].dashed, SimulationTimebase.TICK_SECONDS, rules.combat)
+
+
+## Freeze `fighter`'s condition for this tick into `scratch` (CONDITION-001,
+## STAMINA-004).
 ## A dead body has no voluntary motor: its blade settles under the plain,
 ## unscaled hold.
 func _freeze_condition(fighter: FighterState, scratch: FighterTickScratch) -> void:
 	if fighter.is_alive():
-		ConditionModel.compute(fighter.health, rules.spec_of(fighter).fighter.max_health, rules.combat, scratch.condition)
+		ConditionModel.compute(fighter.health, rules.spec_of(fighter).fighter.max_health, fighter.stamina, rules.combat, scratch.condition)
 	else:
 		scratch.condition.copy_from(_healthy)
 
@@ -259,7 +338,6 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 	var reheld := PackedInt32Array()
 	var least_rehold := INF
 	state.blade_contact.begin_search()
-	_collision.begin_tick()
 	for lifecycle in state.weapon_body_contacts:
 		lifecycle.normal_impulse = 0.0
 	_hold_persistent_contacts(state, tick, events)
@@ -272,7 +350,7 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 			_update_body_contact_separation(state, had_body_push)
 			_settle_overlap(state, tick, events)
 			return
-		var held := not (_report.blade or _report.body[0] or _report.body[1] or _report.grip[0] or _report.grip[1] or _report.body_push)
+		var held := not (_report.blade or _report.body[0] or _report.body[1] or _report.body_push)
 		if not held:
 			resolved += 1
 		else:
@@ -284,7 +362,6 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 		if not SimulationGuardrails.validate_toi_monotonicity(elapsed, toi):
 			_fail_closed(state, &"toi_regression", events)
 			return
-		_wound_grips(state, tick, events, elapsed)
 		_seek(state, _report.fraction)
 		_start[0].write(state.fighter(0), rules.combatant(0))
 		_start[1].write(state.fighter(1), rules.combatant(1))
@@ -405,19 +482,6 @@ func _update_body_contact_separation(state: MatchState, had_body_push: bool) -> 
 ## Rewind both fighters to the pose at sub-interval fraction `s`. Velocities
 ## are untouched: they are what this tick already settled on, and the contact
 ## is about to change them.
-## Wound each grip the sweep entered, in the order they were entered, each at
-## its own instant: a chronological query, never a contact — nothing moves, no
-## budget is spent (GRIP-NONBLOCKING-001).
-func _wound_grips(state: MatchState, tick: int, events: Array[DuelEvent], elapsed: float) -> void:
-	var first := 0 if _report.grip_fraction[0] <= _report.grip_fraction[1] else 1
-	for i in 2:
-		var slot := first if i == 0 else 1 - first
-		if _report.grip[slot]:
-			var at := _report.grip_fraction[slot]
-			_seek(state, at)
-			ContactResolver.wound_grip(state, rules, slot, _report.grip_along[slot], _report.grip_across[slot], _report.grip_source[slot], elapsed + (1.0 - elapsed) * at, tick, events)
-
-
 func _seek(state: MatchState, s: float) -> void:
 	for slot in 2:
 		var fighter := state.fighter(slot)
@@ -440,6 +504,16 @@ static func remainder_crossing(impact: FighterPose, fighter: FighterState, toi: 
 	return toi + maxf(share, 0.0) * (1.0 - toi)
 
 
+## Guard return while steel is persisted (any phase but SEPARATED) is the
+## authored share; a separated pair returns in full. Either way the fighter's
+## impact authority multiplies it (GUARD-RETURN-001, IMPACT-AUTHORITY-001).
+func _guard_return_scale(state: MatchState, slot: int) -> float:
+	var steel := 1.0
+	if state.blade_contact.phase != SwordContactSet.Phase.SEPARATED:
+		steel = rules.combat.guard_steel_return_scale
+	return steel * state.fighter(slot).impact_authority
+
+
 ## Carry both fighters through the remaining `share` of the tick under their
 ## post-contact velocities. The motor has already run, so this is the same
 ## linear integration the systems themselves performed — just over what is
@@ -451,9 +525,16 @@ func _carry(state: MatchState, share: float) -> void:
 		var limit := rules.combatant(slot).weapon.guard_limit
 		fighter.x += fighter.vx * dt
 		fighter.y += fighter.vy * dt
-		fighter.facing = SimMath.wrap_angle(fighter.facing + fighter.turn_rate * dt)
-		## The guard limit is an inelastic stop, the motor's own law.
-		WeaponSystem.settle_at_stop(fighter.weapon, fighter.weapon.angle + fighter.weapon.speed * dt, limit)
+		fighter.facing = SimMath.compose_angle(fighter.facing, fighter.turn_rate * dt)
+		## The guard limit is an inelastic stop, the motor's own law. The
+		## remainder has no second soft-zone pass; a speed the stop still has
+		## to remove, above one tick of wind-up, is the fallback.
+		var into := fighter.weapon.speed
+		var angle_before := fighter.weapon.angle
+		var spec := rules.combatant(slot)
+		var inertia := WeaponKinematics.motor_inertia(spec, angle_before)
+		if WeaponSystem.settle_at_stop(fighter.weapon, angle_before + into * dt, limit) and WeaponSystem.is_hard_stop(into, angle_before, true, limit, spec.weapon.windup_accel(spec.fighter.weapon_torque_scale, inertia)):
+			diagnostics.guard_hard_stop_hits += 1
 	ArenaConstraints.resolve(state.fighter(0), state.fighter(1), rules)
 
 
@@ -527,11 +608,11 @@ func _step_decided(state: MatchState, command_0: PlayerCommand, command_1: Playe
 			var body := rules.spec_of(fighter).fighter
 			var condition := _scratch[slot].condition
 			_freeze_condition(fighter, _scratch[slot])
-			var frame_x := SimMath.cosine(fighter.facing)
-			var frame_y := SimMath.sine(fighter.facing)
+			var frame_x := SimMath.heading_cosine(fighter.facing)
+			var frame_y := SimMath.heading_sine(fighter.facing)
 			FacingSystem.step(fighter, opponent.x, opponent.y, 1.0, body, condition)
 			MovementSystem.step_in_frame(fighter, frame_x, frame_y, cmd.axis_x(), cmd.axis_y(), tick, body, condition, cmd.dash_modifier)
-			WeaponSystem.step(fighter, rules, tick, events, condition)
+			WeaponSystem.step(fighter, rules, tick, events, condition, null, _guard_return_scale(state, slot), diagnostics)
 			## Winner follow-over-edge easter egg: emit presentation event, no score change.
 			var crossing := ArenaConstraints.detect_edge_crossing(
 				fighter.x - fighter.vx * SimulationTimebase.TICK_SECONDS,
@@ -547,7 +628,7 @@ func _step_decided(state: MatchState, command_0: PlayerCommand, command_1: Playe
 			else:
 				MovementSystem.coast(fighter, rules.spec_of(fighter).fighter)
 			fighter.clear_attack_input()
-			WeaponSystem.step(fighter, rules, tick, settling)
+			WeaponSystem.step(fighter, rules, tick, settling, null, null, _guard_return_scale(state, slot), diagnostics)
 	FallenBodySystem.resolve_bodies(state.fighter(0), state.fighter(1), rules)
 
 

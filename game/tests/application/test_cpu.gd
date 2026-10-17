@@ -631,20 +631,57 @@ func test_lateral_dashes_are_available_to_all_difficulties() -> void:
 	assert_true(hard.lateral_dash_weight >= medium.lateral_dash_weight, "Hard at least as lateral as Medium")
 
 
-## ──────────────── NO FATIGUE SIGNAL FOR THE CPU (STAMINA-003) ───────────────
+## ──────────────── THE CPU PAYS FOR ITS DASHES (STAMINA-004) ─────────────────
+
+const STAMINA_DUEL_SEED := 1
+const STAMINA_DUEL_TICKS := 1800
 
 
-## There is no fatigue resource, so no CPU reading or profile weight may
-## pretend there is one.
-func test_the_cpu_reads_no_fatigue() -> void:
-	var rules := DuelFixture.rules()
-	var state := DuelFixture.state(rules)
-	var seen := CpuObservation.observe(state, 0, rules)
-	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
-	var assessment := TacticalAssessment.evaluate(seen, state.fighter(0), 1.5, reach, rules, CpuProfile.hard())
-	assert_true(assessment.edge_clearance > 0.0, "fixture: a whole assessment was made (edge clearance %.2f m)" % assessment.edge_clearance)
-	assert_false("stamina_depletion" in assessment, "the assessment carries no fatigue reading")
-	assert_false("stamina_cost_weight" in CpuProfile.hard(), "no profile weighs fatigue")
+## The CPU obeys the same stamina law as a human (CPU-001): it reads its own
+## bar and never starts typing a dash it could not pay for, so its footwork is
+## never spent on a gesture the duel would refuse. Seed 1 dashes when it can
+## pay and begins none when pinned under the cost. Rules 56, with authority
+## stuck on the floor, had seed 1 begin none and used seed 2; rules 57
+## recovers, and seed 1 is the witness again. No profile weight changed.
+func test_the_cpu_never_types_a_dash_it_cannot_afford() -> void:
+	## ARRANGE: a Hard v Hard duel left alone dashes.
+	var free := _stamina_duel(-1.0)
+	assert_true(free.x > 0, "fixture: left alone, the CPU dashes (%d gestures begun)" % free.x)
+	## PERTURB: the first CPU's stamina pinned under one dash's cost every tick.
+	var cost := DuelFixture.rules().combat.stamina_dash_cost
+	## ACT
+	var pinned := _stamina_duel(cost * 0.5)
+	## ASSERT
+	assert_eq(pinned.x, 0, "pinned under the cost, it begins no dash gesture")
+	assert_eq(pinned.y, 0, "and the duel starts none for it")
+
+
+## One Hard v Hard duel for `STAMINA_DUEL_TICKS`: [dash gestures the first CPU
+## began, dashes started for it]. A `pin` ≥ 0 holds its stamina there.
+func _stamina_duel(pin: float) -> Vector2i:
+	var duel := CpuLadder.session(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.HARD, STAMINA_DUEL_SEED)
+	var started := 0
+	while not duel.is_finished() and duel.state.tick < STAMINA_DUEL_TICKS:
+		if pin >= 0.0:
+			duel.state.fighter(0).stamina = pin
+		for event in duel.step():
+			if event.type == DuelEventTypes.BURST_STARTED and event.actor == 0:
+				started += 1
+	return Vector2i((duel.controllers[0] as CpuController).bursts_begun, started)
+
+
+## No difficulty changes a stamina number: every profile plays under the one
+## rule set's costs and floors.
+func test_no_difficulty_carries_a_stamina_advantage() -> void:
+	## ARRANGE + ACT
+	var easy := CpuLadder.session(MatchConfig.Difficulty.EASY, MatchConfig.Difficulty.HARD, 1)
+	## ASSERT: both seats compile the same tuning, whatever the difficulty.
+	var combat := easy.config.rules.combat
+	for field: String in ["stamina_force_floor", "stamina_dash_cost", "stamina_move_cost", "stamina_turn_cost", "stamina_swing_cost", "stamina_recovery_rate"]:
+		assert_eq(combat.get(field), StandardDuelRules.combat_tuning().get(field), "%s is the rules' own" % field)
+	for profile: CpuProfile in [CpuProfile.easy(), CpuProfile.medium(), CpuProfile.hard()]:
+		for property in profile.get_property_list():
+			assert_false(String(property.name).contains("stamina"), "no profile carries a stamina number (%s)" % property.name)
 
 ## ──────────────────────── DECISION TRACE (Phase 8a) ───────────────────────
 
@@ -975,21 +1012,41 @@ func test_an_open_line_is_taken_straight_in() -> void:
 	assert_true(vectors[0].dot(vectors[1]) > 0.99, "and the step goes straight at the opponent (%.3f)" % vectors[0].dot(vectors[1]))
 
 
-## The opponent's sword lies across the direct line but not the other side: the
-## CPU capitalizes around it — beside the opponent on the side away from its
-## sword — never through it. (Searched on rules 50: the rules-49 scene, 1.7 m
-## at −60°, was blocked by the opponent's crossguard and handle, which no
-## longer stop a cut; here its blade is in the way.)
-func test_steel_in_the_direct_line_is_gone_around_on_the_side_away_from_it() -> void:
-	## ARRANGE + ACT: the CPU on the side of the opponent's line its sword is on.
+## The opponent's sword lies across the direct line. Rules 50 found a beside
+## route that reached a hand. Under the torso circle this scene's beside route
+## also meets steel, so it is not an opening and the CPU does not capitalize.
+## That is what this test proves. A route that is steel on the direct line and
+## torso on the beside route is still the intended capitalize behavior, and it
+## has no witness here (CPU-ROUTE-001, OPEN). A clear torso line is still taken
+## straight (`test_an_open_line_is_taken_straight_in`). The beside offset was
+## not retuned.
+func test_steel_on_the_direct_line_and_the_beside_route_is_declined() -> void:
+	var rules := DuelFixture.rules()
+	var state := DuelFixture.state(rules, 3)
+	state.phase = MatchPhase.Id.ROUND_ACTIVE
+	var me := state.fighter(0)
+	var them := state.fighter(1)
+	DuelFixture.place(me, 0.0, 0.5, 0.0)
+	me.weapon.reset(-rules.combatant(0).weapon.guard_angle)
+	DuelFixture.place(them, 2.2, 0.0, PI)
+	them.weapon.reset(-rules.combatant(1).weapon.guard_angle)
+	them.weapon.angle = deg_to_rad(-105.0)
+	them.weapon.phase = CombatPhase.Id.RECOVERY
+	them.weapon.recovery_ticks = 40
+	them.weapon.recovery_left = 40
+	var seen := CpuObservation.observe(state, 0, rules)
+	var direct := Vector2(them.x - me.x, them.y - me.y).normalized()
+	var straight := seen.route_reading(rules, direct.x, direct.y, ThreatEstimate.new())
+	var cpu := CpuController.create(rules, CpuProfile.hard(), 3, 0)
+	cpu._sight_x = them.x
+	cpu._sight_y = them.y
+	cpu._sight_facing = them.facing
+	var beside := cpu._route_beside(me, cpu._side_away_from_blade(seen))
+	var around := seen.route_reading(rules, beside.x, beside.y, ThreatEstimate.new())
+	assert_eq(straight.first_contact, ThreatEstimate.STEEL, "the direct line meets steel before the torso")
+	assert_eq(around.first_contact, ThreatEstimate.STEEL, "and the beside route does too: it is not a torso opening")
 	var held := _held_capitalize_scene(2.2, 0.5, deg_to_rad(-105.0), CombatPhase.Id.RECOVERY)
-	## ASSERT
-	assert_true(held[3], "fixture: a detour clears the steel and is taken")
-	assert_ne(held[4], 0.0, "the direct line was blocked, so the route goes around")
-	var vectors := _step_and_line(held)
-	assert_true(vectors[0].dot(vectors[1]) > 0.0, "it still closes")
-	## The opponent's sword is on the +y side; going around it steps toward −y.
-	assert_true(vectors[0].y < vectors[1].y, "and leans off the line away from the sword (step y %.3f, line y %.3f)" % [vectors[0].y, vectors[1].y])
+	assert_false(held[3], "so the CPU does not capitalize on it")
 
 
 ## THREAT-001 / FIRST-CONTACT-001 at its lowest owner: the predictor sweeps
@@ -1051,6 +1108,111 @@ func test_a_route_that_starts_in_a_bind_is_not_taken_as_clear() -> void:
 	assert_true(reading.starts_bound, "fixture: the swords start bound")
 	assert_false(held[3], "a bound route is not capitalized on")
 	assert_false(cpu._capitalizing, "and no intent is held")
+
+
+## Six seconds. Long enough to walk in from 1.9 m and release one attack.
+## A hit is not the claim.
+const TIRED_WINDOW_TICKS := 360
+
+
+## Stamina under one dash, shared by every difficulty. The bar is the dash
+## cost on purpose: guarded probing uses that affordability, and there is no
+## second threshold. A guarded rest that owes nothing — not open, no
+## intercept, no tempo — starts no intent and no press, release, or attack.
+## Recovery is owed. Capitalize may close the distance; the punish is the
+## press, the start, and the release inside the window, not the intent.
+func test_a_tired_cpu_holds_a_guarded_line_and_still_punishes_an_opening() -> void:
+	var cost := DuelFixture.rules().combat.stamina_dash_cost
+	var guarded := _tired_play(CombatPhase.Id.NEUTRAL, cost * 0.5)
+	var opening := _tired_play(CombatPhase.Id.RECOVERY, cost * 0.5)
+	assert_true(bool(guarded["sound"]) and bool(opening["sound"]), "every tick legal")
+	assert_true(int(guarded["clear_decisions"]) > 0, "fixture: the guarded rest has decisions that owe nothing")
+	assert_eq(int(guarded["intent_while_clear"]), 0, "tired, and nothing owed, it holds no capitalize intent")
+	assert_eq(int(guarded["press_while_clear"]), 0, "and it presses no attack")
+	assert_eq(int(guarded["release_while_clear"]), 0, "and it releases none")
+	assert_eq(int(guarded["started_while_clear"]), 0, "and none starts")
+	assert_true(int(guarded["suppressed"]) > 0, "the dash-cost gate is what withheld the probe (%d)" % int(guarded["suppressed"]))
+	assert_true(int(opening["open_ticks"]) > 0, "fixture: recovery is an opening")
+	assert_true(int(opening["press"]) >= 0, "the punish presses (tick %d)" % int(opening["press"]))
+	assert_true(int(opening["started"]) >= int(opening["press"]), "the attack starts on that press (tick %d)" % int(opening["started"]))
+	assert_true(int(opening["released"]) >= int(opening["started"]), "and it releases inside %d ticks (tick %d)" % [TIRED_WINDOW_TICKS, int(opening["released"])])
+
+
+## The same place as the guarded-rest capitalize scene, then the real
+## simulation. Stamina is pinned under the dash cost each tick. The opponent
+## stands idle. Recovery lasts the window, so the opening is not a one-tick pose.
+func _tired_play(phase: CombatPhase.Id, stamina: float) -> Dictionary:
+	var rules := DuelFixture.rules()
+	var runner := SimRunner.create(rules, 3)
+	runner.skip_intro()
+	var state := runner.state
+	var me := state.fighter(0)
+	var them := state.fighter(1)
+	DuelFixture.place(me, 0.0, -0.35, 0.0)
+	me.weapon.reset(-rules.combatant(0).weapon.guard_angle)
+	DuelFixture.place(them, 1.9, 0.0, PI)
+	them.weapon.reset(-rules.combatant(1).weapon.guard_angle)
+	them.weapon.angle = deg_to_rad(-45.0)
+	them.weapon.phase = phase
+	if phase == CombatPhase.Id.RECOVERY:
+		them.weapon.recovery_ticks = TIRED_WINDOW_TICKS
+		them.weapon.recovery_left = TIRED_WINDOW_TICKS
+	var cpu := CpuController.create(rules, CpuProfile.hard(), 3, 0)
+	var out := {
+		"sound": true,
+		"clear_decisions": 0,
+		"intent_while_clear": 0,
+		"press_while_clear": 0,
+		"release_while_clear": 0,
+		"started_while_clear": 0,
+		"suppressed": 0,
+		"open_ticks": 0,
+		"press": -1,
+		"started": -1,
+		"released": -1,
+	}
+	var last_clear := false
+	var saw := false
+	for _i in TIRED_WINDOW_TICKS:
+		me.stamina = stamina
+		var before_traces := cpu.traces.size()
+		var before_events := runner.events.size()
+		var command := cpu.command_for(state, 0)
+		if cpu.traces.size() > before_traces:
+			var trace: CpuDecisionTrace = cpu.traces.back()
+			var owed := trace.owed_open or trace.owed_intercept or trace.tempo_opportunity > 0.0
+			last_clear = not owed
+			saw = true
+			if last_clear:
+				out["clear_decisions"] = int(out["clear_decisions"]) + 1
+				if trace.capitalizing:
+					out["intent_while_clear"] = int(out["intent_while_clear"]) + 1
+		if saw and last_clear:
+			if command.attack_pressed:
+				out["press_while_clear"] = int(out["press_while_clear"]) + 1
+			if command.attack_released:
+				out["release_while_clear"] = int(out["release_while_clear"]) + 1
+		if command.attack_pressed and int(out["press"]) < 0:
+			out["press"] = state.tick
+		if CpuObservation.observe(state, 0, rules).opponent_open():
+			out["open_ticks"] = int(out["open_ticks"]) + 1
+		runner.push(command, PlayerCommand.idle(state.tick))
+		for index in range(before_events, runner.events.size()):
+			var event: DuelEvent = runner.events[index]
+			if event.actor != 0:
+				continue
+			if event.type == DuelEventTypes.ATTACK_STARTED:
+				if int(out["started"]) < 0:
+					out["started"] = event.tick
+				if saw and last_clear:
+					out["started_while_clear"] = int(out["started_while_clear"]) + 1
+			elif event.type == DuelEventTypes.ATTACK_RELEASED and int(out["released"]) < 0:
+				out["released"] = event.tick
+		if phase == CombatPhase.Id.RECOVERY and int(out["released"]) >= 0:
+			break
+	out["suppressed"] = cpu.probes_suppressed
+	out["sound"] = runner.is_sound()
+	return out
 
 
 ## A guarded opponent at rest owes nothing: neutral is the ordinary utilities'

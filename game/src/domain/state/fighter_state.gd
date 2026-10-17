@@ -35,6 +35,15 @@ var duel_forward_y: float = 0.0
 ## moment of inertia, never clamped down directly (PHYS-003).
 var turn_rate: float = 0.0
 var health: float = 0.0
+## Stamina s ∈ [0, 1] (STAMINA-004): full at every round reset, drained by the
+## motors' own work and a dash's start, recovered by easing off. Settled once
+## at the end of a live tick; scales voluntary force only.
+var stamina: float = 1.0
+## Impact authority ∈ [floor, 1] (IMPACT-AUTHORITY-001): full at every round
+## reset, dipped once per new opponent-contact episode from that episode's
+## change in this sword's angular velocity. Multiplies the guard return.
+## Independent of stamina. Hashed.
+var impact_authority: float = 1.0
 ## Balance B ∈ [floor, 1] (COMBAT §36).
 var stability: float = 1.0
 var stagger_left: int = 0

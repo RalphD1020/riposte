@@ -64,7 +64,6 @@ func _init() -> void:
 	voice.voice_id = &"voice.announcer.deep"
 	voice.spoken_name = _first("voice/announcer:wolf", problems)
 	fighter.voice = voice
-	fighter.intro.spoken_override_first_slot_line = _first("voice/announcer:wold", problems)
 	_save(fighter, FIGHTER_KIT, problems)
 	var victory := load(VICTORY_PROFILE) as FighterVictoryProfile
 	victory.announcer_line = _first("voice/announcer:wolf_wins", problems)

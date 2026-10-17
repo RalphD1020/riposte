@@ -27,6 +27,10 @@ const DRAW := "DRAW"
 const SIDED := "%s · %s"
 const HEALTH := "%s health"
 const HEALTH_VALUE := "%d of %d"
+const STAMINA := "%s stamina"
+const STAMINA_VALUE := "%d of 100"
+const STAMINA_DASH := "%s, dash ready"
+const STAMINA_SPENT := "%s, too spent to dash"
 const ROUNDS_WON := "%s rounds won: %d of %d"
 ## Sound captions (`SoundCaptions`): what was heard, in brackets, the way
 ## captions mark non-speech sound.

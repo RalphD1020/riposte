@@ -52,6 +52,10 @@ const ARRESTED_1 := "arrested_1"
 ## Each side's weapon-speed change from the solve (rad/s).
 const DELTA_0 := "delta_0"
 const DELTA_1 := "delta_1"
+## The attack's progress `θ̇·dir` before and after the solve (rad/s), when a
+## cut met steel (ContactOutcome): how much of the cut the contact let through.
+const PROGRESS_BEFORE := "progress_before"
+const PROGRESS_AFTER := "progress_after"
 ## The impulse fighter 0's sword received, summed over the rows (N·s);
 ## fighter 1's is its negative (CONTACT-OUTCOME-001).
 const IMPULSE_X := "impulse_x"
@@ -98,18 +102,9 @@ const HEALTH := "health"
 ## Thrust classification (COMBAT-010). Carried on body-contact events that
 ## qualify as a point-first thrust.
 const THRUST_ALIGNMENT := "thrust_alignment"
-## Which vulnerable region a BODY_HIT struck (`REGION_TORSO` / `REGION_GRIP`,
-## DEFENSE-ROLE-001). The grip region is the hands and the handle, one region
-## with one damage share (GRIP-NONBLOCKING-001).
+## Which vulnerable region a BODY_HIT struck. Rules 55: only `REGION_TORSO`.
 const REGION := "region"
 const REGION_TORSO := "torso"
-const REGION_GRIP := "grip"
-## Which part of the grip region a GRIP hit entered first — a diagnostic of
-## where, never a different damage law.
-const SOURCE_REGION := "source_region"
-const SOURCE_HAND_OFF := "hand_off"
-const SOURCE_HAND_DOMINANT := "hand_dominant"
-const SOURCE_HANDLE := "handle"
 const INCIDENCE_QUALITY := "incidence_quality"
 ## Contact kind: "slash", "thrust", or "graze". Present on all body contacts.
 const CONTACT_KIND := "contact_kind"

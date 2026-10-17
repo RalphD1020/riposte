@@ -1,6 +1,6 @@
 extends TestCase
 
-## COLLIDE: swept detection never tunnels and respects contact rules
+## COLLIDE: the sampled sweep, on the envelope these cases name, and the contact rules
 ## (COMBAT Â§42, PLAN Phase 5).
 ##
 ## Implements: /spec/invariants.md#combat-002
@@ -467,3 +467,230 @@ func test_crossing_full_slashes_meet_at_first_contact_and_mirror() -> void:
 	var l_runner: SimRunner = left[0]
 	assert_near(l_runner.state.fighter(0).weapon.angle, -r_runner.state.fighter(0).weapon.angle, 1e-9, "ending at the reflected Î¸")
 	assert_near(l_runner.state.fighter(0).weapon.speed, -r_runner.state.fighter(0).weapon.speed, 1e-9, "turning at the reflected Î¸Ì‡")
+
+
+## Centerline gap along the true arc, sampled from the weapon angle. This is
+## not `CollisionSystem`: a miss here is the sweep's miss.
+func _arc_gap(angle_a: float, x_b: float, y_b: float, facing_b: float, angle_b: float, contact: SegmentContact) -> float:
+	var weapon := _rules.combatant(0).weapon
+	var spec := _rules.combatant(0)
+	var a := BladePose.new()
+	var b := BladePose.new()
+	WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle_a, spec, a)
+	WeaponKinematics.pose_at(x_b, y_b, facing_b, angle_b, spec, b)
+	SimMath.closest_segments(
+		a.origin_x + a.ux * weapon.blade_base_radius, a.origin_y + a.uy * weapon.blade_base_radius,
+		a.origin_x + a.ux * weapon.tip_radius, a.origin_y + a.uy * weapon.tip_radius,
+		b.origin_x + b.ux * weapon.blade_base_radius, b.origin_y + b.uy * weapon.blade_base_radius,
+		b.origin_x + b.ux * weapon.tip_radius, b.origin_y + b.uy * weapon.tip_radius,
+		contact
+	)
+	return contact.distance
+
+
+func _arc_min(start_angle: float, end_angle: float, x_b: float, y_b: float, facing_b: float, start_b: float, end_b: float, contact: SegmentContact) -> float:
+	var samples := 240
+	var min_gap := 1.0e9
+	for i in samples + 1:
+		var s := float(i) / float(samples)
+		var gap := _arc_gap(start_angle + (end_angle - start_angle) * s, x_b, y_b, facing_b, start_b + (end_b - start_b) * s, contact)
+		if gap < min_gap:
+			min_gap = gap
+	return min_gap
+
+
+## A hilt that barely moves, a blade that turns through another blade, and the
+## same scene shifted until the arc itself stays clear. The production sweep
+## has to agree with that arc, including when both blades turn.
+func test_a_rotational_crossing_and_its_near_miss_follow_the_arc() -> void:
+	var weapon := _rules.combatant(0).weapon
+	var band := weapon.blade_radius * 2.0
+	var contact := SegmentContact.new()
+	var start_a := deg_to_rad(-20.0)
+	var end_a := deg_to_rad(60.0)
+	var guard_angle := deg_to_rad(-30.0)
+	var state := DuelFixture.state(_rules)
+	var crossing := _arc_min(start_a, end_a, 2.0, 0.0, PI, guard_angle, guard_angle, contact)
+	var start_gap := _arc_gap(start_a, 2.0, 0.0, PI, guard_angle, contact)
+	var end_gap := _arc_gap(end_a, 2.0, 0.0, PI, guard_angle, contact)
+	assert_true(crossing < band - 0.004, "fixture: the arc crosses (min %.4f m, band %.4f m)" % [crossing, band])
+	assert_true(start_gap > band and end_gap > band, "fixture: both ends of that arc are clear")
+	var report := ContactReport.new()
+	_collision.detect(state, ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, start_a), ContactFixture.pose(2.0, 0.0, PI, guard_angle)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, end_a), ContactFixture.pose(2.0, 0.0, PI, guard_angle)), _rules, _armed(), report, false, false)
+	assert_true(report.blade, "the sweep reports the crossing the arc found")
+	assert_false(report.body[0] or report.body[1], "fixture: the body is not what the sweep found")
+	var low := 0.0
+	var high := 0.6
+	for _i in 24:
+		var mid := (low + high) * 0.5
+		if _arc_min(start_a, end_a, 2.0, mid, PI, guard_angle, guard_angle, contact) < band + 0.01:
+			low = mid
+		else:
+			high = mid
+	var clear_y := high
+	var clear_gap := _arc_min(start_a, end_a, 2.0, clear_y, PI, guard_angle, guard_angle, contact)
+	assert_true(clear_gap > band + 0.01, "fixture: the shifted arc stays clear (min %.4f m)" % clear_gap)
+	report = ContactReport.new()
+	_collision.detect(state, ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, start_a), ContactFixture.pose(2.0, clear_y, PI, guard_angle)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, end_a), ContactFixture.pose(2.0, clear_y, PI, guard_angle)), _rules, _armed(), report, false, false)
+	assert_false(report.blade, "a near miss the arc stays outside of is not a contact")
+	var half := weapon.swing_speed_full * SimulationTimebase.TICK_SECONDS * 0.5
+	low = 1.6
+	high = 3.2
+	for _i in 24:
+		var mid := (low + high) * 0.5
+		if _arc_min(-half, half, mid, 0.0, PI, half, -half, contact) < band - 0.004:
+			low = mid
+		else:
+			high = mid
+	var both_gap := _arc_min(-half, half, low - 0.01, 0.0, PI, half, -half, contact)
+	var miss_gap := _arc_min(-half, half, high + 0.02, 0.0, PI, half, -half, contact)
+	assert_true(both_gap < band - 0.004, "fixture: both blades' arcs cross (min %.4f m)" % both_gap)
+	assert_true(miss_gap > band + 0.01, "fixture: and a step farther they do not (min %.4f m)" % miss_gap)
+	report = ContactReport.new()
+	_collision.detect(state, ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -half), ContactFixture.pose(low - 0.01, 0.0, PI, half)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, half), ContactFixture.pose(low - 0.01, 0.0, PI, -half)), _rules, _armed(), report, false, false)
+	assert_true(report.blade, "both blades turning through each other is a contact")
+	report = ContactReport.new()
+	_collision.detect(state, ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -half), ContactFixture.pose(high + 0.02, 0.0, PI, half)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, half), ContactFixture.pose(high + 0.02, 0.0, PI, -half)), _rules, _armed(), report, false, false)
+	assert_false(report.blade, "the same two turns, clear of each other, are not")
+
+
+## Dense samples of the true poses. Not `CollisionSystem`. `out` is
+## gap, attacker fraction (0 base → 1 tip), defender fraction, sample index.
+func _arc_closest(start_angle: float, end_angle: float, x_b: float, y_b: float, facing_b: float, start_b: float, end_b: float, contact: SegmentContact, out: PackedFloat64Array, samples: int = 240) -> void:
+	out[0] = 1.0e9
+	out[1] = 0.0
+	out[2] = 0.0
+	out[3] = -1.0
+	for i in samples + 1:
+		var s := float(i) / float(samples)
+		var gap := _arc_gap(start_angle + (end_angle - start_angle) * s, x_b, y_b, facing_b, start_b + (end_b - start_b) * s, contact)
+		if gap < out[0]:
+			out[0] = gap
+			out[1] = contact.s
+			out[2] = contact.t
+			out[3] = float(i)
+
+
+## The defender stands on +X, blade pointing back at the attacker, so the
+## named place on that blade sits `gap` metres past the attacker's tip at
+## angle 0. The sweep runs from `-half` to `+half` and therefore passes that
+## point in the middle, not at an end.
+func _defender_x(gap: float, along: float) -> float:
+	var weapon := _rules.combatant(0).weapon
+	return weapon.tip_radius + gap + along
+
+
+func _assert_graze(name: String, half: float, along: float, tip_b: bool, start_b: float = 0.0, end_b: float = 0.0, broadside: bool = false) -> void:
+	var weapon := _rules.combatant(0).weapon
+	var band := weapon.blade_radius * 2.0
+	var contact := SegmentContact.new()
+	var found := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+	var hit_gap := band - 0.006
+	## Broadside: the defender's blade stands across the attacker's tip, so the
+	## middle of that blade — not its point — is what the tip passes.
+	var x_b := weapon.tip_radius + hit_gap if broadside else _defender_x(hit_gap, along)
+	var y_b := -along if broadside else 0.0
+	var facing_b := PI * 0.5 if broadside else PI
+	_arc_closest(-half, half, x_b, y_b, facing_b, start_b, end_b, contact, found)
+	assert_true(found[0] < band - 0.004 and found[0] > band - 0.012, "%s fixture: the arc bottoms out a few millimetres inside the band (%.4f m, band %.4f m)" % [name, found[0], band])
+	var finer := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+	_arc_closest(-half, half, x_b, y_b, facing_b, start_b, end_b, contact, finer, 960)
+	assert_true(absf(finer[0] - found[0]) < 0.001, "%s fixture: four times the samples move the minimum by less than a millimetre (%.4f m, %.4f m)" % [name, found[0], finer[0]])
+	assert_true(finer[0] < band - 0.004 and finer[0] > band - 0.012, "%s fixture: the finer oracle keeps the graze inside the band (%.4f m)" % [name, finer[0]])
+	assert_true(found[3] > 48.0 and found[3] < 192.0, "%s fixture: that minimum is in the middle of the sweep, not an end (sample %.0f)" % [name, found[3]])
+	var start_gap := _arc_gap(-half, x_b, y_b, facing_b, start_b, contact)
+	var end_gap := _arc_gap(half, x_b, y_b, facing_b, end_b, contact)
+	assert_true(start_gap > band + 0.01 and end_gap > band + 0.01, "%s fixture: both ends are clear (%.4f m, %.4f m)" % [name, start_gap, end_gap])
+	assert_true(found[1] > 0.75, "%s fixture: the attacker meets near its tip (fraction %.2f)" % [name, found[1]])
+	if tip_b:
+		assert_true(found[2] > 0.75, "%s fixture: the defender meets near its tip (fraction %.2f)" % [name, found[2]])
+	else:
+		assert_true(found[2] > 0.25 and found[2] < 0.75, "%s fixture: the defender meets along its middle (fraction %.2f)" % [name, found[2]])
+	var state := DuelFixture.state(_rules)
+	var report := ContactReport.new()
+	var start := ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -half), ContactFixture.pose(x_b, y_b, facing_b, start_b))
+	var finish := ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, half), ContactFixture.pose(x_b, y_b, facing_b, end_b))
+	var wanted := CollisionSystem.substeps_wanted(start, finish, _rules)
+	_collision.diagnostics.reset()
+	_collision.detect(state, start, finish, _rules, _armed(), report, false, false)
+	assert_eq(_collision.diagnostics.ccd_cap_hits, 0, "%s fixture: this pass is inside the cap (%d wanted)" % [name, wanted])
+	assert_true(report.blade, "%s: the sweep reports the graze the arc found (%d substeps)" % [name, wanted])
+	assert_false(report.body[0] or report.body[1], "%s: the body is not the contact" % name)
+	var miss_gap := band + 0.012
+	var miss_x := weapon.tip_radius + miss_gap if broadside else _defender_x(miss_gap, along)
+	var miss_y := -along if broadside else 0.0
+	_arc_closest(-half, half, miss_x, miss_y, facing_b, start_b, end_b, contact, found)
+	assert_true(found[0] > band + 0.01, "%s fixture: one centimetre further and the arc stays clear (%.4f m)" % [name, found[0]])
+	_arc_closest(-half, half, miss_x, miss_y, facing_b, start_b, end_b, contact, finer, 960)
+	assert_true(finer[0] > band + 0.01, "%s fixture: the finer oracle keeps the twin clear (%.4f m)" % [name, finer[0]])
+	report = ContactReport.new()
+	_collision.detect(state, ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -half), ContactFixture.pose(miss_x, miss_y, facing_b, start_b)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, half), ContactFixture.pose(miss_x, miss_y, facing_b, end_b)), _rules, _armed(), report, false, false)
+	assert_false(report.blade, "%s: the clear twin is not a contact" % name)
+
+
+## Rotation whose tip travel asks for `steps` substeps when it is the only motion.
+func _angle_for_substeps(steps: float) -> float:
+	var travel := steps * _rules.combat.substep_travel
+	return travel / _rules.combatant(0).weapon.tip_radius
+
+
+## A shallow tip pass under the budget, the same pass near the cap, a
+## tip-to-tip pass, and both blades turning. Each has a clear twin. The oracle
+## is the sampled arc, and the margins are millimetres, not a tangent float.
+func test_shallow_tip_grazes_follow_the_arc_inside_the_substep_budget() -> void:
+	var weapon := _rules.combatant(0).weapon
+	var modest := _angle_for_substeps(18.0) * 0.5
+	var modest_wanted := CollisionSystem.substeps_wanted(ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -modest), ContactFixture.pose(0.0, 0.0, PI, 0.0)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, modest), ContactFixture.pose(0.0, 0.0, PI, 0.0)), _rules)
+	assert_true(modest_wanted > 1 and modest_wanted < int(float(_rules.combat.max_substeps) * 0.5), "fixture: the modest pass is inside the budget, not at the cap (%d)" % modest_wanted)
+	var mid := (weapon.blade_base_radius + weapon.tip_radius) * 0.5
+	_assert_graze("tip to middle", modest, mid, false, 0.0, 0.0, true)
+	_assert_graze("tip to tip", modest, weapon.tip_radius, true)
+	var near_cap := _angle_for_substeps(float(_rules.combat.max_substeps) - 1.5) * 0.5
+	var cap_wanted := CollisionSystem.substeps_wanted(ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -near_cap), ContactFixture.pose(0.0, 0.0, PI, 0.0)), ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, near_cap), ContactFixture.pose(0.0, 0.0, PI, 0.0)), _rules)
+	assert_true(cap_wanted >= _rules.combat.max_substeps - 2 and cap_wanted <= _rules.combat.max_substeps, "fixture: the fast pass asks for the top of the budget (%d)" % cap_wanted)
+	_assert_graze("tip to middle at the cap", near_cap, mid, false, 0.0, 0.0, true)
+	var each := _angle_for_substeps((float(_rules.combat.max_substeps) - 1.5) * 0.5) * 0.5
+	_assert_graze("both blades", each, weapon.tip_radius, true, each, -each)
+
+
+## The supported detection claim is motion whose travel stays inside the cap.
+## A full swing is the actuated ceiling (18 rad/s). The corruption bound is
+## faster than that and is not this claim: one tick of it wants more samples
+## than `max_substeps`. The grazes above already cover a pass faster than a
+## full swing and a pass at the top of the cap.
+func test_a_full_swing_fits_the_cap_and_the_corruption_bound_does_not() -> void:
+	var live := DuelFixture.rules()
+	var weapon := live.combatant(0).weapon
+	var travel := weapon.tip_radius * weapon.swing_speed_full * SimulationTimebase.TICK_SECONDS
+	var wanted := ceili(travel / live.combat.substep_travel)
+	assert_eq(weapon.swing_speed_full, 18.0, "fixture: the actuated ceiling is the authored full swing")
+	assert_true(wanted > 1 and wanted < 18, "a full swing tick stays inside the cap, under the modest graze (%d substeps, %.3f m)" % [wanted, travel])
+	var bound := SimulationGuardrails.physical_weapon_speed_bound(live.combatant(0), live.combatant(1))
+	var bound_travel := weapon.tip_radius * bound * SimulationTimebase.TICK_SECONDS
+	var bound_wanted := ceili(bound_travel / live.combat.substep_travel)
+	assert_true(bound > weapon.swing_speed_full, "fixture: a contact can outrun the motor (%.1f rad/s)" % bound)
+	assert_true(bound_wanted > live.combat.max_substeps, "the corruption bound is outside the cap (%d substeps); a graze there is not claimed" % bound_wanted)
+
+
+## Past the cap the sweep does not grow. A deep cross is still reported. The
+## overflow is counted. A thin graze is not claimed once the step is coarser
+## than the budget these witnesses used.
+func test_an_over_cap_sweep_counts_the_overflow_and_keeps_a_deep_cross() -> void:
+	var weapon := _rules.combatant(0).weapon
+	var band := weapon.blade_radius * 2.0
+	var spun := _angle_for_substeps(float(_rules.combat.max_substeps) + 12.0)
+	var contact := SegmentContact.new()
+	var crossing := _arc_min(-spun * 0.5, spun * 0.5, 2.0, 0.0, PI, deg_to_rad(-30.0), deg_to_rad(-30.0), contact)
+	assert_true(crossing < band - 0.02, "fixture: the arc still crosses deeply (min %.4f m)" % crossing)
+	var start := ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, -spun * 0.5), ContactFixture.pose(2.0, 0.0, PI, deg_to_rad(-30.0)))
+	var finish := ContactFixture.poses(ContactFixture.pose(0.0, 0.0, 0.0, spun * 0.5), ContactFixture.pose(2.0, 0.0, PI, deg_to_rad(-30.0)))
+	var wanted := CollisionSystem.substeps_wanted(start, finish, _rules)
+	assert_true(wanted > _rules.combat.max_substeps, "fixture: the motion wants more than the cap (%d)" % wanted)
+	var state := DuelFixture.state(_rules)
+	var report := ContactReport.new()
+	_collision.diagnostics.reset()
+	_collision.detect(state, start, finish, _rules, _armed(), report, false, false)
+	assert_eq(_collision.diagnostics.ccd_cap_hits, 1, "the overflow is counted")
+	assert_eq(CollisionSystem.substep_count(start, finish, _rules), _rules.combat.max_substeps, "and the sweep stays at the cap")
+	assert_true(report.blade, "a deep cross is still a contact when the cap binds")
+

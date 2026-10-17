@@ -38,6 +38,7 @@ const RULES_20 := {
 	"forces": "1760 / 2400 / 5600",
 	"burst_speed": "8.4",
 	"hurt": "whole body 0.27",
+	## Key kept so the rules-20 column still resolves. The row is not a hurt shape.
 	"grip": "—",
 	"steel": "blade only",
 	"exposure": "damage × 0.75–1.5",
@@ -79,7 +80,7 @@ static func table(rules: DuelRules) -> String:
 		["forces", "Locomotion / brake / burst force", "N", "%s / %s / %s" % [_n(fighter.locomotion_force, 0), _n(fighter.braking_force, 0), _n(fighter.burst_force, 0)]],
 		["burst_speed", "Burst speed (axial)", "m/s", _n(fighter.burst_speed_axial, 1)],
 		["hurt", "Hurt target radius", "m", "torso %s" % _n(fighter.hurt_radius, 3)],
-		["grip", "Grip hurt region (hands, handle)", "m", "hands 2 × %s, handle %s; wound share %s" % [_n(fighter.hand_radius, 3), _n(weapon.handle_radius, 3), _n(fighter.grip_damage_factor, 2)]],
+		["grip", "Hand discs, presentation and self-clearance only", "m", "2 × %s; not a hurt shape" % _n(fighter.hand_radius, 3)],
 		["steel", "Sword-vs-sword steel", "—", "blade only (STEEL-TOPOLOGY-001)"],
 		["exposure", "Exposure in damage", "—", "reading only (PHYS-004)"],
 		["tap_swing", "Tap from the guard: release → overswing", "ticks", str(tap[0])],

@@ -188,7 +188,7 @@ func _enter(beat_now: Beat) -> void:
 			_frame_shot(slot)
 			card_requested.emit(intro.display_name if intro != null else "")
 			if intro != null:
-				_audio.play_voice(intro.line_for(slot, _combatants[slot].voice()), intro.spoken_for(slot))
+				_audio.play_voice(intro.line(_combatants[slot].voice()), intro.spoken())
 		Beat.VERSUS:
 			card_requested.emit(_announcer.versus_caption)
 			_audio.play_voice(_announcer.versus, "")

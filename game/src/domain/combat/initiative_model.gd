@@ -62,13 +62,18 @@ static func threat_time(attacker: FighterState, attacker_spec: CombatantPhysicsS
 ## it is in — a swing in flight keeps driving to its end, anything else is
 ## arrested by its brake or hold — with no knowledge of the target's future
 ## input; its blade — the only steel that stops a cut (STEEL-TOPOLOGY-001) —
-## met by this sword's blade before the torso or the grip region (the hands
-## and the handle — GRIP-NONBLOCKING-001) reads `ThreatEstimate.STEEL` (a
+## met by this sword's blade before the torso reads `ThreatEstimate.STEEL` (a
 ## tie goes to the steel, as in the duel). Steel is swept like the duel's:
 ## a tick that ends with the blades apart but closer than they travelled in
 ## it is sampled inside, so a fast point cannot skip the other blade. Blades
 ## already touching when the prediction starts are a bind, not an obstruction
 ## (`starts_bound`): only steel met again after they part is a new contact.
+##
+## The estimate never writes a fighter. Angle and speed are copied into
+## locals (`theta`, `omega`, and the target's pair); the guard stop is
+## `WeaponSystem.write_limited` into `coast_out` / `their_out`, the same
+## arrival rule as the weapon step, and those buffers are discarded with
+## the call.
 static func estimate(
 	attacker: FighterState,
 	attacker_spec: CombatantPhysicsSpec,
@@ -96,13 +101,21 @@ static func estimate(
 	var definition := attacker_spec.weapon
 	var body := attacker_spec.fighter
 	var dt := SimulationTimebase.TICK_SECONDS
-	var condition := ConditionModel.compute(attacker.health, body.max_health, combat, ConditionState.new())
+	var condition := ConditionModel.compute(attacker.health, body.max_health, attacker.stamina, combat, ConditionState.new())
 	var force := condition.force_scale
 	var speed := condition.speed_scale
-	var drive := body.weapon_torque_scale * force
+	## Damage term, then fatigue applied once (STAMINA-004). The return reads
+	## the base. Swing, wind-up, brake and the zone read the scaled drive.
+	var base_drive := body.weapon_torque_scale * condition.damage_force_scale
+	var fatigue_scaled_drive := base_drive * condition.fatigue_scale
 	var pose := BladePose.new()
 	var inertia := WeaponKinematics.motor_inertia(attacker_spec, weapon.angle, pose)
-	var ready := _readiness(attacker, definition, drive, inertia, combat.recovery_min_ticks)
+	## Start-of-tick authority. The estimate does not invent a contact dip; each
+	## predicted tick that continues recovers the same way the duel does
+	## (IMPACT-AUTHORITY-001).
+	var return_auth := attacker.impact_authority
+	var their_return_auth := target.impact_authority
+	var ready := _readiness(attacker, definition, fatigue_scaled_drive, base_drive, inertia, combat, return_auth)
 	## The predicted strike: the swing in flight, or the one this weapon could
 	## launch — a held charge released now, otherwise a tap once ready.
 	var swinging := CombatPhase.is_swinging(weapon.phase)
@@ -137,13 +150,6 @@ static func estimate(
 	var asking := CommitmentModel.translation_multiplier(attacker, body)
 	var authority := CommitmentModel.move_authority(attacker, body)
 	var touch := target_spec.fighter.hurt_radius + definition.blade_radius
-	## The target's grip region is damageable too (GRIP-NONBLOCKING-001): the
-	## earliest of torso and grip — the hands and the handle — is
-	## the threat. Unswept, the grip rides the target's predicted translation
-	## from where it is now (its heading and sword frozen, like the rest of the
-	## target).
-	var grips := WeaponKinematics.pose_of(target, target_spec, BladePose.new())
-	var segments := SegmentContact.new()
 	## The swords' steel as the duel measures it (blades and guards), when swept.
 	var steel_geometry: SwordContactGeometry = SwordContactGeometry.new() if steel else null
 	var apart := body.push_radius + target_spec.fighter.push_radius
@@ -155,7 +161,8 @@ static func estimate(
 	var their_theta := target.weapon.angle
 	var their_omega := target.weapon.speed
 	var their_swinging := CombatPhase.is_swinging(target.weapon.phase)
-	var their_drive := 0.0
+	var their_fatigue_scaled_drive := 0.0
+	var their_base_drive := 0.0
 	var their_ceiling := 0.0
 	var their_speed_scale := 1.0
 	var their_pose: BladePose = null
@@ -179,8 +186,9 @@ static func estimate(
 	var their_tracking := 0.0
 	var their_rate_tracking := 0.0
 	if steel:
-		var their_condition := ConditionModel.compute(target.health, target_spec.fighter.max_health, combat, ConditionState.new())
-		their_drive = target_spec.fighter.weapon_torque_scale * their_condition.force_scale
+		var their_condition := ConditionModel.compute(target.health, target_spec.fighter.max_health, target.stamina, combat, ConditionState.new())
+		their_base_drive = target_spec.fighter.weapon_torque_scale * their_condition.damage_force_scale
+		their_fatigue_scaled_drive = their_base_drive * their_condition.fatigue_scale
 		their_ceiling = their.achievable_swing_speed(target.weapon.swing_charge, target.weapon.launch_preparation) * their_condition.speed_scale
 		their_speed_scale = their_condition.speed_scale
 		their_tracking = CommitmentModel.turn_torque_share(target, target_spec, their_condition, combat)
@@ -193,6 +201,10 @@ static func estimate(
 		_blade_ends(pose, definition, their_pose, their, previous_ends)
 	var bound := out.starts_bound
 	previous = PackedFloat64Array([x, y, phi, theta, tx, ty, their_phi, their_theta])
+	var coast_out := PackedFloat64Array([0.0, 0.0])
+	var their_out := PackedFloat64Array([0.0, 0.0])
+	var coast_side := weapon.stable_side
+	var their_side := target.weapon.stable_side
 	for k in range(1, HORIZON_TICKS + 1):
 		var t := float(k) * dt
 		tx += target.vx * dt
@@ -229,14 +241,13 @@ static func estimate(
 			vy += wy
 		x += vx * dt
 		y += vy * dt
-		## Weapon. Until it is ready the blade is not frozen: it keeps moving and
-		## is arrested by the same motor the duel applies (the attack's brake
-		## while overswinging or recovering above control speed, the hold
-		## otherwise), so a guard knocked spinning is predicted to spin away.
-		## Once ready it drives its strike toward the target speed.
-		## The coordinate's inertia at this pose is read only where a motor
-		## changes θ̇: a blade at rest and not launched, or a swing past its
-		## end, stays exactly where it is.
+		## Weapon. Until it is ready the blade is not frozen: it keeps moving
+		## under the same coast the duel applies (the attack's brake while
+		## overswinging or recovering above control speed, the guard return
+		## once it is under control — GUARD-RETURN-001), so a guard knocked
+		## spinning is predicted to spin away and then settle on its side.
+		## Once ready it drives its strike toward the target speed. A swing
+		## past its end stays where that tick left it.
 		if not launched and t >= ready:
 			launched = true
 			ceiling = definition.achievable_swing_speed(charge, definition.preparation(theta)) * speed
@@ -244,13 +255,18 @@ static func estimate(
 		if launched:
 			if (theta - swing_end) * dir < 0.0:
 				inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
-				omega = SimMath.approach(omega, dir * ceiling, definition.swing_accel(charge, drive, inertia) * dt)
-				theta = clampf(theta + omega * dt, -definition.guard_limit, definition.guard_limit)
+				omega = SimMath.approach(omega, dir * ceiling, definition.swing_accel(charge, fatigue_scaled_drive, inertia) * dt)
+				WeaponSystem.write_limited(coast_out, theta, omega, definition.guard_limit, combat.guard_limit_zone, WeaponSystem.zone_spring(definition, fatigue_scaled_drive, inertia, combat), combat.guard_limit_damping, WeaponSystem.limit_accel_cap(definition, fatigue_scaled_drive, inertia))
+				theta = coast_out[0]
+				omega = coast_out[1]
 		else:
-			if omega != 0.0:
-				inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
-				omega = SimMath.approach(omega, 0.0, _arrest_accel(weapon, omega, definition, drive, inertia) * dt)
-				theta = clampf(theta + omega * dt, -definition.guard_limit, definition.guard_limit)
+			inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
+			omega = WeaponSystem.coast_speed(omega, theta, weapon.phase, coast_side, weapon.swing_charge, definition, fatigue_scaled_drive, base_drive, inertia, combat, return_auth, false)
+			WeaponSystem.write_limited(coast_out, theta, omega, definition.guard_limit, combat.guard_limit_zone, WeaponSystem.zone_spring(definition, fatigue_scaled_drive, inertia, combat), combat.guard_limit_damping, WeaponSystem.limit_accel_cap(definition, fatigue_scaled_drive, inertia))
+			theta = coast_out[0]
+			omega = coast_out[1]
+			if absf(theta) > definition.side_deadzone:
+				coast_side = 1.0 if theta > 0.0 else -1.0
 			if side_free and absf(theta) > definition.side_deadzone:
 				dir = -1.0 if theta > 0.0 else 1.0
 		WeaponKinematics.pose_at(x, y, phi, theta, attacker_spec, pose)
@@ -265,16 +281,21 @@ static func estimate(
 		if steel:
 			if their_swinging and (their_theta - target.weapon.swing_end) * target.weapon.swing_dir < 0.0:
 				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
-				their_omega = SimMath.approach(their_omega, target.weapon.swing_dir * their_ceiling, their.swing_accel(target.weapon.swing_charge, their_drive, their_inertia) * dt)
+				their_omega = SimMath.approach(their_omega, target.weapon.swing_dir * their_ceiling, their.swing_accel(target.weapon.swing_charge, their_fatigue_scaled_drive, their_inertia) * dt)
 			elif target.weapon.phase == CombatPhase.Id.CHARGING:
 				## A held charge keeps winding back under its own motor, as
 				## `WeaponSystem` drives it, while the button stays held.
 				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
-				their_omega = SimMath.approach(their_omega, -target.weapon.swing_dir * their.windup_speed * their_speed_scale, their.windup_accel(their_drive, their_inertia) * dt)
-			elif their_omega != 0.0:
+				their_omega = SimMath.approach(their_omega, -target.weapon.swing_dir * their.windup_speed * their_speed_scale, their.windup_accel(their_fatigue_scaled_drive, their_inertia) * dt)
+			else:
 				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
-				their_omega = SimMath.approach(their_omega, 0.0, _arrest_accel(target.weapon, their_omega, their, their_drive, their_inertia) * dt)
-			their_theta = clampf(their_theta + their_omega * dt, -their.guard_limit, their.guard_limit)
+				their_omega = WeaponSystem.coast_speed(their_omega, their_theta, target.weapon.phase, their_side, target.weapon.swing_charge, their, their_fatigue_scaled_drive, their_base_drive, their_inertia, combat, their_return_auth, false)
+			var their_inertia_now := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
+			WeaponSystem.write_limited(their_out, their_theta, their_omega, their.guard_limit, combat.guard_limit_zone, WeaponSystem.zone_spring(their, their_fatigue_scaled_drive, their_inertia_now, combat), combat.guard_limit_damping, WeaponSystem.limit_accel_cap(their, their_fatigue_scaled_drive, their_inertia_now))
+			their_theta = their_out[0]
+			their_omega = their_out[1]
+			if absf(their_theta) > their.side_deadzone:
+				their_side = 1.0 if their_theta > 0.0 else -1.0
 			WeaponKinematics.pose_at(tx, ty, their_phi, their_theta, target_spec, their_pose)
 			steel_now = _steel_clearance(pose, definition, their_pose, their, steel_geometry)
 			_blade_ends(pose, definition, their_pose, their, ends)
@@ -292,24 +313,14 @@ static func estimate(
 					steel_crossed = swept_at <= 1.0
 		var along := SimMath.closest_param_on_segment(hx, hy, px, py, tx, ty)
 		gap = SimMath.length(tx - SimMath.mix(hx, px, along), ty - SimMath.mix(hy, py, along)) - touch
-		var region := ThreatEstimate.BODY
-		## Swept with its sword, the target's grip rides it as its sword and
-		## heading actually move; otherwise at its frozen pose, translated.
-		var grip_gap := (
-			grip_gap_at(hx, hy, px, py, definition.blade_radius, their_pose, 0.0, 0.0, target_spec, segments) if steel
-			else grip_gap_at(hx, hy, px, py, definition.blade_radius, grips, tx - target.x, ty - target.y, target_spec, segments)
-		)
-		if grip_gap < gap:
-			gap = grip_gap
-			region = ThreatEstimate.GRIP
 		var flesh_crossed := gap <= 0.0
 		## Steel and flesh both reached inside this tick: order them by where
 		## each first crossed, found by bisecting the tick on the interpolated
 		## bodies and swords (a fixed count); a tie is the steel's.
 		if steel_crossed and flesh_crossed:
 			var now := PackedFloat64Array([x, y, phi, theta, tx, ty, their_phi, their_theta])
-			var steel_at := swept_at if swept_at <= 1.0 else _first_crossing(true, previous, now, attacker_spec, target_spec, touch, pose, their_pose, segments, steel_geometry)
-			var flesh_at := _first_crossing(false, previous, now, attacker_spec, target_spec, touch, pose, their_pose, segments, steel_geometry)
+			var steel_at := swept_at if swept_at <= 1.0 else _first_crossing(true, previous, now, attacker_spec, target_spec, touch, pose, their_pose, steel_geometry)
+			var flesh_at := _first_crossing(false, previous, now, attacker_spec, target_spec, touch, pose, their_pose, steel_geometry)
 			steel_crossed = steel_at <= flesh_at
 			flesh_crossed = not steel_crossed
 		if steel_crossed:
@@ -319,13 +330,15 @@ static func estimate(
 		if flesh_crossed:
 			out.within_horizon = true
 			out.hit_time = t
-			out.first_contact = region
+			out.first_contact = ThreatEstimate.BODY
 			return out
 		if steel:
 			previous = PackedFloat64Array([x, y, phi, theta, tx, ty, their_phi, their_theta])
 			previous_steel = steel_now
 			for i in ends.size():
 				previous_ends[i] = ends[i]
+		return_auth = ImpactAuthority.recover(return_auth, combat.guard_return_natural_frequency, dt)
+		their_return_auth = ImpactAuthority.recover(their_return_auth, combat.guard_return_natural_frequency, dt)
 	var horizon := float(HORIZON_TICKS) * dt
 	out.hit_time = horizon
 	out.residual_gap = gap
@@ -437,7 +450,6 @@ static func _first_crossing(
 	touch: float,
 	pose: BladePose,
 	their_pose: BladePose,
-	segments: SegmentContact,
 	steel_geometry: SwordContactGeometry
 ) -> float:
 	var open := 0.0
@@ -456,7 +468,7 @@ static func _first_crossing(
 			var hy := pose.point_y(definition.blade_base_radius)
 			var px := pose.point_x(definition.tip_radius)
 			var py := pose.point_y(definition.tip_radius)
-			gap = minf(_segment_gap(hx, hy, px, py, tx, ty) - touch, grip_gap_at(hx, hy, px, py, definition.blade_radius, their_pose, 0.0, 0.0, target_spec, segments))
+			gap = _segment_gap(hx, hy, px, py, tx, ty) - touch
 		if gap <= 0.0:
 			closed = middle
 		else:
@@ -465,26 +477,6 @@ static func _first_crossing(
 	WeaponKinematics.pose_at(now[0], now[1], now[2], now[3], attacker_spec, pose)
 	WeaponKinematics.pose_at(now[4], now[5], now[6], now[7], target_spec, their_pose)
 	return closed
-
-
-## The surface gap (m; ≤ 0 inside) from a blade segment (`hx`, `hy`)–(`px`,
-## `py`) of `blade_radius` to the nearest part of `target_spec`'s grip region
-## (GRIP-NONBLOCKING-001) on its sword at `their_pose`, translated by
-## (`ox`, `oy`): the hand discs and the handle capsule, each at its own
-## thickness, as `CollisionSystem` strikes them (the crossguard passes through).
-static func grip_gap_at(hx: float, hy: float, px: float, py: float, blade_radius: float, their_pose: BladePose, ox: float, oy: float, target_spec: CombatantPhysicsSpec, segments: SegmentContact) -> float:
-	var their := target_spec.weapon
-	var hand := target_spec.fighter.hand_radius + blade_radius
-	var least := minf(
-		_segment_gap(hx, hy, px, py, their_pose.point_x(their.offhand_grip_radius) + ox, their_pose.point_y(their.offhand_grip_radius) + oy),
-		_segment_gap(hx, hy, px, py, their_pose.point_x(their.dominant_grip_radius) + ox, their_pose.point_y(their.dominant_grip_radius) + oy)
-	) - hand
-	if their.handle_radius > 0.0:
-		var cx := their_pose.point_x(their.crossguard_centre_radius) + ox
-		var cy := their_pose.point_y(their.crossguard_centre_radius) + oy
-		SimMath.closest_segments(hx, hy, px, py, their_pose.point_x(0.0) + ox, their_pose.point_y(0.0) + oy, cx, cy, segments)
-		least = minf(least, segments.distance - their.handle_radius - blade_radius)
-	return least
 
 
 ## Distance from the segment (`ax`, `ay`)–(`bx`, `by`) to the point (`x`, `y`).
@@ -497,15 +489,15 @@ static func _segment_gap(ax: float, ay: float, bx: float, by: float, x: float, y
 ## and then sits out the universal floor; a recovery waits for the rest of its
 ## floor or for its brake to bring the blade under `control_speed`, whichever
 ## is later; a stagger runs out.
-static func _readiness(attacker: FighterState, definition: WeaponDefinition, drive: float, inertia: float, min_ticks: int) -> float:
+static func _readiness(attacker: FighterState, definition: WeaponDefinition, fatigue_scaled_drive: float, base_drive: float, inertia: float, combat: CombatTuning, return_scale: float) -> float:
 	var weapon := attacker.weapon
 	var dt := SimulationTimebase.TICK_SECONDS
-	var brake := definition.brake_accel(weapon.swing_charge, drive, inertia)
+	var brake := definition.brake_accel(weapon.swing_charge, fatigue_scaled_drive, inertia)
 	match weapon.phase:
 		CombatPhase.Id.NEUTRAL:
-			return maxf(0.0, absf(weapon.speed) - definition.control_speed) / definition.hold_accel(drive, inertia)
+			return _seconds_until_controlled(weapon, definition, fatigue_scaled_drive, base_drive, inertia, combat, return_scale)
 		CombatPhase.Id.OVERSWING:
-			return absf(weapon.speed) / brake + float(min_ticks) * dt
+			return absf(weapon.speed) / brake + float(combat.recovery_min_ticks) * dt
 		CombatPhase.Id.RECOVERY:
 			return maxf(float(weapon.recovery_left) * dt, maxf(0.0, absf(weapon.speed) - definition.control_speed) / brake)
 		CombatPhase.Id.STAGGER:
@@ -513,12 +505,27 @@ static func _readiness(attacker: FighterState, definition: WeaponDefinition, dri
 	return 0.0
 
 
-## The deceleration the duel's motor applies to a blade that is not striking:
-## the attack's brake while it overswings or recovers above control speed
-## (RECOVERY-001), the hold otherwise.
-static func _arrest_accel(weapon: WeaponState, omega: float, definition: WeaponDefinition, drive: float, inertia: float) -> float:
-	var braking := weapon.phase == CombatPhase.Id.OVERSWING or (weapon.phase == CombatPhase.Id.RECOVERY and absf(omega) > definition.control_speed)
-	return definition.brake_accel(weapon.swing_charge, drive, inertia) if braking else definition.hold_accel(drive, inertia)
+## How long the guard return takes to bring a neutral blade back under
+## `control_speed`, stepping the same coast the duel uses.
+static func _seconds_until_controlled(weapon: WeaponState, definition: WeaponDefinition, fatigue_scaled_drive: float, base_drive: float, inertia: float, combat: CombatTuning, return_scale: float) -> float:
+	if absf(weapon.speed) <= definition.control_speed:
+		return 0.0
+	var dt := SimulationTimebase.TICK_SECONDS
+	var angle := weapon.angle
+	var omega := weapon.speed
+	var side := weapon.stable_side
+	var out := PackedFloat64Array([0.0, 0.0])
+	for i in HORIZON_TICKS:
+		omega = WeaponSystem.coast_speed(omega, angle, weapon.phase, side, weapon.swing_charge, definition, fatigue_scaled_drive, base_drive, inertia, combat, return_scale, false)
+		WeaponSystem.write_limited(out, angle, omega, definition.guard_limit, combat.guard_limit_zone, WeaponSystem.zone_spring(definition, fatigue_scaled_drive, inertia, combat), combat.guard_limit_damping, WeaponSystem.limit_accel_cap(definition, fatigue_scaled_drive, inertia))
+		angle = out[0]
+		omega = out[1]
+		if absf(angle) > definition.side_deadzone:
+			side = 1.0 if angle > 0.0 else -1.0
+		if absf(omega) <= definition.control_speed:
+			return float(i + 1) * dt
+		return_scale = ImpactAuthority.recover(return_scale, combat.guard_return_natural_frequency, dt)
+	return float(HORIZON_TICKS) * dt
 
 
 ## Positive when `fighter` threatens first.

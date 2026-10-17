@@ -13,17 +13,15 @@ extends SceneTree
 ##                   contact (V48B is only justified if it is)
 ##
 ## Prints one progress line per duel and one `FEEL_RESULT {json}` line:
-## clashes, hits (body and hand), kills, parries (and the passive share —
+## clashes, body hits, kills, parries (and the passive share —
 ## parries made by a resting guard), whiffs, clashes per hit, held-contact
 ## lifetimes (mean, p90, share of holds of 30+ ticks), friction saturation
 ## |Jt|/(μ·Jn) over held points, the threat-time advantage 0/10/20 ticks after
-## a contact or whiff, and per swing against the opponent's hands: near misses
-## (the blade's closest surface gap to a hand, sampled each tick, within
-## `NEAR_MISS_M` and no hand wound) and saves by steel — a protective contact
-## (the blade) met before any grip wound where the same free sweep, carried
-## on from just before the contact at its own rates with nothing in the way,
-## would have entered a hand within `FREE_SWEEP_TICKS`: the hand was safe
-## because the steel was there. Parries are also read per released attack (the
+## a contact or whiff, and per swing a visual sample of the drawn hands:
+## `visual_hand_near_misses` (the blade's closest surface gap to a hand disc,
+## within `NEAR_MISS_M`). That gap is not a hurt query. `visual_hand_crossings_met_by_steel`
+## counts a protective contact met before the free sweep would have crossed a
+## hand disc; the hand is not a wound (TORSO-CIRCLE-001). Parries are also read per released attack (the
 ## passive rate is the parry metric; the share of all parries is telemetry).
 ##
 ## Clean body strikes — a torso hit by an attack that met no protective steel
@@ -89,8 +87,8 @@ func _initialize() -> void:
 		quit(1)
 		return
 	var totals := {
-		"clashes": 0, "body_hits": 0, "hand_hits": 0, "kills": 0, "parries": 0, "passive_parries": 0,
-		"whiffs": 0, "holds": 0, "long_holds": 0, "near_misses": 0, "saved_by_steel": 0, "live_ticks": 0,
+		"clashes": 0, "body_hits": 0, "kills": 0, "parries": 0, "passive_parries": 0,
+		"whiffs": 0, "holds": 0, "long_holds": 0, "visual_hand_near_misses": 0, "visual_hand_crossings_met_by_steel": 0, "live_ticks": 0,
 		"attacks": 0, "clean_hits": 0, "clean_terminal": 0, "clean_crippling": 0,
 		"disengages": 0, "friction_without_normal": 0,
 	}
@@ -151,7 +149,7 @@ func _initialize() -> void:
 								steel[slot] = steel[slot] or protected
 								if swinging[slot] and not wounded[slot] and not saved[slot] and protected and _free_sweep_enters_hand(slot):
 									saved[slot] = true
-									totals["saved_by_steel"] += 1
+									totals["visual_hand_crossings_met_by_steel"] += 1
 						DuelEventTypes.ATTACK_WHIFFED:
 							totals["whiffs"] += 1
 							samples.append(event.tick)
@@ -159,12 +157,9 @@ func _initialize() -> void:
 							totals["attacks"] += 1
 							steel[event.actor] = false
 						DuelEventTypes.BODY_HIT:
-							if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP:
-								totals["hand_hits"] += 1
-								wounded[event.actor] = true
-							else:
-								totals["body_hits"] += 1
-								if not steel[event.actor] and event.text(DuelEventKeys.CONTACT_KIND) != "graze" and event.number(DuelEventKeys.CLOSING_SPEED) > 0.0:
+							totals["body_hits"] += 1
+							wounded[event.actor] = true
+							if not steel[event.actor] and event.text(DuelEventKeys.CONTACT_KIND) != "graze" and event.number(DuelEventKeys.CLOSING_SPEED) > 0.0:
 									var full := _rules.spec_of(state.fighter(event.target)).fighter.max_health
 									var left := event.number(DuelEventKeys.HEALTH)
 									var share := event.number(DuelEventKeys.DAMAGE) / full
@@ -262,7 +257,7 @@ func _initialize() -> void:
 					if now:
 						closest[slot] = minf(closest[slot], gap)
 					elif swinging[slot] and closest[slot] <= NEAR_MISS_M and not wounded[slot]:
-						totals["near_misses"] += 1
+						totals["visual_hand_near_misses"] += 1
 					swinging[slot] = now
 			if span > 0:
 				spans.append(span)
@@ -277,13 +272,13 @@ func _initialize() -> void:
 	totals["holds"] = spans.size()
 	for s in spans:
 		totals["long_holds"] += 1 if s >= LONG_HOLD_TICKS else 0
-	var hits: int = int(totals["body_hits"]) + int(totals["hand_hits"])
+	var hits: int = int(totals["body_hits"])
 	var result := totals.duplicate()
 	result["mu0"] = frictionless
 	result["clashes_per_hit"] = float(totals["clashes"]) / float(maxi(hits, 1))
 	result["passive_parry_share"] = float(totals["passive_parries"]) / float(maxi(int(totals["parries"]), 1))
 	result["passive_parries_per_attack"] = float(totals["passive_parries"]) / float(maxi(int(totals["attacks"]), 1))
-	result["saved_by_steel_per_attack"] = float(totals["saved_by_steel"]) / float(maxi(int(totals["attacks"]), 1))
+	result["visual_hand_crossings_met_by_steel_per_attack"] = float(totals["visual_hand_crossings_met_by_steel"]) / float(maxi(int(totals["attacks"]), 1))
 	result["clean_hits_per_kill"] = float(totals["clean_hits"]) / float(maxi(int(totals["kills"]), 1))
 	result["clean_terminal_share"] = float(totals["clean_terminal"]) / float(maxi(int(totals["clean_hits"]), 1))
 	result["clean_crippling_share"] = float(totals["clean_crippling"]) / float(maxi(int(totals["clean_hits"]), 1))

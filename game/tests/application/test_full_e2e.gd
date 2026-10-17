@@ -53,12 +53,11 @@ const CUT_CHARGE_TICKS := 24
 ## spacing taken inside that lag is spacing it did not see.
 const ATTACKER_LAG_TICKS := 6
 ## PARRY-RIPOSTE (true blade defense) against the production Hard CPU on this
-## match seed: the human holds its ground tapping whenever the CPU is in
-## reach, and once it has parried walks in tapping. Found at rules 50 by a
-## live-play search (CPU seeds × simple human policies, real app input);
-## replayed from clean launches with identical events and an identical
-## headless replay hash. The standing guard of earlier rules no longer meets a
-## cut: its crossguard and handle were the steel that did (STEEL-TOPOLOGY-001).
+## match seed: the human stands in the settled guard and does not attack until
+## its blade has arrested a CPU cut, then walks in tapping. Tapping on sight
+## made the human the attacker (the only parry was the CPU's). Replayed through
+## the app on rules 55: the arrest is blade on blade. The recovering blade may
+## still enter the torso; the human's later attack is the answer.
 const DEFENSE_SEED := 8
 ## BAIT: the attacker releases its full charge from this far (× strike reach),
 ## trusting its advance to close; the human gives ground — a back-diagonal
@@ -71,9 +70,9 @@ const LINE_READ_LEAD := 0.5
 const LINE_WALK_TICKS := 12
 const BAIT_RELEASE_FACTOR := 1.35
 const BAIT_LEAD := 0.4
-## GRIP-NONBLOCKING-001: approaching at an angle and tapping from here reaches
-## the standing opponent's grip before any steel. Found by searching the
-## solver at rules 49 on the scenario seed; the same trace at rules 50.
+## TORSO-CIRCLE-001: approaching at an angle and tapping from here used to
+## reach the standing opponent's grip before any steel. Hands and the handle
+## are not a target, so the same trace misses the torso.
 const GRIP_STICK := Vector2(-0.7, 1.0)
 const GRIP_REACH := 2.3
 ## CLEAN-STRIKE: a charged cut from here meets no steel at all.
@@ -217,6 +216,51 @@ func test_leaving_the_victory_for_the_menu_cleans_up() -> void:
 	await await_frames(2)
 
 
+## The set-winning sequence through the real match: the deciding round keeps
+## playing with the gameplay HUD down, then the showcase pushes in and its
+## fanfare sounds once.
+func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
+	var driver := AppDriver.boot(7)
+	await await_frames(1)
+	var screen := await _scenario(driver, ScenarioController.standing())
+	var beat := {"hid": false}
+	for _round in screen.session.config.rules.rounds_to_win:
+		if screen.is_finished():
+			break
+		assert_true(screen.hud.is_gameplay_chrome_visible(), "fixture: a live round shows the HUD")
+		_cut_down(driver, screen)
+		driver.release_all()
+		driver.run_until(screen, func() -> bool:
+			if screen.is_in_final_beat() and not screen.hud.is_gameplay_chrome_visible():
+				beat["hid"] = true
+			return screen.is_finished() or screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
+	assert_eq(screen.session.state.match_winner, 0, "fixture: the human won the set")
+	var kills := 0
+	for event in screen.session.events:
+		if event.type == DuelEventTypes.FIGHTER_KILLED and event.target == 1:
+			kills += 1
+	assert_true(kills >= 1, "the set contains a kill, not a manufactured ending (%d)" % kills)
+	assert_true(bool(beat["hid"]), "the deciding round hides the gameplay HUD while it is still being played")
+	await await_frames(1)
+	var results := driver.results_screen()
+	var director := results.victory_director()
+	var profile := director.profile()
+	assert_true(results.is_victory() and profile.fanfare != null, "fixture: the winner's showcase has a fanfare")
+	assert_eq(_sting_count(director, profile.fanfare), 0, "fixture: it has not played on entry")
+	assert_near(director.camera().fov, profile.fov_start, 0.5, "the camera opens on the full figure")
+	var elapsed := 0.0
+	while results.is_victory_cinematic() and elapsed < 10.0:
+		results.advance_frame(AppDriver.FRAME)
+		elapsed += AppDriver.FRAME
+	assert_false(results.is_victory_cinematic(), "the showcase reaches the results")
+	assert_eq(_sting_count(director, profile.fanfare), 1, "the fanfare played once, on the lock")
+	assert_near(director.camera().fov, profile.fov_finish, 0.05, "and the camera has pushed in")
+	results.advance_frame(2.0)
+	assert_eq(_sting_count(director, profile.fanfare), 1, "sitting on the results does not play it again")
+	driver.shutdown()
+	await await_frames(2)
+
+
 # -- Terminal scenarios -------------------------------------------------------
 
 func test_a_slash_kill_cuts_down_drops_one_sword_and_resolves_the_round() -> void:
@@ -293,6 +337,10 @@ func test_the_winner_keeps_control_and_pushes_the_body_until_the_next_round() ->
 	assert_eq(state.scores, scores, "the push changed nothing about the score")
 	screen.advance_frame(AppDriver.FRAME)
 	_assert_round_clean(screen, "round 2")
+	assert_eq(state.fighter(0).stamina, 1.0, "round 2 starts the winner at full stamina")
+	assert_eq(state.fighter(1).stamina, 1.0, "and the opponent")
+	assert_near(screen.hud.stamina_bar(0).value, 1.0, 1.0e-6, "the HUD shows that reset")
+	assert_near(screen.hud.stamina_bar(1).value, 1.0, 1.0e-6, "on both plates")
 	driver.shutdown()
 	await await_frames(2)
 
@@ -349,18 +397,27 @@ func test_spacing_before_the_release_makes_a_tap_miss() -> void:
 
 
 ## PARRY-RIPOSTE-001 (true steel defense), through real input against the
-## production Hard CPU on `DEFENSE_SEED`: the human holds its ground and taps
-## whenever the CPU is in reach. The CPU's released cut meets the human's
-## steel and is physically arrested: it leaves the swinging phases on that
-## tick, and that is the parry. In this trace (rules 52) the steel is the
-## human's crossguard, met from its blade side (GUARD-PROTECTION-001) — a
-## guard that blocks, through real input. Whatever the cut wounded before the
-## arrest could only be the grip (GRIP-NONBLOCKING-001: the grip never blocks);
-## here it wounded nothing, and once arrested it wounds nothing more. The human
-## then walks in tapping and its answer, an ordinary attack released after the
-## parry, lands — here on the CPU's grip and torso on one tick. No "first" is
-## claimed (COMBAT-010). Only the order of facts is asserted, never a tick;
-## the parry's physics are CONTACT's and GRIP's to prove.
+## production Hard CPU on `DEFENSE_SEED`: the human stands in the settled
+## guard and does not attack. The CPU's released cut meets the human's blade
+## and is physically arrested: it leaves the swinging phases on that tick, and
+## that is the parry. Tapping on sight (the previous policy) made the human
+## the attacker, so the only parry was the CPU's. In this trace the steel is
+## blade on blade (`PAIR_BLADES`); the crossguard's protected side stays the
+## GRIP suite's witness. In this trace the cut wounded nothing before the
+## arrest. Arrest ends the swing; the recovering blade may still enter the
+## torso on the path that arrest left (COMBAT-010, rules 55). Any such touch
+## is a residual of this same swing (PARRY-001): before the CPU's next
+## release, while that blade is in recovery. It has to be the torso. A slash
+## or a graze has to agree with `graze_quality` and read below a solid hit.
+## A poke has to meet the existing tip gates and stay under `poke_lethal_quality`.
+## Either way the damage is `damage_for` of that quality. A thrust, which the
+## lethality law kills outright, does not pass. None of this is a fraction of
+## health, and none of it is a new damage category. It is not the answer. The
+## human then walks in tapping and its ordinary attack, released after the
+## parry, lands on the CPU for more than any such residual. No immunity timer
+## is asserted, and the observed graze is not pinned. No "first" is claimed
+## (COMBAT-010). Only the order of facts is asserted, never a tick; the
+## parry's physics are CONTACT's to prove.
 func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 	var driver := AppDriver.boot(7)
 	await await_frames(1)
@@ -378,12 +435,13 @@ func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 	var frames := 0
 	var health_before := 0.0
 	var swinging_at_parry := true
+	var residual := 0.0
 	var recovering: Array[int] = []
 	while state.phase == MatchPhase.Id.ROUND_ACTIVE and riposte == null and frames < 1500:
 		var me := state.fighter(0)
 		var distance := DuelGeometry.distance(me, state.fighter(1))
 		driver.hold_move(0.0, 1.0 if parry != null and distance > reach else 0.0)
-		if me.weapon.phase == CombatPhase.Id.NEUTRAL and distance <= reach:
+		if parry != null and me.weapon.phase == CombatPhase.Id.NEUTRAL and distance <= reach:
 			driver.tap_attack()
 		health_before = state.fighter(1).health
 		screen.advance_frame(AppDriver.FRAME)
@@ -408,14 +466,36 @@ func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 		var clash := _blade_contact_at(screen, parry.tick)
 		assert_true(clash != null and bool(clash.data[DuelEventKeys.ARRESTED_1]), "steel met the cut and the CPU's cut was arrested there")
 		if clash != null:
-			assert_eq(int(clash.data[DuelEventKeys.STEEL_PAIR]), SwordContactSet.PAIR_GUARD_ON_BLADE, "fixture: in this trace the steel is the human's crossguard on the CPU's blade")
+			assert_true(clash.number(DuelEventKeys.IMPULSE) > 0.0, "the arrest is a solved, positive impulse")
+			assert_eq(int(clash.data[DuelEventKeys.STEEL_PAIR]), SwordContactSet.PAIR_BLADES, "fixture: in this trace the steel is blade on blade")
 		assert_false(swinging_at_parry, "the arrest stopped the cut: it left the swinging phases")
-		var after := screen.session.events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT and event.actor == 1 and (event.tick > parry.tick and recovering.has(event.tick)))
-		assert_eq(after.size(), 0, "and once arrested it wounded nothing more")
+		## The arrested swing is the CPU's until its next release: a later
+		## attack's recovery is that attack's, not the parried one's.
+		var next_release := _first_after(screen, DuelEventTypes.ATTACK_RELEASED, 1, parry.tick)
+		var swing_ends := next_release.tick if next_release != null else state.tick
+		var after := screen.session.events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT and event.actor == 1 and event.tick > parry.tick and event.tick < swing_ends and recovering.has(event.tick))
+		for wound: DuelEvent in after:
+			residual += wound.number(DuelEventKeys.DAMAGE)
+			assert_eq(wound.text(DuelEventKeys.REGION), DuelEventKeys.REGION_TORSO, "a residual touch is the torso (tick %d)" % wound.tick)
+			var kind := wound.text(DuelEventKeys.CONTACT_KIND)
+			assert_ne(kind, "thrust", "a thrust that still qualifies is a lethal run-through, not a residual")
+			assert_false(bool(wound.data[DuelEventKeys.LETHAL]), "the residual is not a lethal entry")
+			var quality := wound.number(DuelEventKeys.QUALITY)
+			assert_true(wound.number(DuelEventKeys.DAMAGE) > 0.0, "the residual is a real entry")
+			assert_near(wound.number(DuelEventKeys.DAMAGE), rules.combat.damage_for(quality), 1.0e-6, "damage is the existing curve at quality %.4f" % quality)
+			assert_near(quality, wound.number(DuelEventKeys.PHYSICAL_QUALITY), 1.0e-9, "exposure does not scale this entry")
+			if kind == "poke":
+				var weapon := rules.combatant(1).weapon
+				assert_true(wound.number(DuelEventKeys.BLADE_FRACTION) >= weapon.tip_region_start, "a poke is the tip (%.3f)" % wound.number(DuelEventKeys.BLADE_FRACTION))
+				assert_true(wound.number(DuelEventKeys.THRUST_ALIGNMENT) >= rules.combat.point_strike_alignment, "and it is aligned enough to be a point strike")
+				assert_true(wound.number(DuelEventKeys.INCIDENCE_QUALITY) >= rules.combat.point_strike_incidence, "and it meets the point squarely enough")
+				assert_true(quality < rules.combat.poke_lethal_quality, "the poke stays under the existing lethal line (%.3f)" % quality)
+			else:
+				var glancing := wound.number(DuelEventKeys.CONTACT_QUALITY) < rules.combat.graze_quality
+				assert_eq(kind, "graze" if glancing else "slash", "the kind is the existing geometry classification")
+				assert_true(quality < SwingSemantics.GRADE_SOLID, "a cut residual reads below a solid hit (%.3f)" % quality)
 		if released != null:
 			var before := screen.session.events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT and event.actor == 1 and event.tick >= released.tick and event.tick <= parry.tick)
-			for wound: DuelEvent in before:
-				assert_eq(wound.text(DuelEventKeys.REGION), DuelEventKeys.REGION_GRIP, "what it wounded before the arrest was the grip, never blocked by it")
 			assert_eq(before.size(), 0, "fixture: in this trace the cut wounded nothing before it was arrested")
 			## Within the tick the solver resolves contacts in time order and
 			## appends them as it goes: the parry is read after the arrest.
@@ -427,6 +507,7 @@ func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 		var answer := _last_before(screen, DuelEventTypes.ATTACK_RELEASED, 0, riposte.tick + 1)
 		assert_true(answer != null and answer.tick > parry.tick, "from an attack released after the parry")
 		assert_true(state.fighter(1).health < health_before, "and it is in the CPU's health (%.2f -> %.2f)" % [health_before, state.fighter(1).health])
+		assert_true(riposte.number(DuelEventKeys.DAMAGE) > residual, "and it outweighs any residual of the arrested swing (%.2f > %.2f)" % [riposte.number(DuelEventKeys.DAMAGE), residual])
 	driver.shutdown()
 	await await_frames(2)
 
@@ -436,11 +517,11 @@ func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 ## cut's origin side before it is released. Here (rules 52) that line change
 ## puts the human's blade across the root of the cut: the cutter's own
 ## crossguard meets it from its blade side — real steel, solved, but it does
-## not arrest the cut — and the tap carries on (GRIP-NONBLOCKING-001) to wound
-## the human's grip and torso on one tick. A scenario trace, not a rule about
-## every origin-side step. That a line change can be capitalized on is
-## LINE-CHANGE-CAPITALIZATION-001, which is OPEN; nothing here claims the human
-## wins the exchange.
+## not arrest the cut — and the tap carries on to the torso of that same
+## attack. A hand or the handle in the way is not a wound. A scenario trace,
+## not a rule about every origin-side step. That a line change can be
+## capitalized on is LINE-CHANGE-CAPITALIZATION-001, which is OPEN; nothing
+## here claims the human wins the exchange.
 func test_an_origin_side_step_here_meets_the_cuts_crossguard_first() -> void:
 	## ARRANGE + ACT
 	var journey := await _line_journey("origin")
@@ -449,22 +530,20 @@ func test_an_origin_side_step_here_meets_the_cuts_crossguard_first() -> void:
 	var events: Array[DuelEvent] = journey["events"]
 	var wounds := events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT)
 	var steel := events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BLADE_CONTACT)
-	assert_true(wounds.size() >= 2 and steel.size() >= 1, "fixture: the tap meets steel and wounds twice (%s)" % journey["tally"])
-	if wounds.size() >= 2 and steel.size() >= 1:
+	assert_true(wounds.size() >= 1 and steel.size() >= 1, "fixture: the tap meets steel and wounds the torso (%s)" % journey["tally"])
+	if wounds.size() >= 1 and steel.size() >= 1:
 		var clash: DuelEvent = steel[0]
 		var first: DuelEvent = wounds[0]
-		var second: DuelEvent = wounds[1]
 		assert_true(clash.actor == 1 and clash.tick < first.tick, "the cut meets steel first")
 		assert_eq(int(clash.data[DuelEventKeys.STEEL_PAIR]), SwordContactSet.PAIR_BLADE_ON_GUARD, "the cutter's own crossguard on the human's blade")
 		assert_false(bool(clash.data[DuelEventKeys.ARRESTED_1]), "which does not arrest the cut")
-		assert_true(first.actor == 1 and first.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP, "carrying on, the tap reaches the human's grip")
-		assert_true(second.actor == 1 and second.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_TORSO and second.tick == first.tick, "and the torso on the same tick")
-		assert_eq(_count_before(events, DuelEventTypes.ATTACK_RELEASED, second.tick + 1, 1), 1, "all of it one attack")
+		assert_true(first.actor == 1 and first.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_TORSO, "carrying on, the tap reaches the human's torso")
+		assert_eq(_count_before(events, DuelEventTypes.ATTACK_RELEASED, first.tick + 1, 1), 1, "all of it one attack")
 
 
 ## LINE-CHANGE-001, the same read stepped toward the cut's end side, in the same
-## scene: the tap meets no steel and no grip, and wounds the human's torso. The
-## side taken changes what the cut meets; neither side here yields a counter.
+## scene: the tap meets no steel and wounds the human's torso. The side taken
+## changes what the cut meets; neither side here yields a counter.
 func test_an_end_side_step_here_is_struck_on_the_torso() -> void:
 	## ARRANGE + ACT
 	var journey := await _line_journey("end")
@@ -591,48 +670,38 @@ func test_retreating_back_and_across_out_of_measure_makes_a_full_cut_miss() -> v
 	await await_frames(2)
 
 
-## GRIP-NONBLOCKING-001, through real input: approaching at an angle inside the
-## standing opponent's blade, the tap reaches the grip before any steel. The
-## wound is GRIP, never a parry, and nothing is held at it — no blade contact
-## on that tick, no parry at or before it — and the same swing carries on
-## past it; whatever that swing meets afterwards (here the opponent's blade, a
-## later parry) is a later contact, which the chronology allows. One wound per
-## attack is the GRIP suite's to prove; this journey asserts only the episode
-## it saw, bounded by the attack's ATTACK_RELEASED.
-func test_a_tap_inside_the_blade_wounds_the_grip_and_the_swing_carries_on() -> void:
+## TORSO-CIRCLE-001, through real input. The tap is sampled while the blade
+## is swinging: it must cross a former hand disc or the handle, and it must
+## stay outside the torso circle. A miss that also misses the hands does not
+## prove the rule. Arms have no capsule; the hand disc is the kinematic
+## stand-in.
+func test_a_tap_through_the_hands_misses_when_it_misses_the_torso() -> void:
 	var driver := AppDriver.boot(7)
 	await await_frames(1)
+	var rules := StandardDuelRules.create()
 	var screen := await _scenario(driver, ScenarioController.standing())
-	var wound_tick: Array[int] = [-1]
-	var held_at_wound: Array[int] = [-1]
-	var swinging_after: Array[int] = [-1]
-	var watch := func(state: MatchState) -> void:
-		var grip := screen.session.events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT and event.actor == 0)
-		if wound_tick[0] < 0 and not grip.is_empty():
-			wound_tick[0] = (grip[0] as DuelEvent).tick
-			held_at_wound[0] = state.blade_contact.hold_count()
-			swinging_after[0] = 1 if CombatPhase.is_swinging(state.fighter(0).weapon.phase) else 0
+	var health_before := rules.combatant(1).fighter.max_health
+	var nearest := [INF]
+	var crossed := [false]
+	var entered := [false]
 	## ACT
-	_cut_at(driver, screen, GRIP_REACH, 0, GRIP_STICK, Vector2.ZERO, watch)
+	_cut_at(driver, screen, GRIP_REACH, 0, GRIP_STICK, Vector2.ZERO, func(live: MatchState) -> void:
+		if not CombatPhase.is_swinging(live.fighter(0).weapon.phase):
+			return
+		var gap := _former_grip_gap(live, rules)
+		nearest[0] = minf(nearest[0], gap)
+		if gap < 0.0:
+			crossed[0] = true
+		if _live_torso_gap(live, rules) <= 0.0:
+			entered[0] = true
+	)
 	## ASSERT
+	assert_true(crossed[0], "the swinging blade crosses a hand or the handle (nearest gap %.3f m)" % nearest[0])
+	assert_false(entered[0], "and that path stays outside the torso circle")
 	var wound := _first(screen, DuelEventTypes.BODY_HIT, 0)
-	assert_true(wound != null, "fixture: the tap landed (%s)" % _tally(screen))
-	if wound != null:
-		assert_eq(wound.text(DuelEventKeys.REGION), DuelEventKeys.REGION_GRIP, "on the grip")
-		var steel := _first(screen, DuelEventTypes.BLADE_CONTACT, -1)
-		assert_true(steel == null or steel.tick > wound.tick, "before any steel was met")
-		var parry := _first(screen, DuelEventTypes.PARRY, -1)
-		assert_true(parry == null or parry.tick > wound.tick, "no parry at or before the wound")
-		assert_eq(held_at_wound[0], 0, "nothing held the swords together at the wound")
-		assert_eq(swinging_after[0], 1, "and the swing was still swinging at the end of the wound's tick")
-		var released := _last_before(screen, DuelEventTypes.ATTACK_RELEASED, 0, wound.tick + 1)
-		var next_release := screen.session.events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.ATTACK_RELEASED and event.actor == 0 and event.tick > wound.tick)
-		var until := (next_release[0] as DuelEvent).tick if not next_release.is_empty() else screen.session.state.tick + 1
-		var episode := screen.session.events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT and event.actor == 0 and event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP and released != null and event.tick >= released.tick and event.tick < until)
-		assert_eq(episode.size(), 1, "the attack wounded the grip once")
-	var victim := screen.session.state.fighter(1)
-	assert_true(victim.health < StandardDuelRules.create().combatant(1).fighter.max_health, "the wound is in the victim's health")
-	assert_true(victim.is_alive(), "and the fight goes on")
+	assert_true(wound == null, "so the tap wounds nothing (%s)" % _tally(screen))
+	assert_eq(screen.session.state.fighter(1).health, health_before, "and the victim's health is unchanged")
+	assert_true(screen.session.state.fighter(1).is_alive(), "and the fight goes on")
 	driver.shutdown()
 	await await_frames(2)
 
@@ -759,6 +828,42 @@ func test_a_light_nonlethal_hit_leaves_no_terminal_presentation() -> void:
 	assert_false(screen.presenter.fighter_proxy(0).is_finishing(), "no finisher")
 	assert_true(screen.presenter.dropped_weapons().is_empty(), "no sword leaves a hand")
 	assert_false(screen.presenter.fighter_proxy(1).is_weapon_dropped(), "the target keeps theirs")
+	driver.shutdown()
+	await await_frames(2)
+
+
+## STAMINA-004 through the live HUD. A real dash spends stamina, standing
+## still recovers it, and the bar on the human's plate matches the settled
+## value both times. The next round's reset is the winner-control journey.
+func test_the_stamina_bar_tracks_a_dash_and_its_recovery() -> void:
+	var driver := AppDriver.boot(7)
+	await await_frames(1)
+	var screen := await _scenario(driver, ScenarioController.standing())
+	var bar := screen.hud.stamina_bar(0)
+	var me := screen.session.state.fighter(0)
+	assert_true(screen.hud.is_gameplay_chrome_visible(), "fixture: the live round shows the HUD")
+	assert_near(bar.value, 1.0, 1.0e-6, "fixture: the bar starts full")
+	assert_near(bar.value, me.stamina, 1.0e-6, "fixture: and it matches authority")
+	var before := me.stamina
+	driver.hold_move(0.0, -1.0, true)
+	var frames := 0
+	while me.stamina >= before and frames < 120:
+		screen.advance_frame(AppDriver.FRAME)
+		frames += 1
+	var spent := me.stamina
+	var cost := screen.session.config.rules.combat.stamina_dash_cost
+	assert_true(spent < before, "a dash spends stamina (%.3f -> %.3f in %d frames)" % [before, spent, frames])
+	assert_true(before - spent + 1.0e-6 >= cost, "the drop is at least one dash (%.3f, cost %.2f)" % [before - spent, cost])
+	assert_near(bar.value, spent, 1.0e-6, "the bar matches the spent value")
+	driver.release_all()
+	var resting := spent
+	frames = 0
+	while me.stamina <= resting + 0.01 and frames < 400:
+		screen.advance_frame(AppDriver.FRAME)
+		frames += 1
+	var recovered := me.stamina
+	assert_true(recovered > resting, "standing still recovers stamina (%.3f -> %.3f)" % [resting, recovered])
+	assert_near(bar.value, recovered, 1.0e-6, "the bar matches the recovery")
 	driver.shutdown()
 	await await_frames(2)
 
@@ -954,6 +1059,43 @@ func _probe_exchange(dash: bool) -> Dictionary:
 	return result
 
 
+## Surface gap from `pose`'s blade to a disc. Negative means the blade has entered it.
+func _blade_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2, disc: float) -> float:
+	var hx := pose.point_x(weapon.blade_base_radius)
+	var hy := pose.point_y(weapon.blade_base_radius)
+	var tx := pose.point_x(weapon.tip_radius)
+	var ty := pose.point_y(weapon.tip_radius)
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, point.x, point.y)
+	return Vector2(point.x - lerpf(hx, tx, t), point.y - lerpf(hy, ty, t)).length() - disc - weapon.blade_radius
+
+
+## The swinging blade's nearest gap to the standing fighter's hands or handle.
+## Presentation geometry, measured so the journey can prove it crossed them.
+func _former_grip_gap(state: MatchState, rules: DuelRules) -> float:
+	var attacker := state.fighter(0)
+	var defender := state.fighter(1)
+	var spec_a := rules.combatant(0)
+	var spec_d := rules.combatant(1)
+	var pose := WeaponKinematics.pose_at(attacker.x, attacker.y, attacker.facing, attacker.weapon.angle, spec_a, BladePose.new())
+	var theirs := WeaponKinematics.pose_at(defender.x, defender.y, defender.facing, defender.weapon.angle, spec_d, BladePose.new())
+	var weapon := spec_d.weapon
+	var along := PackedFloat64Array([weapon.offhand_grip_radius, weapon.dominant_grip_radius, (weapon.offhand_grip_radius + weapon.dominant_grip_radius) * 0.5])
+	var radii := PackedFloat64Array([spec_d.fighter.hand_radius, spec_d.fighter.hand_radius, weapon.handle_radius])
+	var least := INF
+	for i in 3:
+		least = minf(least, _blade_disc_gap(pose, spec_a.weapon, Vector2(theirs.point_x(along[i]), theirs.point_y(along[i])), radii[i]))
+	return least
+
+
+## The swinging blade's gap to the standing fighter's torso circle.
+func _live_torso_gap(state: MatchState, rules: DuelRules) -> float:
+	var attacker := state.fighter(0)
+	var defender := state.fighter(1)
+	var spec_a := rules.combatant(0)
+	var pose := WeaponKinematics.pose_at(attacker.x, attacker.y, attacker.facing, attacker.weapon.angle, spec_a, BladePose.new())
+	return _blade_disc_gap(pose, spec_a.weapon, Vector2(defender.x, defender.y), rules.combatant(1).fighter.hurt_radius)
+
+
 ## The human walks in at `approach` until within `reach`, then presses the
 ## attack — released the same frame (`charge` 0, a tap) or `charge` frames
 ## later — holding `after` from the press; runs until the human lands a body
@@ -1093,6 +1235,13 @@ func _first(screen: MatchScreen, type: StringName, actor: int) -> DuelEvent:
 ## The last `type` event by `actor` strictly before `tick`, or null. An
 ## attack's authoritative boundary is its ATTACK_RELEASED: a fighter cannot
 ## release another until the last has ended.
+func _first_after(screen: MatchScreen, type: StringName, actor: int, tick: int) -> DuelEvent:
+	for event in screen.session.events:
+		if event.tick > tick and event.type == type and event.actor == actor:
+			return event
+	return null
+
+
 func _last_before(screen: MatchScreen, type: StringName, actor: int, tick: int) -> DuelEvent:
 	var found: DuelEvent = null
 	for event in screen.session.events:
@@ -1109,6 +1258,14 @@ func _blade_contact_at(screen: MatchScreen, tick: int) -> DuelEvent:
 		if event.type == DuelEventTypes.BLADE_CONTACT and event.tick == tick:
 			return event
 	return null
+
+
+func _sting_count(director: VictoryDirector, stream: AudioStream) -> int:
+	var count := 0
+	for played in director.audio().history:
+		if played == stream:
+			count += 1
+	return count
 
 
 func _assert_round_clean(screen: MatchScreen, label: String) -> void:
@@ -1152,13 +1309,11 @@ func _advance_tick(screen: MatchScreen) -> void:
 
 ## BIND-DISENGAGE-001 through real input (BLADE-ESCAPE-001,
 ## BLADE-CONTACT-RELEASE-001), from a named starting scenario: once the round
-## is live the two fighters are stood with crossed diagonal guards 5 mm apart —
-## the CONTACT-INTEGRITY bind, whose forming and escapes that suite owns — and
-## from there everything is real: the human walks in (keys), the scripted
-## opponent walks in too, and the solver forms the bind; with the human idle
-## it holds. The human backs off and the steel physically parts — the
-## contact's own phase, a real gap and nothing held, never a distance — and
-## the human walks back in tapping until it meets the opponent again. Nothing
+## is live the two fighters are stood with crossed diagonal guards 5 mm apart.
+## The human and the scripted opponent walk in until the solver forms a
+## contact. The human then backs off and the steel physically parts, and
+## walks back in until it meets the opponent again. Idle persistence of a
+## resting overlap is the domain suite's contract, not this journey. Nothing
 ## here says who wins.
 func test_a_bind_is_formed_held_released_and_re_engaged_through_real_input() -> void:
 	var driver := AppDriver.boot(7)
@@ -1178,16 +1333,19 @@ func test_a_bind_is_formed_held_released_and_re_engaged_through_real_input() -> 
 	DuelFixture.place(cpu, 0.0, ContactFixture.crossed_guard_separation(rules.combatant(0), 0.005), -PI / 2.0)
 	cpu.weapon.reset(deg_to_rad(-45.0))
 	assert_true(ContactGauge.blades(rules, state).x > 0.0, "fixture: the guards start apart")
-	walk_until[0] = state.tick + 4
-	## ACT 1: both walk in; the solver forms the bind.
+	walk_until[0] = state.tick + 40
+	## ACT 1: both walk in until the solver forms a contact. Idle persistence
+	## of a resting overlap is the domain suite's contract; this journey only
+	## requires that real input can enter the contact and then leave it.
 	driver.hold_move(0.0, 1.0)
-	while state.tick < walk_until[0]:
+	var formed := -1
+	for _t in 40:
 		_advance_tick(screen)
+		if state.blade_contact.point_count > 0 or state.blade_contact.hold_count() > 0:
+			formed = state.tick
+			break
+	walk_until[0] = state.tick
 	driver.release_all()
-	var bound := 0
-	for _t in 20:
-		_advance_tick(screen)
-		bound += 1 if state.blade_contact.point_count > 0 and state.blade_contact.hold_count() > 0 else 0
 	## ACT 2: the human backs off until the steel parts.
 	driver.hold_move(0.0, -1.0)
 	var parted := -1
@@ -1219,11 +1377,119 @@ func test_a_bind_is_formed_held_released_and_re_engaged_through_real_input() -> 
 			break
 	driver.release_all()
 	## ASSERT
-	assert_eq(bound, 20, "the bind formed and held with the human idle (%d of 20 ticks)" % bound)
+	assert_true(formed >= 0, "walking in, the swords meet (%s)" % _tally(screen))
 	assert_true(parted >= 0, "backing off, the steel parts")
 	assert_true(gap_after > rules.combat.separation_epsilon, "with a real gap (%.4f m)" % gap_after)
 	assert_eq(held_after, 0, "and nothing held once apart")
 	assert_true(met != null, "walking back in, the human meets the opponent again (%s)" % _tally(screen))
+	driver.shutdown()
+	await await_frames(2)
+
+
+## BLADE-ESCAPE-001 through real input. The guards start 8 cm apart, the
+## crossed rest the domain slide holds. The human presses forward and across
+## (stick 0.6, 0.8) while the opponent stands. A held blade contact has to
+## keep one identity while its point migrates, and a back-step has to part
+## it. The contract after that is responsiveness, not a torso and not an
+## angular allowance: on the first tick an attack is legal, one tap — press
+## and release pushed before the step — is the command that step consumes.
+## The weapon leaves neutral on that command. A buffered press is not left
+## behind. The standing guard still takes this cut on the steel; that miss
+## is not this test and is not locked in. Nothing assigns a bind, a velocity,
+## or a health.
+func test_a_pressed_bind_slides_and_parts_on_a_back_step() -> void:
+	var driver := AppDriver.boot(7)
+	await await_frames(1)
+	var rules := StandardDuelRules.create()
+	var weapon := rules.combatant(0).weapon
+	var screen := await _scenario(driver, ScenarioController.standing())
+	var state := screen.session.state
+	var human := state.fighter(0)
+	var opponent := state.fighter(1)
+	## ARRANGE: apart, at the crossed rest. The press is what forms the contact.
+	DuelFixture.place(human, 0.0, 0.0, PI / 2.0)
+	human.weapon.reset(deg_to_rad(45.0))
+	DuelFixture.place(opponent, 0.0, ContactFixture.crossed_guard_separation(rules.combatant(0), 0.08), -PI / 2.0)
+	opponent.weapon.reset(deg_to_rad(-45.0))
+	assert_true(ContactGauge.blades(rules, state).x > 0.0, "fixture: the guards start apart")
+	## ACT 1: press and slide. The domain witness uses this stick on this rest.
+	driver.hold_move(0.6, 0.8)
+	var on_blades := 0
+	var warm_ticks := 0
+	var kept := 0
+	var identity := -1
+	var lowest := INF
+	var highest := -INF
+	for _t in 80:
+		_advance_tick(screen)
+		var manifold := state.blade_contact
+		if manifold.point_count == 0 or manifold.hold_active[0] == 0:
+			continue
+		on_blades += 1
+		if manifold.is_persisted(0) and manifold.contact_id[0] == identity:
+			kept += 1
+		identity = manifold.contact_id[0]
+		var where := manifold.fraction_a[0] + manifold.fraction_b[0]
+		lowest = minf(lowest, where)
+		highest = maxf(highest, where)
+		if manifold.hold_normal[0] > 0.0:
+			warm_ticks += 1
+		if on_blades >= 10 and kept >= 5 and highest - lowest > 0.05 and warm_ticks >= 5:
+			break
+	var migrated := highest - lowest
+	## ACT 2: a back-step is the separating input.
+	driver.release_all()
+	driver.hold_move(0.0, -1.0)
+	var parted := -1
+	var angle_at_part := 0.0
+	for _t in 80:
+		_advance_tick(screen)
+		if state.blade_contact.phase == SwordContactSet.Phase.SEPARATED:
+			parted = state.tick
+			angle_at_part = human.weapon.angle
+			break
+	var gap_after := ContactGauge.blades(rules, state).x
+	var held_after := state.blade_contact.point_count + state.blade_contact.hold_count()
+	## ACT 3: the first tick an attack is legal. No frame is spent after that.
+	## `push_input` delivers the tap before `advance_frame`, and one frame is
+	## one tick (`AppDriver.FRAME`), so that next step is the command.
+	var waited := 0
+	var eligible := false
+	while parted >= 0 and not WeaponSystem.can_start_attack(human, weapon) and waited < 180:
+		driver.hold_move(0.0, -1.0)
+		_advance_tick(screen)
+		waited += 1
+	eligible = parted >= 0 and WeaponSystem.can_start_attack(human, weapon)
+	var released_from := human.weapon.angle
+	var command_tick := state.tick
+	assert_false(human.attack_held, "fixture: the attack button is up before the tap")
+	driver.release_all()
+	driver.tap_attack()
+	_advance_tick(screen)
+	var started := _first_after(screen, DuelEventTypes.ATTACK_STARTED, 0, command_tick - 1)
+	var answer := _first_after(screen, DuelEventTypes.ATTACK_RELEASED, 0, command_tick - 1)
+	var drift := absf(released_from - angle_at_part)
+	## ASSERT
+	## Measured once with the four-tick wait removed: waited 0, drift 0,
+	## command tick equal to the parting tick, phase LAUNCH. This scene's
+	## parting tick is already a legal attack, so there is no angular
+	## allowance. A later change that spends ticks before the attack is legal
+	## fails here and has to be re-read, rather than hiding inside 0.35 rad.
+	assert_true(on_blades >= 10, "the press holds the blades (%d ticks)" % on_blades)
+	assert_true(warm_ticks >= 5, "the hold carries impulse (%d ticks)" % warm_ticks)
+	assert_true(kept >= 5, "one contact identity lasts (%d ticks)" % kept)
+	assert_true(migrated > 0.05, "the point migrates along the blades (%.3f)" % migrated)
+	assert_true(parted >= 0, "a back-step parts the steel")
+	assert_true(gap_after > rules.combat.separation_epsilon, "with a real gap (%.4f m)" % gap_after)
+	assert_eq(held_after, 0, "and nothing is held once apart")
+	assert_true(eligible, "an attack is legal after the part (waited %d ticks, blade %.4f rad off the parting angle)" % [waited, drift])
+	assert_eq(waited, 0, "this parting tick is already legal, so none are spent waiting")
+	assert_eq(released_from, angle_at_part, "and the blade is still at the parting angle")
+	assert_eq(command_tick, parted + waited, "the tap is that first legal tick, not a later one")
+	assert_true(started != null and started.tick == command_tick, "that step starts the attack (%s)" % _tally(screen))
+	assert_true(answer != null and answer.tick == command_tick, "and releases it in the same command (%.4f rad of return over %d ticks)" % [drift, waited])
+	assert_true(CombatPhase.is_swinging(human.weapon.phase) or human.weapon.phase == CombatPhase.Id.LAUNCH, "the weapon leaves neutral on that command (phase %d)" % human.weapon.phase)
+	assert_true(human.press_tick < 0 and human.buffered_press_tick < 0, "the tap is consumed; nothing is held or buffered")
 	driver.shutdown()
 	await await_frames(2)
 
@@ -1279,5 +1545,10 @@ func test_a_tap_glancing_off_a_guard_is_redirected_but_not_stopped() -> void:
 		assert_true(float(contact.data[DuelEventKeys.DELTA_0]) * weapon.swing_dir < 0.0, "the contact cuts the swing's θ̇ (Δθ̇ %+.3f rad/s)" % float(contact.data[DuelEventKeys.DELTA_0]))
 		assert_false(bool(contact.data[DuelEventKeys.ARRESTED_0]), "but does not arrest it")
 		assert_true(CombatPhase.is_swinging(weapon.phase), "three ticks on, the cut is still swinging (phase %d, θ̇ %+.2f)" % [weapon.phase, weapon.speed])
+		var control := rules.combatant(0).weapon.control_speed
+		## `class` is closing speed (light / solid / strong). `ContactReading`
+		## is what the contact did to the cut. This glance is solid and not arrested.
+		assert_eq(contact.text(DuelEventKeys.CONTACT_CLASS), String(ContactResolver.CLASS_SOLID), "the clang class is the closing-speed band, solid")
+		assert_eq(ContactReading.classify(contact, control, control), ContactReading.GLANCE, "and its reading is a glance: the cut kept %.0f%% of its progress" % (100.0 * contact.number(DuelEventKeys.PROGRESS_AFTER) / maxf(contact.number(DuelEventKeys.PROGRESS_BEFORE), 1e-9)))
 	driver.shutdown()
 	await await_frames(2)

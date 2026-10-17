@@ -81,22 +81,36 @@ func test_hud_shows_health_pips_round_and_low_time_from_the_humans_side() -> voi
 	hud.queue_free()
 
 
-## The player HUD shows health only (CONDITION-001, STAMINA-003): one bar per
-## fighter, and no meter for a resource nothing in the game consumes.
-func test_hud_shows_health_only_and_condition() -> void:
+## Health, a thinner stamina bar under it, and the condition band (STAMINA-004).
+## The stamina bar is the snapshot's settled value, including a round reset to 1.
+func test_hud_shows_health_stamina_and_condition() -> void:
 	var hud := DuelHud.create("YOU", "CPU · Medium", 0, DuelSide.Id.LIGHT_SOUTH)
 	_root().add_child(hud)
 	var state := _state()
 	state.set_phase(MatchPhase.Id.ROUND_ACTIVE)
 	hud.update(_project(state))
-	assert_eq(hud.find_children("*", "ProgressBar", true, false).size(), 2, "exactly the two health bars")
+	assert_eq(hud.find_children("*", "ProgressBar", true, false).size(), 4, "two health bars and two stamina bars")
+	assert_eq(hud.stamina_bar(0).accessibility_name, "YOU stamina", "the stamina bar is named, not told by colour")
+	assert_true(hud.stamina_bar(0).custom_minimum_size.y < hud.health_bar(0).custom_minimum_size.y, "and it is a thinner bar than health")
+	assert_eq(hud.stamina_bar(0).value, 1.0, "a fresh fighter's bar is full")
+	assert_eq(hud.stamina_bar(0).accessibility_description, "100 of 100, dash ready", "a full bar can still dash")
 	assert_eq(hud.condition_label(0).text, "HEALTHY", "full health is HEALTHY")
 	state.fighter(0).health = _rules.combatant(0).fighter.max_health * 0.2
+	state.fighter(0).stamina = 0.1
 	hud.update(_project(state))
 	assert_eq(hud.health_bar(0).value, _rules.combatant(0).fighter.max_health * 0.2, "health bar follows health")
+	assert_eq(hud.stamina_bar(0).value, 0.1, "stamina bar follows stamina")
+	assert_eq(hud.stamina_bar(0).accessibility_description, "10 of 100, too spent to dash", "below a dash's cost the bar says so")
+	state.fighter(0).stamina = 0.333
+	hud.update(_project(state))
+	assert_eq(hud.stamina_bar(0).value, 0.333, "the fill keeps a value the bar's default step would have snapped")
+	assert_eq(hud.stamina_bar(0).accessibility_description, "34 of 100, dash ready", "the name still rounds up to a point")
 	assert_eq(hud.condition_label(0).text, "CRITICAL", "20% health is CRITICAL")
 	assert_true(hud.condition_icon(0).texture == HudIcons.condition(FighterCondition.Id.CRITICAL), "and the plate repeats it as a shape, not a colour")
 	assert_ne(HudIcons.condition(FighterCondition.Id.CRITICAL).get_image().get_data(), HudIcons.condition(FighterCondition.Id.HEALTHY).get_image().get_data(), "each condition draws a different shape")
+	state.fighter(0).stamina = 1.0
+	hud.update(_project(state))
+	assert_eq(hud.stamina_bar(0).value, 1.0, "a round reset puts the bar back to full")
 	hud.queue_free()
 
 
@@ -116,8 +130,8 @@ func test_intro_cards_borrow_the_banner_and_captions_time_out() -> void:
 	hud.show_card("")
 	hud.update(_project(state))
 	assert_eq(hud.banner_text(), round_banner, "and gives it back when the intro ends")
-	hud.show_caption("Wold.", 0.5)
-	assert_eq(hud.caption_text(), "Wold.", "captions show")
+	hud.show_caption("Wolf.", 0.5)
+	assert_eq(hud.caption_text(), "Wolf.", "captions show")
 	hud._process(0.6)
 	assert_eq(hud.caption_text(), "", "and clear on their own")
 	hud.queue_free()

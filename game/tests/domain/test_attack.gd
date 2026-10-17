@@ -336,14 +336,19 @@ func _peak_speed(rig: WeaponRig) -> float:
 	return peak
 
 
-func test_sword_persists_where_it_stopped() -> void:
+## GUARD-RETURN-001. A finished swing does not stay where it stopped: once
+## the blade is idle, the return carries it to the guard of the side it
+## finished on.
+func test_an_idle_blade_returns_after_the_swing() -> void:
 	var rig := _rig()
 	rig.attack(3)
 	rig.settle()
-	var rest := rig.fighter.weapon.angle
-	assert_ne(rest, -_rules.combatant(0).weapon.guard_angle, "precondition: blade left the guard")
-	rig.hold(120)
-	assert_eq(rig.fighter.weapon.angle, rest, "no automatic return to an idle pose")
+	var stopped := rig.fighter.weapon.angle
+	assert_true(absf(stopped) > 0.2, "precondition: the swing left the centre")
+	rig.hold(180)
+	var guard := rig.fighter.weapon.stable_side * _rules.combatant(0).weapon.guard_angle
+	assert_near(rig.fighter.weapon.angle, guard, 0.02, "an idle blade returns to the guard it finished on")
+	assert_near(rig.fighter.weapon.speed, 0.0, 0.05, "and rests there")
 
 
 func test_heavy_overswings_and_recovers_longer_than_tap() -> void:
@@ -614,14 +619,11 @@ const MEASURE_TOLERANCE := 1.0e-3
 ## attacker stands at the origin facing the defender 1.5 m away; a planted tap
 ## from rest (θ −45° → +45°, swing_dir +1, 90°). The defender, reading it,
 ## starts walking 4 ticks before the press and holds 8 ticks of pure lateral
-## walk. CONTROL (no step): the tap's first contact is the torso. BEHIND THE
-## BLADE (toward the cut's origin side): the defender's own grip — the hands it
-## carries into the sweep — is met first. INTO THE BLADE (the same walk toward
-## the end side): the torso. Both steps end at the same distance, inside reach,
-## so the side alone decided it; the mirrored scene does the same at the same
-## distance. (Rules 49's "behind the blade meets steel" was crossguard and
-## handle steel; on blade-only steel the hands are met, and whether the line
-## then wins the exchange is LINE-CHANGE-CAPITALIZATION-001, open.)
+## walk. CONTROL (no step) and both line changes meet the torso: the hands
+## the origin-side step carries into the sweep are not a target
+## (TORSO-CIRCLE-001). Both steps end at the same distance, inside reach.
+## Whether the line then wins the exchange is LINE-CHANGE-CAPITALIZATION-001,
+## open.
 func test_the_side_of_the_sweep_decides_what_a_cut_meets() -> void:
 	var rules := StandardDuelRules.create()
 	var reach := WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1))
@@ -639,7 +641,7 @@ func test_the_side_of_the_sweep_decides_what_a_cut_meets() -> void:
 	assert_near(behind.distance, into.distance, MEASURE_TOLERANCE, "both steps end at the same distance (%.4f m)" % behind.distance)
 	assert_true(behind.distance < reach, "still inside strike reach after the step — measure did not decide it")
 	assert_true(absf(behind.bearing_change) > 0.02, "the step changed the line (bearing %.3f rad)" % behind.bearing_change)
-	assert_eq(behind.result, DuelEventKeys.REGION_GRIP, "behind the blade, the tap meets the defender's grip first, not the torso")
+	assert_eq(behind.result, DuelEventKeys.REGION_TORSO, "behind the blade, the tap still meets the torso: the hands are not a target (%s)" % behind.result)
 	assert_eq(into.result, DuelEventKeys.REGION_TORSO, "into the blade, the same walk is struck on the torso")
 	## MIRROR: the whole scene reflected.
 	var mirrored := _lined_tap(rules, "origin", true)
@@ -664,7 +666,7 @@ func test_the_threat_estimate_sees_the_steel_in_the_way() -> void:
 		## ASSERT
 		assert_true(scene.result != "", "fixture (%s): the tap met something" % side)
 		assert_eq(steel_seen, steel_met, "%s: predicted %d, the tap met %s" % [side, scene.predicted, scene.result])
-		assert_true(steel_met or scene.predicted == ThreatEstimate.BODY or scene.predicted == ThreatEstimate.GRIP, "%s: flesh is predicted as flesh" % side)
+		assert_true(steel_met or scene.predicted == ThreatEstimate.BODY, "%s: flesh is the torso" % side)
 	## PERTURB: the mirrored scene.
 	var straight := _lined_tap(rules, "origin", false)
 	var mirrored := _lined_tap(rules, "origin", true)
@@ -722,12 +724,12 @@ func _lined_tap(rules: DuelRules, side: String, mirror: bool) -> LinedTap:
 
 
 ## What one `_lined_tap` did: the cut's first contact (the region struck —
-## "torso" or "grip" — "steel", or ""), whether it ever struck the opponent,
-## and where the step left the defender.
+## `torso`, `steel`, or ""), whether it ever struck the opponent, and where
+## the step left the defender.
 class LinedTap:
 	var result := ""
 	## What the steel-aware threat estimate, read at the press, said the tap
-	## would meet first (`ThreatEstimate.NONE` / `BODY` / `GRIP` / `STEEL`).
+	## would meet first (`ThreatEstimate.NONE` / `BODY` / `STEEL`).
 	var predicted := ThreatEstimate.NONE
 	var body_struck := false
 	var distance := 0.0
@@ -767,3 +769,331 @@ func test_a_whiff_label_changes_no_physics() -> void:
 	assert_eq(labelled.count(DuelEventTypes.ATTACK_WHIFFED), 1, "control: the free miss is labelled once")
 	assert_eq(silenced.count(DuelEventTypes.ATTACK_WHIFFED), 0, "perturbed: the label is suppressed")
 	assert_eq(diverged, "", "and no physical quantity differs on any tick")
+
+
+func _idle_blade(angle: float, speed: float, side: float) -> FighterState:
+	var fighter := FighterState.new()
+	fighter.slot = 0
+	fighter.health = _rules.combatant(0).fighter.max_health
+	fighter.weapon.reset(angle)
+	fighter.weapon.speed = speed
+	fighter.weapon.stable_side = side
+	fighter.weapon.swing_dir = -side
+	return fighter
+
+
+func _step_blade(fighter: FighterState, tick: int, return_scale: float = 1.0, diagnostics: ContactDiagnostics = null, condition: ConditionState = null) -> void:
+	var events: Array[DuelEvent] = []
+	WeaponSystem.step(fighter, _rules, tick, events, condition, null, return_scale, diagnostics)
+
+
+## GUARD-RETURN-001. An idle blade on the right settles on the right guard
+## and does not travel through it.
+func test_an_idle_blade_settles_on_its_committed_guard() -> void:
+	var fighter := _idle_blade(0.0, 0.0, -1.0)
+	var target := -_rules.combatant(0).weapon.guard_angle
+	var furthest := 0.0
+	for tick in 240:
+		_step_blade(fighter, tick)
+		furthest = minf(furthest, fighter.weapon.angle)
+	assert_near(fighter.weapon.angle, target, 0.02, "it arrives on the committed guard")
+	assert_near(fighter.weapon.speed, 0.0, 0.05, "and is at rest there")
+	assert_true(furthest >= target - 0.05, "without passing through the guard (%s)" % str(furthest))
+
+
+## The tick an attack is held, the return does not fight it.
+func test_an_attack_takes_the_blade_over_on_its_tick() -> void:
+	var idle := _idle_blade(0.0, 0.0, -1.0)
+	var held := _idle_blade(0.0, 0.0, -1.0)
+	held.attack_held = true
+	held.press_tick = 0
+	_step_blade(idle, 0)
+	_step_blade(held, 0)
+	assert_true(idle.weapon.angle < -0.001, "fixture: an idle tick leaves centre toward the guard")
+	assert_near(held.weapon.angle, 0.0, 1e-9, "the held attack keeps the blade where it was")
+	assert_eq(held.weapon.phase, CombatPhase.Id.NEUTRAL, "the tap threshold has not promoted it yet")
+
+
+## Inside the deadzone the previous side stands, so the return keeps its target.
+func test_the_return_keeps_its_side_inside_the_deadzone() -> void:
+	var definition := _rules.combatant(0).weapon
+	var fighter := _idle_blade(definition.side_deadzone * 0.5, 0.0, -1.0)
+	var before := fighter.weapon.angle
+	_step_blade(fighter, 0)
+	assert_eq(fighter.weapon.stable_side, -1.0, "the deadzone does not flip the side")
+	assert_true(fighter.weapon.angle < before, "so the return still carries it toward the right guard")
+
+
+## A commanded swing that leaves the centre, and a blade planted at the angle
+## that swing reached, remember the same side. `ContactFixture.arm` is a
+## constructed pose for a domain test; this is the check that the side it
+## commits is the side the command path has already committed at that angle.
+func test_a_commanded_crossing_commits_the_side_a_planted_blade_commits() -> void:
+	var definition := _rules.combatant(0).weapon
+	var rig := _rig()
+	var opening := rig.fighter.weapon.stable_side
+	rig.attack(4)
+	var crossed := false
+	for _i in 240:
+		rig.step()
+		var angle := rig.fighter.weapon.angle
+		if absf(angle) > definition.side_deadzone and (1.0 if angle > 0.0 else -1.0) != opening:
+			crossed = true
+			break
+	assert_true(crossed, "fixture: the tap crosses onto the other side of the deadzone")
+	var live := rig.fighter.weapon
+	var live_side := 1.0 if live.angle > 0.0 else -1.0
+	assert_eq(live.stable_side, live_side, "after the tick, the command path remembers the side it reached")
+	assert_eq(live.commitment, CommitmentModel.commitment(live, definition), "and its commitment is the production reading of that weapon")
+	var planted := FighterState.new()
+	planted.slot = 0
+	planted.health = rig.fighter.health
+	planted.weapon.reset(0.0)
+	planted.weapon.stable_side = opening
+	ContactFixture.arm(planted, 0.0, 0.0, rig.fighter.facing, live.angle, live.speed, live.phase, live.swing_charge, definition)
+	assert_eq(planted.weapon.angle, live.angle, "the planted angle is the commanded angle")
+	assert_eq(planted.weapon.speed, live.speed, "and its angular velocity")
+	assert_eq(planted.weapon.stable_side, live.stable_side, "and the side the command path committed")
+	## At rest the sign of speed does not name a side, and `arm` derives
+	## `swing_dir` from that sign. The return reads `stable_side`. Both
+	## resting poses therefore share the committed side and the same `swing_dir`
+	## before the next motor tick, so a mismatch would be the return itself.
+	var from_command := _idle_blade(live.angle, 0.0, live.stable_side)
+	var from_plant := _idle_blade(0.0, 0.0, opening)
+	ContactFixture.arm(from_plant, 0.0, 0.0, 0.0, live.angle, 0.0, CombatPhase.Id.NEUTRAL, 0.0, definition)
+	assert_eq(from_plant.weapon.stable_side, from_command.weapon.stable_side, "a resting plant of that angle commits it too")
+	assert_eq(from_plant.weapon.commitment, 0.0, "neutral commitment is zero")
+	from_plant.weapon.swing_dir = from_command.weapon.swing_dir
+	_step_blade(from_command, 0)
+	_step_blade(from_plant, 0)
+	assert_eq(from_plant.weapon.angle, from_command.weapon.angle, "the next return tick matches")
+	assert_eq(from_plant.weapon.speed, from_command.weapon.speed, "and so does its speed")
+	assert_eq(from_plant.weapon.stable_side, from_command.weapon.stable_side, "the side still agrees")
+
+
+## RECOVERY-001 / GUARD-RETURN-001. Above control speed the brake arrests;
+## once under it, the return carries the blade to the guard.
+func test_recovery_returns_only_once_the_blade_is_under_control() -> void:
+	var definition := _rules.combatant(0).weapon
+	var fast := _idle_blade(0.0, definition.control_speed + 2.0, -1.0)
+	fast.weapon.set_phase(CombatPhase.Id.RECOVERY)
+	fast.weapon.recovery_left = definition.tap_threshold_ticks
+	var speed_before := fast.weapon.speed
+	_step_blade(fast, 0)
+	assert_true(fast.weapon.speed < speed_before, "above control speed the brake slows it")
+	assert_true(fast.weapon.angle >= -0.02, "and does not yet carry it off toward the guard")
+	var slow := _idle_blade(0.0, definition.control_speed * 0.25, -1.0)
+	slow.weapon.set_phase(CombatPhase.Id.RECOVERY)
+	slow.weapon.recovery_left = definition.tap_threshold_ticks
+	_step_blade(slow, 0)
+	assert_true(slow.weapon.angle < -0.001, "under control speed the return carries it to the right guard")
+
+
+## Persistent steel reduces the return; it does not stop it.
+func test_a_bind_scales_the_return_down() -> void:
+	var free := _idle_blade(0.0, 0.0, -1.0)
+	var bound := _idle_blade(0.0, 0.0, -1.0)
+	_step_blade(free, 0, 1.0)
+	_step_blade(bound, 0, _rules.combat.guard_steel_return_scale)
+	assert_true(free.weapon.angle < bound.weapon.angle, "the free return travels further in the same tick")
+	assert_true(bound.weapon.angle < 0.0, "and the bound return still moves")
+
+
+func test_a_mirror_returns_to_the_mirror_guard() -> void:
+	var right := _idle_blade(-0.2, 0.4, -1.0)
+	var left := _idle_blade(0.2, -0.4, 1.0)
+	for tick in 30:
+		_step_blade(right, tick)
+		_step_blade(left, tick)
+		assert_near(right.weapon.angle, -left.weapon.angle, 1e-9, "tick %d angle mirrors" % tick)
+		assert_near(right.weapon.speed, -left.weapon.speed, 1e-9, "tick %d speed mirrors" % tick)
+
+
+## STAMINA-004: fatigue does not scale the return. Same health, different stamina.
+func test_fatigue_does_not_scale_the_guard_return() -> void:
+	var body := _rules.combatant(0).fighter
+	var fresh_state := ConditionModel.compute(body.max_health, body.max_health, 1.0, _rules.combat, ConditionState.new())
+	var tired_state := ConditionModel.compute(body.max_health, body.max_health, 0.0, _rules.combat, ConditionState.new())
+	assert_true(fresh_state.fatigue_scale > tired_state.fatigue_scale, "fixture: the tired fighter has less force")
+	var fresh := _idle_blade(0.0, 0.0, -1.0)
+	var tired := _idle_blade(0.0, 0.0, -1.0)
+	_step_blade(fresh, 0, 1.0, null, fresh_state)
+	_step_blade(tired, 0, 1.0, null, tired_state)
+	assert_eq(fresh.weapon.angle, tired.weapon.angle, "the return does not depend on stamina")
+	assert_eq(fresh.weapon.speed, tired.weapon.speed, "nor does its speed")
+
+
+## STAMINA-004: fatigue scales swing and brake force. The speed ceiling does
+## not move, and a blade already on that ceiling stays there at either stamina.
+func test_fatigue_scales_weapon_force_and_not_its_speed_ceiling() -> void:
+	var body := _rules.combatant(0).fighter
+	var weapon := _rules.combatant(0).weapon
+	var fresh_state := ConditionModel.compute(body.max_health, body.max_health, 1.0, _rules.combat, ConditionState.new())
+	var tired_state := ConditionModel.compute(body.max_health, body.max_health, 0.0, _rules.combat, ConditionState.new())
+	var fresh := _idle_blade(-weapon.guard_angle, 0.0, -1.0)
+	var tired := _idle_blade(-weapon.guard_angle, 0.0, -1.0)
+	for fighter: FighterState in [fresh, tired]:
+		fighter.weapon.set_phase(CombatPhase.Id.ACTIVE_THREAT)
+		fighter.weapon.swing_dir = 1.0
+		fighter.weapon.swing_charge = 1.0
+		fighter.weapon.launch_preparation = 1.0
+	_step_blade(fresh, 0, 1.0, null, fresh_state)
+	_step_blade(tired, 0, 1.0, null, tired_state)
+	assert_true(fresh.weapon.speed > tired.weapon.speed, "the rested swing accelerates harder")
+	assert_near(tired.weapon.speed / fresh.weapon.speed, tired_state.fatigue_scale / fresh_state.fatigue_scale, 1e-9, "by the fatigue term, and nothing else")
+	var ceiling := weapon.achievable_swing_speed(1.0, 1.0)
+	var rested_ceiling := _idle_blade(0.0, ceiling, -1.0)
+	var tired_ceiling := _idle_blade(0.0, ceiling, -1.0)
+	for fighter: FighterState in [rested_ceiling, tired_ceiling]:
+		fighter.weapon.set_phase(CombatPhase.Id.ACTIVE_THREAT)
+		fighter.weapon.swing_dir = 1.0
+		fighter.weapon.swing_charge = 1.0
+		fighter.weapon.launch_preparation = 1.0
+	_step_blade(rested_ceiling, 0, 1.0, null, fresh_state)
+	_step_blade(tired_ceiling, 0, 1.0, null, tired_state)
+	assert_eq(rested_ceiling.weapon.speed, ceiling, "a rested blade already on the ceiling is not pushed past it")
+	assert_eq(tired_ceiling.weapon.speed, ceiling, "and fatigue does not lower that ceiling")
+	var rested_brake := _idle_blade(0.0, 8.0, -1.0)
+	var tired_brake := _idle_blade(0.0, 8.0, -1.0)
+	for fighter: FighterState in [rested_brake, tired_brake]:
+		fighter.weapon.set_phase(CombatPhase.Id.OVERSWING)
+		fighter.weapon.swing_charge = 0.0
+	_step_blade(rested_brake, 0, 1.0, null, fresh_state)
+	_step_blade(tired_brake, 0, 1.0, null, tired_state)
+	var rested_drop := 8.0 - rested_brake.weapon.speed
+	var tired_drop := 8.0 - tired_brake.weapon.speed
+	assert_true(rested_drop > tired_drop, "the rested brake takes off more speed")
+	assert_near(tired_drop / rested_drop, tired_state.fatigue_scale / fresh_state.fatigue_scale, 1e-9, "brake force carries fatigue; the brake law does not change")
+	## v²/2a would be the stopping distance only if this deceleration held for
+	## the whole coast. This tick does not show that: the soft zone, the guard
+	## limit and a phase change can all end it first.
+	var rested_wind := _idle_blade(-weapon.guard_angle, 0.0, -1.0)
+	var tired_wind := _idle_blade(-weapon.guard_angle, 0.0, -1.0)
+	for fighter: FighterState in [rested_wind, tired_wind]:
+		fighter.weapon.set_phase(CombatPhase.Id.CHARGING)
+		fighter.weapon.swing_dir = 1.0
+	_step_blade(rested_wind, 0, 1.0, null, fresh_state)
+	_step_blade(tired_wind, 0, 1.0, null, tired_state)
+	assert_true(absf(rested_wind.weapon.speed) > absf(tired_wind.weapon.speed), "the rested wind-up accelerates harder")
+	assert_near(tired_wind.weapon.speed / rested_wind.weapon.speed, tired_state.fatigue_scale / fresh_state.fatigue_scale, 1e-9, "by the same fatigue term")
+
+
+## The step and the predictor share one coast.
+func test_one_coast_tick_matches_the_weapon_step() -> void:
+	var fighter := _idle_blade(0.2, 1.5, -1.0)
+	var definition := _rules.combatant(0).weapon
+	var spec := _rules.combatant(0)
+	var inertia := WeaponKinematics.motor_inertia(spec, fighter.weapon.angle)
+	var drive := spec.fighter.weapon_torque_scale
+	var out := PackedFloat64Array([0.0, 0.0])
+	var speed := WeaponSystem.coast_speed(fighter.weapon.speed, fighter.weapon.angle, fighter.weapon.phase, fighter.weapon.stable_side, fighter.weapon.swing_charge, definition, drive, drive, inertia, _rules.combat, 1.0, false)
+	WeaponSystem.write_limited(out, fighter.weapon.angle, speed, definition.guard_limit, _rules.combat.guard_limit_zone, WeaponSystem.zone_spring(definition, drive, inertia, _rules.combat), _rules.combat.guard_limit_damping, WeaponSystem.limit_accel_cap(definition, drive, inertia))
+	_step_blade(fighter, 0)
+	assert_near(fighter.weapon.angle, out[0], 1e-12, "the step's angle is the shared coast")
+	assert_near(fighter.weapon.speed, out[1], 1e-12, "and so is its speed")
+
+
+## One clamp for the weapon step and the predictor's buffer.
+func test_the_stop_rule_is_one_clamp() -> void:
+	var limit := 1.0
+	var cases: Array[Array] = [
+		[0.2, 0.5, 0.2, 0.5, false],
+		[1.0, 0.4, 1.0, 0.0, true],
+		[1.0, -0.4, 1.0, -0.4, false],
+		[1.0, 0.0, 1.0, 0.0, false],
+		[-1.0, -0.4, -1.0, 0.0, true],
+		[-1.0, 0.4, -1.0, 0.4, false],
+		[1.2, 0.3, 1.0, 0.0, true],
+		[-1.2, -0.3, -1.0, 0.0, true],
+		[1.2, -0.3, 1.0, -0.3, true],
+		[1.0 - 5.0e-10, 0.4, 1.0 - 5.0e-10, 0.0, true],
+		[-(1.0 - 5.0e-10), -0.4, -(1.0 - 5.0e-10), 0.0, true],
+		[1.0 - 2.0e-9, 0.4, 1.0 - 2.0e-9, 0.4, false],
+		[-(1.0 - 2.0e-9), -0.4, -(1.0 - 2.0e-9), -0.4, false],
+		[1.0 - 5.0e-10, -0.4, 1.0 - 5.0e-10, -0.4, false],
+		[-(1.0 - 5.0e-10), 0.4, -(1.0 - 5.0e-10), 0.4, false],
+	]
+	for row: Array in cases:
+		assert_eq(WeaponSystem.stopped_angle(float(row[0]), limit), float(row[2]), "angle at %s" % str(row))
+		assert_eq(WeaponSystem.stopped_speed(float(row[0]), float(row[1]), limit), float(row[3]), "speed at %s" % str(row))
+		assert_eq(WeaponSystem.stop_engaged(float(row[0]), float(row[1]), limit), bool(row[4]), "engaged at %s" % str(row))
+		var weapon := WeaponState.new()
+		var assigned := WeaponSystem.assign_stop(weapon, float(row[0]), float(row[1]), limit)
+		var out := PackedFloat64Array([0.0, 0.0])
+		var written := WeaponSystem._write_stop(out, float(row[0]), float(row[1]), limit)
+		assert_eq(assigned, written, "both callers report the same stop")
+		assert_eq(weapon.angle, out[0], "and the same angle")
+		assert_eq(weapon.speed, out[1], "and the same speed")
+
+
+## GUARD-LIMIT-SOFT-001. The ramp is zero and flat at the inner edge, inward
+## speed adds nothing, outward speed adds resistance.
+func test_the_soft_zone_is_continuous_and_outward_only() -> void:
+	var limit := _rules.combatant(0).weapon.guard_limit
+	var zone := _rules.combat.guard_limit_zone
+	var edge := limit - zone
+	var k := 40.0
+	var c := 10.0
+	assert_eq(WeaponSystem.limit_zone_accel(edge, 0.0, limit, zone, k, c), 0.0, "no force on the inner edge at rest")
+	assert_eq(WeaponSystem.limit_zone_accel(edge, 4.0, limit, zone, k, c), 0.0, "nor with outward speed, so the ramp starts flat")
+	var just_inside := edge + 1.0e-4
+	var at_rest := WeaponSystem.limit_zone_accel(just_inside, 0.0, limit, zone, k, c)
+	var midway := WeaponSystem.limit_zone_accel(edge + zone * 0.5, 0.0, limit, zone, k, c)
+	assert_true(absf(at_rest) < absf(midway) * 1.0e-4, "a hair inside, the Hermite ramp is still negligible against mid-zone (%s vs %s)" % [str(at_rest), str(midway)])
+	var planted := limit - zone * 0.5
+	var still := WeaponSystem.limit_zone_accel(planted, 0.0, limit, zone, k, c)
+	var inward := WeaponSystem.limit_zone_accel(planted, -5.0, limit, zone, k, c)
+	var outward := WeaponSystem.limit_zone_accel(planted, 5.0, limit, zone, k, c)
+	assert_eq(inward, still, "inward speed is not damped")
+	assert_true(still < 0.0, "the spring on the positive side pushes inward")
+	assert_true(outward < still, "outward speed adds to that push")
+
+
+## A sustained wind-up rests on the stop without counting as the fallback.
+## A blade thrown at the stop does count, and stays inside the limit.
+func test_a_resting_windup_is_not_a_hard_stop_and_a_slam_is() -> void:
+	var diagnostics := ContactDiagnostics.new()
+	var fighter := _idle_blade(-_rules.combatant(0).weapon.guard_angle, 0.0, -1.0)
+	var events: Array[DuelEvent] = []
+	WeaponSystem.apply_input(fighter, PlayerCommand.create(0, 0.0, 0.0, true, false), _rules, 0, events)
+	for tick in 600:
+		WeaponSystem.step(fighter, _rules, tick, events, null, null, 1.0, diagnostics)
+	assert_eq(fighter.weapon.charge, 1.0, "fixture: the hold reached full charge")
+	assert_near(fighter.weapon.angle, -_rules.combatant(0).weapon.guard_limit, 1e-6, "and sits on the stop")
+	var resting := diagnostics.guard_hard_stop_hits
+	for tick in 120:
+		WeaponSystem.step(fighter, _rules, 600 + tick, events, null, null, 1.0, diagnostics)
+	assert_eq(diagnostics.guard_hard_stop_hits, resting, "ticks spent already on the stop add none (%d at arrival)" % resting)
+	fighter.weapon.set_phase(CombatPhase.Id.NEUTRAL)
+	fighter.attack_held = false
+	fighter.press_tick = -1
+	fighter.weapon.angle = -_rules.combatant(0).weapon.guard_limit + 0.02
+	fighter.weapon.speed = -40.0
+	var before := diagnostics.guard_hard_stop_hits
+	WeaponSystem.step(fighter, _rules, 800, events, null, null, 1.0, diagnostics)
+	assert_true(diagnostics.guard_hard_stop_hits > before, "a slam the zone cannot bleed is the fallback")
+	assert_true(fighter.weapon.angle >= -_rules.combatant(0).weapon.guard_limit - 1e-9, "and the hard stop keeps it inside")
+
+
+## A wind-up that has arrived keeps being pressed outward. Each tick the motor
+## asks for more outward speed and the stop removes it. The blade stays on the
+## stop with no speed left to oscillate, and the stop does not hand speed back.
+func test_a_windup_held_on_the_stop_does_not_chatter() -> void:
+	var limit := _rules.combatant(0).weapon.guard_limit
+	var fighter := _idle_blade(-_rules.combatant(0).weapon.guard_angle, 0.0, -1.0)
+	var events: Array[DuelEvent] = []
+	WeaponSystem.apply_input(fighter, PlayerCommand.create(0, 0.0, 0.0, true, false), _rules, 0, events)
+	var arrived := -1
+	for tick in 240:
+		_step_blade(fighter, tick)
+		if absf(fighter.weapon.angle + limit) <= WeaponSystem.STOP_ARRIVAL_RAD and fighter.weapon.speed == 0.0:
+			arrived = tick
+			break
+	assert_true(arrived >= 0, "fixture: the wind-up reached the stop")
+	var furthest := fighter.weapon.angle
+	for tick in 90:
+		_step_blade(fighter, arrived + 1 + tick)
+		assert_eq(fighter.weapon.speed, 0.0, "tick %d keeps no speed to re-engage with" % (arrived + 1 + tick))
+		assert_true(absf(fighter.weapon.angle + limit) <= WeaponSystem.STOP_ARRIVAL_RAD, "and the blade stays on the stop")
+		assert_true(fighter.weapon.angle <= furthest + 1.0e-12, "it does not bounce back off the stop")
+		furthest = minf(furthest, fighter.weapon.angle)

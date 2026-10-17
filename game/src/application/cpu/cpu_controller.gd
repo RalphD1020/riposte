@@ -1,4 +1,4 @@
-class_name CpuController
+﻿class_name CpuController
 extends FighterController
 
 ## Utility-scoring CPU (PLAN Phase 9). Emits the same PlayerCommand a human
@@ -136,6 +136,19 @@ var _sight_y: float = 0.0
 var _sight_distance: float = 0.0
 ## Decision traces (Phase 8a). Sidecar telemetry, never authoritative.
 var traces: Array[CpuDecisionTrace] = []
+## Dash gestures begun since the last reset, on any decision tick (traces
+## record only decisions that reach the attack choice). Sidecar telemetry.
+var bursts_begun: int = 0
+## Match-lifetime decision counts. Not cleared on a round reset, not hashed,
+## and not read by a later decision. `probes_suppressed` is a decision under
+## the dash-cost gate with nothing owed, so no probe or charge was scored.
+var decisions: int = 0
+var probes_suppressed: int = 0
+var capitalize_decisions: int = 0
+var tempo_decisions: int = 0
+var intercept_decisions: int = 0
+var tap_choices: int = 0
+var charge_choices: int = 0
 ## CapitalizeIntent (CPU-008): while true the CPU is closing on an opening it
 ## physically expects to reach first, by the route `_clear_side` names — 0
 ## straight in, ±1 beside the opponent on that side of its line (+1
@@ -202,6 +215,7 @@ func _forget() -> void:
 	_capitalizing = false
 	_clear_side = 0.0
 	traces.clear()
+	bursts_begun = 0
 
 
 ## The strike reach the profiles' distances are authored at: the reference
@@ -360,45 +374,88 @@ func _decide(seen: CpuObservation, me: FighterState, decision_tick: int, body_co
 		if perceived > reach:
 			burst_utility = maxf(burst_utility, BURST_UTILITY_MIN)
 	_consider_burst(burst_utility, striking, assessment, me, arriving - desired)
+	var intercept := (opp_charging or seen.opp_phase == CombatPhase.Id.LAUNCH) and perceived <= reach
+	## Indes: interception when opponent is committed and own tap can arrive.
+	if assessment.indes_opportunity > 0.0 and perceived <= reach + THREAT_RANGE:
+		intercept = true
 	_attack = Attack.NONE
 	if _holding or not ready:
 		return
 	if _capitalizing:
 		if perceived <= reach:
 			_attack = Attack.TAP
-		traces.append(CpuDecisionTrace.create(decision_tick, seen.tick, utilities, _move, _attack, assessment))
+		_record_decision(decision_tick, seen.tick, utilities, assessment, me, open, intercept, true)
 		return
-	var intercept := (opp_charging or seen.opp_phase == CombatPhase.Id.LAUNCH) and perceived <= reach
-	## Indes: interception when opponent is committed and own tap can arrive.
-	if assessment.indes_opportunity > 0.0 and perceived <= reach + THREAT_RANGE:
-		intercept = true
-	var tap_quality := _range_quality(perceived, _range(profile.tap_range), TAP_TOLERANCE)
-	var tap := 0.0
-	if tap_quality >= MIN_RANGE_QUALITY:
-		tap = tap_quality * (
-			profile.probe_weight
-			+ pressure
-			+ profile.initiative_weight * SimMath.clamp01(initiative / INITIATIVE_FULL)
-			+ (profile.punish_weight if open else 0.0)
-			+ (profile.intercept_weight if intercept else 0.0)
-			+ profile.tempo_awareness * assessment.tempo_opportunity
-		)
-	var charge := _range_quality(perceived, _range(profile.charge_range), CHARGE_TOLERANCE) * (profile.charge_weight + pressure * CHARGE_PRESSURE_SHARE)
-	charge *= OPEN_CHARGE_BOOST if open else 1.0
-	charge *= THREATENED_CHARGE_DAMP if threatened else 1.0
-	if tap >= charge and tap > profile.attack_threshold:
-		_attack = Attack.TAP
-	elif charge > profile.attack_threshold:
-		_attack = Attack.HOLD
-		_charge_target = SimMath.mix(
-			_rng.next_range(profile.charge_min, profile.charge_max),
-			profile.charge_max,
-			CHARGE_OPENING_LEAN * SimMath.clamp01(seen.opp_opening / OPENING_FULL)
-		)
-	var trace := CpuDecisionTrace.create(decision_tick, seen.tick, utilities, _move, _attack, assessment)
+	## Low stamina is the dash the bar cannot afford (STAMINA-004). That one
+	## bar is the guarded-probe gate on purpose: mobility affordability and
+	## attack selection share it, and there is no second threshold. With
+	## nothing owed — no open opponent, no intercept, no tempo window — a
+	## probe or a charge waits. A capitalize already returned above, and an
+	## owed window still scores.
+	var owed := open or intercept or assessment.tempo_opportunity > 0.0
+	if _condition(me).can_dash or owed:
+		var tap_quality := _range_quality(perceived, _range(profile.tap_range), TAP_TOLERANCE)
+		var tap := 0.0
+		if tap_quality >= MIN_RANGE_QUALITY:
+			tap = tap_quality * (
+				profile.probe_weight
+				+ pressure
+				+ profile.initiative_weight * SimMath.clamp01(initiative / INITIATIVE_FULL)
+				+ (profile.punish_weight if open else 0.0)
+				+ (profile.intercept_weight if intercept else 0.0)
+				+ profile.tempo_awareness * assessment.tempo_opportunity
+			)
+		var charge := _range_quality(perceived, _range(profile.charge_range), CHARGE_TOLERANCE) * (profile.charge_weight + pressure * CHARGE_PRESSURE_SHARE)
+		charge *= OPEN_CHARGE_BOOST if open else 1.0
+		charge *= THREATENED_CHARGE_DAMP if threatened else 1.0
+		if tap >= charge and tap > profile.attack_threshold:
+			_attack = Attack.TAP
+		elif charge > profile.attack_threshold:
+			_attack = Attack.HOLD
+			_charge_target = SimMath.mix(
+				_rng.next_range(profile.charge_min, profile.charge_max),
+				profile.charge_max,
+				CHARGE_OPENING_LEAN * SimMath.clamp01(seen.opp_opening / OPENING_FULL)
+			)
+	var trace := _record_decision(decision_tick, seen.tick, utilities, assessment, me, open, intercept, false)
 	trace.burst_started = _burst_cursor == 0
 	trace.burst_is_lateral = _burst_is_lateral
+
+
+## Append one decision trace and count it. `capitalizing` is the intent that
+## already returned above the probe gate. The counts outlive a round reset.
+func _record_decision(
+	decision_tick: int,
+	seen_tick: int,
+	utilities: PackedFloat64Array,
+	assessment: TacticalAssessment,
+	me: FighterState,
+	open: bool,
+	intercept: bool,
+	capitalizing: bool,
+) -> CpuDecisionTrace:
+	var trace := CpuDecisionTrace.create(decision_tick, seen_tick, utilities, _move, _attack, assessment)
+	var owed := open or intercept or assessment.tempo_opportunity > 0.0
+	trace.below_dash = not _condition(me).can_dash
+	trace.owed_open = open
+	trace.owed_intercept = intercept
+	trace.capitalizing = capitalizing
+	trace.probe_suppressed = trace.below_dash and not owed and not capitalizing
+	decisions += 1
+	if trace.probe_suppressed:
+		probes_suppressed += 1
+	if capitalizing:
+		capitalize_decisions += 1
+	if assessment.tempo_opportunity > 0.0:
+		tempo_decisions += 1
+	if intercept:
+		intercept_decisions += 1
+	if _attack == Attack.TAP:
+		tap_choices += 1
+	elif _attack == Attack.HOLD:
+		charge_choices += 1
 	traces.append(trace)
+	return trace
 
 
 ## Decide whether this footwork is worth a dash, and if so start typing the
@@ -416,6 +473,10 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 	if utility < BURST_UTILITY_MIN:
 		return
 	var condition := _condition(me)
+	## A dash it cannot pay for would be refused (STAMINA-004): the CPU reads
+	## its own stamina, as a player reads their bar, and does not type one.
+	if not condition.can_dash:
+		return
 	## Axial burst: approach or retreat.
 	if _move == Move.APPROACH or _move == Move.RETREAT:
 		var sign_for_move := 1.0 if _move == Move.APPROACH else -1.0
@@ -430,6 +491,7 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 		_burst_sign = sign_for_move
 		_burst_is_lateral = false
 		_burst_cursor = 0
+		bursts_begun += 1
 		return
 	## Lateral burst: orbit may become a side-step.
 	if _move == Move.ORBIT and profile.lateral_dash_weight > 0.0:
@@ -455,6 +517,7 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 			_burst_sign = _orbit_sign if best_lateral == TacticalAssessment.BURST_CLOCKWISE else -_orbit_sign
 		_burst_is_lateral = true
 		_burst_cursor = 0
+		bursts_begun += 1
 
 
 ## CapitalizeIntent (CPU-008): start, keep or drop the intent from physics
@@ -463,9 +526,9 @@ func _consider_burst(utility: float, striking: bool, assessment: TacticalAssessm
 ## the CPU's current self and its delayed view of the opponent.
 ##
 ## - A clear route (`_clear_route`): the direct line if, pressed now and
-##   closing along it, my blade would reach the body or a hand before the
-##   opponent's protective steel; otherwise a detour beside the opponent on the
-##   side away from its sword, if that is clear. The opponent's sword moves
+##   closing along it, my blade would reach the torso before the opponent's
+##   protective steel; otherwise a detour beside the opponent on the side away
+##   from its sword, if that reaches the torso. The opponent's sword moves
 ##   only under its own known law for its perceived phase.
 ## - Feasible (every profile alike): along that route I arrive before the
 ##   opponent's own threat, read in the same imagined world — one
@@ -514,8 +577,8 @@ func _update_capitalize(seen: CpuObservation, me: FighterState, decision_tick: i
 
 ## The route to the opening, as `_clear_side` (0 straight in; ±1 beside the
 ## opponent on that side of its line, away from its sword), and its arrival
-## time — or −1 when neither the direct line nor the detour reaches the body
-## or a hand before protective steel.
+## time — or −1 when neither the direct line nor the detour reaches the torso
+## before protective steel.
 func _clear_route(seen: CpuObservation, me: FighterState) -> float:
 	var direct := Vector2(_sight_x - me.x, _sight_y - me.y)
 	if direct.length() <= SimMath.EPSILON:
@@ -534,14 +597,14 @@ func _clear_route(seen: CpuObservation, me: FighterState) -> float:
 	return -1.0
 
 
-## A route reaches flesh when the predicted strike meets the body or a hand
+## A route reaches flesh when the predicted strike meets the torso circle
 ## before any steel. A prediction that starts with the swords already bound is
 ## no answer: the cheap predictor does not carry the bind's constraint, and
 ## the agreement audit found its "clear" readings from a bind mostly wrong, so
 ## a bound route is never taken as clear — the bind is decided by the ordinary
 ## utilities and by physics, not by an invented forecast.
 static func _reaches_flesh(reading: ThreatEstimate) -> bool:
-	return not reading.starts_bound and (reading.first_contact == ThreatEstimate.BODY or reading.first_contact == ThreatEstimate.GRIP)
+	return not reading.starts_bound and reading.first_contact == ThreatEstimate.BODY
 
 
 ## The side of the opponent's line (its heading, as perceived; +1
@@ -569,7 +632,7 @@ static func _best_move(utilities: PackedFloat64Array) -> Move:
 ## The CPU's own condition (CONDITION-001) — health is public, and its body
 ## is its own to feel.
 func _condition(me: FighterState) -> ConditionState:
-	return ConditionModel.compute(me.health, _spec.fighter.max_health, _rules.combat, ConditionState.new())
+	return ConditionModel.compute(me.health, _spec.fighter.max_health, me.stamina, _rules.combat, ConditionState.new())
 
 
 ## Steer vector (duel axes) for a given Move, used by the safety evaluator to
@@ -720,7 +783,7 @@ func _burst_step() -> PackedFloat64Array:
 ## unit world vector.
 func _route_beside(me: FighterState, side: float) -> Vector2:
 	var offset := (_opponent_push + _spec.fighter.push_radius) * side
-	var route := Vector2(_sight_x - SimMath.sine(_sight_facing) * offset - me.x, _sight_y + SimMath.cosine(_sight_facing) * offset - me.y)
+	var route := Vector2(_sight_x - SimMath.heading_sine(_sight_facing) * offset - me.x, _sight_y + SimMath.heading_cosine(_sight_facing) * offset - me.y)
 	return route.normalized() if route.length() > SimMath.EPSILON else Vector2(_sight_x - me.x, _sight_y - me.y).normalized()
 
 

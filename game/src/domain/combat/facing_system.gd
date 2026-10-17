@@ -31,4 +31,4 @@ static func step(fighter: FighterState, target_x: float, target_y: float, tracki
 	var desired_rate := clampf(definition.track_gain * error, -max_rate, max_rate)
 	var angular_accel := definition.turn_accel() * tracking * force_scale
 	fighter.turn_rate = SimMath.approach(fighter.turn_rate, desired_rate, angular_accel * dt)
-	fighter.facing = SimMath.wrap_angle(fighter.facing + fighter.turn_rate * dt)
+	fighter.facing = SimMath.compose_angle(fighter.facing, fighter.turn_rate * dt)

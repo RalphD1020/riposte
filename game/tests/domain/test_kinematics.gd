@@ -64,10 +64,15 @@ func test_the_fixed_pivot_reproduces_the_revolute_sword_exactly() -> void:
 	for case: Array in [[0.0, 0.0, 0.3, -0.7], [1.2, -2.5, -2.0, 2.3], [-4.0, 3.0, PI, 0.0]]:
 		var fighter := _fighter(case[0], case[1], case[2], case[3])
 		WeaponKinematics.pose_of(fighter, spec, pose)
-		var blade := DuelGeometry.blade_angle(fighter)
+		var cf := SimMath.cosine(fighter.facing)
+		var sf := SimMath.sine(fighter.facing)
+		var ca := SimMath.cosine(fighter.weapon.angle)
+		var sa := SimMath.sine(fighter.weapon.angle)
 		assert_eq(pose.origin_x, fighter.x, "the origin is the centre (x)")
 		assert_eq(pose.origin_y, fighter.y, "the origin is the centre (y)")
-		assert_eq(pose.point_x(weapon.tip_radius), fighter.x + SimMath.cosine(blade) * weapon.tip_radius, "the tip is centre + û·L, to the bit")
+		assert_eq(pose.ux, cf * ca - sf * sa, "û is the heading rotation of the combat-frame blade (x)")
+		assert_eq(pose.uy, sf * ca + cf * sa, "û is the heading rotation of the combat-frame blade (y)")
+		assert_eq(pose.point_x(weapon.tip_radius), fighter.x + pose.ux * weapon.tip_radius, "the tip is centre + û·L, to the bit")
 		var px := pose.point_x(0.8)
 		var py := pose.point_y(0.8)
 		var omega := fighter.turn_rate + fighter.weapon.speed
@@ -225,6 +230,27 @@ func test_the_pose_is_single_valued_in_theta() -> void:
 			assert_eq(other.origin_y, base_pose.origin_y, "same θ, same hilt y at %d°" % degrees)
 			assert_eq(other.ux, base_pose.ux, "same θ, same yaw at %d°" % degrees)
 			assert_eq(other.uy, base_pose.uy, "same θ, same yaw at %d°" % degrees)
+
+
+## WEAPON-ORBIT-004: a heading and the heading stored half a turn away (the
+## negative heading plus π), at the same θ, carry exactly opposite blade
+## directions and exactly opposite hilts. That is what keeps a mirrored clinch
+## from spending a different ulp of stamina.
+func test_a_mirrored_heading_negates_the_blade_exactly() -> void:
+	var spec := _shipped()
+	var a := BladePose.new()
+	var b := BladePose.new()
+	for i in range(0, 17):
+		var facing := -0.05 - float(i) * 0.18
+		var opposite := facing + PI
+		for j in range(-3, 4):
+			var angle := float(j) * 0.4
+			WeaponKinematics.pose_at(0.4, -1.1, facing, angle, spec, a)
+			WeaponKinematics.pose_at(-0.4, 1.1, opposite, angle, spec, b)
+			assert_eq(a.ux, -b.ux, "blade x is the exact opposite at facing %s θ %s" % [str(facing), str(angle)])
+			assert_eq(a.uy, -b.uy, "blade y is the exact opposite at facing %s θ %s" % [str(facing), str(angle)])
+			assert_eq(a.origin_x, -b.origin_x, "hilt x is the exact opposite at facing %s θ %s" % [str(facing), str(angle)])
+			assert_eq(a.origin_y, -b.origin_y, "hilt y is the exact opposite at facing %s θ %s" % [str(facing), str(angle)])
 
 
 ## WEAPON-PATH-002: the manifold preserves θ's ordering and bounds. Increasing

@@ -37,9 +37,15 @@ static func pose_of(fighter: FighterState, spec: CombatantPhysicsSpec, out: Blad
 
 ## Pose a sword from explicit centre, combat heading, and weapon angle.
 static func pose_at(x: float, y: float, facing: float, angle: float, spec: CombatantPhysicsSpec, out: BladePose) -> BladePose:
-	var blade := SimMath.wrap_angle(facing + angle)
-	out.ux = SimMath.cosine(blade)
-	out.uy = SimMath.sine(blade)
+	var cf := SimMath.heading_cosine(facing)
+	var sf := SimMath.heading_sine(facing)
+	var ca := SimMath.cosine(angle)
+	var sa := SimMath.sine(angle)
+	## û = R(φ)·(cos θ, sin θ). The heading uses the half-turn pair and θ the
+	## odd series, so a mirrored duel and a left/right reflection both stay
+	## exact (WEAPON-ORBIT-004).
+	out.ux = cf * ca - sf * sa
+	out.uy = sf * ca + cf * sa
 	var path := spec.handling.attack_path
 	var g := spec.handling.carriage_radius
 	if path.is_fixed():
@@ -57,10 +63,6 @@ static func pose_at(x: float, y: float, facing: float, angle: float, spec: Comba
 		out.d_carriage_left = 0.0
 		return out
 	path.sample_into(angle, out)
-	var cf := SimMath.cosine(facing)
-	var sf := SimMath.sine(facing)
-	var ca := SimMath.cosine(angle)
-	var sa := SimMath.sine(angle)
 	## Combat frame: P = C − g·û(θ), P′ = C′ − g·perp(û(θ)).
 	var origin_forward := out.carriage_forward - g * ca
 	var origin_left := out.carriage_left - g * sa

@@ -263,8 +263,15 @@ func test_the_motor_and_every_contact_share_one_weapon_inertia() -> void:
 		WeaponSystem.step(fighter, rules, 0, events)
 		var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, rules.combatant(0), BladePose.new())
 		var contact_inertia := ContactMechanics.weapon_inertia(pose, rules.combatant(0))
+		var motor_inertia := WeaponKinematics.motor_inertia(rules.combatant(0), angle)
 		var torque := rules.combatant(0).fighter.weapon_torque_scale * weapon.swing_torque_tap
-		assert_near(absf(w.speed) / dt * contact_inertia, torque, 1e-9, "at %.0f° the motor's τ divides by the contact's own M_θ" % degrees)
+		assert_near(motor_inertia, contact_inertia, 1e-9, "at %.0f° the motor and the contact use one M_θ" % degrees)
+		## The voluntary motor, recorded before the soft limit. In the zone the
+		## stop adds its own acceleration, so the speed no longer equals that
+		## torque alone (GUARD-LIMIT-SOFT-001).
+		assert_near(absf(w.motor_torque), torque, 1e-9, "at %.0f° the voluntary motor is the swing torque" % degrees)
+		if absf(angle) <= weapon.guard_limit - rules.combat.guard_limit_zone:
+			assert_near(absf(w.speed) / dt * contact_inertia, torque, 1e-9, "at %.0f° that torque divides by the shared M_θ" % degrees)
 		inertias.append(contact_inertia)
 	assert_near(inertias[0], inertias[6], 1e-12, "the inertia mirrors")
 	assert_true(absf(inertias[3] - inertias[6]) > 1e-3, "and is not one constant: the track makes the sword heavier in some poses (%.4f vs %.4f kg·m²)" % [inertias[3], inertias[6]])
@@ -304,7 +311,7 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 52, "rules version tracks gameplay-affecting changes (52: each crossguard protects its blade side as a guard-root steel pair)")
+	assert_eq(rules.version, 57, "rules version tracks gameplay-affecting changes (57: impact authority is a steel dip that recovers)")
 
 
 ## IMPACT-PHYSICS-001 (rules 42): the injury calibration is a named physical
@@ -325,8 +332,16 @@ func test_the_injury_calibration_is_a_named_physical_constant() -> void:
 	for degrees in HandlingCatalog.ATTACK_PATH_DEGREES:
 		knots.append(deg_to_rad(degrees))
 	calibrated.combatant(0).handling.attack_path = WeaponAttackPath.from_carriage_knots(knots, PackedFloat64Array([0.63, 0.615, 0.56, 0.45, 0.30]), PackedFloat64Array([0.0, 0.045, 0.13, 0.18, 0.20]))
-	assert_near(ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, 1e-9, "on the rules-39 track the reference strike delivers exactly the pinned energy")
-	assert_near(ContactMechanics.reference_impulse(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat), StandardDuelRules.REFERENCE_STAGGER_IMPULSE_NS, 1e-9, "and the pinned stagger impulse")
+	## The frozen injury constants were measured with û = cos(φ + θ). The
+	## accepted basis is R(φ)·(cos θ, sin θ) (WEAPON-ORBIT-004). On these
+	## same rules-39 knots that identity moves the strike by 1.9019926e-7 J
+	## and 3.696784e-8 N·s. The constants stay; this is the re-measured witness.
+	var rules39_energy := ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat)
+	var rules39_impulse := ContactMechanics.reference_impulse(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat)
+	assert_near(rules39_energy, 72.7078848792913, 1e-9, "on the rules-39 track, through the rotation-matrix basis, the reference strike delivers the re-measured energy")
+	assert_near(rules39_impulse, 14.1317560503968, 1e-9, "and the re-measured stagger impulse")
+	assert_near(rules39_energy - StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, -1.9019926e-7, 1e-12, "the energy gap from the frozen injury constant is that basis, not a recalibration")
+	assert_near(rules39_impulse - StandardDuelRules.REFERENCE_STAGGER_IMPULSE_NS, -3.696784e-8, 1e-12, "and so is the impulse gap")
 	assert_near(StandardDuelRules.REFERENCE_STRIKE_ENERGY_J / rules.combat.reference_severity, StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 1e-12, "and that strike is the pinned number of reference-quality wounds (rules 49)")
 	var witness := ContactMechanics.reference_severity(rules.combatant(0), rules.combatant(0), rules.combat)
 	assert_ne(witness, StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, "on today's track the strike delivers a little differently")
@@ -355,6 +370,7 @@ func test_fallen_body_and_clash_reference_fail_closed() -> void:
 		"fallen_settle_ticks_point": -1,
 		"fallen_ground_friction": 0.0,
 		"reference_clash_energy": 0.0,
+		"impact_authority_floor": 0.0,
 	}
 	for field: String in broken:
 		var rules := StandardDuelRules.create()
@@ -363,3 +379,9 @@ func test_fallen_body_and_clash_reference_fail_closed() -> void:
 		assert_eq(rules.combat.get(field), broken[field], "perturbed: %s" % field)
 		assert_false(rules.is_valid(), "%s out of range is invalid" % field)
 		assert_true(DuelSimulation.create(rules) == null, "and no duel starts on it (%s)" % field)
+	var high := StandardDuelRules.create()
+	high.combat.impact_authority_floor = 1.5
+	assert_false(high.is_valid(), "an authority floor above 1 is invalid")
+	var broken_number := StandardDuelRules.create()
+	broken_number.combat.impact_authority_floor = NAN
+	assert_false(broken_number.is_valid(), "a non-finite authority floor is invalid")

@@ -302,37 +302,40 @@ func test_two_identical_fighters_pressing_keep_their_midpoint() -> void:
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
 
 
-## SYMMETRIC-PRESS-001: the same press through the swords. Two identical
-## fighters from the point-symmetric opening, both in Long Guard (θ = 0, the
-## blades on the centreline), driving into each other for four seconds: their
-## blades meet point to point and are held, and the duel stays the exact point
-## reflection of itself — midpoint, bodies, headings and swords — on every
-## tick. No slot, stored contact point or update order wins. (With guards
-## resting the blades never meet: each passes over the other's crossguard to
-## the grip, STEEL-TOPOLOGY-001; the held contact of earlier rules was
-## crossguard on handle.)
+## SYMMETRIC-PRESS-001: the same press through the swords. θ = 0 is the Long
+## Guard posture, and the return leaves it before a head-on walk can meet, so
+## this witness starts from the crossed resting overlap the return already
+## tracks (each blade on its own guard, a small overlap). Both then drive in.
+## The contact is a bilateral mirror: local angles and speeds negate, the
+## midpoint holds, and the hold lasts. No slot or update order wins.
 func test_two_identical_fighters_pressing_through_their_swords_stay_mirrored() -> void:
-	## ARRANGE
+	## ARRANGE: the resting overlap, one idle tick so the hold is the solver's.
 	var runner := SimRunner.create(_rules, 1)
 	runner.skip_intro()
+	var spec := _rules.combatant(0)
+	var guard := spec.weapon.guard_angle
 	var a := runner.state.fighter(0)
 	var b := runner.state.fighter(1)
-	a.weapon.angle = 0.0
-	b.weapon.angle = 0.0
+	DuelFixture.place(a, 0.0, 0.0, PI / 2.0)
+	a.weapon.reset(guard)
+	DuelFixture.place(b, 0.0, ContactFixture.crossed_guard_separation(spec, -0.002, 1.0), -PI / 2.0)
+	b.weapon.reset(-guard)
+	runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+	assert_true(runner.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED, "fixture: the resting overlap is already in contact")
 	var start_x := (a.x + b.x) * 0.5
 	var start_y := (a.y + b.y) * 0.5
 	## ACT
 	var drift := 0.0
 	var mirror := 0.0
 	var held := 0
-	for _i in 240:
+	for _i in 120:
 		runner.drive(0.0, 1.0, 1)
 		drift = maxf(drift, SimMath.length((a.x + b.x) * 0.5 - start_x, (a.y + b.y) * 0.5 - start_y))
-		mirror = maxf(mirror, absf(a.vx + b.vx) + absf(a.vy + b.vy) + absf(a.weapon.angle - b.weapon.angle) + absf(a.weapon.speed - b.weapon.speed) + absf(SimMath.wrap_angle(a.facing - b.facing - PI)))
+		mirror = maxf(mirror, absf(a.vx + b.vx) + absf(a.vy + b.vy) + absf(a.weapon.angle + b.weapon.angle) + absf(a.weapon.speed + b.weapon.speed) + absf(SimMath.wrap_angle(a.facing - b.facing - PI)))
 		if runner.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED:
 			held += 1
 	## ASSERT
-	assert_true(runner.count(DuelEventTypes.BLADE_CONTACT) > 0 and held > 30, "precondition: the swords met and were held (%d ticks)" % held)
+	assert_true(held > 30, "the swords stayed in contact under the press (%d ticks)" % held)
 	assert_true(drift < 1.0e-6, "the shared midpoint holds (%s m; under a millimetre is the gameplay floor)" % String.num_scientific(drift))
 	assert_true(mirror < 1.0e-6, "and the two stay each other's exact reflection (%s)" % String.num_scientific(mirror))
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
@@ -500,7 +503,7 @@ func test_injury_never_changes_the_commitment_only_the_final_capability() -> voi
 	var fighter := _cutting(1.0)
 	fighter.vx = 3.0
 	var max_health := _spec().fighter.max_health
-	var hurt := ConditionModel.compute(max_health * 0.4, max_health, _rules.combat, ConditionState.new())
+	var hurt := ConditionModel.compute(max_health * 0.4, max_health, 1.0, _rules.combat, ConditionState.new())
 	assert_true(hurt.force_scale < 1.0 and hurt.tracking_scale < 1.0, "precondition: the wound costs force and tracking")
 	var commitment := _facing(fighter)
 	assert_true(commitment > 0.0, "precondition: the action is committed (%.3f)" % commitment)

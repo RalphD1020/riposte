@@ -18,7 +18,6 @@ var point_x: float = 0.0
 var point_y: float = 0.0
 var normal_x: float = 0.0
 var normal_y: float = 0.0
-var grip: bool = false              ## A GRIP wound (hands, handle) rather than the torso (GRIP-NONBLOCKING-001)
 
 
 static func from_event(event: DuelEvent, tuning: CombatTuning) -> ImpactFeedback:
@@ -34,7 +33,6 @@ static func from_event(event: DuelEvent, tuning: CombatTuning) -> ImpactFeedback
 	fb.point_y = event.number(DuelEventKeys.Y)
 	fb.normal_x = event.number(DuelEventKeys.NORMAL_X)
 	fb.normal_y = event.number(DuelEventKeys.NORMAL_Y)
-	fb.grip = event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP
 	return fb
 
 

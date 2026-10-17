@@ -112,7 +112,7 @@ func _line_run(d0: float, lead: int, side: String) -> Array:
 			var event: DuelEvent = runner.events[i]
 			if met == "":
 				if event.type == DuelEventTypes.BODY_HIT and event.actor == 0:
-					met = "grip" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP else "body"
+					met = "body"
 					## The tap itself landed first.
 					first = "attacker"
 				elif event.type == DuelEventTypes.BLADE_CONTACT:
@@ -158,9 +158,9 @@ func _agreement() -> void:
 				sensitivity[idle_key] = int(sensitivity.get(idle_key, 0)) + 1
 				## The dangerous disagreement, by mechanism: the opponent's phase
 				## and the features that actually met.
-				var flesh := predicted.first_contact == ThreatEstimate.BODY or predicted.first_contact == ThreatEstimate.GRIP
+				var flesh := predicted.first_contact == ThreatEstimate.BODY
 				if flesh and not predicted.starts_bound and actual.begins_with("STEEL"):
-					var why := "false_clear opp=%s predicted=%s spent_grip=%s %s seed=%d tick=%d slot=%d" % [CombatPhase.label(them.weapon.phase), _name(predicted.first_contact), str(me.weapon.grip_struck), actual.substr(6), seed_value, duel.state.tick, slot]
+					var why := "false_clear opp=%s predicted=%s %s seed=%d tick=%d slot=%d" % [CombatPhase.label(them.weapon.phase), _name(predicted.first_contact), actual.substr(6), seed_value, duel.state.tick, slot]
 					matrix[why] = int(matrix.get(why, 0)) + 1
 				samples += 1
 		print("  · agreement seed %d (%d samples)" % [seed_value, samples])
@@ -212,7 +212,7 @@ func _rolled(duel: MatchSession, slot: int, line: Vector2, matched: bool) -> Str
 			if event.type == DuelEventTypes.BLADE_CONTACT and launched and touched_steel == "":
 				touched_steel = "STEEL at=%d" % (tick - duel.state.tick)
 			if event.type == DuelEventTypes.BODY_HIT and event.actor == slot:
-				return "GRIP" if event.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP else "BODY"
+				return "BODY"
 		## Steel that stopped the strike: it is over, and no flesh was struck.
 		if touched_steel != "" and launched and not CombatPhase.is_swinging(me.weapon.phase) and me.weapon.phase != CombatPhase.Id.LAUNCH:
 			return touched_steel
@@ -222,7 +222,11 @@ func _rolled(duel: MatchSession, slot: int, line: Vector2, matched: bool) -> Str
 
 
 static func _name(contact: int) -> String:
-	return ["NONE", "BODY", "GRIP", "STEEL"][contact]
+	if contact == ThreatEstimate.BODY:
+		return "BODY"
+	if contact == ThreatEstimate.STEEL:
+		return "STEEL"
+	return "NONE"
 
 
 # ── capitalize ────────────────────────────────────────────────────────────────

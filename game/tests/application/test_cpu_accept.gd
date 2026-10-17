@@ -10,7 +10,8 @@ extends TestCase
 ## Graded only where the effect is large enough for an affordable sample to
 ## resolve it. Hard-over-Medium is read by the audit report on forty duels,
 ## not gated: the edge is slim enough that sixteen duels cannot tell it from a
-## coin (docs/concepts/cpu.md).
+## coin (docs/concepts/cpu.md). The graded block is `ACCEPTANCE_SEEDS_V2`
+## (301–308). Seeds 101–108 stay the consumed rules-53 result and are not rerun.
 ##
 ## Implements: /spec/invariants.md#cpu-001
 ## See also: /docs/concepts/cpu.md, /docs/reference/testing.md
@@ -24,7 +25,7 @@ func _init() -> void:
 ## held-out seeds. The margin is near the 16-duel ceiling, so a regression that
 ## actually broke a difficulty axis could not hide inside it.
 func test_sharper_profiles_beat_the_blunt_one_on_held_out_seeds() -> void:
-	var seeds := CpuLadder.ACCEPTANCE_SEEDS
+	var seeds := CpuLadder.ACCEPTANCE_SEEDS_V2
 	var duels := seeds.size() * 2
 	var medium := CpuLadder.margin(MatchConfig.Difficulty.MEDIUM, MatchConfig.Difficulty.EASY, seeds, "Medium v Easy")
 	var hard := CpuLadder.margin(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.EASY, seeds, "Hard v Easy")

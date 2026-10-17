@@ -59,14 +59,18 @@ failure the sweep cannot fix reopens that.
 
 Engineering targets at 60 FPS (16.67 ms), to be measured on real devices — not Godot guarantees:
 
-| System                                | Target       |
-| ------------------------------------- | ------------ |
-| Both fighters' combat-pose passes     | < 0.5 ms CPU |
-| Skeleton animation and skinning prep  | < 1.5 ms CPU |
-| All combat presentation scripting     | < 1.0 ms CPU |
-| Fighters + weapons + trails           | < 2 ms GPU   |
-| Ordinary combat VFX                   | < 1.5 ms GPU |
-| Normal match frame (≈20–25% headroom) | < 12–13 ms   |
+| System                                               | Target                          |
+| ---------------------------------------------------- | ------------------------------- |
+| Both fighters' combat-pose passes                    | < 0.5 ms CPU                    |
+| Skeleton animation and skinning prep                 | < 1.5 ms CPU                    |
+| All combat presentation scripting                    | < 1.0 ms CPU                    |
+| Fighters + weapons + trails                          | < 2 ms GPU                      |
+| Ordinary combat VFX                                  | < 1.5 ms GPU                    |
+| Normal match frame (≈20–25% headroom)                | < 12–13 ms                      |
+| Full authoritative tick, both CPU decisions included | p99 ≤ 8.3 ms                    |
+| Frame deadline                                       | no sustained misses of 16.67 ms |
+
+The last two rows are a working target for the release profile that is still owed. The debug numbers below were taken on the editor binary. They are a different build, and they are not that measurement. The minimum supported Windows machine is not decided. The i7-8700K readings are this desk, not that decision.
 
 ### Measured
 

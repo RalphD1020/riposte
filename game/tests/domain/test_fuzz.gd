@@ -509,7 +509,6 @@ func _mirror_diff(straight: MatchState, reflected: MatchState) -> String:
 		_diff_float(lines, prefix + "fallen_yaw", 0.0, SimMath.wrap_angle(a.fallen.yaw - b.fallen.yaw))
 		_diff_float(lines, prefix + "fallen_spin", a.fallen.spin, b.fallen.spin)
 		_diff_int(lines, prefix + "attack_contacted", int(a.weapon.attack_contacted), int(b.weapon.attack_contacted))
-		_diff_int(lines, prefix + "grip_struck", int(a.weapon.grip_struck), int(b.weapon.grip_struck))
 		_diff_int(lines, prefix + "mode", a.gesture.mode, b.gesture.mode)
 		_diff_int(lines, prefix + "burst", a.gesture.burst_kind, b.gesture.burst_kind)
 		_diff_int(lines, prefix + "burst_left", a.gesture.burst_ticks_remaining, b.gesture.burst_ticks_remaining)

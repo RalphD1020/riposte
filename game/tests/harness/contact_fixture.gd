@@ -37,6 +37,10 @@ static func arm(
 	fighter.weapon.swing_dir = 1.0 if angular_speed >= 0.0 else -1.0
 	fighter.weapon.swing_start = weapon_angle
 	fighter.weapon.swing_end = clampf(weapon_angle + fighter.weapon.swing_dir * weapon.arc(charge), -weapon.guard_limit, weapon.guard_limit)
+	## A planted angle past the deadzone is that blade's commitment. Guard
+	## return tracks it; leaving the match's remembered side would pull a
+	## resting blade off the pose the scene just set.
+	WeaponSystem.update_stable_side(fighter.weapon, weapon)
 	DuelFixture.commit(fighter, phase, charge, weapon)
 
 

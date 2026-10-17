@@ -2,11 +2,10 @@ extends TestCase
 
 ## GRIP: steel is blade on blade and each guard root against the other blade
 ## from its protected side, never guard on guard (STEEL-TOPOLOGY-001,
-## GUARD-PROTECTION-001); the handle and the hands are the grip region — hurt
-## geometry that can be struck but never blocks (GRIP-NONBLOCKING-001). The
-## blade collision capsule is the authoritative blade
-## (BLADE-COLLISION-PARITY-001), and a grip reached after steel is judged on
-## the trajectory the clash leaves, never shielded.
+## GUARD-PROTECTION-001). Hands, the handle and the grip side of the crossguard
+## are not combat geometry (TORSO-CIRCLE-001, rules 55): a blade that crosses
+## only them meets nothing. The torso circle is the only damage target, and the
+## blade capsule is the authoritative blade (BLADE-COLLISION-PARITY-001).
 ##
 ## Scenes are on the product Long Guard: fighter 1 at the origin facing +x with
 ## its sword at θ = 0; fighter 0's blade comes in square across fighter 1's
@@ -74,15 +73,30 @@ func _seek(state: MatchState, start: Array[FighterPose], finish: Array[FighterPo
 	state.fighter(0).y = lerpf(start[0].y, finish[0].y, s)
 
 
-## The blades' surface gap and fighter 0's blade's gap to fighter 1's grip,
-## with the fighters at `poses`.
-func _gaps(rules: DuelRules, poses: Array[FighterPose]) -> Vector2:
+## Surface gap from fighter 0's blade segment to a disc at `point`.
+## Negative means the blade has entered the disc.
+func _segment_gap(rules: DuelRules, poses: Array[FighterPose], point: Vector2, disc: float) -> float:
+	var pose := WeaponKinematics.pose_at(poses[0].x, poses[0].y, poses[0].facing, 0.0, rules.combatant(0), BladePose.new())
+	var weapon := rules.combatant(0).weapon
+	var hx := pose.point_x(weapon.blade_base_radius)
+	var hy := pose.point_y(weapon.blade_base_radius)
+	var tx := pose.point_x(weapon.tip_radius)
+	var ty := pose.point_y(weapon.tip_radius)
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, point.x, point.y)
+	return Vector2(point.x - lerpf(hx, tx, t), point.y - lerpf(hy, ty, t)).length() - disc - weapon.blade_radius
+
+
+## Surface gap from fighter 0's blade to fighter 1's torso circle.
+func _torso_gap(rules: DuelRules, poses: Array[FighterPose]) -> float:
+	return _segment_gap(rules, poses, Vector2(poses[1].x, poses[1].y), rules.combatant(1).fighter.hurt_radius)
+
+
+## The blades' surface gap with the fighters at `poses`.
+func _gaps(rules: DuelRules, poses: Array[FighterPose]) -> float:
 	var a := WeaponKinematics.pose_at(poses[0].x, poses[0].y, poses[0].facing, 0.0, rules.combatant(0), BladePose.new())
 	var b := WeaponKinematics.pose_at(poses[1].x, poses[1].y, poses[1].facing, 0.0, rules.combatant(1), BladePose.new())
 	var weapon := rules.combatant(0).weapon
-	var steel := SwordContactGeometry.new().measure(poses[0].x, poses[0].y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, weapon, rules.combatant(1).weapon)
-	var grip := InitiativeModel.grip_gap_at(a.point_x(weapon.blade_base_radius), a.point_y(weapon.blade_base_radius), a.point_x(weapon.tip_radius), a.point_y(weapon.tip_radius), weapon.blade_radius, b, 0.0, 0.0, rules.combatant(1), SegmentContact.new())
-	return Vector2(steel, grip)
+	return SwordContactGeometry.new().measure(poses[0].x, poses[0].y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, weapon, rules.combatant(1).weapon)
 
 
 func _count(events: Array[DuelEvent], type: StringName) -> int:
@@ -116,12 +130,12 @@ func test_steel_is_the_blades_and_each_guard_on_its_protected_side() -> void:
 	assert_eq(SwordContactSet.CAPACITY, SwordContactSet.PAIRS * SwordContactSet.POINTS_PER_PAIR, "at most two points a pair")
 	assert_eq(RigidContactSolver.BLADE_ROWS, SwordContactSet.CAPACITY, "and the held solver a row for each")
 	assert_eq(_side(above[0]), 1, "fixture: from above the tip comes from the protected side")
-	assert_true(_gaps(_rules, above[0]).x < 0.0, "a tip resting on the quillon from the blade's side is steel (%.4f m)" % _gaps(_rules, above[0]).x)
+	assert_true(_gaps(_rules, above[0]) < 0.0, "a tip resting on the quillon from the blade's side is steel (%.4f m)" % _gaps(_rules, above[0]))
 	assert_eq(_side(below[0]), -1, "fixture: from below it comes from the grip side")
-	assert_true(_gaps(_rules, below[0]).x > 0.0, "the same tip under the quillon is not steel (%.4f m)" % _gaps(_rules, below[0]).x)
+	assert_true(_gaps(_rules, below[0]) > 0.0, "the same tip under the quillon is not steel (%.4f m)" % _gaps(_rules, below[0]))
 	assert_eq(_side(level[0]), 0, "fixture: level with the bar it is within the bar's own thickness")
-	assert_true(_gaps(_rules, level[0]).x > 0.0, "and there it is never protection (%.4f m)" % _gaps(_rules, level[0]).x)
-	assert_true(_gaps(_rules, on_blade[0]).x < 0.0, "the same tip on the blade is steel (%.4f m)" % _gaps(_rules, on_blade[0]).x)
+	assert_true(_gaps(_rules, level[0]) > 0.0, "and there it is never protection (%.4f m)" % _gaps(_rules, level[0]))
+	assert_true(_gaps(_rules, on_blade[0]) < 0.0, "the same tip on the blade is steel (%.4f m)" % _gaps(_rules, on_blade[0]))
 
 
 ## Which side of fighter 1's guard fighter 0's blade comes from at `poses`.
@@ -273,6 +287,8 @@ func test_live_manifolds_are_two_points_a_pair_at_most() -> void:
 ## its protected side) whose attacker is the parried fighter and whose
 ## solve arrested that fighter's cut, and the parrier is the other fighter —
 ## no parry without the steel that made it, and no grip ever makes one.
+## Rules 56: seeds 3, 5 and 9 parry four times between them. The floor is the
+## sample, not the law.
 func test_every_parry_is_an_arrested_steel_contact() -> void:
 	## ARRANGE + ACT: the live duels' events.
 	var events: Array[DuelEvent] = _live_duels()["events"]
@@ -291,7 +307,7 @@ func test_every_parry_is_an_arrested_steel_contact() -> void:
 		if not explained:
 			unexplained.append("tick %d" % event.tick)
 	## ASSERT
-	assert_true(parries >= 5, "fixture: the duels parry (%d)" % parries)
+	assert_true(parries >= 4, "fixture: the duels parry (%d)" % parries)
 	assert_eq(unexplained.size(), 0, "every parry is an arrested steel contact (%s)" % ", ".join(unexplained))
 
 
@@ -399,69 +415,60 @@ func test_a_blade_point_moves_as_the_sweep_moves_it() -> void:
 	assert_true(stick > 1000.0 * 1.0e-4, "and the root-pivot stick would not (%s relative at best)" % String.num_scientific(stick))
 
 
-# ── GRIP-NONBLOCKING-001 ─────────────────────────────────────────────────────
+# ── TORSO-CIRCLE-001 ─────────────────────────────────────────────────────────
 
 
-## Each part of the grip region — either hand, the bare handle between them,
-## the pommel end — is entered by a real swept cut and struck once: a GRIP
-## wound naming the part, no sword contact, no solver row, no impulse, no
-## parry, and nothing held.
-func test_each_part_of_the_grip_is_struck_never_blocked() -> void:
+## A swept cut through a hand or the handle, clear of the blade and of the
+## torso circle, is not a contact. No report, no row, no impulse, no parry,
+## no wound, and health does not move.
+func test_a_blade_through_a_hand_or_the_handle_meets_nothing() -> void:
 	var weapon := _rules.combatant(1).weapon
 	var blade := _rules.combatant(0).weapon.blade_radius
-	var hand := _rules.combatant(1).fighter.hand_radius + blade
+	var hand_r := _rules.combatant(1).fighter.hand_radius
+	var hand := hand_r + blade
 	var handle := weapon.handle_radius + blade
 	var parts := {
-		DuelEventKeys.SOURCE_HAND_OFF: [weapon.offhand_grip_radius, hand + 0.01, hand - 0.005],
-		DuelEventKeys.SOURCE_HAND_DOMINANT: [weapon.dominant_grip_radius, hand + 0.01, hand - 0.005],
-		DuelEventKeys.SOURCE_HANDLE: [(weapon.offhand_grip_radius + weapon.dominant_grip_radius) * 0.5, handle + 0.01, handle - 0.005],
+		"off hand": [weapon.offhand_grip_radius, hand + 0.01, hand - 0.005],
+		"dominant hand": [weapon.dominant_grip_radius, hand + 0.01, hand - 0.005],
+		"handle": [(weapon.offhand_grip_radius + weapon.dominant_grip_radius) * 0.5, handle + 0.01, handle - 0.005],
 		"pommel": [-0.005, handle + 0.01, handle - 0.008],
 	}
 	for part: String in parts:
-		## ARRANGE: the cut, closing at 3 m/s.
+		## ARRANGE: the cut closes at 3 m/s, from outside the part to inside it.
 		var cut: Array = parts[part]
 		var ends := _square_cut(_rules, float(cut[0]), float(cut[1]), float(cut[2]))
 		var start: Array[FighterPose] = ends[0]
 		var finish: Array[FighterPose] = ends[1]
 		var state := _state_at(_rules, finish, 3.0)
-		assert_true(_gaps(_rules, start).y > 0.0 and _gaps(_rules, finish).y < 0.0, "%s fixture: the cut enters the grip" % part)
-		assert_true(_gaps(_rules, finish).x > 0.0, "%s fixture: and never reaches steel" % part)
-		## ACT: the sweep, then the wound at its own instant, then the rest.
+		var centre := _on_sword(_rules, float(cut[0]), 0.0)
+		var disc := hand_r if part != "handle" and part != "pommel" else weapon.handle_radius
+		assert_true(_segment_gap(_rules, start, centre, disc) > 0.0, "%s fixture: the blade starts outside that disc" % part)
+		assert_true(_segment_gap(_rules, finish, centre, disc) < 0.0, "%s fixture: and finishes inside it" % part)
+		assert_true(_torso_gap(_rules, start) > 0.0 and _torso_gap(_rules, finish) > 0.0, "%s fixture: both ends stay outside the torso circle" % part)
+		assert_true(_gaps(_rules, finish) > 0.0, "%s fixture: clear of the blade" % part)
+		var before := state.fighter(1).health
+		## ACT
 		var report := ContactReport.new()
 		var collision := CollisionSystem.new()
-		collision.begin_tick()
 		state.blade_contact.begin_search()
 		collision.detect(state, start, finish, _rules, state.blade_contact, report)
 		var events: Array[DuelEvent] = []
-		var before := state.fighter(1).health
-		if report.grip[0]:
-			_seek(state, start, finish, report.grip_fraction[0])
-			ContactResolver.wound_grip(state, _rules, 0, report.grip_along[0], report.grip_across[0], report.grip_source[0], report.grip_fraction[0], 1, events)
 		ContactResolver.resolve(state, report, _rules, 1, report.fraction, events)
-		var solver := RigidContactSolver.new()
-		var held := solver.solve_velocity(state, _rules, true)
+		var held := RigidContactSolver.new().solve_velocity(state, _rules, true)
 		## ASSERT
-		var expected := DuelEventKeys.SOURCE_HANDLE if part == "pommel" else part
-		assert_true(report.grip[0], "%s: the cut enters the grip" % part)
-		assert_eq(report.grip_source[0], expected, "%s: at the part it reached first" % part)
-		assert_false(report.blade, "%s: no steel is met" % part)
-		assert_eq(state.blade_contact.point_count, 0, "%s: the swords hold no contact point" % part)
-		assert_eq(_count(events, DuelEventTypes.BODY_HIT), 1, "%s: one wound" % part)
-		var wound: DuelEvent = DuelFixture.of_type(events, DuelEventTypes.BODY_HIT)[0] if _count(events, DuelEventTypes.BODY_HIT) > 0 else null
-		assert_true(wound != null and wound.text(DuelEventKeys.REGION) == DuelEventKeys.REGION_GRIP, "%s: on the grip region" % part)
-		assert_true(wound != null and wound.text(DuelEventKeys.SOURCE_REGION) == expected, "%s: naming the part" % part)
-		assert_eq(_count(events, DuelEventTypes.BLADE_CONTACT) + _count(events, DuelEventTypes.PARRY), 0, "%s: never a blade contact or a parry" % part)
-		assert_eq(held, 0.0, "%s: the held solver finds nothing to hold" % part)
-		assert_eq(state.blade_contact.hold_count(), 0, "%s: and records no hold" % part)
-		assert_true(state.fighter(1).health < before, "%s: the grip is hurt" % part)
-		assert_true(state.fighter(0).weapon.grip_struck, "%s: and this attack's grip episode is spent" % part)
+		assert_false(report.any(), "%s: the sweep meets nothing" % part)
+		assert_false(report.body[0] or report.body[1] or report.blade, "%s: neither torso nor steel" % part)
+		assert_eq(state.blade_contact.point_count, 0, "%s: no contact point" % part)
+		assert_eq(_count(events, DuelEventTypes.BODY_HIT) + _count(events, DuelEventTypes.BLADE_CONTACT) + _count(events, DuelEventTypes.PARRY), 0, "%s: no wound, blade contact or parry" % part)
+		assert_eq(held, 0.0, "%s: nothing to hold" % part)
+		assert_eq(state.blade_contact.hold_count(), 0, "%s: and no hold is recorded" % part)
+		assert_eq(state.fighter(1).health, before, "%s: health is unchanged" % part)
 
 
 ## A cut laid along the crossbar's own line is never protected
-## (GUARD-PROTECTION-001: within the bar's thickness is no side): a real swept
-## cut across a quillon, and on through the crossbar to the far quillon, meets
-## no steel, wounds nothing, and leaves nothing to hold — while the same cut a
-## little further down the sword, onto the dominant hand, is struck.
+## (GUARD-PROTECTION-001: within the bar's thickness is no side). The same
+## cut a few centimetres toward the pommel, through the dominant hand, is
+## not a contact either (TORSO-CIRCLE-001).
 func test_a_cut_along_the_crossbar_is_never_protected() -> void:
 	## ARRANGE: across the quillon, from outside it to the far side of the bar.
 	var weapon := _rules.combatant(1).weapon
@@ -471,101 +478,34 @@ func test_a_cut_along_the_crossbar_is_never_protected() -> void:
 	var start: Array[FighterPose] = ends[0]
 	var finish: Array[FighterPose] = ends[1]
 	var state := _state_at(_rules, finish, 3.0)
-	assert_true(_gaps(_rules, finish).x > 0.0, "fixture: the cut never reaches the blade")
+	assert_true(_gaps(_rules, finish) > 0.0, "fixture: the cut never reaches the blade")
 	var hand := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(1), BladePose.new())
 	var dominant := Vector2(hand.point_x(weapon.dominant_grip_radius), hand.point_y(weapon.dominant_grip_radius))
 	assert_true(_on_sword(_rules, weapon.crossguard_centre_radius, weapon.crossguard_half_span * 0.4).distance_to(dominant) > _rules.combatant(1).fighter.hand_radius + blade, "fixture: nor a hand")
 	## ACT
 	var report := ContactReport.new()
 	var collision := CollisionSystem.new()
-	collision.begin_tick()
 	state.blade_contact.begin_search()
 	collision.detect(state, start, finish, _rules, state.blade_contact, report)
 	var held := RigidContactSolver.new().solve_velocity(state, _rules, true)
-	## PERTURB: the same cut, a few centimetres toward the pommel, onto the hand.
+	## PERTURB: the same cut, onto the dominant hand.
 	var into_hand := _rules.combatant(1).fighter.hand_radius + blade - 0.005
 	var hit := _square_cut(_rules, weapon.dominant_grip_radius, weapon.crossguard_half_span + reach + 0.01, into_hand)
 	var control := ContactReport.new()
 	var other := CollisionSystem.new()
-	other.begin_tick()
 	var control_state := _state_at(_rules, hit[1], 3.0)
 	control_state.blade_contact.begin_search()
 	other.detect(control_state, hit[0], hit[1], _rules, control_state.blade_contact, control)
 	## ASSERT
-	assert_false(report.any(), "across the crossguard the sweep meets nothing — no steel, no grip")
+	assert_false(report.any(), "across the crossguard the sweep meets nothing")
 	assert_eq(state.blade_contact.point_count + state.blade_contact.hold_count(), 0, "and nothing is held")
 	assert_eq(held, 0.0, "the held solve has no row")
-	assert_true(control.grip[0] and control.grip_source[0] == DuelEventKeys.SOURCE_HAND_DOMINANT, "control: the same cut onto the hand is a grip hit")
-
-
-## A blade lying parallel to the grip, level with both hands, ties them: the
-## part listed first (the off hand) is struck, in the scene and in its mirror,
-## whatever the rounding — the choice of part never breaks a reflection.
-func test_a_blade_level_with_both_hands_strikes_the_same_hand_in_its_mirror() -> void:
-	var weapon := _rules.combatant(1).weapon
-	var reach := _rules.combatant(1).fighter.hand_radius + _rules.combatant(0).weapon.blade_radius
-	var sources: Array[String] = []
-	for side: float in [1.0, -1.0]:
-		## ARRANGE: fighter 0's blade anti-parallel alongside fighter 1's grip,
-		## its middle level with the middle of the hands, closing sideways.
-		var held := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(1), BladePose.new())
-		var middle := (weapon.offhand_grip_radius + weapon.dominant_grip_radius) * 0.5
-		var lay := WeaponKinematics.pose_at(0.0, 0.0, PI, 0.0, _rules.combatant(0), BladePose.new())
-		var r := (_rules.combatant(0).weapon.blade_base_radius + _rules.combatant(0).weapon.tip_radius) * 0.5
-		var target := ContactFixture.pose(0.0, 0.0, 0.0, 0.0, _rules.combatant(1))
-		var ends: Array = []
-		for lateral: float in [reach + 0.01, reach - 0.004]:
-			var x := held.point_x(middle) - lay.point_x(r)
-			var y := held.point_y(middle) + side * lateral - lay.point_y(r)
-			ends.append(ContactFixture.poses(ContactFixture.pose(x, y, PI, 0.0, _rules.combatant(0)), target))
-		var state := _state_at(_rules, ends[1], 3.0)
-		## ACT
-		var report := ContactReport.new()
-		var collision := CollisionSystem.new()
-		collision.begin_tick()
-		state.blade_contact.begin_search()
-		collision.detect(state, ends[0], ends[1], _rules, state.blade_contact, report)
-		## ASSERT
-		assert_true(report.grip[0], "side %+.0f: the blade enters the grip" % side)
-		assert_false(report.blade, "side %+.0f fixture: clear of the blade" % side)
-		sources.append(report.grip_source[0])
-	assert_eq(sources, [DuelEventKeys.SOURCE_HAND_OFF, DuelEventKeys.SOURCE_HAND_OFF] as Array[String], "level with both hands, the off hand is struck — the same in the mirror")
-
-
-## One episode per attack: a cut that enters a hand and carries on across the
-## handle and into the other hand wounds the grip once; the same attack never
-## wounds it again.
-func test_one_grip_episode_per_attack() -> void:
-	## ARRANGE: a cut along the handle from the off hand toward the crossguard.
-	var weapon := _rules.combatant(1).weapon
-	var start := ContactFixture.poses(_square_pose(_rules, weapon.offhand_grip_radius, 0.0), ContactFixture.pose(0.0, 0.0, 0.0, 0.0, _rules.combatant(1)))
-	var across := _square_cut(_rules, weapon.offhand_grip_radius, _rules.combatant(1).fighter.hand_radius + 0.03, 0.0)
-	var first: Array[FighterPose] = across[0]
-	var state := _state_at(_rules, first, 3.0)
-	var report := ContactReport.new()
-	var collision := CollisionSystem.new()
-	collision.begin_tick()
-	state.blade_contact.begin_search()
-	## ACT: into the off hand, then wounded; then the same attack swept on
-	## along the whole handle to the dominant hand.
-	collision.detect(state, first, start, _rules, state.blade_contact, report)
-	var events: Array[DuelEvent] = []
-	ContactResolver.wound_grip(state, _rules, 0, report.grip_along[0], report.grip_across[0], report.grip_source[0], report.grip_fraction[0], 1, events)
-	var along := ContactFixture.poses(_square_pose(_rules, weapon.dominant_grip_radius, 0.0), start[1])
-	var again := ContactReport.new()
-	collision.detect(state, start, along, _rules, state.blade_contact, again)
-	## ASSERT
-	assert_true(report.grip[0], "fixture: the cut enters the off hand")
-	assert_eq(_count(events, DuelEventTypes.BODY_HIT), 1, "one grip wound")
-	assert_true(state.fighter(0).weapon.grip_struck, "the episode is spent")
-	assert_false(again.grip[0], "the same attack reaching the other hand wounds nothing more")
+	assert_false(control.any(), "the same cut through the hand is not a contact either")
+	assert_eq(control_state.fighter(1).health, state.fighter(1).health, "and it does not wound")
 
 
 ## A blade resting across the opponent's handle is no sword contact and no
-## constraint (TANGLE-FREE-GRIP-001): the opponent drawing its handle out from
-## under it — sliding along it, and lifting off it — is swept with nothing
-## met, nothing held, nothing struck again, and the held solve and the
-## position stage move neither fighter.
+## constraint: drawing the handle out from under it moves neither fighter.
 func test_a_blade_across_a_handle_drags_nothing() -> void:
 	var weapon := _rules.combatant(1).weapon
 	for draw: Vector2 in [Vector2(-0.025, 0.0), Vector2(0.0, -0.025)]:
@@ -578,13 +518,12 @@ func test_a_blade_across_a_handle_drags_nothing() -> void:
 		var state := _state_at(_rules, start, 0.0)
 		state.fighter(1).vx = draw.x * float(SimulationTimebase.TICK_RATE)
 		state.fighter(1).vy = draw.y * float(SimulationTimebase.TICK_RATE)
-		assert_true(_gaps(_rules, start).y < 0.0, "fixture: the blade lies inside the grip region")
-		assert_true(_gaps(_rules, start).x > 0.0 and _gaps(_rules, finish).x > 0.0, "fixture: and clear of the blade throughout")
+		assert_true(_gaps(_rules, start) > 0.0 and _gaps(_rules, finish) > 0.0, "fixture: clear of the blade throughout")
+		var before_health := state.fighter(1).health
 		var before := [state.fighter(0).x, state.fighter(0).y, state.fighter(0).vx, state.fighter(0).vy, state.fighter(0).weapon.speed, state.fighter(1).vx, state.fighter(1).vy, state.fighter(1).weapon.speed]
 		## ACT
 		var report := ContactReport.new()
 		var collision := CollisionSystem.new()
-		collision.begin_tick()
 		state.blade_contact.begin_search()
 		collision.detect(state, start, finish, _rules, state.blade_contact, report)
 		var solver := RigidContactSolver.new()
@@ -592,88 +531,114 @@ func test_a_blade_across_a_handle_drags_nothing() -> void:
 		solver.project(state, _rules)
 		var after := [state.fighter(0).x, state.fighter(0).y, state.fighter(0).vx, state.fighter(0).vy, state.fighter(0).weapon.speed, state.fighter(1).vx, state.fighter(1).vy, state.fighter(1).weapon.speed]
 		## ASSERT
-		assert_false(report.any(), "drawn %s: the sweep meets nothing — no steel, no new entry" % str(draw))
+		assert_false(report.any(), "drawn %s: the sweep meets nothing" % str(draw))
+		assert_false(report.body[0] or report.body[1], "drawn %s: not a torso hit" % str(draw))
 		assert_eq(state.blade_contact.point_count + state.blade_contact.hold_count(), 0, "drawn %s: and nothing is held" % str(draw))
 		assert_eq(held, 0.0, "drawn %s: the held solve has no row" % str(draw))
 		assert_eq(after, before, "drawn %s: neither fighter is pulled, pushed or turned" % str(draw))
+		assert_eq(state.fighter(1).health, before_health, "drawn %s: and nobody is wounded" % str(draw))
 
 
-# ── chronology, never a shield ───────────────────────────────────────────────
-
-
-## [start, finish] of a cut that, square across fighter 1's sword just below
-## where its blade begins, meets the blade's round start first and the handle a
-## few millimetres later, in the same substep; then where it goes next, `on`
-## times as far again the same way (negative: back out).
-func _steel_then_grip(rules: DuelRules, on: float) -> Array:
-	var weapon := rules.combatant(1).weapon
-	var blade := rules.combatant(0).weapon.blade_radius
+## A cut that meets the blade and would have gone on into the handle reports
+## the steel and not a body hit. The handle behind the blade is not a wound.
+func test_steel_met_before_the_handle_is_not_a_body_hit() -> void:
+	var weapon := _rules.combatant(1).weapon
+	var blade := _rules.combatant(0).weapon.blade_radius
 	var below := 0.015
 	var along := weapon.blade_base_radius - below
-	## The blade's start is touched at this far off the axis, the handle at
-	## `handle` — farther and nearer than each other by the geometry.
 	var steel := sqrt(pow(weapon.blade_radius + blade, 2.0) - below * below)
 	var handle := weapon.handle_radius + blade
-	var target := ContactFixture.pose(0.0, 0.0, 0.0, 0.0, rules.combatant(1))
+	var target := ContactFixture.pose(0.0, 0.0, 0.0, 0.0, _rules.combatant(1))
 	var from := steel + 0.003
 	var to := handle - 0.004
-	var start := ContactFixture.poses(_square_pose(rules, along, from), target)
-	var finish := ContactFixture.poses(_square_pose(rules, along, to), target)
-	var next := ContactFixture.poses(_square_pose(rules, along, to + (to - from) * on), target)
-	return [start, finish, next]
+	var start := ContactFixture.poses(_square_pose(_rules, along, from), target)
+	var finish := ContactFixture.poses(_square_pose(_rules, along, to), target)
+	var onward := ContactFixture.poses(_square_pose(_rules, along, to - 0.02), target)
+	assert_true(_gaps(_rules, start) > 0.0, "fixture: clear of steel at the start")
+	assert_true(_gaps(_rules, finish) < 0.0, "fixture: into the blade by the end")
+	var state := _state_at(_rules, start, 3.0)
+	var before := state.fighter(1).health
+	var collision := CollisionSystem.new()
+	state.blade_contact.begin_search()
+	var first := ContactReport.new()
+	collision.detect(state, start, finish, _rules, state.blade_contact, first)
+	var rest := ContactReport.new()
+	collision.detect(state, finish, onward, _rules, state.blade_contact, rest)
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, first, _rules, 1, first.fraction, events)
+	assert_true(first.blade, "the blade is the contact")
+	assert_false(first.body[0] or first.body[1], "and it is not a torso hit")
+	assert_false(rest.body[0] or rest.body[1], "continuing through the handle still is not")
+	assert_eq(_count(events, DuelEventTypes.BODY_HIT), 0, "no body wound is emitted")
+	assert_eq(state.fighter(1).health, before, "health is unchanged by the steel alone in this pose")
 
 
-## A cut that meets the blade first and the handle after it, inside one
-## substep, is not shielded by the steel: the clash is solved first and the
-## grip is judged on the trajectory the clash leaves. Carried on into the grip
-## it is struck; drawn back out it is not; and nothing is pending past its
-## tick.
-func test_a_grip_reached_after_steel_is_judged_on_what_the_clash_left() -> void:
-	## ARRANGE: on a sword with no crossguard, whose blade starts right beside
-	## its handle — with a guard root, the grip side of the bar is never steel,
-	## so no straight blade meets steel and then the grip inside one substep.
-	var rules := _guardless()
-	var into := _steel_then_grip(rules, 0.5)
-	var out := _steel_then_grip(rules, -1.5)
-	var start: Array[FighterPose] = into[0]
-	var finish: Array[FighterPose] = into[1]
-	assert_true(CollisionSystem.substep_count(start, finish, rules) == 1, "fixture: one substep")
-	var gaps_start := _gaps(rules, start)
-	var gaps_finish := _gaps(rules, finish)
-	assert_true(gaps_start.x > 0.0 and gaps_start.y > 0.0, "fixture: clear of steel and grip at the start")
-	assert_true(gaps_finish.x < 0.0 and gaps_finish.y < 0.0, "fixture: into both by the end")
-	var halfway: Array[FighterPose] = ContactFixture.poses(ContactFixture.pose(lerpf(start[0].x, finish[0].x, 0.6), lerpf(start[0].y, finish[0].y, 0.6), start[0].facing, 0.0, rules.combatant(0)), start[1])
-	assert_true(_gaps(rules, halfway).x < 0.0 and _gaps(rules, halfway).y > 0.0, "fixture: steel first — the blade is touched while the grip is not")
-	var outcomes := {}
-	for case: String in ["into", "out", "next tick"]:
-		var scene: Array = out if case == "out" else into
-		var collision := CollisionSystem.new()
-		var state := _state_at(rules, start, 3.0)
-		collision.begin_tick()
-		state.blade_contact.begin_search()
-		var first := ContactReport.new()
-		## ACT: the substep meets steel first; then the rest of the sweep.
-		collision.detect(state, start, finish, rules, state.blade_contact, first)
-		if case == "next tick":
-			collision.begin_tick()
-		var rest := ContactReport.new()
-		collision.detect(state, finish, scene[2], rules, state.blade_contact, rest)
-		outcomes[case] = [first.blade, first.grip[0], rest.grip[0], rest.grip_source[0]]
-	## ASSERT
-	assert_true(outcomes["into"][0], "the clash is the substep's first contact")
-	assert_false(outcomes["into"][1], "and the grip behind it is not struck before the clash is solved")
-	assert_true(outcomes["into"][2], "carried on into the grip, the cut strikes it")
-	assert_eq(outcomes["into"][3], DuelEventKeys.SOURCE_HANDLE, "at the handle")
-	assert_false(outcomes["out"][2], "drawn back out, it does not")
-	assert_false(outcomes["next tick"][2], "and nothing pending outlives its tick")
-
-
-## The product rules with a sword that has no crossguard at all.
-func _guardless() -> DuelRules:
-	var rules := DuelFixture.rules()
-	rules.combatant(0).weapon.crossguard_half_span = 0.0
-	return rules
-
+## The off hand sits outside the torso. A square cut crosses that disc while
+## the torso gap and the steel gap stay positive, and wounds nothing. The same
+## blade, kept square, then translates in through the circle: one torso entry,
+## at the crossing rather than at the overlapped end, and a further sweep that
+## stays inside does not wound again. Exit and a later re-entry are CONTACT's
+## lifecycle witness (COMBAT-007).
+func test_a_blade_that_crosses_the_hand_and_then_the_torso_wounds_once() -> void:
+	var weapon := _rules.combatant(1).weapon
+	var blade := _rules.combatant(0).weapon.blade_radius
+	var hand_r := _rules.combatant(1).fighter.hand_radius
+	var held := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(1), BladePose.new())
+	var hand := Vector2(held.point_x(weapon.offhand_grip_radius), held.point_y(weapon.offhand_grip_radius))
+	assert_true(hand.length() > _rules.combatant(1).fighter.hurt_radius + hand_r, "fixture: the off hand sits outside the torso circle (%.3f m)" % hand.length())
+	var outside := _square_cut(_rules, weapon.offhand_grip_radius, hand_r + blade + 0.01, 0.0)
+	var start: Array[FighterPose] = outside[0]
+	var through: Array[FighterPose] = outside[1]
+	assert_true(_segment_gap(_rules, start, hand, hand_r) > 0.0, "fixture: the cut starts outside the hand")
+	assert_true(_segment_gap(_rules, through, hand, hand_r) < 0.0, "fixture: and crosses it")
+	assert_true(_torso_gap(_rules, through) > 0.0, "fixture: the hand crossing is still outside the torso (%.3f m)" % _torso_gap(_rules, through))
+	assert_true(_gaps(_rules, start) > 0.0 and _gaps(_rules, through) > 0.0, "fixture: and clear of steel")
+	var miss := _state_at(_rules, through, 3.0)
+	var miss_health := miss.fighter(1).health
+	var miss_report := ContactReport.new()
+	var collision := CollisionSystem.new()
+	miss.blade_contact.begin_search()
+	collision.detect(miss, start, through, _rules, miss.blade_contact, miss_report)
+	var miss_events: Array[DuelEvent] = []
+	ContactResolver.resolve(miss, miss_report, _rules, 1, miss_report.fraction, miss_events)
+	assert_false(miss_report.any(), "crossing only the hand meets nothing")
+	assert_eq(_count(miss_events, DuelEventTypes.BODY_HIT), 0, "and emits no body hit")
+	assert_eq(miss.fighter(1).health, miss_health, "and no damage")
+	var inward := hand.normalized()
+	var shift := 0.0
+	var entered := through
+	while shift < 1.0 and _torso_gap(_rules, entered) > -0.12:
+		shift += 0.02
+		var moved := ContactFixture.pose(through[0].x - inward.x * shift, through[0].y - inward.y * shift, through[0].facing, 0.0, _rules.combatant(0))
+		entered = ContactFixture.poses(moved, through[1])
+	assert_true(_torso_gap(_rules, entered) < 0.0, "fixture: the same blade then enters the torso")
+	assert_true(_gaps(_rules, entered) > 0.0, "fixture: still clear of steel at the entry")
+	var state := _state_at(_rules, through, 0.0)
+	state.fighter(0).vx = -inward.x * 4.0
+	state.fighter(0).vy = -inward.y * 4.0
+	var before := state.fighter(1).health
+	state.blade_contact.begin_search()
+	var report := ContactReport.new()
+	collision.detect(state, through, entered, _rules, state.blade_contact, report)
+	var events: Array[DuelEvent] = []
+	ContactResolver.resolve(state, report, _rules, 1, report.fraction, events)
+	var hits := events.filter(func(event: DuelEvent) -> bool: return event.type == DuelEventTypes.BODY_HIT)
+	assert_true(report.body[0], "the torso entry is the contact")
+	assert_false(report.blade, "steel is not in this sweep")
+	assert_true(report.fraction < 0.9, "the hit is the entry, not the overlapped end (%.3f)" % report.fraction)
+	assert_eq(hits.size(), 1, "one torso hit")
+	if hits.size() == 1:
+		assert_eq(hits[0].text(DuelEventKeys.REGION), DuelEventKeys.REGION_TORSO, "and it is the torso")
+	assert_true(state.fighter(1).health < before, "health records that one entry")
+	var deeper := ContactFixture.poses(ContactFixture.pose(entered[0].x - inward.x * 0.02, entered[0].y - inward.y * 0.02, entered[0].facing, 0.0, _rules.combatant(0)), entered[1])
+	var again := ContactReport.new()
+	var held_health := state.fighter(1).health
+	collision.detect(state, entered, deeper, _rules, state.blade_contact, again)
+	var more: Array[DuelEvent] = []
+	ContactResolver.resolve(state, again, _rules, 2, again.fraction, more)
+	assert_false(again.body[0], "staying inside does not enter again")
+	assert_eq(_count(more, DuelEventTypes.BODY_HIT), 0, "and does not wound again")
+	assert_eq(state.fighter(1).health, held_health, "health stays at the one entry")
 
 # ── GUARD-PROTECTION-001 ─────────────────────────────────────────────────────
 
@@ -770,6 +735,16 @@ func _drift(along: float, across: float) -> SimRunner:
 	var weapon := _rules.combatant(0).weapon
 	ContactFixture.arm(runner.state.fighter(1), 0.0, 0.0, 0.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
 	ContactFixture.arm(runner.state.fighter(0), tip.x - reach.point_x(weapon.tip_radius), tip.y - reach.point_y(weapon.tip_radius), direction, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	## θ = 0 is inside the side deadzone, so arming leaves both fighters on the
+	## intro's stable_side. A heading flipped by half a turn is that sword's
+	## mirror only when the remembered side and the swing direction flip with
+	## it; otherwise the guard return pulls both blades the same local way
+	## and the two quillons stop being one contact reflected.
+	if across < 0.0:
+		for slot in 2:
+			var planted := runner.state.fighter(slot).weapon
+			planted.stable_side = -planted.stable_side
+			planted.swing_dir = -planted.swing_dir
 	return runner
 
 

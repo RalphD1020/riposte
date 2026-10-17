@@ -25,8 +25,9 @@ const POSITION_GUARD_HITS := &"Riposte/PositionGuardHits"
 const MEANINGFUL_CONTACTS_DROPPED := &"Riposte/MeaningfulContactsDropped"
 ## A contact block whose exact solve reached its pivot cap.
 const PIVOT_CAP_HITS := &"Riposte/PivotCapHits"
+const GUARD_HARD_STOP_HITS := &"Riposte/GuardHardStopHits"
 const SIM_STEP_US := &"Riposte/SimStepUs"
-const ALL := [CCD_CAP_HITS, CONTACT_CAP_HITS, MAX_MANIFOLD_POINTS, REHOLD_BUDGET_EXHAUSTED, POSITION_GUARD_HITS, MEANINGFUL_CONTACTS_DROPPED, PIVOT_CAP_HITS, SIM_STEP_US]
+const ALL := [CCD_CAP_HITS, CONTACT_CAP_HITS, MAX_MANIFOLD_POINTS, REHOLD_BUDGET_EXHAUSTED, POSITION_GUARD_HITS, MEANINGFUL_CONTACTS_DROPPED, PIVOT_CAP_HITS, GUARD_HARD_STOP_HITS, SIM_STEP_US]
 
 ## The match being measured; the app points this at each session it composes.
 var session: MatchSession
@@ -41,6 +42,7 @@ func install() -> void:
 	_register(POSITION_GUARD_HITS, position_guard_hits)
 	_register(MEANINGFUL_CONTACTS_DROPPED, meaningful_contacts_dropped)
 	_register(PIVOT_CAP_HITS, pivot_cap_hits)
+	_register(GUARD_HARD_STOP_HITS, guard_hard_stop_hits)
 	_register(SIM_STEP_US, sim_step_us)
 
 
@@ -77,6 +79,10 @@ func meaningful_contacts_dropped() -> int:
 
 func pivot_cap_hits() -> int:
 	return session.simulation.diagnostics.pivot_cap_hits if session != null else 0
+
+
+func guard_hard_stop_hits() -> int:
+	return session.simulation.diagnostics.guard_hard_stop_hits if session != null else 0
 
 
 func sim_step_us() -> int:

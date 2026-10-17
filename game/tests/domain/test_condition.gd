@@ -4,7 +4,7 @@ extends TestCase
 ## not change the laws of physics; it changes how much voluntary force, speed
 ## and tracking the fighter can produce within them — linearly, exactly 1 at
 ## full health, never below the floors, never rescaling momentum, and never
-## delaying a command. There is no fatigue input (STAMINA-003).
+## delaying a command. Fatigue (STAMINA-004) composes on force only.
 ##
 ## Implements: /spec/invariants.md#condition-001
 ## See also: /docs/concepts/combat.md
@@ -18,7 +18,7 @@ func _init() -> void:
 
 
 func _condition(health: float) -> ConditionState:
-	return ConditionModel.compute(health, 100.0, _rules.combat, ConditionState.new())
+	return ConditionModel.compute(health, 100.0, 1.0, _rules.combat, ConditionState.new())
 
 
 func test_full_health_is_the_exact_identity() -> void:
@@ -60,7 +60,7 @@ func test_each_scale_is_strictly_linear_in_damage() -> void:
 func test_the_floors_are_approached_and_never_crossed() -> void:
 	## ARRANGE + ACT
 	var dead := _condition(0.0)
-	var overkill := ConditionModel.compute(-40.0, 100.0, _rules.combat, ConditionState.new())
+	var overkill := ConditionModel.compute(-40.0, 100.0, 1.0, _rules.combat, ConditionState.new())
 	var barely := _condition(0.001)
 	## ASSERT
 	assert_near(dead.force_scale, _rules.combat.condition_force_floor, 1e-15, "zero health is the force floor")
@@ -208,19 +208,34 @@ func _scripted(health: float) -> SimRunner:
 	return runner
 
 
-## STAMINA-003: there is no fatigue resource. Condition is the one capability
-## reading, and nothing in authoritative state could carry a hidden second one
-## for a motor, the hash or the CPU to read.
-func test_no_fatigue_resource_exists() -> void:
-	## ARRANGE + ACT: a fresh duel's fighter and its rules.
-	var state := DuelFixture.state(_rules)
-	var fighter := state.fighter(0)
-	assert_true(fighter.health > 0.0, "fixture: a live fighter")
+## STAMINA-004: fatigue composes with damage on force alone — the force scale
+## is the damage term times the fatigue term, speed and tracking stay
+## damage-only — and a fighter at zero health and zero stamina still keeps
+## the validated combined floor, so the two can never make them powerless.
+func test_fatigue_composes_with_damage_on_force_only() -> void:
+	## ARRANGE: rested and spent, healthy and at zero health.
+	var combat := _rules.combat
+	var rested_hurt := ConditionModel.compute(30.0, 100.0, 1.0, combat, ConditionState.new())
+	var spent_hurt := ConditionModel.compute(30.0, 100.0, 0.0, combat, ConditionState.new())
+	var spent_healthy := ConditionModel.compute(100.0, 100.0, 0.0, combat, ConditionState.new())
+	var spent_dead := ConditionModel.compute(0.0, 100.0, 0.0, combat, ConditionState.new())
 	## ASSERT
-	for name: String in ["stamina", "fatigue", "exertion"]:
-		assert_false(name in fighter, "the fighter carries no %s" % name)
-		assert_false(("base_" + name) in _rules.combatant(0).fighter, "and no fighter defines a %s pool" % name)
-	assert_false("contact_shock" in FighterTickScratch.new(), "no tick ledger accrues one either")
+	assert_near(spent_healthy.force_scale, combat.stamina_force_floor, 1e-15, "zero stamina alone is the fatigue floor")
+	assert_near(spent_hurt.force_scale, rested_hurt.force_scale * combat.stamina_force_floor, 1e-15, "the two terms multiply")
+	assert_eq(spent_hurt.force_scale, spent_hurt.damage_force_scale * spent_hurt.fatigue_scale, "fatigue is applied once, at the force boundary")
+	assert_eq(spent_hurt.speed_scale, rested_hurt.speed_scale, "fatigue never touches a speed limit")
+	assert_eq(spent_hurt.tracking_scale, rested_hurt.tracking_scale, "nor the tracking cap")
+	assert_near(spent_dead.force_scale, combat.condition_force_floor * combat.stamina_force_floor, 1e-15, "the combined floor")
+	assert_true(spent_dead.force_scale >= 0.5, "which is never below half (%.3f)" % spent_dead.force_scale)
+	## PERTURB: floors whose product falls below half are invalid content.
+	var broken := StandardDuelRules.combat_tuning()
+	broken.reference_impulse = 1.0
+	broken.reference_severity = 1.0
+	broken.reference_thrust_severity = 1.0
+	broken.reference_clash_energy = 1.0
+	assert_true(broken.is_valid(), "fixture: the tuning is valid")
+	broken.stamina_force_floor = 0.6
+	assert_false(broken.is_valid(), "a fatigue floor that leaves a wounded, spent fighter under half is refused")
 
 ## Condition never touches the body's or the weapon's physical profile.
 func test_condition_never_changes_mass_inertia_or_geometry() -> void:

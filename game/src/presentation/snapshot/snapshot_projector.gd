@@ -122,6 +122,9 @@ static func _fighter(fighter: FighterState, opponent: FighterState, rules: DuelR
 	row.burst = fighter.gesture.burst_kind
 	row.health = fighter.health
 	row.max_health = body.max_health
+	row.stamina = fighter.stamina
+	row.dash_cost = rules.combat.stamina_dash_cost
+	row.impact_authority = fighter.impact_authority
 	var condition := ConditionModel.of(fighter, rules)
 	row.force_scale = condition.force_scale
 	row.speed_scale = condition.speed_scale

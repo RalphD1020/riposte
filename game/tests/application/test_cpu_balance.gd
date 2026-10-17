@@ -69,6 +69,11 @@ func test_the_three_corpora_are_disjoint() -> void:
 		assert_false(CpuLadder.AUDIT_SEEDS.has(seed_value), "acceptance seed %d is not a tuning seed" % seed_value)
 	for seed_value in CpuLadder.CALIBRATION_SEEDS:
 		assert_false(CpuLadder.AUDIT_SEEDS.has(seed_value), "calibration seed %d is not a tuning seed" % seed_value)
+	assert_eq(CpuLadder.ACCEPTANCE_SEEDS_V2.size(), CpuLadder.ACCEPTANCE_SEEDS.size(), "the next acceptance block is the same size")
+	for seed_value in CpuLadder.ACCEPTANCE_SEEDS_V2:
+		assert_false(CpuLadder.CALIBRATION_SEEDS.has(seed_value), "v2 seed %d is not a calibration seed" % seed_value)
+		assert_false(CpuLadder.AUDIT_SEEDS.has(seed_value), "v2 seed %d is not a tuning seed" % seed_value)
+		assert_false(CpuLadder.ACCEPTANCE_SEEDS.has(seed_value), "v2 seed %d is not the consumed block" % seed_value)
 
 
 ## One duel to its end, with its progress line.

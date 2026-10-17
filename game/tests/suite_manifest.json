@@ -104,6 +104,12 @@
       "budget_ms": 2000
     },
     {
+      "name": "AUTHORITY",
+      "path": "res://tests/domain/test_authority.gd",
+      "tier": "focused",
+      "budget_ms": 8000
+    },
+    {
       "name": "FRICTION",
       "path": "res://tests/domain/test_friction.gd",
       "tier": "fast",
@@ -210,6 +216,12 @@
       "path": "res://tests/domain/test_condition.gd",
       "tier": "fast",
       "budget_ms": 2000
+    },
+    {
+      "name": "STAMINA",
+      "path": "res://tests/domain/test_stamina.gd",
+      "tier": "fast",
+      "budget_ms": 3000
     },
     {
       "name": "MOTION-COMMIT",
@@ -390,7 +402,8 @@
         "FUZZ",
         "SIDE",
         "ROUND",
-        "FALLEN"
+        "FALLEN",
+        "AUTHORITY"
       ]
     },
     "rules": {
@@ -468,6 +481,7 @@
         "GRIP",
         "TWO-POINT",
         "IMPACT",
+        "AUTHORITY",
         "BODY-PUSH",
         "DAMAGE",
         "LETHAL",

@@ -151,17 +151,15 @@ static func factory_kits() -> Array[PresentationKit]:
 	return [fighter, sword, arena]
 
 
-## Wolf, the baseline duelist. Introduced first, the announcer reads him as
-## "Wold" — a deliberate bit that lives here, in content, and nowhere else.
+## Wolf, the baseline duelist, read as "Wolf" from either slot.
 static func duelist_intro() -> FighterIntroProfile:
 	var intro := FighterIntroProfile.new()
 	intro.display_name = "WOLF"
 	intro.spoken_name = "Wolf."
-	intro.spoken_override_first_slot = "Wold."
 	return intro
 
 
-## Wolf winning a set. The announcer finally gets his name right.
+## Wolf winning a set.
 static func duelist_victory() -> FighterVictoryProfile:
 	var victory := FighterVictoryProfile.new()
 	victory.display_name = "WOLF"

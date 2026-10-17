@@ -107,18 +107,27 @@ func test_plane_maps_to_world_with_up_away_from_camera() -> void:
 		assert_true(front.is_equal_approx(ArenaTransform.direction(heading)), "model front follows heading %s°" % str(degrees))
 
 
-func test_projector_carries_condition_and_no_stamina() -> void:
+func test_projector_carries_condition_and_stamina() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)
 	var fighter := state.fighter(0)
 	fighter.health = rules.combatant(0).fighter.max_health * 0.4
+	assert_eq(fighter.stamina, 1.0, "fixture: a fresh fighter is rested")
 	var row := SnapshotProjector.project(state, rules).fighter(0)
-	## STAMINA-003: there is no fatigue resource to present.
-	assert_false("stamina" in row, "no stamina in the snapshot")
-	assert_false("stamina01" in row, "nor a normalized stamina reading")
+	## STAMINA-004: the settled stamina and the dash cost, copied.
+	assert_eq(row.stamina, 1.0, "full stamina in the snapshot")
+	assert_eq(row.dash_cost, rules.combat.stamina_dash_cost, "with the dash cost the HUD marks")
 	assert_eq(row.condition, FighterCondition.Id.WOUNDED, "40% health is WOUNDED")
 	## CONDITION-001: the three scales are the domain's own, copied, at h = 0.4.
-	assert_near(row.force_scale, 0.70 + 0.30 * 0.4, 1e-12, "force scale projected from health alone")
+	assert_near(row.force_scale, 0.70 + 0.30 * 0.4, 1e-12, "force scale projected from health (rested)")
+	fighter.stamina = 0.5
+	var tired := SnapshotProjector.project(state, rules).fighter(0)
+	assert_eq(tired.stamina, 0.5, "a drained bar projects as it stands")
+	assert_eq(tired.impact_authority, 1.0, "a fresh fighter's impact authority projects full")
+	fighter.impact_authority = 0.6
+	var dipped := SnapshotProjector.project(state, rules).fighter(0)
+	assert_eq(dipped.impact_authority, 0.6, "a dipped return projects as it stands")
+	assert_near(tired.force_scale, (0.70 + 0.30 * 0.4) * (rules.combat.stamina_force_floor + (1.0 - rules.combat.stamina_force_floor) * 0.5), 1e-12, "and the force scale carries the fatigue term")
 	assert_near(row.speed_scale, 0.85 + 0.15 * 0.4, 1e-12, "speed scale")
 	assert_near(row.tracking_scale, 0.80 + 0.20 * 0.4, 1e-12, "tracking scale")
 
@@ -208,9 +217,7 @@ func test_impact_feedback_from_contact_event() -> void:
 	assert_eq(fb.contact_type, DuelEventTypes.BODY_HIT, "event type")
 	assert_eq(fb.point_x, 1.0, "contact point x")
 	assert_eq(fb.point_y, 2.0, "contact point y")
-	assert_false(fb.grip, "a torso hit by default")
-	event.data[DuelEventKeys.REGION] = DuelEventKeys.REGION_GRIP
-	assert_true(ImpactFeedback.from_event(event, rules.combat).grip, "the region a GRIP wound carries")
+	assert_eq(event.text(DuelEventKeys.REGION), "", "a body hit carries its region from the resolver, not from this projection")
 
 
 func test_impact_feedback_recognizes_contact_events() -> void:

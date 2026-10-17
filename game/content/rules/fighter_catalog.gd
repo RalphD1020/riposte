@@ -119,9 +119,6 @@ static func prototype_at(size_scale: float) -> FighterDefinition:
 ## (PHYS-005) — a bigger fighter is not a dimmer one.
 static func _semantics(fighter: FighterDefinition) -> void:
 	fighter.max_health = 100.0
-	## A grip hit — the hands or the handle — takes 0.60 of the same strike's
-	## damage (the V48 hand share, unchanged).
-	fighter.grip_damage_factor = 0.60
 	fighter.max_speed = 4.2
 	fighter.speed_forward = 1.0
 	fighter.speed_lateral = 0.92

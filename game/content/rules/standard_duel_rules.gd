@@ -51,7 +51,7 @@ static func create() -> DuelRules:
 static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter_1: StringName, weapon_1: StringName) -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 52
+	rules.version = 57
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
 	rules.arena_id = ContentIds.ARENA_STANDARD
@@ -158,6 +158,43 @@ static func combat_tuning() -> CombatTuning:
 	combat.condition_force_floor = 0.70
 	combat.condition_speed_floor = 0.85
 	combat.condition_tracking_floor = 0.80
+	## Stamina (rules 53, STAMINA-004). Force only: a spent fighter keeps 75 %
+	## of their voluntary force (52.5 % with zero health too) and every speed
+	## and tracking limit. A dash start costs a fifth of a full bar, once.
+	## Each motor costs per reference energy — one full acceleration to top
+	## speed, one full spin-up of the heading, one full-charge swing — with
+	## braking work at a third. Easing off (exertion under the ceiling)
+	## recovers the bar in about eight seconds. Measured on Hard v Hard audit
+	## seeds 201–208: the bar averages about 0.55 in live play, a round's low
+	## has a median near 0.13, a fighter is under one dash's cost about a
+	## fifth of the time and empty about 1 %; motor work is about half of
+	## what is spent, attacks about a fifth. At a swing cost of 0.04 a lone
+	## swing cost too little to matter; at 0.10 rounds' lows sat near 0.1.
+	combat.stamina_force_floor = 0.75
+	combat.stamina_dash_cost = 0.20
+	combat.stamina_move_cost = 0.02
+	combat.stamina_turn_cost = 0.005
+	combat.stamina_swing_cost = 0.07
+	combat.stamina_brake_share = 0.3
+	combat.stamina_recovery_rate = 0.125
+	combat.stamina_recovery_effort_ceiling = 0.02
+	## Guard return (rules 54, GUARD-RETURN-001). A 6 rad/s natural frequency
+	## settles an idle blade on its guard in roughly half a second, capped at
+	## the hold torque. While steel is persisted the return keeps a quarter
+	## of that acceleration. The soft stop (GUARD-LIMIT-SOFT-001) is the last
+	## 0.35 rad: at full penetration the spring is 0.40 of this tick's wind-up
+	## acceleration, and outward speed is damped at 16/s, so a sustained
+	## wind-up still reaches the hard stop and rests there.
+	combat.guard_return_natural_frequency = 6.0
+	combat.guard_steel_return_scale = 0.25
+	## Impact authority (rules 57). One full-swing speed change halves the
+	## return; episodes compound and stop at half. The deficit then fades at
+	## `guard_return_natural_frequency`, so the floor is a bound on a dip,
+	## not a rest state. Not tuned against an old pin.
+	combat.impact_authority_floor = 0.5
+	combat.guard_limit_zone = 0.35
+	combat.guard_limit_stiffness = 0.40
+	combat.guard_limit_damping = 16.0
 	## Directional commitment (rules 46, RESPONSIVE-COMMITMENT-001): redirect
 	## debt — momentum plus the effort still being committed over the next
 	## 0.10 s, against the fighter's healthy braking — read smoothly as

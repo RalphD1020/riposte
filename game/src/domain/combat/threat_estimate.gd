@@ -20,9 +20,8 @@ var residual_gap: float = 0.0
 ## Seconds of readiness (recovery floor, brake to control, stagger) still
 ## owed past the horizon. 0 within it.
 var readiness_remaining: float = 0.0
-## What the predicted blade meets first (`NONE`, `BODY`, `GRIP` — the hands or
-## the handle — or, only when the prediction also swept the target's
-## blade, `STEEL`).
+## What the predicted blade meets first (`NONE`, `BODY` — the torso circle —
+## or, only when the prediction also swept the target's blade, `STEEL`).
 var first_contact: int = NONE
 ## Seconds to that steel contact when `first_contact` is `STEEL`.
 var steel_time: float = 0.0
@@ -30,10 +29,9 @@ var steel_time: float = 0.0
 ## The prediction began with the blades already in contact (a bind). That
 ## contact is the starting state, not an obstruction: `first_contact` then
 ## names the first *new* contact — steel met again after the blades parted,
-## or the body or the grip reached.
+## or the torso reached.
 var starts_bound: bool = false
 
 const NONE := 0
 const BODY := 1
-const GRIP := 2
 const STEEL := 3

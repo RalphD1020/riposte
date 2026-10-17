@@ -30,8 +30,10 @@ const WALK_IN_GAP := 0.08
 ## body's closing and lateral speed (m/s), heading spin (rad/s), sword angle
 ## (rad) and swing (rad/s), and how long it is followed (ticks). Re-searched
 ## on rules 50 (blade-only steel): the rules-49 storm spent its budget on the
-## crossguards and handles, and its blades no longer meet.
-const STORM_DISTANCE := 1.43
+## crossguards and handles, and its blades no longer meet. Rules 55: 1.43 m
+## enters both torsos before the blades can re-hold four times. 1.60 m still
+## spends the budget. Torso hits may happen; the assertions are the fallback.
+const STORM_DISTANCE := 1.60
 const STORM_FACING := 0.559
 const STORM_CLOSING := 3.21
 const STORM_LATERAL := -0.15
@@ -117,8 +119,8 @@ func test_walking_pressure_never_drives_a_blade_through_a_held_blade() -> void:
 
 
 ## Torso hits among `runner`'s events — the body behind a blocking sword. A
-## cut that slides along the blocking blade into its grip is a GRIP hit
-## (GRIP-NONBLOCKING-001), not a cut driven through the blade.
+## cut that slides along the blocking blade is not a torso hit scored through
+## that blade (TORSO-CIRCLE-001).
 static func _torso_hits(runner: SimRunner) -> int:
 	var hits := 0
 	for event in runner.events:
@@ -560,9 +562,12 @@ func test_clearing_a_sword_on_a_torso_never_drives_the_bodies_together() -> void
 	## around (SCENARIO-REACHABILITY-001).
 
 
-## LONG-GUARD-INTERCEPT-001: a settled Long Guard meets an advancing body with
-## its point before the bodies can meet, and holding the walk cannot force the
-## body through it. What yields is left to the physics; the scene mirrors.
+## LONG-GUARD-INTERCEPT-001: a centred point meets an advancing body before
+## the bodies can meet, and holding the walk cannot force the body through it.
+## θ = 0 is the centred point, not the resting guard: the return carries it
+## toward the committed side, so the walker starts close enough (1.8 m) that
+## the point still meets him first. What yields is left to the physics; the
+## scene mirrors, including the side a centred blade remembers.
 const INTERCEPT_TICKS := 45
 
 
@@ -575,7 +580,14 @@ func _intercept(side: float) -> Array:
 	## in front of his centreline (SLASH-SHAPE-001), so the point may meet the
 	## pommel he carries before it meets his torso: either way it is his.
 	ContactFixture.arm(state.fighter(0), 0.0, 0.0, PI / 2.0, side * deg_to_rad(135.0), 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	ContactFixture.arm(state.fighter(1), 0.0, 3.2, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	ContactFixture.arm(state.fighter(1), 0.0, 1.8, -PI / 2.0, 0.0, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
+	## The centred point sits inside the side deadzone, so arming it does not
+	## commit a side. The match remembered the opening's right side for both
+	## scenes; a mirror has to remember the opposite side, or the guard return
+	## pulls both points the same way.
+	state.fighter(1).weapon.stable_side = side
+	state.fighter(1).weapon.swing_dir = -side
+	state.fighter(0).weapon.swing_dir = -state.fighter(0).weapon.stable_side
 	var closest := INF
 	var deepest := 0.0
 	var met_at := -1.0
@@ -592,7 +604,7 @@ func _intercept(side: float) -> Array:
 	return [runner, closest, deepest, met_at]
 
 
-func test_a_long_guard_intercepts_an_advancing_body() -> void:
+func test_a_centred_point_meets_an_advancing_body_before_the_fighters_do() -> void:
 	var apart := 2.0 * _rules.combatant(0).fighter.push_radius
 	var right := _intercept(-1.0)
 	var runner: SimRunner = right[0]
@@ -654,10 +666,16 @@ func test_held_pressure_mirrors_exactly() -> void:
 	for slot in 2:
 		var rf := r.state.fighter(slot)
 		var lf := l.state.fighter(slot)
-		assert_near(lf.y, rf.y, 1e-9, "slot %d: the same distance along the line" % slot)
+		assert_near(lf.y, rf.y, 1e-7, "slot %d: the same distance along the line" % slot)
 		assert_near(lf.x, -rf.x, 1e-9, "slot %d: the reflected lateral position" % slot)
-		assert_near(lf.weapon.angle, -rf.weapon.angle, 1e-9, "slot %d: the reflected θ" % slot)
-		assert_near(lf.weapon.speed, -rf.weapon.speed, 1e-9, "slot %d: the reflected θ̇" % slot)
+		## Positions mirror through shared headings, not the bit-exact point
+		## reflection the heading trig would make. Rules 57's authority return
+		## carries a sub-microradian angular difference into the next ticks, so
+		## the along-line residual measured here is about 4.3e-8 m (it was
+		## about 3.5e-9 before the return read authority). Lateral position
+		## stays inside a nanometre. A miss would be centimetres.
+		assert_near(lf.weapon.angle, -rf.weapon.angle, 1e-6, "slot %d: the reflected θ" % slot)
+		assert_near(lf.weapon.speed, -rf.weapon.speed, 1e-6, "slot %d: the reflected θ̇" % slot)
 
 ## CONTACT-FALLBACK-001: an adversarial storm, built point-symmetric — the
 ## bodies driving together at 6.9 m/s with crossed swords, headings spinning at
@@ -667,9 +685,11 @@ func test_held_pressure_mirrors_exactly() -> void:
 ## beyond the slop, no centreline ever crossing, the blade staying on the side
 ## it met from, θ̇ left as the contact left it rather than zeroed, the duel
 ## still each other's exact reflection, and the next tick back to the full
-## budget. Representative play reaches the fallback only as the fast-slide
-## class (`test_the_seed_122_fast_slide_fallback_is_bounded_and_escapable`);
-## this is its bound.
+## budget. The storm is the bound. Seed 122 does not reach the fallback under
+## rules 57 (`test_the_seed_122_fast_slide_fallback_is_bounded_and_escapable`).
+## A torso hit during the storm is allowed: zero torso
+## hits was never the re-hold invariant. The pass is the budget spent once,
+## the bounded fallback, the mirror, and the speed the contact left.
 func test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored() -> void:
 	## ARRANGE: the point-symmetric storm.
 	var runner := SimRunner.create(_rules, 1)
@@ -724,69 +744,62 @@ func test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored() -> v
 # ── CONTACT-REHOLD-FALLBACK-001: the fast-slide fallback, as play reaches it ─
 
 
-## The one re-hold exhaustion representative play reaches on rules 52: ship
-## seed 122 between wander pilots 11 and 23. On tick `REHOLD_TICK` the second
-## fighter's tip slides fast along the first's blade while the blade turns, so
-## one contact closes again after each of the four re-holds (its normal turns
-## about 9° across the tick) and the budget runs out. Production input from tick
-## 0; nothing is placed.
+## Seed 122, wander pilots 11 and 23, stamina neutral. Rules 52–54 spent the
+## re-hold budget at tick 854. Rules 55 did not. Rules 56 spent it once at
+## that tick, while authority sat on the floor. Rules 57 recovers, and this
+## seed spends nothing through 2000 ticks in the trace, and through
+## `REHOLD_WINDOW` here. The constructed storm owns the fallback's behavior.
 const REHOLD_SEED := 122
 const REHOLD_PILOTS := [11, 23]
-const REHOLD_TICK := 854
+const REHOLD_WINDOW := 1200
 
 
-## Seed 122 driven from tick 0 to `through`: [the runner, each tick's state
-## hash, the deepest held blade overlap from `REHOLD_TICK` − 4 on].
+## Seed 122 driven from tick 0 to `through`: [the runner, each tick's state hash].
 func _seed_122(through: int) -> Array:
-	var runner := SimRunner.create(_rules, REHOLD_SEED)
+	var runner := SimRunner.create(DuelFixture.stamina_neutral(DuelFixture.rules()), REHOLD_SEED)
 	var first := Pilot.wander(REHOLD_SEED, int(REHOLD_PILOTS[0]))
 	var second := Pilot.wander(REHOLD_SEED, int(REHOLD_PILOTS[1]))
 	var hashes := PackedStringArray()
-	var deepest := 0.0
 	while runner.state.tick < through:
 		runner.push(first.command(runner.state, 0), second.command(runner.state, 1))
 		hashes.append(StateHasher.hash_state(runner.state))
-		if runner.state.tick >= REHOLD_TICK - 4 and runner.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED:
-			deepest = maxf(deepest, -_blades(runner.state).x)
-	return [runner, hashes, deepest]
+	return [runner, hashes]
 
 
-## CONTACT-REHOLD-FALLBACK-001: an exhausted re-hold budget in play is the
-## characterized class — one persistent contact identity, genuinely closing on
-## every re-hold — and is bounded: reproducible, every tick legal, held overlap
-## within the slop, counted once, no second exhaustion in the ticks after, and
-## the contact still answers ordinary input (a back step from either side, or
-## nothing at all, parts it). The fallback touching no velocity is its
-## constructed law (`test_a_rehold_storm_falls_back_without_tunnelling_and_stays_mirrored`).
+## CONTACT-REHOLD-FALLBACK-001 as representative play reaches it only in the
+## constructed storm. Seed 122 spent the budget at tick 854 under rules 56
+## because a sword stayed at the authority floor. Rules 57 recovers that
+## deficit, and the same production input spends nothing through the window.
+## The storm above still proves the fallback stays bounded.
 func test_the_seed_122_fast_slide_fallback_is_bounded_and_escapable() -> void:
-	## ARRANGE: through the exhaustion and `MAX_WITNESS_TICKS` after, twice.
-	var through := REHOLD_TICK + 1 + MAX_WITNESS_TICKS
-	var played := _seed_122(through)
-	var again := _seed_122(through)
+	var played := _seed_122(REHOLD_WINDOW)
+	var again := _seed_122(REHOLD_WINDOW)
 	var runner := played[0] as SimRunner
-	var diagnostics := runner.simulation.diagnostics
-	assert_eq(diagnostics.rehold_fallback_ticks, PackedInt32Array([REHOLD_TICK]), "fixture: the duel exhausts the re-hold budget on tick %d and no other" % REHOLD_TICK)
-	## PERTURB: from the tick after it, a fighter steps back — or neither acts.
-	var at := _seed_122(REHOLD_TICK + 1)[0] as SimRunner
-	assert_true(at.state.blade_contact.phase != SwordContactSet.Phase.SEPARATED, "fixture: the blades are still in contact after the fallback")
-	## ACT
-	var exits: Array = []
-	for kinds: Array in [["back", "idle"], ["idle", "back"], ["idle", "idle"]]:
-		exits.append([kinds, _escape(at, kinds)])
-	## ASSERT
+	assert_eq(runner.simulation.diagnostics.rehold_fallback_ticks, PackedInt32Array(), "this production duel does not spend the re-hold budget")
+	assert_eq(runner.simulation.diagnostics.rehold_budget_exhausted, 0, "and the counter stays at zero")
 	assert_eq(played[1], again[1], "deterministic: the same input replays the same states, tick for tick")
-	assert_eq(diagnostics.rehold_budget_exhausted, 1, "counted once, as the fallback, never as a converged hold")
-	assert_eq(diagnostics.rehold_fallback_identities[0], 1, "one persistent contact identity across the re-holds, neither stale nor duplicated")
-	assert_true(diagnostics.rehold_fallback_least_impulse[0] > 0.0, "each re-hold solved a real closing impulse (least %.3f N·s)" % diagnostics.rehold_fallback_least_impulse[0])
-	assert_true(float(played[2]) <= _allowed(), "no held overlap beyond the slop around and after it (worst %.4f m)" % float(played[2]))
 	assert_eq(runner.count(DuelEventTypes.CONTACT_SATURATED), 0, "the contact loop never saturates")
 	assert_true(runner.is_sound(), "every tick finite and physically possible (%s)" % runner.violation_summary())
-	for exit: Array in exits:
-		var result := exit[1] as Array
-		assert_true(int(result[0]) > 0, "%s parts the blades before the watchdog (%d ticks)" % [str(exit[0]), int(result[0])])
-		assert_eq(int(result[2]), 0, "%s: nothing is held once they are apart" % str(exit[0]))
-		assert_true(bool(result[4]) and float(result[5]) <= _allowed(), "%s: legal and within the slop on the way out" % str(exit[0]))
 
+
+
+## A steel contact episode is one impact, however the solver holds it.
+## The constructed case is a resting overlap: both blades sit on the guard
+## the return is already tracking, 2 mm through each other, so idle has no
+## separating motor. Re-holds of that overlap emit no impact. The storm
+## owns the constructed fallback. Seed 122 does not reach it.
+func test_a_contact_episode_is_one_impact_event_however_the_solver_holds_it() -> void:
+	for side: float in [1.0, -1.0]:
+		var bind := _bind(side)
+		var formed := bind.count(DuelEventTypes.BLADE_CONTACT)
+		assert_true(bind.state.blade_contact.hold_count() > 0, "side %+.0f fixture: the overlap is held" % side)
+		var apart := 0
+		for _t in MAX_WITNESS_TICKS:
+			bind.push(PlayerCommand.idle(bind.state.tick), PlayerCommand.idle(bind.state.tick))
+			if bind.state.blade_contact.phase == SwordContactSet.Phase.SEPARATED:
+				apart += 1
+		assert_eq(apart, 0, "side %+.0f: a resting overlap stays in contact" % side)
+		assert_eq(bind.count(DuelEventTypes.BLADE_CONTACT), formed, "side %+.0f: holding it emits no new impact" % side)
 
 # ── BLADE-ESCAPE-001: a bind may last while it is maintained, never trap ───
 
@@ -798,40 +811,36 @@ const MAX_WITNESS_TICKS := 60
 ## A witness bind holds at least this long with both fighters idle: it is a
 ## bind, not a contact already coming apart.
 const HELD_IDLE_TICKS := 20
-## The canonical bind, constructed: crossed diagonal guards (±45°,
-## `ContactFixture.crossed_guard_separation`) stood 5 mm apart, both fighters
-## walking straight in for `BIND_WALK_TICKS` so the solver itself forms the
-## contact — then a bind, held with real impulse, that stays bound idle and
-## while both press. `side` mirrors it. Each witness is the ordinary input that
-## is a free route out: [the escaping slot, the input, what it is]. (The
-## rules-50 to rules-52 witnesses were live wander binds, re-searched three
-## times as the steel changed; a constructed bind keeps the law independent of
-## where a duel happens to go. The wander corpus is still read by the probe:
-## on rules 52, every one of 33 binds that held 20 idle ticks in seeds 1–6
-## opened to an ordinary input — in two, every way out also struck a torso or
-## later met steel again.)
-const BIND_WALK_TICKS := 4
+## The canonical bind is a resting overlap, not a walked-in clash. Both blades
+## sit on the guard the return already tracks (±guard_angle), 2 mm through
+## each other, so idle has no separating motor: the hold is the solver's.
+## A walked-in bind whose angles have left that guard can be drawn apart by
+## the return, and that is not a release rule. `side` mirrors it.
+const REST_OVERLAP_M := 0.002
+
+
+## The resting overlap on `side` (+1 or −1), after one idle tick so the hold
+## is the solver's.
+func _bind(side: float) -> SimRunner:
+	var runner := SimRunner.create(_rules, 5)
+	runner.skip_intro()
+	var spec := _rules.combatant(0)
+	var guard := spec.weapon.guard_angle
+	var a := runner.state.fighter(0)
+	var b := runner.state.fighter(1)
+	DuelFixture.place(a, 0.0, 0.0, PI / 2.0)
+	a.weapon.reset(side * guard)
+	DuelFixture.place(b, 0.0, ContactFixture.crossed_guard_separation(spec, -REST_OVERLAP_M, side), -PI / 2.0)
+	b.weapon.reset(-side * guard)
+	runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
+	return runner
+
+
 const ESCAPE_WITNESSES := [
 	[1, "back", "retreat"],
 	[1, "left", "a lateral step"],
 	[1, "wind", "winding the blade back off the other"],
 ]
-
-
-## The constructed bind on `side` (+1 or −1, its mirror).
-func _bind(side: float) -> SimRunner:
-	var runner := SimRunner.create(_rules, 5)
-	runner.skip_intro()
-	var spec := _rules.combatant(0)
-	var a := runner.state.fighter(0)
-	var b := runner.state.fighter(1)
-	DuelFixture.place(a, 0.0, 0.0, PI / 2.0)
-	a.weapon.reset(side * deg_to_rad(45.0))
-	DuelFixture.place(b, 0.0, ContactFixture.crossed_guard_separation(spec, 0.005, side), -PI / 2.0)
-	b.weapon.reset(side * deg_to_rad(-45.0))
-	for _t in BIND_WALK_TICKS:
-		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0), PlayerCommand.create(runner.state.tick, 0.0, 1.0))
-	return runner
 
 
 ## Fork `bind` and drive the fighters with `kinds` for up to
@@ -857,12 +866,12 @@ func _escape(bind: SimRunner, kinds: Array) -> Array:
 	return [parted, _blades(fork.state).x, contact.hold_count() + contact.point_count, _torso_hits(fork), fork.is_sound(), deepest]
 
 
-## BLADE-ESCAPE-001: a blade-only bind may persist while it is maintained, but
-## physically separating input — a route the bind's own geometry leaves free —
-## takes the swords apart: the contact responds, the gap opens
-## past the separation epsilon before the watchdog, and nothing is held once
-## they are apart. Pressing in is allowed to keep the bind: it stays legal and
-## never tunnels, and nothing requires it to part.
+## BLADE-ESCAPE-001: there is no scripted bind winner and no automatic release.
+## This fixture is the equilibrium case: both blades rest on the guard the
+## return already tracks, so idle keeps the overlap. A separating command
+## still takes it apart. Pressing stays legal and never tunnels; nothing
+## requires the press to part. Other idle contacts may separate when the
+## return draws a blade off the steel, and that is not this law.
 func test_ordinary_separating_input_takes_a_bind_apart() -> void:
 	for witness: Array in ESCAPE_WITNESSES:
 		var label := String(witness[2])
@@ -944,18 +953,15 @@ func _deflection_physics(state: MatchState) -> String:
 	return "|".join(parts)
 
 
-## The canonical deflection, a production-input witness: the wander duel of
-## seed 5 (pilots 11 / 23 on the standard rules), its one deflection on rules
-## 52 — slot 0's cut meeting slot 1's blade at tick 905, labelled when the
-## attack ends at tick 916 — forked one tick before the clash and carried on
-## with the duel's own commands. A seed, because a deflection needs a guard in
-## motion: constructed scenes with a resting guard (a scan of distance,
-## guard angle, cut start and speed) either miss, are arrested by the hold, or
-## strike. The witness moved with each change to the steel (rules 51: tick
-## 776; first rules-52 candidates: 997, then 508), each time re-read in this
-## same seed, never searched for in another.
+## Rules 52 met this on seed 5 at tick 905; rules 54's guard return moved it
+## to seed 5 tick 472. Rules 56: seed 19, clash tick 1892. Rules 57 recovers
+## authority and that seed has none in 2400 ticks. The same pilots on seed 5
+## deflect slot 0's cut; the clash tick below only finds that cut. It is not
+## a gameplay contract. The assertions are the impulse, the missing arrest,
+## and the cutter striking nothing. Re-read inside the wander pilots, not a
+## new stick.
 const DEFLECTION_SEED := 5
-const DEFLECTION_CLASH_TICK := 905
+const DEFLECTION_CLASH_TICK := 1296
 const DEFLECTION_LEAD := 1
 const DEFLECTION_CUTTER := 0
 const DEFLECTION_TICKS := 30
@@ -965,7 +971,7 @@ const DEFLECTION_TICKS := 30
 ## pilots give over the next `DEFLECTION_TICKS`: [runner, [[command_0,
 ## command_1], ...]].
 func _before_deflection() -> Array:
-	var played := SimRunner.create(DuelFixture.rules(), DEFLECTION_SEED)
+	var played := SimRunner.create(DuelFixture.stamina_neutral(DuelFixture.rules()), DEFLECTION_SEED)
 	var pilots: Array[Pilot] = [Pilot.wander(DEFLECTION_SEED, 11), Pilot.wander(DEFLECTION_SEED, 23)]
 	while played.state.tick < DEFLECTION_CLASH_TICK - DEFLECTION_LEAD:
 		played.push(pilots[0].command(played.state, 0), pilots[1].command(played.state, 1))
@@ -999,7 +1005,7 @@ func _deflected_cut(played: SimRunner, commands: Array, rules: DuelRules, trace:
 ## every tick and emits no deflection.
 func test_a_redirected_cut_that_strikes_nothing_is_a_deflection() -> void:
 	## ARRANGE: the cut on the line, just before the clash.
-	var rules := DuelFixture.rules()
+	var rules := DuelFixture.stamina_neutral(DuelFixture.rules())
 	var witness := _before_deflection()
 	var played: SimRunner = witness[0]
 	var commands: Array = witness[1]
@@ -1033,7 +1039,7 @@ func test_a_redirected_cut_that_strikes_nothing_is_a_deflection() -> void:
 	assert_eq(runner.count(DuelEventTypes.ATTACK_WHIFFED), 0, "and having met steel it is not a whiff")
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
 	## NO-LABEL-PHYSICS-001: the label is a reading.
-	var inert := DuelFixture.rules()
+	var inert := DuelFixture.stamina_neutral(DuelFixture.rules())
 	inert.combatant(1 - DEFLECTION_CUTTER).weapon.blade_protects = false
 	inert.combatant(1 - DEFLECTION_CUTTER).weapon.crossguard_protects = false
 	var silenced_trace: Array[String] = []

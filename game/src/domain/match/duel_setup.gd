@@ -2,7 +2,8 @@ class_name DuelSetup
 extends RefCounted
 
 ## Canonical initial and between-round state (PLAN Phase 8.4). Resets are
-## deterministic: canonical positions, facing, sword state, and full health.
+## deterministic: canonical positions, facing, sword state, full health and
+## full stamina (STAMINA-004: fatigue never carries between rounds).
 ## Both fighters start right-handed: the sword rests on the right side.
 ##
 ## See also: /docs/concepts/simulation.md
@@ -54,9 +55,11 @@ static func reset_fighter(fighter: FighterState, spec: CombatantPhysicsSpec, rul
 	fighter.facing = DuelSide.facing(fighter.side)
 	fighter.turn_rate = 0.0
 	## Seeded to the opening heading, the frame the first tick of footwork uses.
-	fighter.duel_forward_x = SimMath.cosine(fighter.facing)
-	fighter.duel_forward_y = SimMath.sine(fighter.facing)
+	fighter.duel_forward_x = SimMath.heading_cosine(fighter.facing)
+	fighter.duel_forward_y = SimMath.heading_sine(fighter.facing)
 	fighter.health = spec.fighter.max_health
+	fighter.stamina = 1.0
+	fighter.impact_authority = 1.0
 	fighter.stability = 1.0
 	fighter.stagger_left = 0
 	fighter.lethal_fraction = FighterState.ALIVE

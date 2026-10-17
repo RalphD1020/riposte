@@ -15,6 +15,19 @@ static func rules() -> DuelRules:
 	return mirror(StandardDuelRules.create())
 
 
+## `duel_rules` with stamina neutral (STAMINA-004): no motor and no dash costs
+## anything, so every fighter's stamina stays exactly 1 and the fatigue term
+## is the exact identity — rules 53 with rules 52's motors. For witnesses that
+## are rules-52 production duels (their seed, ticks and commands recorded), so
+## a later stamina retune never moves the law they witness.
+static func stamina_neutral(duel_rules: DuelRules) -> DuelRules:
+	duel_rules.combat.stamina_move_cost = 0.0
+	duel_rules.combat.stamina_turn_cost = 0.0
+	duel_rules.combat.stamina_swing_cost = 0.0
+	duel_rules.combat.stamina_dash_cost = 0.0
+	return duel_rules
+
+
 ## `duel_rules` with slot 1 holding slot 0's spec instance.
 static func mirror(duel_rules: DuelRules) -> DuelRules:
 	duel_rules.combatants[1] = duel_rules.combatants[0]

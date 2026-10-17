@@ -13,15 +13,16 @@ extends RefCounted
 ## timer: a blade that cannot travel cannot charge, however long it is held.
 ## Release launches from the actual retracted angle with arc 90° + earned
 ## wind-back. The motor accelerates toward the swing, brakes into an
-## overswing, and the sword then rests wherever it stopped — nothing
-## recentres it.
+## overswing, and once the blade is back under control a guard return carries
+## it to the committed guard (GUARD-RETURN-001). Nothing snaps it there.
 ##
-## ±45° are canonical *reference* guards, not mandatory resting positions. The
-## blade may legitimately sit anywhere in its 270° coverage, and non-canonical
-## is not uniformly worse: inside ±45° the blade is under-loaded (quick to
-## threat, low motor authority), outside it is over-displaced (full authority,
-## but a longer arc before it threatens). Both fall out of `launch_preparation`
-## and arc; neither is special-cased.
+## ±45° are the resting targets of that return, on the committed side. The
+## blade may legitimately sit anywhere in its 270° coverage while it is
+## swinging, staggered or giving way to an attack, and non-canonical is not
+## uniformly worse: inside ±45° the blade is under-loaded (quick to threat,
+## low motor authority), outside it is over-displaced (full authority, but a
+## longer arc before it threatens). Both fall out of `launch_preparation` and
+## arc; neither is special-cased.
 ##
 ## Swing direction comes from the side the blade is *committed* to, never a
 ## combo index and never the raw sign of the angle.
@@ -33,6 +34,12 @@ extends RefCounted
 const PROGRESS_EARLY := 0.15
 const PROGRESS_THREAT := 0.4
 const PROGRESS_LATE := 0.8
+## Short of the limit, still the stop. One ulp of `angle + ω·dt` is about
+## 1e-15 rad here; 1e-9 rad is the trigonometry bound (`SimMath`, about a
+## nanometre at the tip) and far below a pose the mirror oracle can tell
+## apart. Not a gameplay slack. Kept while the changed duels are traced;
+## narrowing it to recover an older hash is not a reason.
+const STOP_ARRIVAL_RAD := 1.0e-9
 
 
 static func can_start_attack(fighter: FighterState, weapon: WeaponDefinition) -> bool:
@@ -102,8 +109,10 @@ static func cancel(fighter: FighterState, rules: DuelRules, tick: int, events: A
 ## fighter's frozen condition this tick (CONDITION-001): its force scale
 ## reduces every weapon torque, its speed scale the swing and wind-back target
 ## speeds; null is the healthy identity. The blade's speed is never rescaled
-## (PHYS-003). `scratch` lends the reused motor pose.
-static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent], condition: ConditionState = null, scratch: FighterTickScratch = null) -> void:
+## (PHYS-003). `scratch` lends the reused motor pose. `return_scale` multiplies
+## the guard return (persistent steel and impact authority). `diagnostics`
+## counts a hard-stop fallback; null counts nothing.
+static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent], condition: ConditionState = null, scratch: FighterTickScratch = null, return_scale: float = 1.0, diagnostics: ContactDiagnostics = null) -> void:
 	var weapon := fighter.weapon
 	var definition := rules.spec_of(fighter).weapon
 	weapon.phase_ticks += 1
@@ -119,10 +128,22 @@ static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Arr
 		events.append(DuelEvent.create(DuelEventTypes.CHARGE_STARTED, tick, fighter.slot, DuelEvent.NONE, {DuelEventKeys.DIRECTION: weapon.swing_dir}))
 	var spec := rules.spec_of(fighter)
 	var inertia := WeaponKinematics.motor_inertia(spec, weapon.angle, scratch.motor_pose if scratch != null else null)
-	var force_scale := condition.force_scale if condition != null else 1.0
 	var speed_scale := condition.speed_scale if condition != null else 1.0
-	_drive_motor(weapon, definition, spec.fighter.weapon_torque_scale * force_scale, speed_scale, inertia)
-	if weapon.phase == CombatPhase.Id.CHARGING:
+	## Two drives, named at the boundary (STAMINA-004). `base_drive` is the
+	## damage term and feeds the neutral hold and the guard return. Fatigue
+	## multiplies it once, into `fatigue_scaled_drive`, which feeds swing,
+	## wind-up, brake and the stagger hold, and the soft zone's share of wind-up.
+	## A weaker brake removes less speed in a tick. It does not change a speed
+	## ceiling, command timing, or the return target.
+	var damage_force := condition.damage_force_scale if condition != null else 1.0
+	var fatigue := condition.fatigue_scale if condition != null else 1.0
+	var base_drive := spec.fighter.weapon_torque_scale * damage_force
+	var fatigue_scaled_drive := base_drive * fatigue
+	if _drive_motor(weapon, definition, fatigue_scaled_drive, base_drive, speed_scale, inertia, rules.combat, return_scale, fighter.attack_held) and diagnostics != null:
+		diagnostics.guard_hard_stop_hits += 1
+	## A held charge earns credit only while stamina remains (STAMINA-004); at
+	## zero it stops accumulating and is never released for the player.
+	if weapon.phase == CombatPhase.Id.CHARGING and (condition == null or condition.can_charge):
 		_accrue_windback(weapon, definition, speed_scale)
 	update_stable_side(weapon, definition)
 	_advance_phase(fighter, rules, tick, events)
@@ -231,7 +252,6 @@ static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick
 	weapon.swing_start = weapon.angle
 	weapon.swing_end = clampf(weapon.angle + weapon.swing_dir * definition.arc(charge), -definition.guard_limit, definition.guard_limit)
 	weapon.attack_contacted = false
-	weapon.grip_struck = false
 	weapon.deflection_pending = false
 	weapon.set_phase(CombatPhase.Id.LAUNCH)
 	events.append(DuelEvent.create(DuelEventTypes.ATTACK_RELEASED, tick, fighter.slot, DuelEvent.NONE, {
@@ -241,53 +261,174 @@ static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick
 	}))
 
 
-static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, drive: float, speed_scale: float, inertia: float) -> void:
+static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, fatigue_scaled_drive: float, base_drive: float, speed_scale: float, inertia: float, combat: CombatTuning, return_scale: float, yield_attack: bool) -> bool:
 	var dt := SimulationTimebase.TICK_SECONDS
 	var old_speed := weapon.speed
-	var phase_accel := 0.0
 	## Every drive is a bounded torque (`α = τ / M_θ`, at most `α·dt` per
 	## tick) applied to whatever speed the last contact left: a met cut is
 	## re-driven at the motor's finite authority, never restored by assignment.
 	## `M_θ` is the coordinate's inertia at this pose, the one every contact
-	## uses (UNIFIED-MASS-001).
+	## uses (UNIFIED-MASS-001). The torque recorded is the voluntary motor
+	## only; the soft limit that follows is a stop, not exertion.
 	match weapon.phase:
 		CombatPhase.Id.CHARGING:
-			phase_accel = definition.windup_accel(drive, inertia)
-			weapon.speed = SimMath.approach(weapon.speed, -weapon.swing_dir * definition.windup_speed * speed_scale, phase_accel * dt)
+			weapon.speed = SimMath.approach(weapon.speed, -weapon.swing_dir * definition.windup_speed * speed_scale, definition.windup_accel(fatigue_scaled_drive, inertia) * dt)
 		CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_EARLY, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.ACTIVE_LATE:
 			var charge := weapon.swing_charge
 			var ceiling := definition.achievable_swing_speed(charge, weapon.launch_preparation) * speed_scale
-			phase_accel = definition.swing_accel(charge, drive, inertia)
-			weapon.speed = SimMath.approach(weapon.speed, weapon.swing_dir * ceiling, phase_accel * dt)
-		CombatPhase.Id.OVERSWING:
-			phase_accel = definition.brake_accel(weapon.swing_charge, drive, inertia)
-			weapon.speed = SimMath.approach(weapon.speed, 0.0, phase_accel * dt)
-		CombatPhase.Id.RECOVERY:
-			## Actively arresting the blade is the attack's brake; holding it
-			## once it is back under control is the weak hold (RECOVERY-001).
-			if absf(weapon.speed) > definition.control_speed:
-				phase_accel = definition.brake_accel(weapon.swing_charge, drive, inertia)
-			else:
-				phase_accel = definition.hold_accel(drive, inertia)
-			weapon.speed = SimMath.approach(weapon.speed, 0.0, phase_accel * dt)
+			weapon.speed = SimMath.approach(weapon.speed, weapon.swing_dir * ceiling, definition.swing_accel(charge, fatigue_scaled_drive, inertia) * dt)
 		_:
-			phase_accel = definition.hold_accel(drive, inertia)
-			weapon.speed = SimMath.approach(weapon.speed, 0.0, phase_accel * dt)
+			weapon.speed = coast_speed(weapon.speed, weapon.angle, weapon.phase, weapon.stable_side, weapon.swing_charge, definition, fatigue_scaled_drive, base_drive, inertia, combat, return_scale, yield_attack)
 	weapon.motor_torque = inertia * (weapon.speed - old_speed) / dt
-	settle_at_stop(weapon, weapon.angle + weapon.speed * dt, definition.guard_limit)
+	var angle_before := weapon.angle
+	var dt_limit := SimulationTimebase.TICK_SECONDS
+	var accel := clampf(limit_zone_accel(weapon.angle, weapon.speed, definition.guard_limit, combat.guard_limit_zone, zone_spring(definition, fatigue_scaled_drive, inertia, combat), combat.guard_limit_damping), -limit_accel_cap(definition, fatigue_scaled_drive, inertia), limit_accel_cap(definition, fatigue_scaled_drive, inertia))
+	var into := weapon.speed + accel * dt_limit
+	var stopped := assign_stop(weapon, weapon.angle + into * dt_limit, into, definition.guard_limit)
+	return is_hard_stop(into, angle_before, stopped, definition.guard_limit, definition.windup_accel(fatigue_scaled_drive, inertia))
 
 
-## The guard limit is an inelastic stop: a blade that reaches it — landing
-## exactly on it included — keeps no outward speed. Inclusive, so one ulp of
-## rounding never decides whether the stop held (SYM-STORM-SEPARATING-001: two
-## mirrored blades both clamped to the same stop, one carrying its outward
-## speed a tick longer). `turned` is the angle the step would reach.
-static func settle_at_stop(weapon: WeaponState, turned: float, limit: float) -> void:
-	weapon.angle = clampf(turned, -limit, limit)
-	if turned >= limit:
-		weapon.speed = minf(weapon.speed, 0.0)
-	elif turned <= -limit:
-		weapon.speed = maxf(weapon.speed, 0.0)
+## The guard limit is an inelastic stop: a blade that reaches it keeps no
+## outward speed. Landing on it counts, and so does falling short by
+## `STOP_ARRIVAL_RAD`: the mirror of the same step can round to the next
+## float below the limit (seed 31, tick 535: 4.4e-16 rad short, 2.3 rad/s
+## kept). A larger gap is not the stop, and inward speed is never removed.
+## `turned` is the angle the step would reach. True when the stop moved the
+## angle or removed outward speed.
+static func settle_at_stop(weapon: WeaponState, turned: float, limit: float) -> bool:
+	return assign_stop(weapon, turned, weapon.speed, limit)
+
+
+## One coasting tick, before the soft limit: the guard return where it is
+## active, the attack's brake while an overswing or a fast recovery still
+## needs it, and a hold to zero speed otherwise. `yield_attack` is an attack
+## command owning this tick, so NEUTRAL holds instead of returning.
+## `base_drive` is the damage term (STAMINA-004): the neutral hold and the
+## guard return. `fatigue_scaled_drive` is that term times fatigue: the brake
+## and the stagger hold. Fatigue therefore removes less speed on a braking
+## tick and does not change the return. Speed caps are not a drive. The
+## predictor integrates this same function (GUARD-RETURN-001).
+static func coast_speed(speed: float, angle: float, phase: CombatPhase.Id, stable_side: float, swing_charge: float, definition: WeaponDefinition, fatigue_scaled_drive: float, base_drive: float, inertia: float, combat: CombatTuning, return_scale: float, yield_attack: bool) -> float:
+	var dt := SimulationTimebase.TICK_SECONDS
+	if phase == CombatPhase.Id.OVERSWING or (phase == CombatPhase.Id.RECOVERY and absf(speed) > definition.control_speed):
+		return SimMath.approach(speed, 0.0, definition.brake_accel(swing_charge, fatigue_scaled_drive, inertia) * dt)
+	if phase == CombatPhase.Id.NEUTRAL and yield_attack:
+		return SimMath.approach(speed, 0.0, definition.hold_accel(base_drive, inertia) * dt)
+	if phase == CombatPhase.Id.NEUTRAL or phase == CombatPhase.Id.RECOVERY:
+		return guard_return_speed(speed, angle, stable_side * definition.guard_angle, definition.hold_accel(base_drive, inertia), combat.guard_return_natural_frequency, return_scale)
+	return SimMath.approach(speed, 0.0, definition.hold_accel(fatigue_scaled_drive, inertia) * dt)
+
+
+## Critically damped pose track toward `target` with `ω* = 0`. The hinge
+## error is `target − angle`: the guard interval is convex, so wrapping the
+## error would command the long way through the stop. Implied α is capped
+## at `hold_accel`, then multiplied by `scale`.
+static func guard_return_speed(omega: float, angle: float, target: float, hold_accel: float, natural_frequency: float, scale: float) -> float:
+	var dt := SimulationTimebase.TICK_SECONDS
+	var wn := maxf(natural_frequency, 0.0)
+	var kp := wn * wn
+	var kd := 2.0 * wn
+	var error := target - angle
+	var predicted := (omega + dt * kp * error) / (1.0 + dt * kd + dt * dt * kp)
+	var applied := clampf((predicted - omega) / dt, -hold_accel, hold_accel) * clampf(scale, 0.0, 1.0)
+	return omega + applied * dt
+
+
+## Inward acceleration (signed) of the soft zone. Zero outside it and for
+## inward speed; the Hermite ramp is zero, flat, at the inner edge.
+static func limit_zone_accel(angle: float, omega: float, limit: float, zone: float, stiffness: float, damping: float) -> float:
+	if zone <= 0.0 or limit <= 0.0 or angle == 0.0:
+		return 0.0
+	var penetration := absf(angle) - (limit - zone)
+	if penetration <= 0.0:
+		return 0.0
+	var share := clampf(penetration / zone, 0.0, 1.0)
+	var shaped := share * share * (3.0 - 2.0 * share)
+	var outward := 1.0 if angle > 0.0 else -1.0
+	return -outward * (stiffness * shaped + damping * maxf(omega * outward, 0.0))
+
+
+## Spring acceleration at full penetration: a share of this tick's wind-up
+## acceleration, so a sustained wind-up still reaches the stop.
+static func zone_spring(definition: WeaponDefinition, drive: float, inertia: float, combat: CombatTuning) -> float:
+	return combat.guard_limit_stiffness * definition.windup_accel(drive, inertia)
+
+
+## The zone never out-accelerates the weapon's strongest brake.
+static func limit_accel_cap(definition: WeaponDefinition, drive: float, inertia: float) -> float:
+	return maxf(definition.brake_accel(0.0, drive, inertia), definition.brake_accel(1.0, drive, inertia))
+
+
+## Soft zone, then the hard stop. `out[0]` angle, `out[1]` speed after the
+## stop, and `out[2]` (when present) the speed the stop saw. Callers reuse
+## `out`; the weapon step itself writes the weapon and does not allocate one.
+static func write_limited(out: PackedFloat64Array, angle: float, speed: float, limit: float, zone: float, stiffness: float, damping: float, accel_cap: float) -> bool:
+	var dt := SimulationTimebase.TICK_SECONDS
+	var accel := clampf(limit_zone_accel(angle, speed, limit, zone, stiffness, damping), -accel_cap, accel_cap)
+	var into := speed + accel * dt
+	var hit := _write_stop(out, angle + into * dt, into, limit)
+	if out.size() > 2:
+		out[2] = into
+	return hit
+
+
+## Angle after the inelastic stop. Closed clamp: landing on the limit stays there.
+static func stopped_angle(turned: float, limit: float) -> float:
+	return clampf(turned, -limit, limit)
+
+
+## True when `turned` meets a stop in the direction of `speed`.
+static func _outward_at_stop(turned: float, speed: float, limit: float) -> bool:
+	if speed > 0.0 and turned >= limit - STOP_ARRIVAL_RAD:
+		return true
+	if speed < 0.0 and turned <= -limit + STOP_ARRIVAL_RAD:
+		return true
+	return false
+
+
+## Speed after the inelastic stop. Outward speed at or past the limit is removed.
+## Inward speed, and a blade already on the limit with none, stay.
+static func stopped_speed(turned: float, speed: float, limit: float) -> float:
+	if _outward_at_stop(turned, speed, limit):
+		return 0.0
+	return speed
+
+
+## True when the stop moved the angle or removed outward speed.
+static func stop_engaged(turned: float, speed: float, limit: float) -> bool:
+	if turned > limit or turned < -limit:
+		return true
+	return _outward_at_stop(turned, speed, limit)
+
+
+## Write the inelastic stop onto a weapon. Authoritative callers are the
+## weapon step (`_drive_motor`) and the post-contact carry
+## (`settle_at_stop` from `DuelSimulation._carry`). The threat estimate does
+## not call this: it copies angle and speed into locals and writes the same
+## rule into its own buffer (`write_limited` → `_write_stop`).
+static func assign_stop(weapon: WeaponState, turned: float, speed: float, limit: float) -> bool:
+	weapon.angle = stopped_angle(turned, limit)
+	weapon.speed = stopped_speed(turned, speed, limit)
+	return stop_engaged(turned, speed, limit)
+
+
+## The resting wind-up's own push into a stop it already occupies is not the
+## fallback. A fallback is outward speed the zone left above one tick of
+## wind-up, or a blade that was already past the limit.
+static func is_hard_stop(speed_into: float, angle_before: float, stopped: bool, limit: float, windup_accel: float) -> bool:
+	if not stopped:
+		return false
+	if absf(angle_before) > limit:
+		return true
+	if angle_before == 0.0 or speed_into * angle_before <= 0.0:
+		return false
+	return absf(speed_into) > windup_accel * SimulationTimebase.TICK_SECONDS
+
+
+static func _write_stop(out: PackedFloat64Array, turned: float, speed: float, limit: float) -> bool:
+	out[0] = stopped_angle(turned, limit)
+	out[1] = stopped_speed(turned, speed, limit)
+	return stop_engaged(turned, speed, limit)
 
 
 ## Close the current hold's charge account. A hold that ends without launching

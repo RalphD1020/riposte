@@ -11,10 +11,6 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/combat.md
 
-## Which hurt region it struck (DEFENSE-ROLE-001, GRIP-NONBLOCKING-001): the
-## torso, or the grip — the hands and the handle.
-enum Region { TORSO, GRIP }
-var region: Region = Region.TORSO
 var attacker: int = -1
 var target: int = -1
 ## When inside the tick this landed, as a fraction in [0, 1]. The chronological

@@ -23,39 +23,34 @@ Dependency direction: application → presentation → domain; content is data a
 
 ### Canonical tick order
 
-"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **14**) must be bumped deliberately whenever it changes. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input.
+"When" is as much a rule as "what", so the sequence is versioned: `DuelSimulation.TICK_ORDER_VERSION` (currently **16**) must be bumped deliberately whenever it changes. Version 15 is the stamina settle after contacts (rules 53). Version 16 inserts impact-authority recovery between contact lifecycle and that settle (rules 57). Rules 56 left the version at 15 because the dip stayed inside the contact step and authority did not recover until the round reset. Stamina does not read authority, and authority does not read stamina, so their relative order is not visible in either value; the version records that the recovery step exists. Symmetric by construction — per-fighter updates read only start-of-tick relationships, so slot order never biases outcomes, and fighter A is never advanced and then used as fighter B's input. The numbered list is the sequence pinned in `duel_simulation.gd`.
 
 ```text
  1. guard: a finished match accepts no further steps
  2. dispatch on match phase
  3. ROUND_ACTIVE: advance phase and round counters
- 4. freeze condition for both fighters (from start-of-tick health only, CONDITION-001)
+ 4. freeze condition for both fighters (from start-of-tick health and
+    stamina, CONDITION-001, STAMINA-004)
  5. capture start poses for both fighters
  6. consume attack input edges for both fighters
  7. compute tracking multipliers from start-of-tick state
- 8. facing then footwork for both fighters (writes turn/movement exertion)
- 9. weapon motor and weapon phase for both fighters (writes weapon exertion)
-10. arena boundary confinement only (no body separation — that shares the TOI loop)
+ 8. facing then footwork for both fighters
+ 9. weapon motor and weapon phase for both fighters
+10. arena boundary confinement only (body separation shares the TOI loop)
 11. capture finish poses for both fighters
-12. bind upkeep
-13. contacts (RIGID-CONTACT-001, COMBAT-007):
-    a. persisted contacts touching at the start remove their closing speed
-       (velocity stage), then the tick is carried again from those velocities
-    b. unified chronological contact loop: detect earliest TOI among blade↔blade,
-       blade→body, tip→body, body↔body, persisted pairs driven past the slop;
-       seek to impact; resolve according to interaction type (PHYS-008); carry
-       remainder (once the re-hold budget is spent, in sweep substeps with each
-       substep's overlap pushed out — CONTACT-FALLBACK-001); post-carry support-loss check: any living non-falling fighter
-       past platform_radius is marked falling and emits RING_OUT
-    c. persisted overlap beyond contact_slop pushed out at position level
-       (velocities untouched), then the same support-loss check
-14. contact pair lifecycle upkeep (blade + weapon-body)
-15. round end evaluation
-16. advance the tick counter
-17. validate invariants; fail closed on violation
+12. contacts (RIGID-CONTACT-001, COMBAT-007): persisted sword contacts,
+    the chronological loop, then the position stage
+13. contact lifecycle upkeep (blade manifold + weapon-body)
+14. impact authority recovers toward 1, except a sword this tick's steel
+    episode dipped (IMPACT-AUTHORITY-001)
+15. settle stamina once from the motors' own work (measured in steps 8–9,
+    before any contact) and a dash start (STAMINA-004)
+16. round end evaluation
+17. advance the tick counter
+18. validate invariants; fail closed on violation
 ```
 
-Step 12 is itself a bounded loop rather than a single pass, because contacts inside one tick are ordered in time and the later ones depend on the earlier ones (COMBAT-007). All contact types share the same chronology:
+The contact step is itself a bounded loop rather than a single pass, because contacts inside one tick are ordered in time and the later ones depend on the earlier ones (COMBAT-007). All contact types share the same chronology:
 
 ```text
 hold persisted contacts touching at the start (velocity stage); re-carry the tick
@@ -79,13 +74,15 @@ loop until max_contacts_per_tick new contacts (holds spend HOLDS_PER_TICK):
 push persisted overlap back to contact_slop (position stage)
 ```
 
+A new steel episode dips each sword once from that contact's own solved change in angular velocity. A torso entry does not. Later holds of the same episode do not dip; on those ticks, and on every other living tick, the deficit fades at the guard return's natural frequency. The dip is inside the contact step. Recovery is the next step, and it does not run for a sword that dipped on that tick. Stamina settles after that (IMPACT-AUTHORITY-001).
+
 A contact is reported on the substep it comes into touch, never on every substep it stays touching: a held contact is already a constraint, and re-reporting it only spends the budget. Bodies meet at most once a tick; overlap left later in the tick is separated where each remainder is carried. Before this rule, pressed bodies re-reported every substep, exhausted the budget, and the unswept rest of the tick let a blade pass straight through a held contact. The re-hold budget itself is a fixed bound (`HOLDS_PER_TICK`), never raised to make a counter read zero; a tick that spends it carries its remainder in the sweep's own substeps with the position stage after each (CONTACT-FALLBACK-001), so the pair keeps its last non-penetrating side, only the advance along the normal is cancelled, tangent slide, θ̇ and every other motion carry on, and the next tick starts with the full budget. On 70 adversarial storms it holds the worst held overlap at the slop (2.3 mm, against 3.45 cm unbounded). Representative play reaches it only as the bounded fast-slide class — one contact sliding fast along a turning blade, closing again after each re-hold — classified and counted against its measured baseline (CONTACT-REHOLD-FALLBACK-001).
 
 The position stage solves its rows together. A sword pinned between the opponent's blade and torso (typically at the opponent's guard end; since rules 35 the crossguard and handle collide too, the hands never) has two rows pushing it in opposite directions; corrected one after the other each undoes the other, and only the opponent's weapon rotation — the one motion that separates them — makes progress. Solved as one small complementarity problem (at most four rows — the blades, each sword on the other's torso, and the two bodies — fixed-order active-set enumeration) the correction goes straight to that rotation, bounded per pass so nothing teleports. The bodies are a row because a Long Guard blade that starts past the opponent's centre pushes that torso back toward its wielder: cleared on its own, the overlap would drive the bodies into each other. A separated body pair rests 1 nm outside touching, the same rule as held swords resting at the slop below their re-hold line: detection at exactly touching must never be decided by rounding.
 
 ### Totality
 
-The simulation is a closed state-transition system, so every legal state/command pair has a defined successor and anything outside that set is a defect rather than a state to improvise from. `StateInvariants.check(state, rules)` runs at step 16 and returns the id of the first violated invariant in a fixed order: finiteness of every authoritative scalar, `|angle| ≤ guard_limit`, health within `[0, max_health]`, stability within `[floor, 1]`, charge and commitment within `[0, 1]`, earned wind-back within the span that buys full charge, non-negative counters, agreement between death and the `DEAD` weapon phase (one phase enum makes `DEAD and CHARGING` unrepresentable), and a contact pair that has not outlived its bind escape bound.
+The simulation is a closed state-transition system, so every legal state/command pair has a defined successor and anything outside that set is a defect rather than a state to improvise from. `StateInvariants.check(state, rules)` runs at step 18 and returns the id of the first violated invariant in a fixed order: finiteness of every authoritative scalar, `|angle| ≤ guard_limit`, health within `[0, max_health]`, stability within `[floor, 1]`, charge and commitment within `[0, 1]`, earned wind-back within the span that buys full charge, non-negative counters, agreement between death and the `DEAD` weapon phase (one phase enum makes `DEAD and CHARGING` unrepresentable), and a contact pair that has not outlived its bind escape bound.
 
 Handling splits by source:
 

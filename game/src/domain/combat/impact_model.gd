@@ -33,11 +33,9 @@ static func resolve(attacker: FighterState, target: FighterState, point_x: float
 	return resolve_at(attacker, point_x, point_y, target.x, target.y, target.vx, target.vy, rules.spec_of(target).fighter.mass, rules)
 
 
-## The same impact against any hurt shape of `target`: its centre (the normal
-## points into it), the velocity of its surface, and the effective mass it
-## answers with — the torso's body, or the held sword at the struck grip point
-## (GRIP-NONBLOCKING-001), so a grip moving with its sword is struck at its own
-## speed, never as a still point of the torso.
+## The same impact against the target's hurt circle: its centre (the normal
+## points into it), the velocity of that centre, and the body mass it answers
+## with (TORSO-CIRCLE-001).
 static func resolve_at(attacker: FighterState, point_x: float, point_y: float, centre_x: float, centre_y: float, target_vx: float, target_vy: float, target_mass: float, rules: DuelRules) -> ImpactResult:
 	var wielding := rules.spec_of(attacker)
 	var weapon := wielding.weapon

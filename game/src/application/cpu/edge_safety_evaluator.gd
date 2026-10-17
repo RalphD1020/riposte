@@ -36,8 +36,8 @@ static func evaluate_walk(
 ) -> EdgeSafetyResult:
 	var def := rules.spec_of(fighter).fighter
 	var dt := SimulationTimebase.TICK_SECONDS
-	var fx := SimMath.cosine(fighter.facing)
-	var fy := SimMath.sine(fighter.facing)
+	var fx := SimMath.heading_cosine(fighter.facing)
+	var fy := SimMath.heading_sine(fighter.facing)
 	var world := DuelGeometry.to_world(intent_x, intent_y, fx, fy)
 	var ix := world[0]
 	var iy := world[1]

@@ -63,6 +63,9 @@ static func resolve(
 		_apply_strike(state, strike, rules, tick, events, scratches)
 
 
+## Closing-speed band for the clang (`light` / `solid` / `strong`). Not the
+## tactical reading: a cut that keeps its progress is a glance
+## (`ContactReading`) even when this band is `solid`.
 static func classify(closing_speed: float, rules: DuelRules) -> StringName:
 	if closing_speed >= rules.combat.blade_strong_speed:
 		return CLASS_STRONG
@@ -259,6 +262,18 @@ static func _resolve_blades(
 	if impulse > 0.0:
 		a.weapon.attack_contacted = true
 		b.weapon.attack_contacted = true
+		## The first impact is the steel episode. `deltas` is each sword's own
+		## contact-caused change in angular velocity; the shared normal impulse
+		## is not. A later hold of this episode is the rigid solve, not another
+		## dip (IMPACT-AUTHORITY-001).
+		var floor_value := rules.combat.impact_authority_floor
+		for slot in 2:
+			var fighter := state.fighter(slot)
+			var full_swing := (spec_a if slot == 0 else spec_b).weapon.swing_speed_full
+			var next := ImpactAuthority.after_episode(fighter.impact_authority, deltas[slot], full_swing, floor_value)
+			if next < fighter.impact_authority and slot < scratches.size():
+				scratches[slot].authority_dipped = true
+			fighter.impact_authority = next
 	var energy := maxf(energy_before - SwordContactSolver.kinetic_energy(a, b, inertia_a, inertia_b, inverse_mass_a, inverse_mass_b), 0.0)
 	var nx := manifold.normal_x
 	var ny := manifold.normal_y
@@ -310,6 +325,8 @@ static func _resolve_blades(
 		DuelEventKeys.IMPULSE_Y: outcome.impulse_y,
 		DuelEventKeys.CLOSING_AFTER: outcome.closing_after,
 		DuelEventKeys.FRICTION_SATURATION: outcome.friction_saturation,
+		DuelEventKeys.PROGRESS_BEFORE: outcome.attack_progress_before,
+		DuelEventKeys.PROGRESS_AFTER: outcome.attack_progress_after,
 	}))
 	## Two readings of the one solve (CONTACT-OUTCOME-001), never two physics
 	## paths. A parry is physical interception (PARRY-001): protective steel
@@ -388,85 +405,6 @@ static func _read_outcome(
 	outcome.delta_vy[1] = b.vy - root_vy[1]
 	outcome.delta_weapon_speed[0] = deltas[0]
 	outcome.delta_weapon_speed[1] = deltas[1]
-
-
-## The GRIP strike `attacker`'s blade makes entering the opponent's grip
-## region (GRIP-NONBLOCKING-001) at the point `along` down the opponent's
-## sword from the pommel and `across` it (+ toward perp(û)) — a hand or the
-## handle — or null without real closing. The ordinary damage
-## model at the blade point, against the struck point's own motion — riding
-## its sword (root, heading, θ̇, the attack track) — and the effective mass it
-## answers with, the held sword there; at the target's grip region share, and
-## never an instant kill by classification: only the ordinary health path.
-static func _grip_strike(state: MatchState, rules: DuelRules, attacker: int, along: float, across: float, toi: float) -> StrikeResult:
-	var striker := state.fighter(attacker)
-	var holder := state.opponent_of(attacker)
-	var held_spec := rules.spec_of(holder)
-	var pose := WeaponKinematics.pose_of(holder, held_spec, BladePose.new())
-	var gx := pose.point_x(along) - pose.uy * across
-	var gy := pose.point_y(along) + pose.ux * across
-	## Where the blade is on the grip at this instant: its nearest point to the
-	## struck point.
-	var striking := rules.spec_of(striker).weapon
-	var blade := WeaponKinematics.pose_of(striker, rules.spec_of(striker), BladePose.new())
-	var hx := blade.point_x(striking.blade_base_radius)
-	var hy := blade.point_y(striking.blade_base_radius)
-	var tx := blade.point_x(striking.tip_radius)
-	var ty := blade.point_y(striking.tip_radius)
-	var on_blade := SimMath.closest_param_on_segment(hx, hy, tx, ty, gx, gy)
-	var px := SimMath.mix(hx, tx, on_blade)
-	var py := SimMath.mix(hy, ty, on_blade)
-	WeaponKinematics.velocity_into(holder, pose, gx, gy)
-	var nx := gx - px
-	var ny := gy - py
-	var apart := SimMath.length(nx, ny)
-	nx = nx / apart if apart > SimMath.EPSILON else 1.0
-	ny = ny / apart if apart > SimMath.EPSILON else 0.0
-	var held := PackedFloat64Array([0.0, 0.0])
-	ContactMechanics.held_sword(holder, pose, gx, gy, held_spec, held)
-	var lever := WeaponKinematics.lever(holder, pose, gx, gy, nx, ny)
-	var inverse := held[1] + lever * lever / held[0]
-	var impact := ImpactModel.resolve_at(striker, px, py, gx, gy, pose.vx, pose.vy, 1.0 / inverse, rules)
-	if impact.normal_speed <= 0.0:
-		return null
-	var strike := DamageModel.consequence(impact, striker, holder, rules)
-	strike.region = StrikeResult.Region.GRIP
-	strike.lethal = false
-	strike.damage = rules.combat.damage_for(strike.quality) * held_spec.fighter.grip_damage_factor
-	strike.toi = toi
-	return strike
-
-
-## Wound the opponent's grip region where `attacker`'s blade entered it
-## (`along`, `across` on the opponent's sword; `source` the part, a
-## `DuelEventKeys.SOURCE_*`), read from the state as it is at that instant
-## `toi` — the caller seeks there and back; the wound moves nothing
-## (GRIP-NONBLOCKING-001).
-static func wound_grip(state: MatchState, rules: DuelRules, attacker: int, along: float, across: float, source: String, toi: float, tick: int, events: Array[DuelEvent]) -> void:
-	var wound := _grip_strike(state, rules, attacker, along, across, toi)
-	if wound != null:
-		_apply_grip_strike(state, wound, source, rules, tick, events)
-
-
-## Apply one GRIP strike: the wound only. The grip is hurt geometry, never a
-## constraint — no impulse; whatever steel or body lies behind it is met, and
-## solved, by the sweep that carries on (GRIP-NONBLOCKING-001).
-static func _apply_grip_strike(state: MatchState, strike: StrikeResult, source: String, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
-	var attacker := state.fighter(strike.attacker)
-	var target := state.fighter(strike.target)
-	target.health = maxf(0.0, target.health - strike.damage)
-	attacker.weapon.grip_struck = true
-	attacker.weapon.attack_contacted = true
-	attacker.weapon.deflection_pending = false
-	var payload := strike.to_payload()
-	payload[DuelEventKeys.PUSH] = 0.0
-	payload[DuelEventKeys.HEALTH] = target.health
-	payload[DuelEventKeys.REGION] = DuelEventKeys.REGION_GRIP
-	payload[DuelEventKeys.SOURCE_REGION] = source
-	events.append(DuelEvent.create(DuelEventTypes.BODY_HIT, tick, attacker.slot, target.slot, payload))
-	if not target.is_alive():
-		WeaponSystem.kill(target, strike.toi, SimMath.arctan2(strike.impact.normal_y, strike.impact.normal_x), rules.combat.fallen_settle_ticks_cut)
-		events.append(DuelEvent.create(DuelEventTypes.FIGHTER_KILLED, tick, attacker.slot, target.slot, {DuelEventKeys.X: target.x, DuelEventKeys.Y: target.y}))
 
 
 ## A held contact blocked a driven swing (RIGID-CONTACT-001): a cut that stops
@@ -570,6 +508,8 @@ static func _apply_strike(state: MatchState, strike: StrikeResult, rules: DuelRu
 	if weapon_moi > SimMath.EPSILON:
 		var turn := -bilateral_j * impact.lever_cross / weapon_moi
 		attacker.weapon.speed += turn
+		## A torso entry is damage and a blade reaction. It is not an impact-
+		## authority episode (IMPACT-AUTHORITY-001 is steel only).
 		if CombatPhase.is_swinging(attacker.weapon.phase):
 			_interrupt_if_arrested(state, strike.attacker, rules, turn, scratches)
 	## Advance weapon-body lifecycle: nonlethal → CONSTRAINING, lethal → PENETRATING.

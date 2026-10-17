@@ -138,6 +138,40 @@ var poke_lethal_quality: float = 0.0
 var condition_force_floor: float = 0.0
 var condition_speed_floor: float = 0.0
 var condition_tracking_floor: float = 0.0
+## Stamina (STAMINA-004): what fatigue leaves of a fighter's voluntary force at
+## zero stamina (force only; speed and tracking stay damage-only), so the
+## product with `condition_force_floor` stays at or above 0.5; the stamina a
+## dash start costs, once; each motor's cost per reference energy (one full
+## acceleration to top speed, one full spin-up of the heading, one full-charge
+## swing of the blade) and the share of braking work that counts; and the
+## rate (per second) recovered while a tick's exertion stays at or under the
+## recovery ceiling (stamina per second).
+var stamina_force_floor: float = 0.0
+var stamina_dash_cost: float = 0.0
+var stamina_move_cost: float = 0.0
+var stamina_turn_cost: float = 0.0
+var stamina_swing_cost: float = 0.0
+var stamina_brake_share: float = 0.0
+var stamina_recovery_rate: float = 0.0
+var stamina_recovery_effort_ceiling: float = 0.0
+## Guard return (GUARD-RETURN-001). Natural frequency (rad/s) of the critically
+## damped pose tracker that carries an idle blade to ±guard_angle. The implied
+## acceleration is capped at the hold torque's α. The return is multiplied by
+## `guard_steel_return_scale` while steel is persisted.
+var guard_return_natural_frequency: float = 0.0
+var guard_steel_return_scale: float = 0.0
+## Impact authority (IMPACT-AUTHORITY-001). Episodes compound by
+## `|Δθ̇| / (|Δθ̇| + ω_full)` and never fall below this share of the return.
+var impact_authority_floor: float = 0.0
+## Soft guard limit (GUARD-LIMIT-SOFT-001). Width (rad) of the restoring zone
+## inside the hard stop. `guard_limit_stiffness` is the share of this tick's
+## wind-up acceleration reached at full penetration, so a sustained wind-up
+## still arrives at the stop; `guard_limit_damping` (1/s) resists outward
+## speed only. Their sum with one tick of damping stays below 1 so the
+## discrete wind-up rests on the stop instead of being pushed back off it.
+var guard_limit_zone: float = 0.0
+var guard_limit_stiffness: float = 0.0
+var guard_limit_damping: float = 0.0
 ## Directional commitment (DIRECTIONAL-COMMIT-001, RESPONSIVE-COMMITMENT-001):
 ## physical redirect debt — momentum plus the actuator effort still being
 ## committed over `commit_lookahead_seconds`, against the healthy braking —
@@ -208,6 +242,28 @@ func is_valid() -> bool:
 		and condition_speed_floor <= 1.0
 		and condition_tracking_floor >= 0.5
 		and condition_tracking_floor <= 1.0
+		and stamina_force_floor > 0.0
+		and stamina_force_floor <= 1.0
+		and condition_force_floor * stamina_force_floor >= 0.5
+		and stamina_dash_cost >= 0.0
+		and stamina_dash_cost <= 1.0
+		and stamina_move_cost >= 0.0
+		and stamina_turn_cost >= 0.0
+		and stamina_swing_cost >= 0.0
+		and stamina_brake_share >= 0.0
+		and stamina_brake_share <= 1.0
+		and stamina_recovery_rate > 0.0
+		and stamina_recovery_effort_ceiling >= 0.0
+		and guard_return_natural_frequency > 0.0
+		and guard_steel_return_scale >= 0.0
+		and guard_steel_return_scale <= 1.0
+		and impact_authority_floor > 0.0
+		and impact_authority_floor <= 1.0
+		and guard_limit_zone > 0.0
+		and guard_limit_stiffness > 0.0
+		and guard_limit_stiffness < 1.0
+		and guard_limit_damping >= 0.0
+		and guard_limit_stiffness + guard_limit_damping * SimulationTimebase.TICK_SECONDS < 1.0
 		and commit_weapon_reference_seconds > 0.0
 		and commit_root_reference_seconds > 0.0
 		and commit_lookahead_seconds >= 0.0
@@ -271,6 +327,14 @@ func _all_finite() -> bool:
 		and is_finite(poke_lethal_quality)
 		and is_finite(condition_force_floor) and is_finite(condition_speed_floor)
 		and is_finite(condition_tracking_floor)
+		and is_finite(stamina_force_floor) and is_finite(stamina_dash_cost)
+		and is_finite(stamina_move_cost) and is_finite(stamina_turn_cost)
+		and is_finite(stamina_swing_cost) and is_finite(stamina_brake_share)
+		and is_finite(stamina_recovery_rate) and is_finite(stamina_recovery_effort_ceiling)
+		and is_finite(guard_return_natural_frequency) and is_finite(guard_steel_return_scale)
+		and is_finite(impact_authority_floor)
+		and is_finite(guard_limit_zone) and is_finite(guard_limit_stiffness)
+		and is_finite(guard_limit_damping)
 		and is_finite(commit_weapon_reference_seconds) and is_finite(commit_root_reference_seconds)
 		and is_finite(commit_lookahead_seconds) and is_finite(commit_root_facing_weight)
 		and is_finite(commit_retreat_relief)

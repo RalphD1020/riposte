@@ -78,9 +78,17 @@ var guard_region: GuardRegion.Id = GuardRegion.Id.BASELINE
 var burst: MovementGestureState.BurstKind = MovementGestureState.BurstKind.NONE
 var health: float = 0.0
 var max_health: float = 1.0
+## Settled stamina in [0, 1] (STAMINA-004), and the share a dash start costs —
+## so the HUD can mark where a dash stops being affordable.
+var stamina: float = 1.0
+var dash_cost: float = 0.0
+## Impact authority in [floor, 1] (IMPACT-AUTHORITY-001). Presentation may
+## read it. It is not a combat decision.
+var impact_authority: float = 1.0
 ## The fighter's condition this tick (CONDITION-001), copied from the domain's
 ## own `ConditionModel` — for the debug overlay and telemetry. The player HUD
-## shows health only; presentation never rederives these from health.
+## shows health, the stamina bar, and the condition band; presentation never
+## rederives these from health.
 var force_scale: float = 1.0
 var speed_scale: float = 1.0
 var tracking_scale: float = 1.0

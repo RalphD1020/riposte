@@ -73,20 +73,124 @@ func test_a_recording_is_refused_across_a_state_layout_change() -> void:
 	## ACT + ASSERT
 	assert_true(legacy != null, "fixture: the older recording still parses")
 	assert_false(legacy.matches_rules(rules), "but is refused against the current layout")
+	assert_eq(ReplayVerifier.verify(legacy, rules), ReplayVerifier.RULES_MISMATCH, "and verification says so, rather than a hash mismatch")
+
+
+## Content schema 4 drops `grip_damage_factor` from the fighter fingerprint.
+## A schema-3 recording is refused. Nothing in the product writes a replay to
+## disk: `MatchSession` holds the record in memory, and `user://` persists
+## settings only, so there is no library to migrate.
+func test_a_recording_is_refused_across_a_content_schema_change() -> void:
+	var rules := DuelFixture.rules()
+	var record := ReplayRecord.begin(rules, 7)
+	assert_eq(record.content_schema_version, CombatantPhysicsSpec.CONTENT_SCHEMA_VERSION, "fixture: a new recording names the current schema")
+	var older := record.to_dictionary()
+	older[ReplayRecord.KEY_CONTENT_SCHEMA] = CombatantPhysicsSpec.CONTENT_SCHEMA_VERSION - 1
+	var legacy := ReplayRecord.from_dictionary(older)
+	assert_true(legacy != null, "fixture: the older recording still parses")
+	assert_false(legacy.matches_rules(rules), "a schema-3 recording is not these rules")
+	assert_eq(ReplayVerifier.verify(legacy, rules), ReplayVerifier.RULES_MISMATCH, "and it is refused as a rules mismatch")
+
+
+## On the rules-55 trajectory, a blade that enters a former hand or handle
+## disc while staying outside the torso changes no health. The first health
+## change, when the duel has one, is a torso entry. Rules 54 was never
+## committed and no per-tick dump of it was saved, so this is the causal
+## account the tree can still check: the deleted grip query is not an
+## authoritative event on the new run. It is not a field diff against the
+## old binary.
+func test_a_hand_crossing_is_not_an_authoritative_change() -> void:
+	for seed_value: int in [17, 3]:
+		var runner := SimRunner.create(DuelFixture.rules(), seed_value)
+		var pilots: Array[Pilot] = [Pilot.wander(seed_value, 11), Pilot.wander(seed_value, 23)]
+		var health := [runner.state.fighter(0).health, runner.state.fighter(1).health]
+		var hand_tick := -1
+		var wound_tick := -1
+		while runner.state.tick < TICKS and wound_tick < 0:
+			runner.push(pilots[0].command(runner.state, 0), pilots[1].command(runner.state, 1))
+			var crossed := _hand_only_crossing(runner.state)
+			if crossed and hand_tick < 0:
+				hand_tick = runner.state.tick
+			if runner.state.fighter(0).health != health[0] or runner.state.fighter(1).health != health[1]:
+				wound_tick = runner.state.tick
+			elif crossed:
+				assert_eq(runner.state.fighter(0).health, health[0], "seed %d tick %d: a hand crossing does not wound slot 0" % [seed_value, runner.state.tick])
+				assert_eq(runner.state.fighter(1).health, health[1], "seed %d tick %d: a hand crossing does not wound slot 1" % [seed_value, runner.state.tick])
+		assert_true(wound_tick > 0, "fixture: seed %d does take a wound" % seed_value)
+		## `step` stamps events with the tick it is resolving, then increments.
+		var resolved := wound_tick - 1
+		var hit: DuelEvent = null
+		for event: DuelEvent in runner.events:
+			if event.type == DuelEventTypes.BODY_HIT and event.tick == resolved:
+				hit = event
+				break
+		assert_true(hit != null, "seed %d: the first health change is a body hit (tick %d)" % [seed_value, resolved])
+		if hit != null:
+			assert_eq(hit.text(DuelEventKeys.REGION), DuelEventKeys.REGION_TORSO, "seed %d: and that hit is the torso" % seed_value)
+		assert_true(hand_tick < 0 or hand_tick <= wound_tick, "seed %d: a hand-only crossing was either absent or not after the wound (hand %d, wound %d)" % [seed_value, hand_tick, wound_tick])
+
+
+## True when either blade has entered the other's hand or handle disc and is
+## still outside that fighter's torso circle.
+func _hand_only_crossing(state: MatchState) -> bool:
+	var rules := DuelFixture.rules()
+	for attacker in 2:
+		var sword := state.fighter(attacker)
+		var body := state.fighter(1 - attacker)
+		var spec_a := rules.combatant(attacker)
+		var spec_b := rules.combatant(1 - attacker)
+		var pose := WeaponKinematics.pose_at(sword.x, sword.y, sword.facing, sword.weapon.angle, spec_a, BladePose.new())
+		var theirs := WeaponKinematics.pose_at(body.x, body.y, body.facing, body.weapon.angle, spec_b, BladePose.new())
+		var torso := _replay_disc_gap(pose, spec_a.weapon, Vector2(body.x, body.y), spec_b.fighter.hurt_radius)
+		if torso <= 0.0:
+			continue
+		var weapon := spec_b.weapon
+		var along := PackedFloat64Array([weapon.offhand_grip_radius, weapon.dominant_grip_radius, (weapon.offhand_grip_radius + weapon.dominant_grip_radius) * 0.5])
+		var radii := PackedFloat64Array([spec_b.fighter.hand_radius, spec_b.fighter.hand_radius, weapon.handle_radius])
+		for i in 3:
+			if _replay_disc_gap(pose, spec_a.weapon, Vector2(theirs.point_x(along[i]), theirs.point_y(along[i])), radii[i]) < 0.0:
+				return true
+	return false
+
+
+func _replay_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2, disc: float) -> float:
+	var hx := pose.point_x(weapon.blade_base_radius)
+	var hy := pose.point_y(weapon.blade_base_radius)
+	var tx := pose.point_x(weapon.tip_radius)
+	var ty := pose.point_y(weapon.tip_radius)
+	var t := SimMath.closest_param_on_segment(hx, hy, tx, ty, point.x, point.y)
+	return Vector2(point.x - lerpf(hx, tx, t), point.y - lerpf(hy, ty, t)).length() - disc - weapon.blade_radius
 
 
 ## Pinned final hashes. Presentation work of any size must leave these alone;
 ## only a deliberate rules change (with its `DuelRules.version` bump) may
 ## re-record them, and only beside a reviewed metrics re-pin (below).
-## Last re-recorded for rules 52 (each crossguard protects its blade side as a
-## guard-root steel pair, the root within the bar's half-depth) on state
-## layout 6. See the metrics re-pin below.
+## Last re-recorded for rules 57, layout 9. The field is still
+## `impact_authority`. Forcing the dip off reproduces the rules-55 metric
+## table on every seed. With the dip, the first steel episode and the first
+## later pose are state ticks 259/260, 121/131, 134/135 and 688/690 (seeds
+## 3, 5, 9, 17). The pose move is the next guard return, not the solver:
+## seed 3's slot 0 is in recovery and its speed is 1.1847 against 1.1938.
+## Authority then returns above 0.9 within a few tenths of a second of its
+## low (ticks 287, 353, 1656, 996). It is not left on the floor for the
+## round. The first health difference is a changed amount on a hit both
+## duels still land (269, 724, 149, 700). The first event one duel has and
+## the other does not is 291, 382, 763 and 783. Seeds 3 and 5 keep this pin
+## after recovery's exponential moved from platform `exp` to `SimMath.exp_minus`.
+## Seeds 9 and 17 change hash only; their metric rows do not, so no counted
+## event moved. No solver, motor, or radius
+## was retuned. The rules-55 pin this replaces had dropped `grip_struck`:
+## body hits fell on every seed (36→27, 17→14, 17→10, 22→15) because grip
+## wounds were gone. Seed 17 kept its attacks (18), kills (3) and rounds
+## (3). Seeds 3, 5 and 9 changed round flow because that missing chip damage
+## changed who was alive. Blade contacts rose where a cut that used to spend
+## itself on a hand met steel.
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
-		3: "3a26d6a13e829d2e1d833813cef226e9c0b58619df41174ae106848e49fe58a8",
-		5: "343393663daeeacbfbacceaff5b53388baec8da3d512f99de0d8f27630aa6c96",
-		9: "cb73bb626ae6b49f78eba0eff108ac21a3f869445c56ec32e092e12930ad4195",
-		17: "256a50e231a2eab98a69ebdd48b3bcf5ffb02a679a983609b7db7d7a2a6eedba",
+		3: "63692944d8ae2e9b721914589ead052d195dfe4f706efe876301015f0ebc380d",
+		5: "a3ba2b77e5ef2b767ff36329b86c451524a0f08ab4926a54181178b6c2f2c0d9",
+		9: "21ae238bebc4f86330825e034fdb51a4a31405222aa147e4f2cbbd679938aa85",
+		17: "6128ca836c00004577396cd4ec53f54b055a62af20c2cb5ae1117bc47c4f86ad",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -564,17 +668,142 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## 5 → 7, criticals 5 → 7, kills 8 → 11, rounds 8 → 10, ring-outs 0 → 0 —
 ## the duels re-roll from their divergence and resolve sooner (3: four kills
 ## in three rounds; 9 and 17: a third round each). No golden duel faulted.
+##
+## Rules 53 (stamina, STAMINA-004; state layout 7 hashes it), attributed
+## against the same duels with stamina neutral (`DuelFixture.stamina_neutral`:
+## every cost zero, so s stays exactly 1 and the motors are rules 52's): the
+## neutral run reproduces every rules-52 metric below exactly, on all four
+## seeds, and the standard run leaves it on tick 74 in every seed — the
+## second live tick, the first whose starting stamina is under 1 (0.9995
+## after the first tick's footwork), so the first fatigue term below the
+## identity; no dash, no gate. Golden totals v52 → v53: attacks 107 → 103,
+## blade collisions 47 → 77, parries 9 → 11, deflections 1 → 2, body hits
+## 97 → 99, pokes 7 → 11, criticals 7 → 6, kills 11 → 10, rounds 10 → 10,
+## ring-outs 0 → 0 — the duels re-roll from the divergence; slightly weaker
+## drives meet steel more often for the same round flow. No golden duel
+## faulted.
+##
+## Rules 54 (guard return and soft limit, GUARD-RETURN-001,
+## GUARD-LIMIT-SOFT-001; layout unchanged). Traced on the live state: every
+## duel matches rules 53 until the first tick a coasting blade is off its
+## committed guard, or a blade is already inside the soft zone —
+## - 3: tick 159, a coasting blade off its guard (the zone is not entered
+##   until 339);
+## - 5: tick 127, a blade already inside the soft zone (the return follows
+##   at 130);
+## - 9: tick 129 and 17: tick 124, a coasting blade off its guard.
+## Before those ticks the pose error is zero and the zone force is zero, so
+## the motor is the old hold. Golden totals v53 → v54: attacks 103 → 116,
+## blade collisions 77 → 89, parries 11 → 14, deflections 2 → 2, body hits
+## 99 → 92, pokes 11 → 4, criticals 6 → 3, kills 10 → 8, rounds 10 → 7,
+## ring-outs 0 → 0 — the duels re-roll from that tick (seed 5 finishes no
+## round in the window). Hard-stop fallbacks in the window: 0, 30, 11, 3.
+## A wind-up already resting on the stop adds none. No golden duel faulted.
+##
+## Mirrored headings (still rules 54, WEAPON-ORBIT-004): a negative heading's
+## sine and cosine are the negation of the heading half a turn away, facing
+## steps compose through that pair, and the world blade is the heading's
+## rotation of `(cos θ, sin θ)`. Traced against the guard-return pin this
+## paragraph replaces: position, velocity, weapon angle, weapon speed and stamina match
+## through the opening. The hash already differs at tick 1 because the south
+## heading's opening frame stores cosine −0 where the fold stored +0
+## (`duel_forward` is hashed). The first body-velocity ulp is tick 78, 77, 76
+## and 78. θ then stays on the odd series, so a left guard is the reflection
+## of the right; that correction moves the hashes once more. Every combat
+## metric below is unchanged either way; only the hashes moved.
+##
+## Stamina reference width (still rules 54), traced, not inferred from counts.
+## The same current stop write, with the three references quantized back
+## through Vector3, reproduces the previous pin on every seed
+## (3 `74fd5ffa…`, 5 `503fcdd1…`, 9 `edd2ec7b…`, 17 `2763a48f…`).
+## The float64 run is this pin. All four seeds first differ at tick 74, slot 0
+## stamina, by 1.582e-14 (wide minus narrow: 0.9995426819755 vs
+## 0.99954268195968 on seed 3; the other seeds differ by the same delta).
+## Position, velocity, heading, health, weapon angle, weapon speed and phase
+## still match on that tick. The reference deltas are move +2.44140625e-5,
+## turn +4.27246094e-7, swing −7.17078e-7. The hash move is that stamina
+## difference. The stop rewrite did not move these duels: the same stop
+## functions with the references quantized reproduce those previous pins.
+##
+## Explicit drives (still rules 54). `base_drive` is torque times the damage
+## term and `fatigue_scaled_drive` is `base_drive` times fatigue, instead of
+## dividing the product back by fatigue. Against that divided form, seeds 5
+## and 17 never differ. Seed 3 first differs at tick 1449 and seed 9 at tick
+## 1356. At both ticks the printed angle, speed, stamina and motor torque
+## match the divided form, and seed 9's combat counts do not move, so the
+## hash is some other hashed field below that printing. Seed 9's final hash
+## is the one re-pinned here. Seeds 3, 5 and 17 keep the reference-width pin.
+## No golden duel faulted.
+##
+## Rules 57 (impact authority recovers, IMPACT-AUTHORITY-001; layout 9).
+## Forcing the dip off reproduces the rules-55 per-seed table: seed 3 is
+## 30 attacks, 29 blade collisions, 2 parries, 1 deflection, 27 body hits,
+## 4 pokes, 1 kill and 1 round; seed 5 is 28, 25, 3, 0, 14, 3, 2 kills and
+## 2 rounds; seed 9 is 31, 32, 5, 2, 10, 0, 1 kill and 1 round; seed 17 is
+## 18, 13, 3, 0, 15, 1, 3 kills and 3 rounds. The numbers in the pin are
+## the recovering duels. They are not a verdict that the fights are better.
+## The first event one duel has and the other lacks is named on the hash
+## pin. Corpus totals, rules 55 → 57, on these four seeds: attacks 107 →
+## 120, blade collisions 99 → 101, parries 13 → 17, deflections 3 → 0,
+## body hits 66 → 77, pokes 8 → 11, criticals 4 → 6, kills 7 → 6, rounds
+## 7 → 6. Rules 56, which left authority on the floor, had moved the same
+## window to 73 blade collisions and 7 parries. Recovery puts that steel
+## play back. No golden duel faulted.
+##
+## Guard-stop arrival (still rules 57, GUARD-LIMIT-SOFT-001). `turned >= limit`
+## kept outward speed when the same step's mirror, or the step itself, landed
+## up to 1e-9 rad short. `STOP_ARRIVAL_RAD = 0` reproduces the previous final
+## hashes, including seed 5 `879e861a…` and seed 9 `e2e7cd97…`. With the band,
+## the wander tick-hash series first differs at step 209 on seed 5 and step
+## 640 on seed 9 (0-based steps of the 1800-tick wander, intro included;
+## `state.tick` after the step is one higher, and event ticks are the step).
+## Seeds 3 and 17 do not move.
+##
+## Seed 5, step 209. Every hashed field was compared, bit for bit. The only
+## difference is slot 0 speed: 0 with the band, −0.089244 rad/s without it.
+## Angle −2.356194489299 on both, 8.93e-10 rad inside the negative limit,
+## phase RECOVERY, torque 9.679. The previous step is `attack_released`.
+## Writer: `stopped_speed` inside `assign_stop`, during the weapon step.
+## Step 210: the motor records torque 8.439 against 8.607, because torque is
+## `I·(ω' − ω) / dt` and ω was the stopped speed (`WeaponSystem._drive_motor`).
+## End speeds differ by 4.7e-13. The swords are in a hold, so the warm-start
+## impulses differ by about 4e-12 and both bodies' positions by less than
+## 1e-15 m. Stamina bits match. Step 211's largest gap is still that hold
+## impulse, a few trillionths. Nothing reconverges to the same bits. The
+## first combat-event split is `blade_collision` at event tick 495 without the
+## band and 496 with it: that contact, accumulated, not a second rule. Peak
+## |ω| on the band run is 20.87 rad/s. `ccd_cap_hits` is 0.
+##
+## Seed 9, step 640. The only hashed difference is slot 0 speed: 0 with the
+## band, +0.014285 rad/s without it. Stored angle 2.355897594245 on both,
+## 0.30 mrad inside the limit, phase NEUTRAL, torque −7.869. The step before
+## is outward at +0.496 rad/s and 0.238 mrad inside the limit, one tick of
+## the speed the strict run keeps. A later writer in the same tick sets both
+## angles and leaves the speed the stop wrote. Step 641: torque −7.231 against
+## −7.254, and stamina 0.972532752 against 0.972533407. Stamina is
+## `_measure_blade_work`: torque times the mid-step speed, settled by
+## `StaminaModel`. That gap scales the next force, so step 642's acceleration
+## differs by about 5e-6 m/s² and position by about 1e-9 m. The first
+## combat-event split is `attack_started` at event tick 944 with the band and
+## 941 without it; the strict run then has a `blade_collision` at 956. Peak
+## |ω| on the band run is 25.81 rad/s. `ccd_cap_hits` is 0.
+##
+## Both first fields are the outward speed the band removes. The pins below
+## are those duels continued, not a claim that the fighting improved. 1e-9
+## stays; it was not narrowed to recover the old hashes.
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
-		3: {"attack_released": 23, "blade_collision": 3, "parry": 0, "deflection": 0, "body_hit": 33, "body_poke": 1, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 4, "ring_out": 0, "round_ended": 3},
-		5: {"attack_released": 40, "blade_collision": 28, "parry": 7, "deflection": 1, "body_hit": 25, "body_poke": 1, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		9: {"attack_released": 25, "blade_collision": 9, "parry": 1, "deflection": 0, "body_hit": 19, "body_poke": 3, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
-		17: {"attack_released": 19, "blade_collision": 7, "parry": 1, "deflection": 0, "body_hit": 20, "body_poke": 2, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
+		3: {"attack_released": 26, "blade_collision": 19, "parry": 4, "deflection": 0, "body_hit": 22, "body_poke": 4, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		5: {"attack_released": 29, "blade_collision": 23, "parry": 4, "deflection": 0, "body_hit": 14, "body_poke": 2, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		9: {"attack_released": 30, "blade_collision": 34, "parry": 3, "deflection": 1, "body_hit": 7, "body_poke": 1, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		17: {"attack_released": 24, "blade_collision": 22, "parry": 3, "deflection": 0, "body_hit": 30, "body_poke": 4, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
-		var metrics := CombatMetrics.of(_played(seed_value))
+		var runner := _played(seed_value)
+		var metrics := CombatMetrics.of(runner)
 		assert_true(int(metrics[String(DuelEventTypes.ATTACK_RELEASED)]) > 10, "precondition: seed %d fought" % seed_value)
 		assert_eq(metrics, golden.get(seed_value, {}), "seed %d combat metrics are unchanged" % seed_value)
+		assert_eq(runner.simulation.diagnostics.ccd_cap_hits, 0, "seed %d never asks the sweep for more substeps than the cap" % seed_value)
 
 
 func test_hash_sees_the_smallest_change() -> void:

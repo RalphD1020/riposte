@@ -17,6 +17,13 @@ var move_scores: PackedFloat64Array = PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.
 ## Chosen footwork and attack.
 var chosen_move: CpuController.Move = CpuController.Move.HOLD
 var chosen_attack: CpuController.Attack = CpuController.Attack.NONE
+## Whether this decision was under the dash-cost gate, and why an attack was
+## or was not scored. Diagnostic only: the simulation never reads it back.
+var below_dash: bool = false
+var owed_open: bool = false
+var owed_intercept: bool = false
+var capitalizing: bool = false
+var probe_suppressed: bool = false
 ## Tactical assessment summary (compact scalar snapshot).
 var measure_quality: float = 0.0
 var initiative: float = 0.0

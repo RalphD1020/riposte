@@ -30,6 +30,27 @@ func test_sine_and_cosine_hit_exact_landmarks() -> void:
 	assert_near(SimMath.cosine(PI), -1.0, TOLERANCE, "cos 180°")
 
 
+## A mirrored duel stores one heading as the other plus half a turn. Trig of
+## that stored pair negates exactly, so neither side can round a forward
+## component the other way.
+func test_a_half_turn_negates_sine_and_cosine_exactly() -> void:
+	for i in range(0, 17):
+		var angle := -0.05 - float(i) * 0.18
+		var partner := angle + PI
+		assert_true(angle < 0.0 and angle > -PI and partner > 0.0 and partner <= PI, "fixture: the pair sits in one turn at %s" % str(angle))
+		assert_eq(SimMath.half_turn(angle), partner, "adding half a turn is the other heading at %s" % str(angle))
+		assert_eq(SimMath.heading_sine(angle), -SimMath.heading_sine(partner), "heading sin negates across half a turn at %s" % str(angle))
+		assert_eq(SimMath.heading_cosine(angle), -SimMath.heading_cosine(partner), "heading cos negates across half a turn at %s" % str(angle))
+	for i in range(1, 8):
+		var local := float(i) * 0.2
+		assert_eq(SimMath.sine(local), -SimMath.sine(-local), "the weapon-angle series is odd at %s" % str(local))
+	var base := 1.2
+	var delta := -0.37
+	var opposite := SimMath.half_turn(base)
+	assert_eq(SimMath.compose_angle(opposite, delta), SimMath.half_turn(SimMath.compose_angle(base, delta)), "the same addition keeps a half turn exact")
+	assert_eq(SimMath.half_turn(DuelSide.NORTH_FACING), DuelSide.SOUTH_FACING, "the two spawn facings are exactly opposite")
+
+
 func test_trig_matches_engine_oracle_across_turns() -> void:
 	var worst := 0.0
 	for i in range(-720, 721):

@@ -73,6 +73,8 @@ func problem() -> String:
 		var push := combatants[slot].fighter.push_radius
 		if platform_radius <= spawn_offset + push or spawn_offset <= push:
 			return "the arena cannot hold the fighters apart"
+		if combat.guard_limit_zone >= combatants[slot].weapon.guard_limit:
+			return "combatant %d: the soft-limit zone is as wide as the guard" % slot
 	return ""
 
 

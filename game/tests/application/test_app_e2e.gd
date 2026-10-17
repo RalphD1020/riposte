@@ -169,14 +169,14 @@ func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
 	assert_eq(screen.session.state.tick, 0, "no tick runs while the intro plays")
 	assert_eq(StateHasher.hash_state(screen.session.state), opening_hash, "and nothing authoritative changed")
 	assert_eq(screen.hud.banner_text(), "WOLF", "the first fighter's card is up")
-	assert_eq(screen.hud.caption_text(), "Wold.", "and the announcer's reading, as written in content, is captioned")
+	assert_eq(screen.hud.caption_text(), "Wolf.", "and the announcer reads his name, as written in content")
 	assert_false(screen.presenter.fighter_proxy(0).visible, "gameplay proxies step aside for the showcase")
 	assert_false(screen.hud.is_gameplay_chrome_visible(), "no plates, bars, or pips over the introduction (PRES-CHROME-001)")
 	var cues: Array[String] = []
 	screen.round_start.cue_announced.connect(func(cue: StringName, number: int) -> void: cues.append("%s %d" % [cue, number]))
 	var frames := _run_until(screen, func() -> bool: return not screen.is_intro_playing())
 	assert_true(frames * FRAME <= SetIntroDirector.BEAT_ENDS[-1] + FRAME * 2.0, "it lasts about %.1f s" % SetIntroDirector.BEAT_ENDS[-1])
-	assert_true(captions.has("Wolf."), "the second fighter is captioned too")
+	assert_eq(captions.count("Wolf."), 1, "the second Wolf is read by the same name: a mirror never renames him (%s)" % str(captions))
 	assert_true(screen.presenter.fighter_proxy(0).visible, "the duel's own proxies are back")
 	assert_true(app.camera_rig.camera().current, "and so is the gameplay camera")
 	## Then the round's own beat (PRES-ROUND-START-001): MATCH 1 with input
@@ -504,6 +504,64 @@ func test_pause_sheet_pages_walk_back_with_escape_and_save_volume_on_close() -> 
 	await _shutdown(booted)
 
 
+## The match's music is already playing. Dragging Music, Effects, and the
+## announcer from the pause sheet changes those buses while the loop keeps
+## playing, and Combat and UI still send to SFX. Hearing the change is the human's.
+func test_pausing_changes_the_buses_of_the_music_that_is_playing() -> void:
+	var booted := await _boot_ready()
+	var screen := await _active_duel(booted)
+	var director := screen.presenter.audio()
+	assert_true(director.is_music_playing(), "fixture: the match is playing its music")
+	var playing_before := _playing_on(director, AudioBuses.MUSIC)
+	## The set sting shares the Music bus with the loop. A drag must not start a
+	## third voice, and the loop is the one that has to keep playing.
+	assert_eq(playing_before, 2 if director.is_sting_playing() else 1, "the playing Music voices are the loop and, while it lasts, the sting")
+	assert_eq(_players_on(director, AudioBuses.MUSIC), 2, "music and the sting are two voices")
+	assert_eq(_players_on(director, AudioBuses.VOICE), 1, "one announcer voice")
+	var combat := AudioServer.get_bus_index(AudioBuses.COMBAT)
+	var ui := AudioServer.get_bus_index(AudioBuses.UI)
+	assert_eq(AudioServer.get_bus_send(combat), AudioBuses.SFX, "fixture: combat sends to effects")
+	assert_eq(AudioServer.get_bus_send(ui), AudioBuses.SFX, "fixture: interface sends to effects")
+	screen.pause()
+	var overlay := screen.pause_overlay
+	assert_true(_press(overlay, "SETTINGS"), "Settings offered while paused")
+	await await_frames(1)
+	assert_true(_press(overlay, "Audio"), "Audio section listed")
+	await await_frames(1)
+	var panel := overlay.find_child("SettingsPanel", true, false) as SettingsPanel
+	var music := _find_slider(panel, AppCopy.SETTING_MUSIC)
+	var effects := _find_slider(panel, AppCopy.SETTING_SFX)
+	var announcer := _find_slider(panel, AppCopy.SETTING_VOICE)
+	assert_true(music != null and effects != null and announcer != null, "fixture: the three faders are on the sheet")
+	music.value = 0.15
+	effects.value = 0.4
+	announcer.value = 0.3
+	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.MUSIC)), linear_to_db(0.15), 0.01, "music bus follows the drag")
+	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.SFX)), linear_to_db(0.4), 0.01, "effects bus follows the drag")
+	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.VOICE)), linear_to_db(0.3), 0.01, "announcer bus follows the drag")
+	assert_true(director.is_music_playing(), "the music keeps playing through the drag")
+	assert_eq(_playing_on(director, AudioBuses.MUSIC), playing_before, "the drag does not start or stop a Music voice")
+	_push(_key(KEY_ESCAPE, true))
+	_push(_key(KEY_ESCAPE, true))
+	_push(_key(KEY_ESCAPE, true))
+	await await_frames(1)
+	assert_false(screen.is_paused(), "the match is running again")
+	screen.advance_frame(FRAME)
+	assert_true(director.is_music_playing(), "music is still that same playback")
+	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.MUSIC)), linear_to_db(0.15), 0.01, "resuming does not put the bus back")
+	var reloaded := PlayerSettings.new()
+	reloaded.load_from(SETTINGS_PATH)
+	assert_near(reloaded.music_volume, 0.15, 1e-6, "the music drag was saved")
+	assert_near(reloaded.sfx_volume, 0.4, 1e-6, "the effects drag was saved")
+	assert_near(reloaded.voice_volume, 0.3, 1e-6, "the announcer drag was saved")
+	booted.app.settings.master_volume = 1.0
+	booted.app.settings.music_volume = 0.7
+	booted.app.settings.sfx_volume = 1.0
+	booted.app.settings.voice_volume = 1.0
+	booted.app.settings.apply_audio()
+	await _shutdown(booted)
+
+
 func test_f3_toggles_combat_diagnostics_in_debug_builds() -> void:
 	assert_true(OS.is_debug_build(), "fixture: the harness runs a debug build")
 	var booted := await _boot_ready()
@@ -583,6 +641,28 @@ func _slide(index: int, at: Vector2) -> InputEventScreenDrag:
 	event.index = index
 	event.position = at
 	return event
+
+
+func _playing_on(root: Node, bus: StringName) -> int:
+	var count := 0
+	if root is AudioStreamPlayer and (root as AudioStreamPlayer).playing and (root as AudioStreamPlayer).bus == bus:
+		count += 1
+	elif root is AudioStreamPlayer3D and (root as AudioStreamPlayer3D).playing and (root as AudioStreamPlayer3D).bus == bus:
+		count += 1
+	for child in root.get_children():
+		count += _playing_on(child, bus)
+	return count
+
+
+func _players_on(root: Node, bus: StringName) -> int:
+	var count := 0
+	if root is AudioStreamPlayer and (root as AudioStreamPlayer).bus == bus:
+		count += 1
+	elif root is AudioStreamPlayer3D and (root as AudioStreamPlayer3D).bus == bus:
+		count += 1
+	for child in root.get_children():
+		count += _players_on(child, bus)
+	return count
 
 
 func _find_slider(root: Node, accessible_name: String) -> HSlider:

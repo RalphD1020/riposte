@@ -36,6 +36,8 @@ const FACING_NOT_FINITE := &"facing_not_finite"
 const WEAPON_NOT_FINITE := &"weapon_not_finite"
 const HEALTH_RANGE := &"health_range"
 const STABILITY_RANGE := &"stability_range"
+const STAMINA_RANGE := &"stamina_range"
+const IMPACT_AUTHORITY_RANGE := &"impact_authority_range"
 const ANGLE_OUT_OF_GUARD := &"angle_out_of_guard"
 const CHARGE_RANGE := &"charge_range"
 const WINDBACK_RANGE := &"windback_range"
@@ -144,6 +146,16 @@ static func check_fighter(fighter: FighterState, rules: DuelRules) -> StringName
 		or fighter.stability > 1.0 + BOUND_SLACK
 	):
 		return STABILITY_RANGE
+	## Stamina is a fraction (STAMINA-004); a NaN fails both comparisons, so it
+	## is checked for explicitly.
+	if not is_finite(fighter.stamina) or fighter.stamina < 0.0 or fighter.stamina > 1.0:
+		return STAMINA_RANGE
+	if not is_finite(fighter.impact_authority):
+		return IMPACT_AUTHORITY_RANGE
+	if fighter.impact_authority < rules.combat.impact_authority_floor - BOUND_SLACK:
+		return IMPACT_AUTHORITY_RANGE
+	if fighter.impact_authority > 1.0 + BOUND_SLACK:
+		return IMPACT_AUTHORITY_RANGE
 	if fighter.stagger_left < 0:
 		return COUNTER_NEGATIVE
 	## A fighter is dead exactly when the weapon is in DEAD. One phase enum

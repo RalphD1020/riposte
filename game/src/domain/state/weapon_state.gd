@@ -40,18 +40,14 @@ var swing_end: float = 0.0
 ## at release and never recomputed in flight.
 var swing_charge: float = 0.0
 ## Whether the current attack has met the opponent with a solved, positive
-## impulse — a body hit, a blade clash, a grip wound, or a held contact
+## impulse — a body hit, a blade clash, or a held contact
 ## pressing on them (WHIFF-001). Reset at release. It exists
 ## only so `ATTACK_WHIFFED` is emitted exactly once, and only for a miss;
 ## nothing in the simulation's physics reads it.
 var attack_contacted: bool = false
-## Whether the current swing has already wounded the opponent's grip region
-## (GRIP-NONBLOCKING-001): one GRIP damage episode per swing, however many
-## times or on however many of its parts the blade meets it. Reset at release.
-var grip_struck: bool = false
 ## Whether the current attack's first opponent contact was protective steel
 ## that took a positive impulse without arresting the cut while the cut was on
-## the line (DEFLECTION-001); cleared by any body or hand strike. It exists
+## the line (DEFLECTION-001); cleared by any body strike. It exists
 ## only so `DEFLECTION` is emitted once, when the attack ends having struck
 ## nothing; nothing in the simulation's physics or the CPU reads it.
 var deflection_pending: bool = false
@@ -89,7 +85,6 @@ func reset(resting_angle: float) -> void:
 	swing_end = resting_angle
 	swing_charge = 0.0
 	attack_contacted = false
-	grip_struck = false
 	deflection_pending = false
 	commitment = 0.0
 	motor_torque = 0.0

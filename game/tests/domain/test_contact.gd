@@ -63,9 +63,9 @@ func test_a_blade_contact_carries_its_own_geometry() -> void:
 
 ## The canonical parry guard (rad): the defender's blade resting across the
 ## tap's path at 120°, mid-way in the band (110°–130° on rules 50) where the
-## blade alone meets and arrests the tap. At the 135° limit the tap's point
-## now crosses the defender's quillon first — the crossguard is grip, never a
-## parry (GRIP-NONBLOCKING-001).
+## blade alone meets and arrests the tap. A steeper guard can meet the quillon
+## first; that protected side is steel and still never a wound
+## (GUARD-PROTECTION-001, TORSO-CIRCLE-001).
 const PARRY_GUARD := 2.0943951023931953
 
 
@@ -73,23 +73,29 @@ const PARRY_GUARD := 2.0943951023931953
 ## guard rests at `guard` (rad); runs `ticks` ticks after the release, under
 ## `rules` (the shipping rules by default), appending each of those ticks'
 ## state hash to `trace`.
-func _tap_at_guard(guard: float, ticks: int, rules: DuelRules = null, trace: Array[String] = []) -> SimRunner:
+func _seat_tap(guard: float, rules: DuelRules = null) -> SimRunner:
 	if rules == null:
 		rules = DuelFixture.rules()
 	var runner := SimRunner.create(rules, 2)
 	runner.skip_intro()
 	var attacker := runner.state.fighter(0)
 	var defender := runner.state.fighter(1)
-	defender.weapon.angle = guard
 	var reach := WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1))
 	var walked := 0
 	while DuelGeometry.distance(attacker, defender) > reach and walked < 300:
 		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0), PlayerCommand.idle(runner.state.tick))
 		walked += 1
 	runner.idle(20)
+	## Seated after the approach. An idle blade returns to its committed guard,
+	## so carrying this angle in from range sweeps it through the attacker.
 	defender.weapon.angle = guard
 	defender.weapon.speed = 0.0
 	runner.push(PlayerCommand.create(runner.state.tick, 0.0, 0.0, true, true), PlayerCommand.idle(runner.state.tick))
+	return runner
+
+
+func _tap_at_guard(guard: float, ticks: int, rules: DuelRules = null, trace: Array[String] = []) -> SimRunner:
+	var runner := _seat_tap(guard, rules)
 	for _i in ticks:
 		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
 		trace.append(StateHasher.hash_state(runner.state))
@@ -135,8 +141,28 @@ func test_tap_into_a_strong_guard_is_parried() -> void:
 	var landed := control.first(DuelEventTypes.BODY_HIT)
 	assert_eq(control.count(DuelEventTypes.BLADE_CONTACT), 0, "control: no sword contact")
 	assert_true(landed != null and landed.actor == 0, "control: without the guard in its path the tap hits")
-	## PERTURB + ACT: the same tap, the guard resting in its path.
-	var runner := _tap_at_guard(PARRY_GUARD, 40)
+	## PERTURB + ACT: the same tap, the guard resting in its path. The follow
+	## ticks also read the recovering blade against the defender's torso.
+	var rules := DuelFixture.rules()
+	var runner := _seat_tap(PARRY_GUARD, rules)
+	var pose := BladePose.new()
+	var weapon := rules.combatant(0).weapon
+	var hurt := rules.combatant(1).fighter.hurt_radius
+	var recovering := 0
+	var min_gap := INF
+	for _step in 40:
+		var attacker := runner.state.fighter(0)
+		if attacker.weapon.phase == CombatPhase.Id.RECOVERY:
+			recovering += 1
+			WeaponKinematics.pose_of(attacker, rules.combatant(0), pose)
+			var tip_x := pose.point_x(weapon.tip_radius)
+			var tip_y := pose.point_y(weapon.tip_radius)
+			var defender := runner.state.fighter(1)
+			var along := SimMath.closest_param_on_segment(pose.origin_x, pose.origin_y, tip_x, tip_y, defender.x, defender.y)
+			var px := pose.origin_x + (tip_x - pose.origin_x) * along
+			var py := pose.origin_y + (tip_y - pose.origin_y) * along
+			min_gap = minf(min_gap, SimMath.length(px - defender.x, py - defender.y) - hurt - weapon.blade_radius)
+		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
 	## ASSERT: physically a parry...
 	var contact := runner.first(DuelEventTypes.BLADE_CONTACT)
 	assert_true(contact != null, "the guard meets the tap")
@@ -146,6 +172,8 @@ func test_tap_into_a_strong_guard_is_parried() -> void:
 	assert_true(contact.number(DuelEventKeys.DELTA_0) * runner.state.fighter(0).weapon.swing_dir < 0.0, "that opposed the cut")
 	assert_true(bool(contact.data[DuelEventKeys.ARRESTED_0]), "and arrested it")
 	assert_eq(runner.count(DuelEventTypes.BODY_HIT), 0, "the body hit is prevented")
+	assert_true(recovering > 0, "the arrested cut entered recovery")
+	assert_true(min_gap > 0.0, "and while it recovered the blade stayed outside the torso (%.4f m)" % min_gap)
 	## ...so it is labelled a parry, whatever the tempo it left.
 	var parries := DuelFixture.of_type(runner.events, DuelEventTypes.PARRY)
 	assert_eq(parries.size(), 1, "physical interception is a parry")
@@ -154,6 +182,7 @@ func test_tap_into_a_strong_guard_is_parried() -> void:
 	assert_eq(parries[0].target, 0, "against the attacker")
 	assert_true(is_finite(parries[0].number(DuelEventKeys.MARGIN)), "and carries the riposte advantage as a reading")
 	assert_true(runner.is_sound(), "every tick legal (%s)" % runner.violation_summary())
+
 
 ## The other half of PARRY-001: a clash the cut carries on through is not a
 ## parry, even with a weapon in the way and however much it slowed the cut.
@@ -879,7 +908,7 @@ func _physics(state: MatchState) -> String:
 func test_an_active_beat_displaces_this_cut_more_than_a_resting_guard() -> void:
 	## ARRANGE + ACT
 	var resting := _beaten_tap(0.0)
-	var beaten := _beaten_tap(-12.0)
+	var beaten := _beaten_tap(-24.0)
 	## ASSERT
 	assert_true(resting[2] and beaten[2], "fixture: both interceptions are parries — the label does not differ")
 	assert_true(beaten[0] > resting[0], "the beat takes more of the cut's motion (|Δθ̇| %.2f vs %.2f rad/s)" % [beaten[0], resting[0]])
@@ -889,14 +918,16 @@ func test_an_active_beat_displaces_this_cut_more_than_a_resting_guard() -> void:
 ## The parry scene of `test_tap_into_a_strong_guard_is_parried` with the
 ## defender's guard driven at `beat` rad/s until the tap meets it: [|Δθ̇| of
 ## the cut at the contact, the attacker's threat time just after it, whether
-## it was a parry].
+## it was a parry]. The beat has to be fast enough that the extra reversal
+## moves the attacker's next threat by a tick; 12 rad/s takes more of the cut
+## and still lands on the same predicted tick.
 func _beaten_tap(beat: float) -> Array:
 	var rules := DuelFixture.rules()
 	var runner := _tap_at_guard(PARRY_GUARD, 0, rules)
 	var defender := runner.state.fighter(1)
 	for _i in 30:
 		if runner.first(DuelEventTypes.BLADE_CONTACT) == null:
-			defender.weapon.speed = beat if beat != 0.0 else defender.weapon.speed
+			defender.weapon.speed = beat
 		var seen := runner.events.size()
 		runner.push(PlayerCommand.idle(runner.state.tick), PlayerCommand.idle(runner.state.tick))
 		for i in range(seen, runner.events.size()):
@@ -955,3 +986,35 @@ func _riposte_after_parry(rules: DuelRules, trace: Array[String]) -> SimRunner:
 		## marks (DEFLECTION-001's pending flag), which differ by design.
 		trace.append(_physics(runner.state))
 	return runner
+
+
+## CONTACT-OUTCOME-001: a contact's reading describes its own solve and
+## decides nothing. In a production wander duel (seed 5, pilots 11 / 23) every
+## blade contact that met a cut is a GLANCE exactly when the cut kept at least
+## `GLANCE_KEPT` of its progress, else a CLASH; the events carry that
+## progress from the solve; both readings occur; and reading the events
+## leaves the duel's state as it was.
+func test_a_contact_reading_describes_the_solve() -> void:
+	## ARRANGE: the production duel and its blade contacts.
+	var runner := SimRunner.create(_rules, 5)
+	runner.run(Pilot.wander(5, 11), Pilot.wander(5, 23), 1800)
+	var control := _rules.combatant(0).weapon.control_speed
+	var contacts := DuelFixture.of_type(runner.events, DuelEventTypes.BLADE_CONTACT)
+	assert_true(contacts.size() > 5, "fixture: the duel met steel (%d contacts)" % contacts.size())
+	var hash_before := StateHasher.hash_state(runner.state)
+	## ACT
+	var tally := {ContactReading.GLANCE: 0, ContactReading.CLASH: 0, ContactReading.TOUCH: 0}
+	for contact in contacts:
+		var reading := ContactReading.classify(contact, control, control)
+		tally[reading] += 1
+		## ASSERT: each reading is its definition.
+		if contact.actor >= 0:
+			var before := contact.number(DuelEventKeys.PROGRESS_BEFORE)
+			assert_true(before > 0.0, "a cut met at tick %d was progressing (%.3f rad/s)" % [contact.tick, before])
+			var glanced := contact.number(DuelEventKeys.PROGRESS_AFTER) >= ContactReading.GLANCE_KEPT * before
+			assert_eq(reading, ContactReading.GLANCE if glanced else ContactReading.CLASH, "tick %d reads by the progress it kept" % contact.tick)
+		else:
+			assert_ne(reading, ContactReading.GLANCE, "tick %d: with no cut there is nothing to glance" % contact.tick)
+	## ASSERT
+	assert_true(tally[ContactReading.GLANCE] > 0 and tally[ContactReading.CLASH] > 0, "both readings occur (%s)" % str(tally))
+	assert_eq(StateHasher.hash_state(runner.state), hash_before, "reading the contacts changes nothing")

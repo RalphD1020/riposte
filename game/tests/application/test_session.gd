@@ -112,6 +112,7 @@ func test_monitors_read_the_live_session_and_unregister_cleanly() -> void:
 	session.simulation.diagnostics.position_guard_hits = 5
 	session.simulation.diagnostics.meaningful_contacts_dropped = 4
 	session.simulation.diagnostics.pivot_cap_hits = 6
+	session.simulation.diagnostics.guard_hard_stop_hits = 7
 	monitors.session = session
 	assert_eq(monitors.ccd_cap_hits(), 3, "the monitor reads the session's CCD cap counter")
 	assert_eq(monitors.contact_cap_hits(), 2, "and its contact cap counter")
@@ -121,6 +122,7 @@ func test_monitors_read_the_live_session_and_unregister_cleanly() -> void:
 	assert_eq(monitors.position_guard_hits(), 5, "and so does the position-stage turn guard, never summed with it")
 	assert_eq(monitors.meaningful_contacts_dropped(), 4, "and the count of real constraints a feature pair could not hold")
 	assert_eq(monitors.pivot_cap_hits(), 6, "and the exact block's pivot cap")
+	assert_eq(monitors.guard_hard_stop_hits(), 7, "and the guard limit's hard-stop fallback")
 	for id: StringName in SimulationMonitors.ALL:
 		assert_true(Performance.has_custom_monitor(id), "%s is registered" % id)
 	assert_true(monitors.max_manifold_points() >= 1 and monitors.max_manifold_points() <= SwordContactSet.CAPACITY, "a played match touched swords within capacity (%d)" % monitors.max_manifold_points())

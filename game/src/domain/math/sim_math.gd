@@ -26,16 +26,43 @@ const _SIN_11 := -1.0 / 39916800.0
 const _SIN_13 := 1.0 / 6227020800.0
 
 
-## Angle wrapped into (-PI, PI].
+## Angle wrapped into (-PI, PI]. A single turn comes off as `(θ − π) − π`
+## rather than `θ − TAU`, so a heading and the heading half a turn away stay
+## exactly opposite. Many turns still use the floor reduction.
 static func wrap_angle(angle: float) -> float:
 	var wrapped := angle
-	if wrapped > PI or wrapped <= -PI:
-		wrapped = wrapped - TAU * floorf((wrapped + PI) / TAU)
-		if wrapped <= -PI:
-			wrapped += TAU
-		elif wrapped > PI:
-			wrapped -= TAU
+	if wrapped > PI:
+		if wrapped <= PI + TAU:
+			wrapped = (wrapped - PI) - PI
+		else:
+			wrapped = angle - TAU * floorf((angle + PI) / TAU)
+	elif wrapped <= -PI:
+		if wrapped >= -PI - TAU:
+			wrapped = (wrapped + PI) + PI
+		else:
+			wrapped = angle - TAU * floorf((angle + PI) / TAU)
+	if wrapped <= -PI:
+		wrapped += TAU
+	elif wrapped > PI:
+		wrapped -= TAU
 	return wrapped
+
+
+## The heading half a turn from `angle`, exactly: the other side of a mirrored
+## duel. The result stays in (-PI, PI].
+static func half_turn(angle: float) -> float:
+	var x := wrap_angle(angle)
+	return x + PI if x <= 0.0 else x - PI
+
+
+## Add `delta` to `base` and wrap. A heading and the heading half a turn away
+## stay exactly opposite after the same addition, instead of each sum rounding
+## on its own.
+static func compose_angle(base: float, delta: float) -> float:
+	var facing := wrap_angle(base)
+	if facing < 0.0:
+		return half_turn(compose_angle(facing + PI, delta))
+	return wrap_angle(facing + delta)
 
 
 static func sine(angle: float) -> float:
@@ -50,6 +77,25 @@ static func sine(angle: float) -> float:
 
 static func cosine(angle: float) -> float:
 	return sine(angle + HALF_PI)
+
+
+## Sine of a combat heading. A heading and the heading stored half a turn away
+## — the negative one plus π — negate exactly, which the scalar series does
+## not. Weapon angles stay on `sine`: a left guard is the reflection of the
+## right, and that series is an odd function.
+static func heading_sine(angle: float) -> float:
+	var x := wrap_angle(angle)
+	if x < 0.0:
+		return -heading_sine(x + PI)
+	return sine(x)
+
+
+## Cosine of a combat heading. Same pair as `heading_sine`.
+static func heading_cosine(angle: float) -> float:
+	var x := wrap_angle(angle)
+	if x < 0.0:
+		return -heading_cosine(x + PI)
+	return cosine(x)
 
 
 ## Arc tangent in (-PI/2, PI/2), reduced to |u| <= tan(PI/12) before a short series.
@@ -134,6 +180,32 @@ static func pow_1_25(value: float) -> float:
 	if value <= 0.0:
 		return 0.0
 	return value * sqrt(sqrt(value))
+
+
+const LN2 := 0.6931471805599453
+
+
+## exp(−t) for t ≥ 0. Range-reduce by ln 2, then the alternating series of
+## the remainder. A non-positive t is 1. Past 1024 halvings the value is 0.
+static func exp_minus(t: float) -> float:
+	if t <= 0.0:
+		return 1.0
+	var n := int(floorf(t / LN2))
+	var remainder := t - float(n) * LN2
+	if remainder < 0.0:
+		n -= 1
+		remainder += LN2
+	if n >= 1024:
+		return 0.0
+	var series := 1.0
+	var term := 1.0
+	for k: int in range(1, 18):
+		term = term * (-remainder) / float(k)
+		series += term
+	var scale := 1.0
+	for _i: int in n:
+		scale *= 0.5
+	return series * scale
 
 
 ## Piecewise-linear lookup. `xs` ascending; values outside the table clamp.

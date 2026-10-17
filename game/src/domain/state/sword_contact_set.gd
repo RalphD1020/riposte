@@ -9,8 +9,8 @@ extends RefCounted
 ## three contact pairs — blade on blade, sword 0's blade on sword 1's guard,
 ## sword 0's guard under sword 1's blade — and never guard on guard. A guard
 ## pair exists only on the guard's protected side (GUARD-PROTECTION-001). The
-## handle and the hands are hurt geometry that can be struck but never block
-## (GRIP-NONBLOCKING-001). Each pair is two convex shapes, which touch at one
+## handle and the hands are not combat geometry (TORSO-CIRCLE-001). Each pair
+## is two convex shapes, which touch at one
 ## point when they cross and at the two ends of their overlap when they lie
 ## along each other — never more — so each pair holds at most `POINTS_PER_PAIR`
 ## (two) points and the set `CAPACITY` (TWO-POINT-001). Every point carries its

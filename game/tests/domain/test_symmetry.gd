@@ -87,6 +87,55 @@ func test_reaching_the_guard_stop_exactly_ends_the_outward_turn() -> void:
 	assert_eq(inward.speed, 2.0, "inward speed off the stop survives")
 
 
+## The mirror of one step can land a single float below the limit the other
+## side reached. That is the same stop: outward speed ends, inward speed does
+## not, the angle is not snapped onto the limit, and a gap past the band is
+## not the stop. The weapon writer and the predictor's buffer agree on every row.
+func test_one_ulp_short_of_the_guard_stop_still_ends_the_outward_turn() -> void:
+	var limit := DuelFixture.rules().combatant(0).weapon.guard_limit
+	var band := WeaponSystem.STOP_ARRIVAL_RAD
+	var ulp := 4.440892098500626e-16
+	## turned, speed, expect speed, expect engaged. Angle stays at `turned`
+	## whenever `turned` is still inside the limit.
+	var rows: Array[Array] = [
+		[limit, 2.2984090592854702, 0.0, true],
+		[-limit, -2.2984090592854702, 0.0, true],
+		[limit - ulp, 2.2984090592854702, 0.0, true],
+		[-(limit - ulp), -2.2984090592854702, 0.0, true],
+		[limit - band * 0.5, 3.11, 0.0, true],
+		[-(limit - band * 0.5), -3.11, 0.0, true],
+		[limit - band, 2.12, 0.0, true],
+		[-(limit - band), -2.12, 0.0, true],
+		[limit - band * 2.0, 2.3, 2.3, false],
+		[-(limit - band * 2.0), -2.3, -2.3, false],
+		[limit - 1.0e-6, 2.3, 2.3, false],
+		[-(limit - 1.0e-6), -2.3, -2.3, false],
+		[limit - ulp, -2.3, -2.3, false],
+		[-(limit - ulp), 2.3, 2.3, false],
+		[limit - band * 0.5, -1.5, -1.5, false],
+		[-(limit - band * 0.5), 1.5, 1.5, false],
+		[limit, 0.0, 0.0, false],
+		[-limit, 0.0, 0.0, false],
+	]
+	assert_true(limit - 1.0e-6 < limit - band, "fixture: a microradian is outside the arrival band")
+	assert_true(ulp < band, "fixture: one ulp of this limit is inside the band")
+	for row: Array in rows:
+		var turned := float(row[0])
+		var speed := float(row[1])
+		var weapon := WeaponState.new()
+		weapon.speed = speed
+		var engaged := WeaponSystem.settle_at_stop(weapon, turned, limit)
+		var out := PackedFloat64Array([0.0, 0.0])
+		var written := WeaponSystem._write_stop(out, turned, speed, limit)
+		assert_eq(engaged, written, "the weapon and the buffer report the same stop at %s" % str(row))
+		assert_eq(weapon.speed, float(row[2]), "speed at %s" % str(row))
+		assert_eq(weapon.speed, out[1], "both writers leave the same speed at %s" % str(row))
+		assert_eq(engaged, bool(row[3]), "engaged at %s" % str(row))
+		if absf(turned) <= limit:
+			assert_eq(weapon.angle, turned, "a shortfall is not snapped onto the limit at %s" % str(row))
+			assert_eq(out[0], turned, "and the buffer does not snap it either")
+
+
 ## `runner`'s events of `type` strictly before `tick`.
 func _before(runner: SimRunner, type: StringName, tick: int) -> Array[DuelEvent]:
 	var found: Array[DuelEvent] = []

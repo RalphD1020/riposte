@@ -104,7 +104,7 @@ func test_faster_outward_speed_reduces_clearance() -> void:
 func test_a_wounded_condition_changes_safety() -> void:
 	var fighter := _fighter_near_edge(1.5, 0.0)
 	fighter.health = _rules.combatant(0).fighter.max_health
-	var wounded := ConditionModel.compute(10.0, _rules.combatant(0).fighter.max_health, _rules.combat, ConditionState.new())
+	var wounded := ConditionModel.compute(10.0, _rules.combatant(0).fighter.max_health, 1.0, _rules.combat, ConditionState.new())
 	var healthy := EdgeSafetyEvaluator.evaluate_walk(fighter, 0.0, 1.0, _rules, ConditionState.healthy())
 	var hurt := EdgeSafetyEvaluator.evaluate_walk(fighter, 0.0, 1.0, _rules, wounded)
 	assert_true(wounded.force_scale < 1.0, "fixture: the wounded condition is weaker")

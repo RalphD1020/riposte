@@ -13,8 +13,13 @@ extends RefCounted
 ##   never asserted on;
 ## - acceptance: the held-out ladder — chosen by a rule (the calibration block
 ##   offset by 100) before any result from it was known, run once after
-##   tuning. If a profile change fails it, the ordering did not generalise;
-##   moving these numbers until it passes is the overfitting the split stops.
+##   tuning. The rules-53 Hard-versus-Easy result on this block (+4/16) is
+##   consumed. Do not retune against it. The next acceptance grades
+##   `ACCEPTANCE_SEEDS_V2`, fixed below before any duel on it is read.
+##   If a profile change fails the set it is graded on, the ordering did not
+##   generalise; moving these numbers until it passes is the overfitting the
+##   split stops. `test:balance:accept` grades `ACCEPTANCE_SEEDS_V2`.
+##   `ACCEPTANCE_SEEDS` (101–108) stays the consumed rules-53 result.
 ##
 ## Every duel prints one progress line, so the harness's no-output guard reads
 ## progress per duel, never per corpus (it stays a hang detector).
@@ -24,6 +29,11 @@ extends RefCounted
 const MAX_TICKS := 40000
 const CALIBRATION_SEEDS: Array[int] = [1, 2, 3, 4, 5, 6, 7, 8]
 const ACCEPTANCE_SEEDS: Array[int] = [101, 102, 103, 104, 105, 106, 107, 108]
+## Next CPU acceptance, after impact authority is accepted. Same size as v1,
+## clear of calibration (1–8), v1 (101–108) and the audit block (201–240).
+## Fixed before any result on it is known. `test:balance:accept` grades this
+## block. v1 stays consumed and is not the graded set.
+const ACCEPTANCE_SEEDS_V2: Array[int] = [301, 302, 303, 304, 305, 306, 307, 308]
 ## A contiguous block clear of both, large enough that a ~5-point win-rate
 ## edge is visible; raise it, never curate it.
 const AUDIT_SEEDS: Array[int] = [

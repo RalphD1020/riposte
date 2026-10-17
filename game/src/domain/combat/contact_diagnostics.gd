@@ -57,6 +57,11 @@ var meaningful_contacts_dropped: int = 0
 ## Contact blocks whose exact solve reached `ContactLcp.MAX_PIVOTS` (the block
 ## then applies nothing).
 var pivot_cap_hits: int = 0
+## Guard-limit fallback (GUARD-LIMIT-SOFT-001): a tick whose hard stop removed
+## outward speed the soft zone had not bled down to one tick of wind-up, or
+## found the blade already past the limit. The resting wind-up's own push
+## into a stop it already occupies is not counted. Never hashed.
+var guard_hard_stop_hits: int = 0
 
 
 func reset() -> void:
@@ -70,6 +75,7 @@ func reset() -> void:
 	position_guard_hits = 0
 	meaningful_contacts_dropped = 0
 	pivot_cap_hits = 0
+	guard_hard_stop_hits = 0
 
 
 ## One exhausted tick's characterization (see `rehold_fallback_ticks`).

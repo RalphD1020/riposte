@@ -36,7 +36,7 @@ const SPEED_TIE := 1.0e-9
 static func step(
 	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, condition: ConditionState = null, dash_modifier: bool = false
 ) -> MovementGestureState.BurstKind:
-	return step_in_frame(fighter, SimMath.cosine(fighter.facing), SimMath.sine(fighter.facing), intent_x, intent_y, tick, definition, condition, dash_modifier)
+	return step_in_frame(fighter, SimMath.heading_cosine(fighter.facing), SimMath.heading_sine(fighter.facing), intent_x, intent_y, tick, definition, condition, dash_modifier)
 
 
 ## `step` with the frame given: the duel reads every fighter's heading at the
@@ -51,7 +51,7 @@ static func step_in_frame(
 	var forward := PackedFloat64Array([forward_x, forward_y])
 	fighter.duel_forward_x = forward_x
 	fighter.duel_forward_y = forward_y
-	var launched := _recognize(fighter, intent_x, intent_y, tick, definition, dash_modifier)
+	var launched := _recognize(fighter, intent_x, intent_y, tick, definition, dash_modifier, condition.can_dash if condition != null else true)
 	var world := DuelGeometry.to_world(intent_x, intent_y, forward[0], forward[1])
 	var ix := world[0]
 	var iy := world[1]
@@ -150,18 +150,22 @@ static func stride_multiplier(intent_x: float, intent_y: float, definition: Figh
 
 ## Read the command stream for a double tap or dash modifier and arm the burst.
 ##
+## A dash only starts if the fighter can pay for it (STAMINA-004, read from
+## start-of-tick stamina). A refused dash is dropped, never buffered: the tap
+## is still consumed by the recognizer, so it cannot fire later on its own.
+##
 ## A burst already running is never re-armed: the heading is frozen at
 ## activation so a forward dash cannot bend after an opponent who circles away
 ## mid-dash.
 static func _recognize(
-	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, dash_modifier: bool = false
+	fighter: FighterState, intent_x: float, intent_y: float, tick: int, definition: FighterDefinition, dash_modifier: bool = false, can_dash: bool = true
 ) -> MovementGestureState.BurstKind:
 	var gesture := fighter.gesture
 	## Dash modifier (accessibility): Shift+direction produces the same burst
 	## as a double-tap. Same force, startup, duration, physics — no
 	## gameplay advantage. Requires a clear directional intent and no burst
 	## already in progress.
-	if dash_modifier and not gesture.is_bursting() and not gesture.is_recovering():
+	if dash_modifier and can_dash and not gesture.is_bursting() and not gesture.is_recovering():
 		var modifier_kind := _dash_modifier_direction(intent_x, intent_y, definition)
 		if modifier_kind != MovementGestureState.BurstKind.NONE:
 			gesture.clear_pending()
@@ -173,7 +177,7 @@ static func _recognize(
 			gesture.burst_dir_y = dash_heading[1]
 			return modifier_kind
 	var launched := DirectionalTapRecognizer.observe(gesture, intent_x, intent_y, tick, definition)
-	if launched == MovementGestureState.BurstKind.NONE or gesture.is_bursting() or gesture.is_recovering():
+	if launched == MovementGestureState.BurstKind.NONE or not can_dash or gesture.is_bursting() or gesture.is_recovering():
 		return MovementGestureState.BurstKind.NONE
 	var heading := DirectionalTapRecognizer.heading(fighter, launched)
 	gesture.mode = MovementGestureState.Mode.BURST
@@ -219,7 +223,7 @@ static func coast(fighter: FighterState, definition: FighterDefinition) -> void:
 	fighter.x += fighter.vx * dt
 	fighter.y += fighter.vy * dt
 	fighter.turn_rate = SimMath.approach(fighter.turn_rate, 0.0, definition.turn_accel() * dt)
-	fighter.facing = SimMath.wrap_angle(fighter.facing + fighter.turn_rate * dt)
+	fighter.facing = SimMath.compose_angle(fighter.facing, fighter.turn_rate * dt)
 
 
 ## Map held directional intent to a burst kind when the dash modifier is held.

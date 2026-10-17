@@ -14,12 +14,13 @@ extends TestCase
 ## Acceptance bound for the hold-budget fallback in adversarial play (live
 ## ticks per exhaustion).
 const HOLD_BUDGET_TICKS_PER_FALLBACK := 5000
-## The ship corpus's measured re-hold exhaustions on rules 52: one, seed 122
-## tick 854, in 46,031 live ticks — the fast-slide class
-## (CONTACT-REHOLD-FALLBACK-001). The corpus is deterministic, so a different
-## count is a behaviour change to attribute, never noise: more is a
+## The ship corpus's measured re-hold exhaustions: none on rules 53, in
+## 47,247 live ticks (rules 52: one, seed 122 tick 854, in 46,031 — the
+## fast-slide class, CONTACT-REHOLD-FALLBACK-001, still witnessed by
+## CONTACT-INTEGRITY with stamina neutral). The corpus is deterministic, so a
+## different count is a behaviour change to attribute, never noise: more is a
 ## deterioration; fewer is re-measured and this lowered.
-const SHIP_REHOLD_BASELINE := 1
+const SHIP_REHOLD_BASELINE := 0
 ## The ticks after an exhaustion that must not exhaust again, and the watchdog
 ## for an ordinary back step to part the blades from it (a test budget, as
 ## CONTACT-INTEGRITY's `MAX_WITNESS_TICKS`).

@@ -82,8 +82,9 @@ var offhand_grip_radius: float = 0.0
 var dominant_grip_radius: float = 0.0
 
 ## Guard. The canonical guards are ±guard_angle and |angle| never exceeds
-## guard_limit, but ±guard_angle is a *reference*, not a resting position: the
-## blade legitimately lives anywhere in its 2 × guard_limit coverage.
+## guard_limit. ±guard_angle on the committed side is where the guard return
+## settles an idle blade (GUARD-RETURN-001); a swing may still live anywhere
+## in the 2 × guard_limit coverage.
 var guard_angle: float = 0.0
 var guard_limit: float = 0.0
 var min_arc: float = 0.0

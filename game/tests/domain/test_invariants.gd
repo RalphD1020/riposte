@@ -201,7 +201,7 @@ func test_finished_match_emits_no_further_faults() -> void:
 
 
 func test_tick_order_version_is_pinned() -> void:
-	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 14, "the canonical tick order is version 14; bump this deliberately")
+	assert_eq(DuelSimulation.TICK_ORDER_VERSION, 16, "version 16 inserts authority recovery after contact upkeep and before the stamina settle that version 15 added")
 
 
 func test_input_edges_resolve_before_the_motor() -> void:

@@ -11,14 +11,16 @@ extends RefCounted
 ## Which fields the hash covers, in which order. A schema change that is not a
 ## rules change (2: the stamina pool left state, STAMINA-003) moves every hash
 ## without changing the game, so recordings name it and are refused across it.
-## (3: a swing's grip episode, `WeaponState.grip_struck`, DEFENSE-ROLE-001.)
+## (3: a swing's grip episode, since removed — rules 55, layout 8.)
 ## (4: a swing's pending deflection, `WeaponState.deflection_pending`,
 ## DEFLECTION-001.) (5: a hold record row is blade fractions only — the
 ## feature pair it carried is gone with the crossguard and handle steel,
 ## STEEL-TOPOLOGY-001.) (6: steel is blade and guard root again — a hold row
 ## and a point carry their contact pair, and each guard pair its decided side,
-## GUARD-PROTECTION-001.)
-const LAYOUT_VERSION := 6
+## GUARD-PROTECTION-001.) (7: a fighter's stamina, STAMINA-004.)
+## (8: `grip_struck` left the hash. Rules 55: the torso circle is the only
+## damage target.) (9: a fighter's impact authority, IMPACT-AUTHORITY-001.)
+const LAYOUT_VERSION := 9
 
 
 static func hash_state(state: MatchState) -> String:
@@ -71,6 +73,8 @@ static func hash_state(state: MatchState) -> String:
 			fighter.facing,
 			fighter.turn_rate,
 			fighter.health,
+			fighter.stamina,
+			fighter.impact_authority,
 			fighter.stability,
 			fighter.lethal_fraction,
 			fighter.support_lost_fraction,
@@ -118,7 +122,6 @@ static func hash_state(state: MatchState) -> String:
 			weapon.phase,
 			weapon.phase_ticks,
 			int(weapon.attack_contacted),
-			int(weapon.grip_struck),
 			int(weapon.deflection_pending),
 			weapon.recovery_ticks,
 			weapon.recovery_left,

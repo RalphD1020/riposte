@@ -99,4 +99,4 @@ static func to_duel(world_x: float, world_y: float, forward_x: float, forward_y:
 
 ## Absolute blade angle (facing + relative sword angle).
 static func blade_angle(fighter: FighterState) -> float:
-	return SimMath.wrap_angle(fighter.facing + fighter.weapon.angle)
+	return SimMath.compose_angle(fighter.facing, fighter.weapon.angle)
