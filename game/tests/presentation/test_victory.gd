@@ -114,9 +114,9 @@ func test_the_howl_and_the_announcer_play_together() -> void:
 	assert_eq(announcer.stream, profile.announcer_line, "starting the howl did not replace the announcer stream")
 	assert_eq(fighter.stream, howl, "starting the announcer did not replace the howl stream")
 	assert_true(announcer.playing and fighter.playing, "both channels are active at once")
-	assert_eq(announcer.volume_db, 0.0, "the announcer is at unity")
+	assert_eq(announcer.volume_db, AudioDirector.ANNOUNCER_GAIN_DB, "the announcer is boosted")
 	assert_eq(fighter.volume_db, AudioDirector.CALL_TRIM_DB, "the howl is trimmed under that line")
-	assert_true(fighter.volume_db <= -14.0, "the line stays in front of the howl")
+	assert_true(fighter.volume_db <= announcer.volume_db - 20.0, "the line stays well in front of the howl")
 	director.free()
 
 

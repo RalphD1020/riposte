@@ -41,7 +41,7 @@ animation_clips = {
 }
 ```
 
-Sounds work the same way on the weapon kit (`weapon.bastard_sword`): set `audio_cues` entries such as `&"swing"` or `&"blade.strong"` to imported streams. Code names those keys through `PresentationKit.CUE_*` (`game/src/presentation/kit/presentation_kit.gd`). Arena music and crowd cues are filled by `AudioKitPlan` (`game/tools/audio_kit_plan.gd`). Missing cues stay silent; missing clips fall back to procedural primitive motion.
+Sounds work the same way on the weapon kit (`weapon.bastard_sword`): set `audio_cues` entries such as `&"swing"` or `&"blade.strong"` to imported streams. Code names those keys through `PresentationKit.CUE_*` (`game/src/presentation/kit/presentation_kit.gd`). Arena music and crowd cues are filled by `AudioKitPlan` (`game/tools/audio_kit_plan.gd`). `RiposteApp` plays the one music loop; the kit does not. Missing cues stay silent; missing clips fall back to procedural primitive motion.
 
 ## 3. Verify
 

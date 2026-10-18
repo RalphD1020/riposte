@@ -98,7 +98,7 @@ func clip_for(style: StringName) -> StringName:
 ## a killing blow, which is the invariant the caller enforces.
 static func family_of(contact_kind: String) -> Family:
 	match contact_kind:
-		"thrust", "poke":
+		StrikeResult.KIND_THRUST, StrikeResult.KIND_POKE:
 			return Family.STAB
 		_:
 			return Family.SLASH

@@ -4,7 +4,10 @@ extends RefCounted
 ## Presentation-only audience. It reads events and the set score and names
 ## one reaction. It does not write combat state. Intensity is a separate
 ## decaying meter: a class step adds once per run, and a quiet tick takes the
-## max of that decay and one impact, clash, or whiff level. Those levels are
+## max of that decay and one heavy wound, strong clash, or committed whiff.
+## Ordinary clashes and light wounds do not lift it. A gasp waits on a
+## longer cooldown than a class cue; the meter can still move during that
+## wait, and playing a shot does not itself raise it. Those levels are
 ## presentation readings of existing payloads, not a force. A finish punches
 ## through cheer cooldown once per scoreline. After the set-win shot, later
 ## ticks with the winner still set are silence so the meter can decay. A new
@@ -13,6 +16,10 @@ extends RefCounted
 ## See also: /docs/concepts/presentation.md
 
 const COOLDOWN_TICKS := 90
+## Ordinary vocalizations (a gasp) wait longer than a class cue. Excitement
+## may still move during this wait. 360 ticks is 6 seconds, a listening
+## start, not a measured ideal.
+const ORDINARY_COOLDOWN_TICKS := 360
 ## About three seconds from 1 toward the ambient band at 60 observes/s.
 const DECAY := 0.985
 const STEP_SETPOINT := 0.25
@@ -25,15 +32,12 @@ const STEP_VICTORY := 1.0
 ## clamped at 1. This split is that scale, not a new force.
 const HEAVY_SEVERITY := 0.5
 ## Bed levels, below the critical and finish steps so a miss cannot outrank a hit.
-const BODY_LEVEL := 0.2
+## Ordinary clashes and wounds under half a reference wound do not lift the bed.
 const HEAVY_LEVEL := 0.35
-const SOLID_LEVEL := 0.12
 const STRONG_LEVEL := 0.22
 const WHIFF_LEVEL := 0.15
 ## A far hold on the shipping rules whiffed at charge 0.81. A tap is 0.
 const WHIFF_COMMITTED_CHARGE := 0.5
-## Payload label written by StrikeResult for a graze.
-const GRAZE_KIND := "graze"
 ## The high end of CombatFeedbackDirector's 0..1 parry reading.
 const CLEAN_PARRY_QUALITY := 1.0
 const CUE_MURMUR := &"murmur"
@@ -51,6 +55,7 @@ const CLASS_VICTORY := 5
 
 var excitement: float = 0.0
 var cooldown: int = 0
+var _ordinary: int = 0
 var _run: int = CLASS_NONE
 var _at_setpoint: bool = false
 ## The set-win reaction plays once. The snapshot keeps the winner after that.
@@ -63,6 +68,8 @@ var _finish_scores: PackedInt32Array = PackedInt32Array()
 func observe(events: Array[DuelEvent], scores: PackedInt32Array, rounds_to_win: int, set_winner: int, tuning: CombatTuning = null, distance: float = INF, reach: PackedFloat32Array = PackedFloat32Array()) -> StringName:
 	if cooldown > 0:
 		cooldown -= 1
+	if _ordinary > 0:
+		_ordinary -= 1
 	var rising := _mark_setpoint(scores, rounds_to_win)
 	var klass := _class_of(events, set_winner, rising)
 	_apply_intensity(klass, events, tuning)
@@ -144,12 +151,12 @@ func _ambient_level(events: Array[DuelEvent], tuning: CombatTuning) -> float:
 
 
 func _body_level(event: DuelEvent, tuning: CombatTuning) -> float:
-	if tuning == null or event.text(DuelEventKeys.CONTACT_KIND) == GRAZE_KIND:
+	if tuning == null or event.text(DuelEventKeys.CONTACT_KIND) == StrikeResult.KIND_GRAZE:
 		return 0.0
 	var reading := ImpactFeedback.from_event(event, tuning).severity01
 	if reading >= HEAVY_SEVERITY:
 		return reading * HEAVY_LEVEL
-	return reading * BODY_LEVEL
+	return 0.0
 
 
 func _blade_level(event: DuelEvent) -> float:
@@ -157,8 +164,6 @@ func _blade_level(event: DuelEvent) -> float:
 	var band := event.text(DuelEventKeys.CONTACT_CLASS)
 	if band == String(ContactResolver.CLASS_STRONG):
 		return intensity * STRONG_LEVEL
-	if band == String(ContactResolver.CLASS_SOLID):
-		return intensity * SOLID_LEVEL
 	return 0.0
 
 
@@ -207,8 +212,8 @@ func _select_shot(klass: int, events: Array[DuelEvent], scores: PackedInt32Array
 		_hold()
 		return CUE_STRONG
 	if klass == CLASS_NONE:
-		if cooldown == 0 and _gasp(events, distance, reach):
-			_hold()
+		if _ordinary == 0 and cooldown == 0 and _gasp(events, distance, reach):
+			_hold_ordinary()
 			return CUE_GASP
 		return &""
 	if cooldown > 0:
@@ -236,6 +241,11 @@ func _gasp(events: Array[DuelEvent], distance: float, reach: PackedFloat32Array)
 
 func _hold() -> void:
 	cooldown = COOLDOWN_TICKS
+
+
+func _hold_ordinary() -> void:
+	_ordinary = ORDINARY_COOLDOWN_TICKS
+	_hold()
 
 
 func _same_scores(left: PackedInt32Array, right: PackedInt32Array) -> bool:

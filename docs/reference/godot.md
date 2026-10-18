@@ -48,7 +48,9 @@ One home per vocabulary; never retype a literal:
 | Product events / property keys                | `ProductEvents` / `ProductEvents.PROP_*`                                                  |
 | Audio buses                                   | `AudioBuses` (+ `default_bus_layout.tres`)                                                |
 | Crowd reaction / kit cue names                | `CrowdDirector.CUE_*` → `PresentationKit.CUE_CROWD_*`                                     |
-| Menu music path and loop trim                 | `RiposteApp.MENU_LOOP`, `LOOP_VOLUME_DB`                                                  |
+| Contact-kind labels                           | `StrikeResult.KIND_SLASH` / `KIND_POKE` / `KIND_THRUST` / `KIND_GRAZE`                    |
+| Menu music path and loop trim                 | `RiposteApp.MENU_LOOP`, `LOOP_VOLUME_DB`, `LOOP_CUT_DB`                                   |
+| Friend-match wire                             | `MatchNote.KIND_*`, `SLOT_NONE`, `ACCEPT_WINDOW`                                          |
 | Settings file layout                          | `PlayerSettings.SECTION_*` / `KEY_*`                                                      |
 | Replay serialization                          | `ReplayRecord.KEY_*`                                                                      |
 | Styles, sizes, colors                         | `RiposteTheme` tokens and type variations                                                 |

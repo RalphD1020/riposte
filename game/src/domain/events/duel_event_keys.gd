@@ -106,7 +106,7 @@ const THRUST_ALIGNMENT := "thrust_alignment"
 const REGION := "region"
 const REGION_TORSO := "torso"
 const INCIDENCE_QUALITY := "incidence_quality"
-## Contact kind: "slash", "thrust", or "graze". Present on all body contacts.
+## Contact kind. Values are `StrikeResult.KIND_*` (slash, poke, thrust, graze).
 const CONTACT_KIND := "contact_kind"
 ## Tick fraction the contact occurred at, in [0, 1]. Trade attribution orders
 ## by this, so a strike that landed first wins regardless of slot.

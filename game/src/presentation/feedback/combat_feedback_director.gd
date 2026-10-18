@@ -374,11 +374,11 @@ static func _append_particles(frame: FeedbackFrame, request: VfxRequest, particl
 
 static func _profile_for(event: DuelEvent) -> ImpactPresentationProfile:
 	match event.text(DuelEventKeys.CONTACT_KIND):
-		"poke":
+		StrikeResult.KIND_POKE:
 			return ImpactPresentationProfile.poke()
-		"thrust":
+		StrikeResult.KIND_THRUST:
 			return ImpactPresentationProfile.thrust()
-		"graze":
+		StrikeResult.KIND_GRAZE:
 			return ImpactPresentationProfile.graze()
 	return ImpactPresentationProfile.slash()
 

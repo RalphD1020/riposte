@@ -169,8 +169,9 @@ func test_body_severity_orders_the_bed_and_does_not_use_impulse() -> void:
 	var light := _observe_level(_body(tuning.reference_severity * 0.2, "slash"), tuning)
 	var middle := _observe_level(_body(tuning.reference_severity * 0.4, "slash"), tuning)
 	var heavy := _observe_level(_body(tuning.reference_severity, "slash"), tuning)
-	assert_true(light < middle and middle < heavy, "heavier wounds raise the bed further (%.3f < %.3f < %.3f)" % [light, middle, heavy])
-	assert_true(heavy <= 1.0, "the bed stays inside the cap")
+	assert_eq(light, 0.0, "a scratch does not lift the bed")
+	assert_eq(middle, 0.0, "an ordinary wound does not lift the bed")
+	assert_true(heavy > 0.0 and heavy <= 1.0, "a reference wound does (%.3f)" % heavy)
 	var graze := CrowdDirector.new()
 	var cue := graze.observe([_body(tuning.reference_severity, "graze")], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, _reach(2.0))
 	assert_eq(cue, &"", "a graze does not shoot")
@@ -187,7 +188,8 @@ func test_steel_intensity_lifts_the_bed_without_a_shot() -> void:
 	assert_eq(light.excitement, 0.0, "and does not lift the bed")
 	var solid := _observe_level(_blade(ContactResolver.CLASS_SOLID, 1.0), tuning)
 	var strong := _observe_level(_blade(ContactResolver.CLASS_STRONG, 1.0), tuning)
-	assert_true(solid > 0.0 and strong > solid, "a stronger clash sits higher than a solid one")
+	assert_eq(solid, 0.0, "an ordinary clash leaves the bed alone")
+	assert_true(strong > 0.0, "a strong clash still lifts it")
 	var shot := CrowdDirector.new()
 	assert_eq(shot.observe([_blade(ContactResolver.CLASS_STRONG, 1.0)], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, _reach(2.0)), &"", "steel still does not cheer")
 
@@ -214,6 +216,31 @@ func test_a_committed_whiff_gasps_in_measure_and_only_lifts_outside_it() -> void
 	assert_eq(close.excitement, CrowdDirector.WHIFF_LEVEL, "at the whiff level")
 	assert_true(CrowdDirector.WHIFF_LEVEL < CrowdDirector.STEP_FINISH, "which stays under a finish")
 	assert_eq(close.observe([_whiff(0.8)], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach), &"", "cooldown holds the next gasp")
+	for _i in CrowdDirector.COOLDOWN_TICKS:
+		close.observe([], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach)
+	assert_eq(close.observe([_whiff(0.8)], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach), &"", "the ordinary wait outlasts the class cooldown")
+	var during := close.excitement
+	var heavy_cue := close.observe([_body(tuning.reference_severity, "slash")], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach)
+	assert_eq(heavy_cue, &"", "a heavy wound during that wait does not shout")
+	assert_true(close.excitement > during, "but the bed may still rise")
+	for _i in CrowdDirector.ORDINARY_COOLDOWN_TICKS:
+		close.observe([], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach)
+	assert_eq(close.observe([_whiff(0.8)], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach), CrowdDirector.CUE_GASP, "after the ordinary wait a committed miss may gasp again")
+	var piled_window := CrowdDirector.new()
+	var one := piled_window.observe([
+		_whiff(0.8),
+		_blade(ContactResolver.CLASS_SOLID, 1.0),
+	], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach)
+	assert_eq(one, CrowdDirector.CUE_GASP, "a whiff and a clash on one tick are one gasp")
+	assert_eq(piled_window.observe([_whiff(0.8)], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach), &"", "and not a second shout on the next tick")
+	var struck := CrowdDirector.new()
+	assert_eq(struck.observe([
+		_whiff(0.8),
+		_body(tuning.reference_severity * 0.2, "slash"),
+	], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach), &"", "a scratch on that tick keeps the gasp silent")
+	var through := CrowdDirector.new()
+	assert_eq(through.observe([_whiff(0.8)], _live(), 3, MatchPhase.NO_WINNER, tuning, 1.0, reach), CrowdDirector.CUE_GASP, "fixture: an ordinary gasp is waiting")
+	assert_eq(through.observe([], PackedInt32Array([3, 0]), 3, 0, tuning, 1.0, reach), CrowdDirector.CUE_VICTORY, "a set win still speaks during that wait")
 	var far := CrowdDirector.new()
 	assert_eq(far.observe([_whiff(0.8)], _live(), 3, MatchPhase.NO_WINNER, tuning, 5.0, reach), &"", "the same miss outside reach does not gasp")
 	assert_eq(far.excitement, CrowdDirector.WHIFF_LEVEL, "but it still lifts the bed")

@@ -9,7 +9,9 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/simulation.md
 
-const NO_WINNER := 255
+const NO_WINNER := MatchNote.SLOT_NONE
+## A zero seed is a legal match seed and a poor session id.
+const FALLBACK_SESSION_ID := 1
 
 var session_id: int = 0
 var rules: DuelRules
@@ -35,7 +37,7 @@ static func open(duel_rules: DuelRules, seed_value: int, identity: int = MatchNo
 		return null
 	authority.state = authority.simulation.new_match(seed_value)
 	authority.record = ReplayRecord.begin(duel_rules, seed_value)
-	authority.session_id = seed_value if seed_value != 0 else 1
+	authority.session_id = seed_value if seed_value != 0 else FALLBACK_SESSION_ID
 	return authority
 
 

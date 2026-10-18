@@ -109,7 +109,7 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_eq(_looping_players(booted.main), 1, "one music loop")
 	assert_eq(app.telemetry.count_product(ProductEvents.GAME_LOADED), 1, "load recorded once")
 	assert_true(_press(app.current_screen(), "QUICK PLAY"), "Quick Play is on the menu")
-	await await_frames(1)
+	await await_frames(2)
 	var first := _match(booted)
 	assert_true(first != null, "Quick Play opens the duel")
 	assert_eq(app.presentation_mount.get_child_count(), 1, "one presenter mounted")
@@ -201,6 +201,7 @@ func test_a_missing_match_theme_stops_the_loop() -> void:
 	assert_false(app.is_loop_playing(), "a missing arena theme stops the loop")
 	assert_true(app.loop_stream() == null, "and does not keep the menu theme")
 	app.select_screen_music(AppScreen.Id.MAIN_MENU)
+	await await_frames(2)
 	assert_eq(app.last_music_fault, "", "a successful select clears the fault")
 	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "leaving MATCH returns to the menu theme")
 	assert_true(app.is_loop_playing(), "and that loop plays")
@@ -218,7 +219,7 @@ func test_selecting_the_same_stream_does_not_restart_the_loop() -> void:
 	assert_eq(app.loop_start_count(), menu_starts, "selecting the menu again does not restart it")
 	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "and it is still the menu theme")
 	app.start_quick_play()
-	await await_frames(1)
+	await await_frames(2)
 	var screen := _match(booted)
 	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "MATCH hands off to the arena theme")
 	var arena_starts := app.loop_start_count()
@@ -747,7 +748,7 @@ func _crowd_beds(node: Node) -> int:
 
 func _boot_ready() -> Booted:
 	var booted := _boot()
-	await await_frames(1)
+	await await_frames(2)
 	return booted
 
 
@@ -757,7 +758,7 @@ func _active_duel(booted: Booted, training: bool = false) -> MatchScreen:
 		booted.app.start_training()
 	else:
 		booted.app.start_quick_play()
-	await await_frames(1)
+	await await_frames(2)
 	var screen := _match(booted)
 	_run_until(screen, func() -> bool: return screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
 	assert_eq(screen.session.state.phase, MatchPhase.Id.ROUND_ACTIVE, "fixture: the round is live")

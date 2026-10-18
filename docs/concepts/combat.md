@@ -347,7 +347,7 @@ F3 (debug builds) shows distance, closing speed, orbit, each fighter's phase/cha
 
 ## Contact classification (COMBAT-010, COMBAT-011)
 
-Every body contact is classified exactly once: `SLASH`, `POKE`, `THRUST`, or `GRAZE`. Classification happens **after** the contact is geometrically resolved — there is no stab button, no thrust animation, no `STAB_ATTACK` phase, and no separate stab damage multiplier. A point strike exists only when the physical state produces one.
+Every body contact is classified exactly once: `SLASH`, `POKE`, `THRUST`, or `GRAZE` (`StrikeResult.ContactKind` in `game/src/domain/combat/strike_result.gd`). The event carries `StrikeResult.KIND_*` under `DuelEventKeys.CONTACT_KIND`. Classification happens **after** the contact is geometrically resolved — there is no stab button, no thrust animation, no `STAB_ATTACK` phase, and no separate stab damage multiplier. A point strike exists only when the physical state produces one.
 
 **POINT_STRIKE** is the parent classification for point-first contacts. Two sub-kinds describe how the contact arose:
 

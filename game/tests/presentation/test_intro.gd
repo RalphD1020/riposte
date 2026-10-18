@@ -158,7 +158,7 @@ func test_the_howl_plays_under_the_announcer_on_each_shot() -> void:
 	assert_true(announcer.stream != fighter.stream, "neither request replaced the other stream")
 	assert_eq(announcer.bus, AudioBuses.VOICE, "the name is on Voice")
 	assert_eq(fighter.bus, AudioBuses.VOICE, "the howl is on Voice")
-	assert_eq(announcer.volume_db, 0.0, "the spoken name is at unity")
+	assert_eq(announcer.volume_db, AudioDirector.ANNOUNCER_GAIN_DB, "the spoken name is boosted")
 	assert_eq(fighter.volume_db, AudioDirector.CALL_TRIM_DB, "the howl is trimmed under that name")
 	director.advance(SetIntroDirector.BEAT_ENDS[1])
 	var howls := 0

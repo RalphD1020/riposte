@@ -53,6 +53,11 @@ var grade: SwingSemantics.Grade = SwingSemantics.Grade.GRAZE
 ## how the contact arose. One physical severity model for all kinds; the
 ## lethality law (COMBAT-011) diverges by classification on top of it.
 enum ContactKind { SLASH, POKE, THRUST, GRAZE }
+## Wire labels for `DuelEventKeys.CONTACT_KIND`. One home for the strings.
+const KIND_SLASH := "slash"
+const KIND_POKE := "poke"
+const KIND_THRUST := "thrust"
+const KIND_GRAZE := "graze"
 var contact_kind: ContactKind = ContactKind.SLASH
 ## Whether the lethality law (COMBAT-011) determined this strike is an
 ## instant kill. True for unprotected THRUSTs (no prior blade defense) and
@@ -61,13 +66,13 @@ var lethal: bool = false
 
 
 func to_payload() -> Dictionary:
-	var kind_label := "slash"
+	var kind_label := KIND_SLASH
 	if contact_kind == ContactKind.POKE:
-		kind_label = "poke"
+		kind_label = KIND_POKE
 	elif contact_kind == ContactKind.THRUST:
-		kind_label = "thrust"
+		kind_label = KIND_THRUST
 	elif contact_kind == ContactKind.GRAZE:
-		kind_label = "graze"
+		kind_label = KIND_GRAZE
 	return {
 		DuelEventKeys.X: impact.point_x,
 		DuelEventKeys.Y: impact.point_y,

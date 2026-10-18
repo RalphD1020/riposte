@@ -38,9 +38,10 @@ const SPATIAL_UNIT_SIZE := 8.0
 ## Layers sit under the primary so the transient still leads.
 const LAYER_VOLUME_DB := -3.0
 ## The howl sits under the announcer on the same bus, on its own player.
-## The howl file is denser than the spoken line, so −8 dB still covered the
-## words. −14 dB keeps the call present and leaves the line in front.
-const CALL_TRIM_DB := -14.0
+## The spoken line is boosted. The howl file is denser than speech, so the
+## call stays well under that line.
+const ANNOUNCER_GAIN_DB := 6.0
+const CALL_TRIM_DB := -20.0
 const PLAYER_ANNOUNCER := "VoiceAnnouncer"
 const PLAYER_FIGHTER := "VoiceFighter"
 const PLAYER_STING := "MusicSting"
@@ -189,7 +190,7 @@ func play_voice(stream: AudioStream, caption: String) -> bool:
 		caption_requested.emit(caption, seconds)
 	if stream == null:
 		return false
-	_start(_voice, stream, 0.0)
+	_start(_voice, stream, ANNOUNCER_GAIN_DB)
 	return true
 
 

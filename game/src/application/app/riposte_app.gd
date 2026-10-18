@@ -27,6 +27,10 @@ var settings_path: String = PlayerSettings.PATH
 ## they do not each own a player.
 const MENU_LOOP := "res://assets/presentation/audio/music/menu_theme.mp3"
 const LOOP_VOLUME_DB := -8.0
+## Applied to the outgoing playback before stop. Godot fades a stopped
+## stream for one mix buffer; muting first keeps that buffer from being
+## the previous theme.
+const LOOP_CUT_DB := -80.0
 ## Exact diagnostic when MATCH has no arena stream. The test runner allows
 ## this one `ERROR:` line; other engine errors still fail the gate.
 const FAULT_MATCH_MUSIC_MISSING := "RiposteApp: match music is missing"
@@ -35,6 +39,11 @@ var _menu_music: AudioStream
 ## Arena theme published by MatchScreen._ready before the router reports MATCH.
 ## Null means the match has no valid stream; the selector stops the loop.
 var _match_music: AudioStream
+## The stream the one player should be on. An MP3 is not monophonic, so
+## `play()` stacks a voice, and `stop()` only fades the old one. The new
+## voice starts on the next frame, after that fade has left the server.
+var _pending_music: AudioStream
+var _music_dirty: bool = false
 ## How many times `play()` ran on the loop. Same stream already playing does
 ## not increment. Playback position is not this contract.
 var _loop_starts: int = 0
@@ -95,6 +104,7 @@ func _ready() -> void:
 	_loop.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	_loop.max_polyphony = 1
 	add_child(_loop)
+	set_process(false)
 	_menu_music = load(MENU_LOOP) as AudioStream
 	router.screen_changed.connect(_on_screen_changed)
 	var window := get_window()
@@ -117,22 +127,38 @@ func publish_match_music(stream: AudioStream) -> void:
 
 
 ## Select the one loop. The same stream, already playing, is left alone, so
-## opening Settings does not restart the menu. A different stream is a hard
-## cut on this player: stop, clear, then play the new one from the start.
-## A null stream stops the player and clears it. There is no second music
-## owner and no scene-tree sweep; the horn and the crowd are other files
-## on other players.
+## opening Settings does not restart the menu. A different stream stops this
+## player now and starts the new voice next frame, so the faded menu voice
+## and the arena voice are never both in the mix. A null stream stops it.
 func play_loop(stream: AudioStream) -> void:
 	if _loop == null:
 		return
-	if stream != null and _loop.stream == stream and _loop.playing:
+	if _music_dirty and stream == _pending_music:
 		return
+	if not _music_dirty and stream != null and _loop.stream == stream and _loop.playing:
+		return
+	_pending_music = stream
+	_music_dirty = true
+	_loop.volume_db = LOOP_CUT_DB
 	_loop.stop()
 	_loop.stream = null
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	if not _music_dirty or _loop == null:
+		set_process(false)
+		return
+	_music_dirty = false
+	var stream := _pending_music
+	_loop.volume_db = LOOP_VOLUME_DB
+	set_process(false)
 	if stream == null:
 		return
+	if _loop.playing:
+		_loop.stop()
 	_loop.stream = stream
-	_loop.play(0.0)
+	_loop.play()
 	_loop_starts += 1
 
 
@@ -141,6 +167,8 @@ func is_loop_playing() -> bool:
 
 
 func loop_stream() -> AudioStream:
+	if _music_dirty:
+		return _pending_music
 	return _loop.stream if _loop != null else null
 
 

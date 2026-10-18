@@ -21,6 +21,8 @@ const KIND_DISCONNECT := 6
 const RESULT_LIVE := 0
 const RESULT_ABANDONED := 1
 const RESULT_DECIDED := 2
+## Byte form of "no slot". `MatchPhase.NO_WINNER` is -1 and does not fit this field.
+const SLOT_NONE := 255
 
 var kind: int = 0
 var session_id: int = 0
@@ -76,7 +78,7 @@ func to_bytes() -> PackedByteArray:
 	raw[0] = kind
 	raw[1] = PROTOCOL_VERSION
 	raw.encode_u32(2, session_id)
-	raw[6] = slot if slot >= 0 else 255
+	raw[6] = slot if slot >= 0 else SLOT_NONE
 	raw.encode_s32(7, tick)
 	raw.encode_s32(11, move_x)
 	raw.encode_s32(15, move_y)
@@ -94,7 +96,7 @@ static func from_bytes(raw: PackedByteArray) -> MatchNote:
 	var note := MatchNote.new()
 	note.kind = raw[0]
 	note.session_id = raw.decode_u32(2)
-	note.slot = -1 if raw[6] == 255 else raw[6]
+	note.slot = -1 if raw[6] == SLOT_NONE else raw[6]
 	note.tick = raw.decode_s32(7)
 	note.move_x = raw.decode_s32(11)
 	note.move_y = raw.decode_s32(15)
