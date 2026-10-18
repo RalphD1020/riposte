@@ -128,6 +128,13 @@ func test_audio_buses_follow_volumes() -> void:
 	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.COMBAT)), AudioBuses.SFX, "Combat is part of effects")
 	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.UI)), AudioBuses.SFX, "and so is UI")
 	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.VOICE)), AudioBuses.MASTER, "Voice has its own fader beside them")
+	assert_eq(AudioServer.get_bus_send(AudioServer.get_bus_index(AudioBuses.CROWD)), AudioBuses.MASTER, "Crowd is not folded into music or effects")
+	var crowd := PlayerSettings.new()
+	crowd.crowd_volume = 0.0
+	crowd.apply_audio()
+	assert_true(AudioServer.is_bus_mute(AudioServer.get_bus_index(AudioBuses.CROWD)), "zero crowd volume mutes the bed and the reactions")
+	crowd.crowd_volume = 1.0
+	crowd.apply_audio()
 	var voiced := PlayerSettings.new()
 	voiced.voice_volume = 0.0
 	voiced.apply_audio()

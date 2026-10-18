@@ -8,7 +8,7 @@ Riposte is a physics-driven 1v1 sword duel for the browser: two verbs (move, att
 
 ## Product loop
 
-`website → Play → Godot loading shell → main menu → Quick Play → duel → results → rematch or menu` ([docs/concepts/ux.md](./ux.md)). Matches are best of five rounds; a round ends on a kill, a trade (the blade that landed first wins; an exact tie is a draw), or time (more health wins).
+`website → Play → Godot loading shell → main menu → Quick Play → duel → results → rematch or menu` ([docs/concepts/ux.md](./ux.md)). Quick Play is first to three. Training is one long non-lethal round, so it has no set point. A round ends on a kill, a trade (the blade that landed first wins; an exact tie is a draw), or time (more health wins). The HUD shows stamina and a condition icon; health stays in the simulation and in that icon's description ([presentation.md](./presentation.md)).
 
 ## Where to read next
 

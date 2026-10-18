@@ -217,13 +217,13 @@ func test_leaving_the_victory_for_the_menu_cleans_up() -> void:
 
 
 ## The set-winning sequence through the real match: the deciding round keeps
-## playing with the gameplay HUD down, then the showcase pushes in and its
-## fanfare sounds once.
+## playing with the gameplay HUD down, and the horn sounds once on that kill.
 func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 	var driver := AppDriver.boot(7)
 	await await_frames(1)
 	var screen := await _scenario(driver, ScenarioController.standing())
-	var beat := {"hid": false}
+	var beat := {"hid": false, "horns": 0}
+	var fanfare := DuelKits.resolve(driver.app.kit_catalog, screen.session.config.rules).combatant(0).victory().fanfare
 	for _round in screen.session.config.rules.rounds_to_win:
 		if screen.is_finished():
 			break
@@ -233,6 +233,11 @@ func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 		driver.run_until(screen, func() -> bool:
 			if screen.is_in_final_beat() and not screen.hud.is_gameplay_chrome_visible():
 				beat["hid"] = true
+			var horns := 0
+			for played in screen.presenter.audio().history:
+				if played == fanfare:
+					horns += 1
+			beat["horns"] = horns
 			return screen.is_finished() or screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
 	assert_eq(screen.session.state.match_winner, 0, "fixture: the human won the set")
 	var kills := 0
@@ -241,6 +246,7 @@ func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 			kills += 1
 	assert_true(kills >= 1, "the set contains a kill, not a manufactured ending (%d)" % kills)
 	assert_true(bool(beat["hid"]), "the deciding round hides the gameplay HUD while it is still being played")
+	assert_eq(int(beat["horns"]), 1, "the horn played once on the killing set win")
 	await await_frames(1)
 	var results := driver.results_screen()
 	var director := results.victory_director()
@@ -253,10 +259,10 @@ func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 		results.advance_frame(AppDriver.FRAME)
 		elapsed += AppDriver.FRAME
 	assert_false(results.is_victory_cinematic(), "the showcase reaches the results")
-	assert_eq(_sting_count(director, profile.fanfare), 1, "the fanfare played once, on the lock")
+	assert_eq(_sting_count(director, profile.fanfare), 0, "the showcase does not play the horn again")
 	assert_near(director.camera().fov, profile.fov_finish, 0.05, "and the camera has pushed in")
 	results.advance_frame(2.0)
-	assert_eq(_sting_count(director, profile.fanfare), 1, "sitting on the results does not play it again")
+	assert_eq(_sting_count(director, profile.fanfare), 0, "sitting on the results does not play the horn")
 	driver.shutdown()
 	await await_frames(2)
 
@@ -279,6 +285,10 @@ func test_a_slash_kill_cuts_down_drops_one_sword_and_resolves_the_round() -> voi
 	assert_false(screen.presenter.fighter_proxy(0).is_finishing(), "a cut never holds the striker in a run-through")
 	assert_eq(screen.presenter.dropped_weapons().size(), 1, "exactly one sword drops")
 	assert_true(victim.is_weapon_dropped() and not screen.presenter.fighter_proxy(0).is_weapon_dropped(), "the victim's, not the striker's")
+	_assert_dead_face(victim, "the killed fighter")
+	_assert_living_face(screen.presenter.fighter_proxy(0), "the fighter still standing")
+	screen.advance_frame(AppDriver.FRAME)
+	_assert_dead_face(victim, "the corpse a frame later")
 	assert_false(victim.has_fall_request(), "a death on the platform is not a fall")
 	assert_eq(screen.session.state.end_reason, MatchPhase.REASON_KILL, "the round resolved as a kill")
 	assert_eq(screen.session.state.scores, PackedInt32Array([1, 0]), "and scored")
@@ -887,6 +897,10 @@ func test_a_walk_off_falls_close_to_the_edge_and_lets_go_a_beat_later() -> void:
 	assert_false(screen.presenter.has_death_started(0), "a ring-out is not a death")
 	assert_true(screen.presenter.is_drop_pending(0), "the hands have not let go at the ledge")
 	_settle(driver, screen)
+	assert_true(screen.session.state.fighter(0).health > 0.0, "a ring-out keeps its health")
+	assert_eq(screen.session.state.fighter(0).terminal_kind(), FighterState.Terminal.RING_OUT, "authority reads a ring-out")
+	_assert_dead_face(proxy, "the ring-out")
+	assert_eq(_horn_count(screen), 0, "a ring-out does not play the set horn")
 	assert_true(screen.presenter.has_drop_released(0), "they let go a beat later")
 	var edge := ArenaTransform.to_world(fell.number(DuelEventKeys.POSITION_X), fell.number(DuelEventKeys.POSITION_Y))
 	var drift := Vector2(proxy.position.x - edge.x, proxy.position.z - edge.z).length()
@@ -1260,12 +1274,70 @@ func _blade_contact_at(screen: MatchScreen, tick: int) -> DuelEvent:
 	return null
 
 
+func _horn_count(screen: MatchScreen) -> int:
+	var fanfare := screen.presenter.duel_kits().combatant(0).victory().fanfare
+	var count := 0
+	for played in screen.presenter.audio().history:
+		if played == fanfare:
+			count += 1
+	return count
+
+
+func _assert_dead_face(proxy: FighterPresentation3D, label: String) -> void:
+	_assert_face(proxy, false, label)
+
+
+func _assert_living_face(proxy: FighterPresentation3D, label: String) -> void:
+	_assert_face(proxy, true, label)
+
+
+func _assert_face(proxy: FighterPresentation3D, alive: bool, label: String) -> void:
+	var eyes := _face_parts(proxy.visual_root(), "Eye")
+	var marks := _face_parts(proxy.visual_root(), "DeadEye")
+	assert_true(eyes.size() >= 2 and marks.size() >= 2, "%s carries both faces" % label)
+	for eye: Node in eyes:
+		assert_eq(eye.visible, alive, "%s living eyes" % label)
+	for mark: Node in marks:
+		assert_eq(mark.visible, not alive, "%s X" % label)
+
+
+func _face_parts(root: Node, prefix: String) -> Array[Node]:
+	var found: Array[Node] = []
+	if root == null:
+		return found
+	var part := String(root.name)
+	if part.begins_with(prefix) and not (prefix == "Eye" and part.begins_with("DeadEye")):
+		found.append(root)
+	for child in root.get_children():
+		found.append_array(_face_parts(child, prefix))
+	return found
+
+
 func _sting_count(director: VictoryDirector, stream: AudioStream) -> int:
 	var count := 0
 	for played in director.audio().history:
 		if played == stream:
 			count += 1
 	return count
+
+
+func test_training_gear_shows_the_x_when_its_wearer_walks_off() -> void:
+	var driver := AppDriver.boot(7)
+	await await_frames(1)
+	driver.app.settings.fighter_skin = String(RiposteKits.SKIN_DUELIST_TRAINING)
+	var screen := await _scenario(driver, ScenarioController.standing())
+	var wearer := screen.presenter.fighter_proxy(0)
+	assert_eq(wearer.combatant_kit().fighter_skin.skin_id, RiposteKits.SKIN_DUELIST_TRAINING, "fixture: the human wears training gear")
+	_assert_living_face(wearer, "training gear at the start")
+	driver.hold_move(0.0, -WALK_OFF_STICK)
+	driver.run_until(screen, func() -> bool: return _first(screen, DuelEventTypes.RING_OUT, 0) != null, 3000)
+	driver.release_all()
+	assert_true(_first(screen, DuelEventTypes.RING_OUT, 0) != null, "fixture: training gear walked off")
+	_settle(driver, screen)
+	assert_true(screen.session.state.fighter(0).health > 0.0, "the ring-out is not a kill")
+	_assert_dead_face(wearer, "training gear")
+	driver.shutdown()
+	await await_frames(2)
 
 
 func _assert_round_clean(screen: MatchScreen, label: String) -> void:
@@ -1277,6 +1349,7 @@ func _assert_round_clean(screen: MatchScreen, label: String) -> void:
 		assert_false(proxy.is_weapon_dropped(), "%s: slot %d holds their sword" % [label, slot])
 		assert_false(proxy.has_fall_request(), "%s: slot %d is not falling" % [label, slot])
 		assert_false(proxy.is_finishing(), "%s: slot %d holds no run-through" % [label, slot])
+		_assert_living_face(proxy, "%s slot %d" % [label, slot])
 
 
 ## True when any mesh under `root` wears one of the combatant's ALTERNATE
@@ -1379,6 +1452,11 @@ func test_a_bind_is_formed_held_released_and_re_engaged_through_real_input() -> 
 	## ASSERT
 	assert_true(formed >= 0, "walking in, the swords meet (%s)" % _tally(screen))
 	assert_true(parted >= 0, "backing off, the steel parts")
+	var clashes_while_held := 0
+	for event in screen.session.events:
+		if formed >= 0 and event.type == DuelEventTypes.BLADE_CONTACT and event.tick > formed and event.tick < parted:
+			clashes_while_held += 1
+	assert_eq(clashes_while_held, 0, "the held contact does not emit a new clash each tick")
 	assert_true(gap_after > rules.combat.separation_epsilon, "with a real gap (%.4f m)" % gap_after)
 	assert_eq(held_after, 0, "and nothing held once apart")
 	assert_true(met != null, "walking back in, the human meets the opponent again (%s)" % _tally(screen))
@@ -1394,9 +1472,10 @@ func test_a_bind_is_formed_held_released_and_re_engaged_through_real_input() -> 
 ## angular allowance: on the first tick an attack is legal, one tap — press
 ## and release pushed before the step — is the command that step consumes.
 ## The weapon leaves neutral on that command. A buffered press is not left
-## behind. The standing guard still takes this cut on the steel; that miss
-## is not this test and is not locked in. Nothing assigns a bind, a velocity,
-## or a health.
+## behind. This named scene's answer meets steel and does not hit the body.
+## That is this scenario, not a rule about every bind. Nothing assigns a bind,
+## a velocity, or a health. The fighters are placed; the press, the part, and
+## the tap are production input after that.
 func test_a_pressed_bind_slides_and_parts_on_a_back_step() -> void:
 	var driver := AppDriver.boot(7)
 	await await_frames(1)
@@ -1490,6 +1569,21 @@ func test_a_pressed_bind_slides_and_parts_on_a_back_step() -> void:
 	assert_true(answer != null and answer.tick == command_tick, "and releases it in the same command (%.4f rad of return over %d ticks)" % [drift, waited])
 	assert_true(CombatPhase.is_swinging(human.weapon.phase) or human.weapon.phase == CombatPhase.Id.LAUNCH, "the weapon leaves neutral on that command (phase %d)" % human.weapon.phase)
 	assert_true(human.press_tick < 0 and human.buffered_press_tick < 0, "the tap is consumed; nothing is held or buffered")
+	var steel := 0
+	var body := 0
+	for _t in 180:
+		_advance_tick(screen)
+		if human.weapon.phase == CombatPhase.Id.NEUTRAL or human.weapon.phase == CombatPhase.Id.RECOVERY:
+			break
+	for event in screen.session.events:
+		if event.actor != 0 or event.tick <= command_tick:
+			continue
+		if event.type == DuelEventTypes.BLADE_CONTACT:
+			steel += 1
+		elif event.type == DuelEventTypes.BODY_HIT:
+			body += 1
+	assert_true(steel >= 1, "this scene's answer meets steel (%d contacts, %s)" % [steel, _tally(screen)])
+	assert_eq(body, 0, "and does not hit the body")
 	driver.shutdown()
 	await await_frames(2)
 

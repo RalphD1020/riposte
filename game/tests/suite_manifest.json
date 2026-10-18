@@ -32,6 +32,12 @@
       "budget_ms": 2000
     },
     {
+      "name": "CHARACTER",
+      "path": "res://tests/domain/test_character.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
       "name": "INVARIANT",
       "path": "res://tests/domain/test_invariants.gd",
       "tier": "fast",
@@ -344,6 +350,18 @@
       "budget_ms": 2000
     },
     {
+      "name": "PRES-FACE",
+      "path": "res://tests/presentation/test_face.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
+      "name": "PRES-CROWD",
+      "path": "res://tests/presentation/test_crowd.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
       "name": "PRES-INTRO",
       "path": "res://tests/presentation/test_intro.gd",
       "tier": "focused",
@@ -407,10 +425,11 @@
       ]
     },
     "rules": {
-      "paths": ["content/rules/"],
+      "paths": ["content/rules/", "content/characters/"],
       "suites": [
         "RULES",
         "SCALING",
+        "CHARACTER",
         "MOVE",
         "MOTION-COMMIT",
         "CONTACT",
@@ -540,6 +559,8 @@
         "PRES-READABILITY",
         "PRES-RIG",
         "PRES-VICTORY",
+        "PRES-FACE",
+        "PRES-CROWD",
         "PRES-INTRO",
         "PRES-HUD"
       ]

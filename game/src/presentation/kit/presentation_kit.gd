@@ -106,6 +106,12 @@ const CUE_UI_HOVER := &"ui.hover"
 const UI_CUES: Array[StringName] = [CUE_UI_CONFIRM, CUE_UI_BACK, CUE_UI_HOVER]
 ## Arena ambience; looped on the Music bus while a duel is mounted.
 const CUE_MUSIC := &"music"
+const CUE_CROWD_BED := &"crowd.bed"
+const CUE_CROWD_CHEER := &"crowd.cheer"
+const CUE_CROWD_STRONG := &"crowd.strong"
+const CUE_CROWD_SETPOINT := &"crowd.setpoint"
+const CUE_CROWD_VICTORY := &"crowd.victory"
+const CUE_CROWD_GASP := &"crowd.gasp"
 
 ## VFX cues the presenter may request.
 ## Where a resolved strike's quality saturates the body hitstop band. The
@@ -157,6 +163,14 @@ const VFX_IMPACT := &"impact"
 ## Fighter kits: how this identity is announced and introduced. Optional.
 @export var voice: FighterVoiceKit
 @export var intro: FighterIntroProfile
+## Optional mark for cards and the victory screen. The alternate is the
+## mirror-match colorway. Neither is read by combat.
+@export var symbol: Texture2D
+@export var symbol_alternate: Texture2D
+## Howl or other nonverbal call. Played under the announcer, not as the horn.
+@export var character_call: AudioStream
+## Optional crowd name chant. A missing take uses the generic reaction.
+@export var crowd_chant: AudioStream
 ## Fighter kits: how this identity is shown when it wins a set. Optional; a
 ## fighter without one still wins, with the results card alone.
 @export var victory: FighterVictoryProfile

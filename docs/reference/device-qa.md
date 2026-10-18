@@ -29,7 +29,7 @@ Do not re-test these by hand. APP-E2E drives real `InputEventScreenTouch` and
 
 A simulated touch event is a real touch event as far as the game is
 concerned. What it is not is a real _hand_: it cannot tell you that the stick
-sits under a palm, that a thumb occludes the health bar, or that the blade is
+sits under a palm, that a thumb occludes the stamina bar, or that the blade is
 invisible at 5 inches in daylight.
 
 ## Support floor (MVP-0)

@@ -58,7 +58,7 @@ Swing potential is read from the blade ribbon's thickness, the sweet region from
 - Contrast: text ≥ 4.5:1, essential boundaries ≥ 3:1 (tests: `game/tests/presentation/test_theme.gd`, `apps/web/src/app/theme.test.ts`).
 - Targets ≥ 48 UI units; visible focus ring (3 px + 3 px gap); keyboard focus starts on the primary action (touch devices: on first navigation key, so no ring sits under a thumb).
 - Selection shown by fill **and** a drawn marker; pips are shapes; switches move the knob. Never color alone.
-- Live regions announce banners, coaching prompts, pause, and results; health bars expose "N of M".
+- Live regions announce banners, coaching prompts, pause, and results; the condition icon exposes health as "N of M".
 - Reduced Motion, Reduced Flash, Screen Shake, High Contrast Weapons, Charge Indicator, Trail Strength, Sweet-Spot Visualization, touch opacity, Haptics, Sound Captions, the contact highlight (Show where blades touch), and key rebinding ([controls](./controls.md#rebinding)) are settings.
 - Accessibility changes how loudly information is drawn, never what it means. Strengthening the sweet-spot cue widens the drawn rib; it does not widen the sweet region, change damage, or change timing. Combat stays fully readable with screen shake off and the ribbon off.
 - Every shipped string renders in the shipped font (test: `game/tests/application/test_app_shell.gd`).
@@ -73,7 +73,7 @@ Trail Strength and Sweet-Spot Visualization are three-way (`Off / Subtle / Full`
 
 ## Device QA
 
-Simulated touch events are real as far as the game is concerned, so the two-thumb, burst-gesture, and cancellation claims are proven in APP-E2E rather than by hand. What a simulated event is not is a real hand: it cannot tell you a thumb occludes the health bar or that a blade is invisible in daylight. The hand pass is a written procedure — [device QA](../reference/device-qa.md).
+Simulated touch events are real as far as the game is concerned, so the two-thumb, burst-gesture, and cancellation claims are proven in APP-E2E rather than by hand. What a simulated event is not is a real hand: it cannot tell you a thumb occludes the stamina bar or that a blade is invisible in daylight. The hand pass is a written procedure — [device QA](../reference/device-qa.md).
 
 The same reasoning covers combat legibility. Every cue is proven to be driven by the physical quantity that causes it, and proven unable to exceed it, but whether a new player can read the fight is a question about a person. That is the [combat feel gate](../reference/combat-feel-gate.md), and it is what the mechanics freeze waits on.
 
@@ -83,4 +83,4 @@ F3 in a debug build shows the text overlay and `DebugVectors3D` together: body v
 
 ## Settings persistence
 
-`PlayerSettings` → `user://settings.cfg` (IndexedDB on Web; file layout in `SECTION_*` / `KEY_*`). Loaded values are sanitized; failures degrade to defaults and show "could not be saved". Toggles save immediately; volume drags save once when the panel closes. Volumes scale the `AudioBuses` defined by `game/default_bus_layout.tres`.
+`PlayerSettings` → `user://settings.cfg` (IndexedDB on Web; file layout in `SECTION_*` / `KEY_*`). Loaded values are sanitized; failures degrade to defaults and show "could not be saved". Toggles save immediately; volume drags save once when the panel closes. The faders are Master, Music, Effects, Announcer, and Crowd (`AppCopy.SETTING_*`). They scale `AudioBuses` in `game/default_bus_layout.tres`. Combat and UI send to SFX.

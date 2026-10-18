@@ -36,6 +36,8 @@ var _touch_layout: bool = false
 ## `DuelSimulation.accepts_gameplay_input`), and only then is the winner's
 ## showcase shown. Nothing is fast-forwarded or hidden.
 var _set_decided: bool = false
+var _horn: SetWinningHorn = SetWinningHorn.new()
+var _crowd: CrowdDirector = CrowdDirector.new()
 
 
 func bind(riposte_app: RiposteApp) -> MatchScreen:
@@ -67,6 +69,8 @@ func _ready() -> void:
 	presenter.hitstop_requested.connect(driver.hold)
 	presenter.slow_motion_requested.connect(driver.slow_motion)
 	app.presentation_mount.add_child(presenter)
+	if kits.arena != null:
+		app.play_loop(kits.arena.stream_for(PresentationKit.CUE_MUSIC))
 	_build_ui(config, kits)
 	hud.reduced_motion = options.reduced_motion
 	round_start.reduced_motion = options.reduced_motion
@@ -273,7 +277,13 @@ func _advance_tick() -> void:
 	debug_overlay.observe(events)
 	if tutorial != null and tutorial.observe(session.state, events):
 		_show_tutorial_step()
-	if (snapshot.set_winner == 0 or snapshot.set_winner == 1) and session.config.mode == MatchConfig.Mode.QUICK_PLAY_CPU:
+	if MatchPhase.is_combatant(snapshot.set_winner):
+		var loser := snapshot.fighter(1 - snapshot.set_winner)
+		if _horn.consider(snapshot.set_winner, loser.terminal_cause):
+			presenter.play_set_horn(snapshot.set_winner)
+	var crowd_cue := _crowd.observe(events, session.state.scores, session.config.rules.rounds_to_win, snapshot.set_winner)
+	presenter.play_crowd(crowd_cue, snapshot.set_winner)
+	if MatchPhase.is_combatant(snapshot.set_winner) and session.config.mode == MatchConfig.Mode.QUICK_PLAY_CPU:
 		## The set is decided: its deciding round plays on, live, and the
 		## winner's showcase follows the match's own end (PRES-VICTORY-001).
 		_set_decided = true

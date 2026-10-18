@@ -31,6 +31,8 @@ A rule set _selects_ its two combatants by id (`StandardDuelRules.with_combatant
 
 ## Character, weapon, handling (LOADOUT-001)
 
+`game/content/characters/wolf.character.json` (`riposte.character_art` v1) is the only author of Wolf's display name, `body_scale`, palette, and block geometry. `CharacterCatalog` reads that identity and `spec_at` compiles a `CombatantPhysicsSpec`. Scale 1.0 returns the shipped `FighterCatalog.duelist()`. Any other scale uses `FighterCatalog.prototype_at` and the existing bastard sword at length 1.0. A scale whose grip cannot hold that sword returns null. The product match does not call the catalog. It still compiles through `LoadoutCatalog` and `FighterCatalog.duelist()`. A body scale other than 1.0 is not a shipped look; the hands-on-grip proof is the 1.0 rig (`PRES-RIG`), and a scaled visual accept is future tool work. The intro card, the victory card, and the announcer's spoken name are presentation cues on those kits. A match does not copy them from the JSON. The sword model is the code in `WeaponKinematics` and `SwordContactGeometry`; there is no model registry. Weapon scale is not a field.
+
 Three independently authored pieces meet only in `LoadoutCatalog`:
 
 - the **character** (`FighterDefinition`) — body and actuators; it knows no weapon;

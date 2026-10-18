@@ -53,20 +53,23 @@ func _run(director: VictoryDirector, frames: int) -> void:
 
 
 func test_every_beat_sounds_exactly_once_over_a_long_showcase() -> void:
-	var director := _director(_combatant())
+	var combatant := _combatant()
+	var director := _director(combatant)
 	var profile := director.profile()
 	assert_true(profile.fanfare != null and profile.announcer_line != null, "fixture: Wolf's victory has a fanfare and a winner line")
 	assert_eq(_count(director, profile.fanfare), 0, "fixture: nothing has played before the showcase runs")
 	## 300 frames (5 s) runs well past the interactive time into the results.
 	_run(director, 300)
 	assert_false(director.is_cinematic(), "the showcase reached its results")
-	assert_eq(_count(director, profile.fanfare), 1, "the fanfare played exactly once")
+	assert_eq(_count(director, profile.fanfare), 0, "the showcase does not play the set horn")
 	assert_eq(_count(director, profile.announcer_line), 1, "the winner line played exactly once")
+	assert_eq(_count(director, combatant.fighter.character_call), 1, "the howl plays once under that line")
 	assert_eq(director.fired_beats(), VictoryDirector.Beat.size(), "every beat fired")
 	## The results screen can stay up indefinitely: nothing replays.
 	_run(director, 600)
-	assert_eq(_count(director, profile.fanfare), 1, "a long results screen never replays the fanfare")
+	assert_eq(_count(director, profile.fanfare), 0, "a long results screen never plays the horn")
 	assert_eq(_count(director, profile.announcer_line), 1, "or the line")
+	assert_eq(_count(director, combatant.fighter.character_call), 1, "or the howl")
 	director.free()
 
 
@@ -80,7 +83,7 @@ func test_the_charge_is_held_through_the_gather_and_released_on_the_lock() -> vo
 	assert_true(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "the charge is held through the gather")
 	_run(director, ceili((profile.charge_lock_time - mid) / FRAME) + 2)
 	assert_false(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "the lock releases it — a looping stream never outlives the gather")
-	assert_true(director.audio().is_sting_playing(), "and the fanfare sounds on its own voice")
+	assert_false(director.audio().is_sting_playing(), "the lock does not start the set horn")
 	_run(director, 600)
 	assert_false(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "nothing restarts the charge afterwards")
 	director.free()
@@ -93,27 +96,27 @@ func test_skipping_twice_or_pausing_replays_nothing() -> void:
 	assert_true(director.is_cinematic(), "fixture: mid-cinematic")
 	director.finish()
 	director.finish()
-	assert_eq(_count(director, profile.fanfare), 1, "a skip fires the pending fanfare once, a second skip nothing")
+	assert_eq(_count(director, profile.fanfare), 0, "a skip does not play the set horn")
 	assert_eq(_count(director, profile.announcer_line), 1, "and the line once")
 	assert_false(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "a skip never leaves the charge held")
 	## A paused screen advances by zero; a resume continues where it was.
 	for _i in 120:
 		director.advance(0.0)
 	_run(director, 120)
-	assert_eq(_count(director, profile.fanfare), 1, "pause and resume replay nothing")
+	assert_eq(_count(director, profile.fanfare), 0, "pause and resume do not play the horn")
 	director.free()
 
 
 func test_a_new_showcase_plays_its_beats_again() -> void:
 	var first := _director(_combatant())
 	_run(first, 300)
-	var fanfare := first.profile().fanfare
-	assert_eq(_count(first, fanfare), 1, "fixture: the first set's fanfare played once")
+	var line := first.profile().announcer_line
+	assert_eq(_count(first, line), 1, "fixture: the first set's line played once")
 	first.free()
 	var second := _director(_combatant())
-	assert_eq(_count(second, fanfare), 0, "a rematch's showcase starts fresh")
+	assert_eq(_count(second, line), 0, "a rematch's showcase starts fresh")
 	_run(second, 300)
-	assert_eq(_count(second, fanfare), 1, "and plays its fanfare once")
+	assert_eq(_count(second, line), 1, "and plays its line once")
 	second.free()
 
 

@@ -3,8 +3,9 @@ extends Node
 
 ## Pooled match audio. Spatial voices for blade and body contact play on the
 ## Combat bus, flat voices for round stings on SFX, menu/HUD cues on UI, the
-## announcer on Voice, one music voice loops the arena ambience on Music, and
-## one sting voice (victory fanfare) plays on Music beside it. Cues come from
+## announcer on Voice, and one sting voice (the set-winning horn) on Music.
+## The menu and arena loops are not this director's: `RiposteApp` owns that
+## one player and selects the stream. Cues come from
 ## kits; a missing cue is silent and never holds anything up — a voiced line
 ## still asks for its caption. Doppler is off: the camera moves, sounds should
 ## not wobble.
@@ -12,7 +13,7 @@ extends Node
 ## Loop families: the one-shot paths (`play`, `play_flat`, `play_ui`,
 ## `play_voice`, `play_sting`) take streams that do not loop; a looping stream
 ## belongs only to a held voice with an owner that releases it (`hold_tension`
-## / `release_tension`, `hold_bind` / `release_bind`) or to `play_music`.
+## / `release_tension`, `hold_bind` / `release_bind`) or to the app's music loop.
 ## `stop_all` silences every family.
 ##
 ## Variety without nondeterminism: a cue with several takes picks one from a
@@ -29,12 +30,13 @@ signal caption_requested(text: String, seconds: float)
 const SPATIAL_VOICES := 12
 const FLAT_VOICES := 2
 const UI_VOICES := 2
-const MUSIC_VOLUME_DB := -6.0
 ## Distance (m) at which spatial voices start to attenuate: the whole arena
 ## stays audible.
 const SPATIAL_UNIT_SIZE := 8.0
 ## Layers sit under the primary so the transient still leads.
 const LAYER_VOLUME_DB := -3.0
+## The howl sits under the announcer on the same bus.
+const CALL_TRIM_DB := -8.0
 const CAPTION_MIN_SECONDS := 0.9
 const HISTORY_LIMIT := 64
 
@@ -63,8 +65,10 @@ var _bind: Array[AudioStreamPlayer3D] = []
 ## The contact each held scrape belongs to.
 var _bind_key := PackedInt32Array([0, 0])
 var _voice: AudioStreamPlayer
-var _music: AudioStreamPlayer
+var _character_call: AudioStreamPlayer
 var _sting: AudioStreamPlayer
+var _crowd_bed: AudioStreamPlayer
+var _crowd_shot: AudioStreamPlayer
 var _next_spatial: int = 0
 var _next_flat: int = 0
 var _next_ui: int = 0
@@ -85,31 +89,34 @@ func _init() -> void:
 	## rather than layering over it.
 	_voice = _flat_voice(AudioBuses.VOICE)
 	_voice.max_polyphony = 1
-	_music = _flat_voice(AudioBuses.MUSIC)
-	_music.volume_db = MUSIC_VOLUME_DB
+	## The howl sits under the announcer on the same bus, on its own player,
+	## so the two can sound together.
+	_character_call = _flat_voice(AudioBuses.VOICE)
+	_character_call.volume_db = CALL_TRIM_DB
 	_sting = _flat_voice(AudioBuses.MUSIC)
 	_sting.max_polyphony = 1
+	_crowd_bed = _flat_voice(AudioBuses.CROWD)
+	_crowd_shot = _flat_voice(AudioBuses.CROWD)
 
 
-## Loop the kit's ambience; a kit without music stays silent. Must be called
-## inside the tree (the presenter does it on ready).
-func play_music(kit: PresentationKit) -> bool:
-	if kit == null or not kit.has_audio(PresentationKit.CUE_MUSIC) or not is_inside_tree():
-		return false
-	var stream := kit.stream_for(PresentationKit.CUE_MUSIC)
-	if _music.stream != stream:
-		_music.stream = stream
-	if not _music.playing:
-		_music.play()
-	return true
+func is_character_call_playing() -> bool:
+	return _character_call.playing
 
 
-func is_music_playing() -> bool:
-	return _music.playing
+func character_call_stream() -> AudioStream:
+	return _character_call.stream
 
 
-func music_stream() -> AudioStream:
-	return _music.stream
+func is_crowd_bed_playing() -> bool:
+	return _crowd_bed.playing
+
+
+func crowd_bed_stream() -> AudioStream:
+	return _crowd_bed.stream
+
+
+func crowd_shot_stream() -> AudioStream:
+	return _crowd_shot.stream
 
 
 ## A spatial combat cue plus any layers the kit declares for it.
@@ -157,8 +164,36 @@ func play_voice(stream: AudioStream, caption: String) -> bool:
 	return true
 
 
-## A musical sting (the victory fanfare) on its own Music voice, alongside
-## whatever is being said; never stolen by the SFX pool.
+## The character howl, under the announcer. A missing take is silent.
+func play_character_call(stream: AudioStream) -> bool:
+	if stream == null:
+		return false
+	_start(_character_call, stream, CALL_TRIM_DB)
+	return true
+
+
+## Loop the crowd bed. A second call with the same stream does not restart it.
+func play_crowd_bed(stream: AudioStream) -> bool:
+	if stream == null or not is_inside_tree():
+		return false
+	if _crowd_bed.stream != stream:
+		_crowd_bed.stream = stream
+	if not _crowd_bed.playing:
+		_crowd_bed.play()
+		_remember(stream)
+	return true
+
+
+## One crowd reaction. A new reaction replaces one that is still playing,
+## which is how the cooldown's choice stays a single voice.
+func play_crowd_shot(stream: AudioStream) -> bool:
+	if stream == null:
+		return false
+	_start(_crowd_shot, stream, 0.0)
+	return true
+
+
+## A musical sting (the set-winning horn) on its own Music voice.
 func play_sting(stream: AudioStream) -> bool:
 	if stream == null:
 		return false
@@ -180,7 +215,7 @@ func is_any_playing() -> bool:
 		for player: Variant in pool:
 			if player.playing:
 				return true
-	return _voice.playing or _music.playing or _sting.playing
+	return _voice.playing or _character_call.playing or _sting.playing or _crowd_bed.playing or _crowd_shot.playing
 
 
 ## Hold or update one fighter's wind-back tension. Idempotent per frame: the
@@ -260,8 +295,10 @@ func stop_all() -> void:
 		for player: Variant in pool:
 			player.stop()
 	_voice.stop()
-	_music.stop()
+	_character_call.stop()
 	_sting.stop()
+	_crowd_bed.stop()
+	_crowd_shot.stop()
 
 
 func _start_spatial(stream: AudioStream, world: Vector3, volume_db: float, pitch: float) -> void:

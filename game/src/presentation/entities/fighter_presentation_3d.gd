@@ -98,6 +98,11 @@ var _weapon: WeaponDefinition
 var _hilt: float = 0.0
 var _tip: float = 0.0
 var _visual_root: Node3D
+## Eye and DeadEye nodes, indexed once. A pose writes them only when the
+## terminal state changes.
+var _face_parts: Array[Node3D] = []
+var _face_known: bool = false
+var _face_is_alive: bool = true
 var _body_material: StandardMaterial3D
 var _weapon_origin: Node3D
 var _carriage_node: Node3D
@@ -218,6 +223,8 @@ func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: Present
 		position = world - Vector3(0.0, _fall_offset, 0.0)
 	rotation.y = ArenaTransform.yaw(facing)
 	_present_body(row, facing, delta)
+	## Any terminal defeat, including a ring-out whose health is still above zero.
+	_present_face(row.terminal_cause == FighterState.Terminal.NONE)
 	_look_offset = angle_difference(facing, row.target_bearing)
 	_pose_planar(weapon_angle)
 	_guard.update(weapon_angle)
@@ -661,6 +668,17 @@ func _build(push_radius: float) -> void:
 	add_child(_pose_debug)
 	if _rig != null and _rig.skeleton() != null:
 		_rig.skeleton().skeleton_updated.connect(_pose_debug.redraw.bind(self))
+	_present_face(true)
+
+
+func _present_face(alive: bool) -> void:
+	if not _face_known:
+		_face_parts = FacePresentation.bind(_visual_root)
+		_face_known = true
+	elif alive == _face_is_alive:
+		return
+	_face_is_alive = alive
+	FacePresentation.apply_bound(_face_parts, alive)
 
 
 func _build_scene() -> void:

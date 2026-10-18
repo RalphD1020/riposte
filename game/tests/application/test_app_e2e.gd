@@ -104,6 +104,9 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	var booted := await _boot_ready()
 	var app := booted.app
 	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "boots to the main menu")
+	assert_true(app.is_loop_playing(), "the menu loop is playing")
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "and it is the menu theme")
+	assert_eq(_looping_players(booted.main), 1, "one music loop")
 	assert_eq(app.telemetry.count_product(ProductEvents.GAME_LOADED), 1, "load recorded once")
 	assert_true(_press(app.current_screen(), "QUICK PLAY"), "Quick Play is on the menu")
 	await await_frames(1)
@@ -111,6 +114,10 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_true(first != null, "Quick Play opens the duel")
 	assert_eq(app.presentation_mount.get_child_count(), 1, "one presenter mounted")
 	assert_eq(first.session.config.mode, MatchConfig.Mode.QUICK_PLAY_CPU, "against the CPU")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "the match replaces the menu loop")
+	assert_true(app.is_loop_playing(), "the arena loop is the one that is playing")
+	assert_eq(_looping_players(first.presenter.audio()), 0, "the match director does not start a second loop")
+	assert_eq(_looping_players(booted.main), 1, "still one music loop")
 	var frames := _run_until(first, first.is_finished)
 	assert_true(first.is_finished(), "an idle human still reaches a result (%d frames)" % frames)
 	assert_eq(app.telemetry.count_product(ProductEvents.MATCH_FINISHED), 1, "finished exactly once")
@@ -118,6 +125,8 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	await await_frames(1)
 	assert_false(is_instance_valid(first), "the finished duel screen was freed")
 	assert_eq(app.router.current_id, AppScreen.Id.RESULTS, "results follow the match")
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "results return to the menu loop")
+	assert_eq(_looping_players(booted.main), 1, "still one music loop")
 	var winner := first_session.state.match_winner
 	var expected := "VICTORY" if winner == 0 else ("DEFEAT" if winner == 1 else "DRAW")
 	var results := app.current_screen() as ResultsScreen
@@ -127,6 +136,7 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	if results.is_victory():
 		results.set_process(false)
 		results.skip_victory()
+		assert_true(results.victory_card().has_mark(), "the winner's mark is on the victory card")
 	assert_eq(_results_title(results), expected, "outcome from the human's side")
 	assert_true(_press(results, "REMATCH"), "Rematch offered")
 	await await_frames(1)
@@ -192,6 +202,9 @@ func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
 	assert_true(captions.has("FIGHT!"), "and captioned")
 	screen.advance_frame(FRAME)
 	assert_true(screen.hud.is_gameplay_chrome_visible(), "the gameplay HUD appears with it")
+	assert_eq(screen.hud.find_children("*", "ProgressBar", true, false).size(), 2, "two stamina bars and no health bars")
+	assert_true(screen.hud.stamina_bar(0).visible and screen.hud.stamina_bar(1).visible, "both stamina bars are up")
+	assert_true(String(screen.hud.condition_icon(0).accessibility_name).ends_with(" health"), "health is the icon")
 	_run_until(screen, func() -> bool: return screen.session.state.round_number >= 2 or screen.is_finished())
 	assert_false(screen.is_intro_playing(), "a new round is never introduced again")
 	assert_false(screen.is_finished(), "fixture: a first-to-three set has a second round")
@@ -511,13 +524,17 @@ func test_pausing_changes_the_buses_of_the_music_that_is_playing() -> void:
 	var booted := await _boot_ready()
 	var screen := await _active_duel(booted)
 	var director := screen.presenter.audio()
-	assert_true(director.is_music_playing(), "fixture: the match is playing its music")
+	var app := booted.app
+	assert_true(app.is_loop_playing(), "fixture: the match is playing its music")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "fixture: that music is the arena theme")
 	var playing_before := _playing_on(director, AudioBuses.MUSIC)
-	## The set sting shares the Music bus with the loop. A drag must not start a
-	## third voice, and the loop is the one that has to keep playing.
-	assert_eq(playing_before, 2 if director.is_sting_playing() else 1, "the playing Music voices are the loop and, while it lasts, the sting")
-	assert_eq(_players_on(director, AudioBuses.MUSIC), 2, "music and the sting are two voices")
-	assert_eq(_players_on(director, AudioBuses.VOICE), 1, "one announcer voice")
+	## The loop lives on the app. The director's Music voice is the sting only.
+	assert_eq(_looping_players(director), 0, "the director is not a second loop")
+	assert_eq(_looping_players(booted.main), 1, "one loop in the whole scene")
+	assert_eq(playing_before, 1 if director.is_sting_playing() else 0, "the director's playing Music voice is the sting, when it is up")
+	assert_eq(_players_on(director, AudioBuses.MUSIC), 1, "the sting is the director's only Music voice")
+	assert_eq(_players_on(director, AudioBuses.VOICE), 2, "the announcer and the character call each have a Voice player")
+	assert_eq(_players_on(director, AudioBuses.CROWD), 2, "the crowd bed and one reaction each have a Crowd player")
 	var combat := AudioServer.get_bus_index(AudioBuses.COMBAT)
 	var ui := AudioServer.get_bus_index(AudioBuses.UI)
 	assert_eq(AudioServer.get_bus_send(combat), AudioBuses.SFX, "fixture: combat sends to effects")
@@ -532,32 +549,40 @@ func test_pausing_changes_the_buses_of_the_music_that_is_playing() -> void:
 	var music := _find_slider(panel, AppCopy.SETTING_MUSIC)
 	var effects := _find_slider(panel, AppCopy.SETTING_SFX)
 	var announcer := _find_slider(panel, AppCopy.SETTING_VOICE)
-	assert_true(music != null and effects != null and announcer != null, "fixture: the three faders are on the sheet")
+	var crowd := _find_slider(panel, AppCopy.SETTING_CROWD)
+	assert_true(music != null and effects != null and announcer != null and crowd != null, "fixture: the faders are on the sheet")
 	music.value = 0.15
 	effects.value = 0.4
 	announcer.value = 0.3
+	crowd.value = 0.0
 	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.MUSIC)), linear_to_db(0.15), 0.01, "music bus follows the drag")
 	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.SFX)), linear_to_db(0.4), 0.01, "effects bus follows the drag")
 	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.VOICE)), linear_to_db(0.3), 0.01, "announcer bus follows the drag")
-	assert_true(director.is_music_playing(), "the music keeps playing through the drag")
+	assert_true(AudioServer.is_bus_mute(AudioServer.get_bus_index(AudioBuses.CROWD)), "zero crowd volume mutes that bus while the match is playing")
+	assert_true(app.is_loop_playing(), "the music keeps playing through the drag")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "and it is still the arena theme")
 	assert_eq(_playing_on(director, AudioBuses.MUSIC), playing_before, "the drag does not start or stop a Music voice")
+	assert_eq(_looping_players(booted.main), 1, "the drag does not add a loop")
 	_push(_key(KEY_ESCAPE, true))
 	_push(_key(KEY_ESCAPE, true))
 	_push(_key(KEY_ESCAPE, true))
 	await await_frames(1)
 	assert_false(screen.is_paused(), "the match is running again")
 	screen.advance_frame(FRAME)
-	assert_true(director.is_music_playing(), "music is still that same playback")
+	assert_true(app.is_loop_playing(), "music is still that same playback")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "still the arena theme")
 	assert_near(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(AudioBuses.MUSIC)), linear_to_db(0.15), 0.01, "resuming does not put the bus back")
 	var reloaded := PlayerSettings.new()
 	reloaded.load_from(SETTINGS_PATH)
 	assert_near(reloaded.music_volume, 0.15, 1e-6, "the music drag was saved")
 	assert_near(reloaded.sfx_volume, 0.4, 1e-6, "the effects drag was saved")
 	assert_near(reloaded.voice_volume, 0.3, 1e-6, "the announcer drag was saved")
+	assert_near(reloaded.crowd_volume, 0.0, 1e-6, "the crowd drag was saved")
 	booted.app.settings.master_volume = 1.0
 	booted.app.settings.music_volume = 0.7
 	booted.app.settings.sfx_volume = 1.0
 	booted.app.settings.voice_volume = 1.0
+	booted.app.settings.crowd_volume = 0.8
 	booted.app.settings.apply_audio()
 	await _shutdown(booted)
 
@@ -590,6 +615,18 @@ func test_results_without_a_match_fall_back_to_the_menu() -> void:
 	await await_frames(2)
 	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "an empty results screen hands back to the menu")
 	await _shutdown(booted)
+
+
+func _looping_players(node: Node) -> int:
+	var count := 0
+	if node is AudioStreamPlayer:
+		var player := node as AudioStreamPlayer
+		var stream := player.stream
+		if player.playing and player.bus == AudioBuses.MUSIC and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
+			count += 1
+	for child in node.get_children():
+		count += _looping_players(child)
+	return count
 
 
 func _boot_ready() -> Booted:

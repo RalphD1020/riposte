@@ -48,7 +48,11 @@ const REPO_PATH = /^(?:game|apps|scripts|docs|spec|examples)\/[\w@./-]+$/;
  * artifacts, so requiring them on disk would make the docs gate depend on
  * whether someone had run an export.
  */
-const BUILD_OUTPUTS = new Set(["apps/web/public/game"]);
+const BUILD_OUTPUTS = new Set([
+  "apps/web/public/game",
+  // Godot's import cache. `pnpm clean` removes it; import creates it again.
+  "game/.godot",
+]);
 
 function walk(dir, accept, callback) {
   if (!existsSync(dir)) return;

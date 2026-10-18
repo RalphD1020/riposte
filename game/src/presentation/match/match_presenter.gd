@@ -69,7 +69,9 @@ static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCam
 
 
 func _ready() -> void:
-	_audio.play_music(_kits.arena)
+	## The arena loop belongs to RiposteApp. This director starts the bed only.
+	if _kits.arena != null:
+		_audio.play_crowd_bed(_kits.arena.stream_for(PresentationKit.CUE_CROWD_BED))
 
 
 func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
@@ -166,6 +168,40 @@ func debug_vectors() -> DebugVectors3D:
 
 func vfx() -> VfxDirector:
 	return _vfx
+
+
+func play_crowd(cue: StringName, winner: int) -> void:
+	if cue == &"" or cue == CrowdDirector.CUE_MURMUR or _kits == null or _kits.arena == null:
+		return
+	if cue == CrowdDirector.CUE_VICTORY and MatchPhase.is_combatant(winner):
+		var chant := _kits.combatant(winner).fighter.crowd_chant
+		if chant != null:
+			_audio.play_crowd_shot(chant)
+			return
+	var named := _crowd_cue(cue)
+	if named == &"":
+		return
+	_audio.play_crowd_shot(_kits.arena.stream_for(named))
+
+
+func _crowd_cue(cue: StringName) -> StringName:
+	match cue:
+		CrowdDirector.CUE_CHEER:
+			return PresentationKit.CUE_CROWD_CHEER
+		CrowdDirector.CUE_STRONG:
+			return PresentationKit.CUE_CROWD_STRONG
+		CrowdDirector.CUE_SETPOINT:
+			return PresentationKit.CUE_CROWD_SETPOINT
+		CrowdDirector.CUE_VICTORY:
+			return PresentationKit.CUE_CROWD_VICTORY
+		_:
+			return &""
+
+
+func play_set_horn(winner: int) -> void:
+	var profile := _kits.combatant(winner).victory()
+	if profile != null:
+		_audio.play_sting(profile.fanfare)
 
 
 func audio() -> AudioDirector:

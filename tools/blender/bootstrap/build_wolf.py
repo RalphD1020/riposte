@@ -38,18 +38,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
+import character_art  # noqa: E402
 import riposte_blocks as rb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+ART = character_art.load()
+_RIG = ART["rig"]
 FPS = 60
-BLADE_HEIGHT = 1.0
-GRIP_DOMINANT = 0.225
-GRIP_OFFHAND = 0.15
+BLADE_HEIGHT = _RIG["blade_height"]
+GRIP_DOMINANT = _RIG["grip_dominant"]
+GRIP_OFFHAND = _RIG["grip_offhand"]
 ## Slightly long for a 1.75 m body on purpose: at full wind-back the far hand
 ## must still reach the grip, and block proportions forgive the extra reach.
-ARM_SEGMENT = 0.3
-HAND_LENGTH = 0.06
-SHOULDER = (0.2, 0.0, 1.37)
+ARM_SEGMENT = _RIG["arm_segment"]
+HAND_LENGTH = _RIG["hand_length"]
+SHOULDER = tuple(_RIG["shoulder"])
 
 ## The display sword's mount for cinematic clips (intro, victory): an unweighted
 ## bone whose head is the pommel and which points down the blade. Gameplay never
@@ -64,8 +67,8 @@ GRIP_MID = (GRIP_DOMINANT + GRIP_OFFHAND) * 0.5
 ## is wide enough that the in-place steps below never close it.
 LEAD = "R"
 REAR = "L"
-LEAD_FOOT_FORWARD = 0.10
-REAR_FOOT_BACK = 0.08
+LEAD_FOOT_FORWARD = _RIG["lead_foot_forward"]
+REAR_FOOT_BACK = _RIG["rear_foot_back"]
 ## Leg axes, measured on this rig: a thigh's X− swings its foot forward (X+
 ## back), its Z+ moves the foot toward the fighter's right (−X); a knee's X+
 ## flexes it; a foot's Y+ rolls its sole back level after the thigh's Z+.
@@ -241,68 +244,46 @@ def segment(name, a, b, width, depth, mat, rig, bone_name, bevel=0.006):
 
 
 def build_body(rig, training):
-    m = {
-        ## Dark enough to clear 3:1 against the arena floor (the validator
-        ## checks it): charcoal for the ranger, a warm dark brown for training.
-        "fabric": rb.material("fabric", (0.035, 0.035, 0.042) if not training else (0.05, 0.03, 0.016), roughness=0.95),
-        "leather": rb.material("leather", (0.2, 0.12, 0.07) if not training else (0.33, 0.22, 0.12), roughness=0.6),
-        "metal": rb.material("metal", (0.16, 0.15, 0.15), roughness=0.55, metallic=0.85, emission=(0.35, 0.22, 0.08), emission_strength=0.08),
-        "hair": rb.material("hair", (0.03, 0.03, 0.035), roughness=0.9),
-        "skin": rb.material("skin", (0.87, 0.71, 0.6), roughness=0.75),
-        "side_accent": rb.material("side_accent", (0.75, 0.62, 0.3), roughness=0.7),
-    }
-    trousers = m["fabric"]
+    ## Palette and blocks come from the character art file. Ranger is the
+    ## default; training overrides fabric and leather and skips ranger-only parts.
+    variant = "training" if training else "ranger"
+    colors = character_art.palette_for(ART, variant)
+    m = {}
+    for slot, body in colors.items():
+        color = tuple(body["color"])
+        extra = {}
+        if slot == "metal":
+            extra = {"metallic": body.get("metallic", 0.0), "emission": (0.35, 0.22, 0.08), "emission_strength": 0.08}
+        elif "metallic" in body:
+            extra = {"metallic": body["metallic"]}
+        m[slot] = rb.material(slot, color, roughness=body.get("roughness", 0.8), **extra)
+    accent = ART["side_accent"]
+    m["side_accent"] = rb.material("side_accent", tuple(accent["preview"]), roughness=accent.get("roughness", 0.7))
 
     def solid(obj, bone_name):
         return bind(obj, rig, bone_name)
 
-    # Core body ------------------------------------------------------------
-    solid(rb.prism("TorsoLower", 10, 0.16, 0.95, 1.19, m["fabric"], depth_scale=0.8), "Spine")
-    solid(rb.prism("TorsoCore", 10, 0.165, 1.18, 1.45, m["fabric"], depth_scale=0.8, top_scale=1.04), "Chest")
-    solid(rb.prism("NeckSkin", 6, 0.055, 1.42, 1.52, m["skin"]), "Neck")
-    # Pentagonal prism head: one vertex points where Wolf faces (-Y).
-    solid(rb.prism("HeadSkin", 5, 0.125, 1.5, 1.75, m["skin"], spin=-math.pi / 2, depth_scale=0.95, bevel=0.008), "Head")
-    for side in (-1, 1):
-        solid(rb.box("Eye%s" % ("L" if side > 0 else "R"), (0.035, 0.012, 0.02), (side * 0.04, -0.093, 1.635), m["hair"]), "Head")
-    solid(rb.box("Brow", (0.12, 0.02, 0.022), (0.0, -0.088, 1.668), m["hair"], rotation=(0.0, 0.0, 0.0)), "Head")
-    # Shaggy asymmetric hair: a cap, a heavy back drop, and a fringe swept
-    # to Wolf's right so the silhouette also reads facing.
-    hair_cap = (0.25, 0.23, 0.05) if not training else (0.23, 0.21, 0.03)
-    solid(rb.box("Hair", hair_cap, (0.0, 0.01, 1.755), m["hair"], bevel=0.01), "Head")
-    if not training:
-        solid(rb.box("HairBack", (0.24, 0.07, 0.2), (0.0, 0.1, 1.64), m["hair"], bevel=0.01), "Head")
-        solid(rb.box("HairFringe", (0.09, 0.05, 0.06), (-0.06, -0.085, 1.73), m["hair"], rotation=(0.0, 0.25, 0.0)), "Head")
-        solid(rb.box("HairSide", (0.04, 0.12, 0.12), (0.12, 0.02, 1.68), m["hair"]), "Head")
-    # Layered clothing ------------------------------------------------------
-    solid(rb.prism("GambesonShell", 8, 0.2, 1.1, 1.43, m["fabric"], depth_scale=0.82, spin=math.pi / 8, bevel=0.01), "Chest")
-    solid(rb.prism("GambesonLower", 8, 0.205, 0.84, 1.12, m["fabric"], depth_scale=0.84, spin=math.pi / 8, top_scale=0.97), "Spine")
-    solid(rb.prism("Belt", 10, 0.215, 0.93, 0.99, m["leather"], depth_scale=0.84), "Hips")
-    solid(rb.box("BeltBuckle", (0.06, 0.02, 0.05), (0.0, -0.185, 0.96), m["metal"], bevel=0.004), "Hips")
-    solid(rb.box("SideAccentSash", (0.07, 0.03, 0.26), (0.13, -0.155, 0.82), m["side_accent"], rotation=(0.0, 0.18, 0.0)), "Hips")
-    solid(rb.box("ClothPanelFront", (0.22, 0.03, 0.26), (0.0, -0.17, 0.74), m["fabric"], bevel=0.004), "Hips")
-    solid(rb.box("ClothPanelBack", (0.26, 0.03, 0.3), (0.0, 0.17, 0.72), m["fabric"], bevel=0.004), "Hips")
-    if not training:
-        solid(rb.prism("FurCollar", 10, 0.24, 1.36, 1.48, m["hair"], depth_scale=0.8, top_scale=0.82, bevel=0.012), "Chest")
-        for side in (-1, 1):
-            tag = "L" if side > 0 else "R"
-            shoulder = Vector((SHOULDER[0] * side, 0.0, SHOULDER[2]))
-            solid(rb.box("ShoulderPiece." + tag, (0.13, 0.17, 0.07), shoulder + Vector((side * 0.015, 0.0, 0.04)), m["leather"], bevel=0.01), "Shoulder." + tag)
-    solid(rb.box("SideAccentMark", (0.012, 0.07, 0.07), (SHOULDER[0] + 0.065, 0.0, 1.36), m["side_accent"]), "Shoulder.L")
-    # Arms -------------------------------------------------------------------
-    for side, tag in ((1, "L"), (-1, "R")):
-        collar, shoulder, elbow, wrist, grip = _arm_chain(side)
-        segment("UpperArm." + tag, shoulder, elbow, 0.085, 0.085, m["fabric"], rig, "UpperArm." + tag)
-        segment("Forearm." + tag, elbow, wrist, 0.075, 0.075, m["fabric"], rig, "Forearm." + tag)
-        segment("Bracer." + tag, elbow.lerp(wrist, 0.35), wrist, 0.092, 0.092, m["leather"], rig, "Forearm." + tag)
-        segment("SideAccentBracer." + tag, wrist.lerp(elbow, 0.08), wrist, 0.098, 0.098, m["side_accent"], rig, "Forearm." + tag, bevel=0.0)
-        segment("Hand." + tag, wrist, grip, 0.07, 0.06, m["skin"], rig, "Hand." + tag)
-        # Legs ---------------------------------------------------------------
-        hip, knee, ankle, toe = _leg_chain(side, _foot_y(tag))
-        segment("UpperLeg." + tag, hip, knee, 0.12, 0.13, trousers, rig, "UpperLeg." + tag)
-        segment("LowerLeg." + tag, knee, ankle + Vector((0, 0, 0.08)), 0.105, 0.115, trousers, rig, "LowerLeg." + tag)
-        # Slightly oversized block boots for top-down readability.
-        solid(rb.box("Boot." + tag, (0.13, 0.25, 0.14), (ankle.x, ankle.y - 0.05, 0.07), m["leather"], bevel=0.012), "Foot." + tag)
-        solid(rb.box("BootCuff." + tag, (0.135, 0.135, 0.06), (ankle.x, ankle.y, 0.17), m["leather"], bevel=0.006), "LowerLeg." + tag)
+    for part in ART["parts"]:
+        if not character_art.visible(part, variant):
+            continue
+        mat = m[part["slot"]]
+        kind = part["kind"]
+        if kind == "prism":
+            solid(rb.prism(
+                part["name"], int(part["sides"]), part["radius"], part["z0"], part["z1"], mat,
+                depth_scale=part.get("depth_scale", 1.0), top_scale=part.get("top_scale", 1.0),
+                spin=part.get("spin", 0.0), bevel=part.get("bevel", 0.0),
+            ), part["bone"])
+        elif kind == "box":
+            solid(rb.box(
+                part["name"], tuple(character_art.part_value(ART, part, variant, "size")), tuple(part["at"]), mat,
+                bevel=part.get("bevel", 0.0), rotation=tuple(part.get("rotation", (0.0, 0.0, 0.0))),
+            ), part["bone"])
+        else:
+            segment(
+                part["name"], tuple(part["a"]), tuple(part["b"]), part["width"], part["depth"],
+                mat, rig, part["bone"], bevel=part.get("bevel", 0.006),
+            )
     return m
 
 

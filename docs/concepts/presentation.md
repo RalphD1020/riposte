@@ -111,7 +111,7 @@ hitstop / slow_motion requests → MatchPresenter signals → FixedTickDriver.ho
 TerminalPresentationPolicy.filter(frame, snapshot) → one terminal presentation per fighter
 
 MatchPresenter.render(alpha, real_delta, scaled_delta) → interpolate last two snapshots → pose passive proxies → camera
-DuelHud.update(snapshot)            → health, pips, round, low-time clock, banner (writes only on change)
+DuelHud.update(snapshot)            → stamina, condition icon, pips, round, low-time clock, banner (writes only on change)
 ```
 
 `MatchScreen` (application) owns the loop; presentation emits only requests and intents (`hitstop_requested`, `pause_pressed`, touch `move_changed` / `attack_*`). See [docs/architecture/presentation-feedback.md](../architecture/presentation-feedback.md) for the full architecture.
@@ -127,6 +127,8 @@ To replace the primitive look of an identity (e.g. a Blender model):
 3. Nothing else changes. Authored kits load first; the factory primitive kit fills any gap — a whole identity not yet authored, or any cue or intro an authored kit leaves out, so a half-authored identity is never silent. Debug builds fail closed on a missing kit; release builds use a placeholder.
 
 Generic presentation code never names an identity (lint bans it); kits are resolved once per match (`DuelKits.resolve`).
+
+Alive eyes and dead-face X marks are both authored on the character (`face` on each part). `FacePresentation.bind` indexes `Eye*` and `DeadEye*` once when the proxy is built (`game/src/presentation/entities/face_presentation.gd`). A later pose writes visibility only when `terminal_cause` changes: living eyes while it is `NONE`, the X for a kill or a ring-out. A rematch builds a new proxy, so the living face returns. The set horn is `SetWinningHorn`: the winner's victory fanfare, once, when the set winner's opponent is `KILLED`. The showcase plays `PresentationKit.character_call` under the announcer and does not play that horn. The set intro plays that same call under each fighter's name. `CrowdDirector` names a reaction from existing events and the set score; it does not write combat state (`game/src/presentation/audio/crowd_director.gd`). Cue names are `CrowdDirector.CUE_*`; `MatchPresenter` maps them to `PresentationKit.CUE_CROWD_*`. A light reaction's cooldown does not swallow a parry. Reaching an earned set point (a positive score of `rounds_to_win - 1`) is one cue, on the tick the score arrives there. First-to-one has no set point, because the opening score is already zero. If a parry is already playing, that cue waits and plays once when the parry's cooldown ends. Staying on the score does not cheer again. The set-win reaction plays once. `MatchPresenter` plays it from the arena kit on the Crowd bus. A set-win reaction uses the winner's `crowd_chant` when the kit has one, and the generic victory cheer otherwise. A murmur leaves the bed playing. An unknown cue name does not replace the shot. `RiposteApp` owns the one music loop and selects the menu theme or the arena theme. The fighter HUD shows stamina bars (`RiposteTheme.METER_LIGHT` / `METER_DARK`) and the condition icon. It does not show a health bar.
 
 The authoritative weapon angle drives the blade visual. Character animation visually supports the sword position, never the reverse. See [docs/architecture/presentation-feedback.md](../architecture/presentation-feedback.md) for the full architecture.
 
@@ -247,7 +249,7 @@ A pose is valid only if the whole rigid chain reaches its grips without penetrat
 | Death presentation: request → controller → backend (primitive now, ragdoll later)                         | `game/src/presentation/death/`                                               |
 | Arena scaffold (floor to `platform_radius`, warning ring at `warning_ring_radius`, edge strip, lights)    | `game/src/presentation/world/arena_scaffold.gd`                              |
 | Duel camera (fixed orientation, smooth zoom, tiny impulses)                                               | `game/src/presentation/camera/`                                              |
-| VFX (capped), audio (pooled voices; SFX + Music buses), haptics                                           | `game/src/presentation/vfx/`, `audio/`, `feedback/`                          |
+| VFX (capped), audio (pooled voices; Music, SFX, Voice, Crowd), haptics                                    | `game/src/presentation/vfx/`, `audio/`, `feedback/`                          |
 | Coordinator                                                                                               | `game/src/presentation/match/match_presenter.gd`                             |
 | HUD, pips, icons, debug overlay, debug vectors, HUD copy                                                  | `game/src/presentation/hud/`                                                 |
 | Touch controls (floating joystick + attack zone)                                                          | `game/src/presentation/input/touch_controls.gd`                              |
@@ -256,7 +258,7 @@ A pose is valid only if the whole rigid chain reaches its grips without penetrat
 
 - Proxies are passive: only `MatchPresenter.render` poses them.
 - Feedback scales with physics (contact class, damage) and honors `PresentationOptions` (reduced motion disables camera impulses; reduced flash dims effects; hitstop still conveys impact). Per-identity feel (hitstop, trails) lives in kits; generic feedback constants (spark counts, ring sizes, swing mix, impulse ceilings, audio tiers) live on `CombatFeedbackDirector` and are referenced by `MatchPresenter`. VFX-specific constants (sizes, lifetimes, spreads) live on `VfxDirector`.
-- Styling goes through `RiposteTheme`: components pick a `theme_type_variation` (`HudPlate`, `HudStack`, `HudRow`, `HudTitleLabel`, `HudAccentLabel`, `PlayerHealthBar`, …). The only per-node style is runtime safe-area margins (`RiposteTheme.apply_insets`).
+- Styling goes through `RiposteTheme`: components pick a `theme_type_variation` (`HudPlate`, `HudStack`, `HudRow`, `HudTitleLabel`, `HudAccentLabel`, `METER_LIGHT`, `METER_DARK`, …). The only per-node style is runtime safe-area margins (`RiposteTheme.apply_insets`).
 - Blades render without depth test so the sword is always readable (combat-critical information).
 - Icons are drawn shapes (`HudIcons`, `PipRow`), never glyphs the shipped font lacks.
-- Audio: combat cues on the Combat bus, round stings on SFX, menu cues on UI, the announcer on Voice; the arena kit's `music` cue loops on the Music bus while a duel is mounted.
+- Audio: combat cues on the Combat bus, round stings on SFX, menu cues on UI, the announcer and `character_call` on Voice, crowd bed and reactions on Crowd. `RiposteApp` plays the one Music-bus loop: `MENU_LOOP` off a match, the arena kit's `music` cue while a duel is mounted (`game/src/application/app/riposte_app.gd`).

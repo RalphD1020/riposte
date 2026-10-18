@@ -189,6 +189,8 @@ func _enter(beat_now: Beat) -> void:
 			card_requested.emit(intro.display_name if intro != null else "")
 			if intro != null:
 				_audio.play_voice(intro.line(_combatants[slot].voice()), intro.spoken())
+			## Under the name, not instead of it. A missing howl stays silent.
+			_audio.play_character_call(_combatants[slot].fighter.character_call)
 		Beat.VERSUS:
 			card_requested.emit(_announcer.versus_caption)
 			_audio.play_voice(_announcer.versus, "")

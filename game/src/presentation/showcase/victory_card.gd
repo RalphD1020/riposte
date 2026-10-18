@@ -27,6 +27,7 @@ var _streak_from := Vector2.ZERO
 var _streak_to := Vector2.ZERO
 var _streak_age: float = -1.0
 var _banner: PanelContainer
+var _mark: TextureRect
 var _name: Label
 var _title: Label
 var _caption_plate: PanelContainer
@@ -65,6 +66,14 @@ func _build() -> void:
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
 	stack.mouse_filter = MOUSE_FILTER_IGNORE
 	_banner.add_child(stack)
+	_mark = TextureRect.new()
+	_mark.name = "Mark"
+	_mark.custom_minimum_size = Vector2(64.0, 64.0)
+	_mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_mark.mouse_filter = MOUSE_FILTER_IGNORE
+	_mark.visible = false
+	stack.add_child(_mark)
 	_name = Label.new()
 	_name.theme_type_variation = &"BannerLabel"
 	_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -109,10 +118,21 @@ func layout_insets(insets: Vector4) -> void:
 
 
 ## The fighter's name and title arrive.
+## The winner's mark, from the kit. Absent until a kit has one.
+func set_mark(texture: Texture2D) -> void:
+	_mark.texture = texture
+	_mark.visible = texture != null and _banner.visible
+
+
+func has_mark() -> bool:
+	return _mark.visible and _mark.texture != null
+
+
 func show_card(display_name: String, title: String) -> void:
 	_name.text = display_name
 	_title.text = title
 	_banner.visible = display_name != ""
+	_mark.visible = _mark.texture != null and _banner.visible
 	_layout()
 
 

@@ -104,6 +104,10 @@ func _show_section(index: int) -> void:
 				settings.voice_volume = value
 				_apply_live()
 			)
+			UiKit.slider_row(self, AppCopy.SETTING_CROWD, settings.crowd_volume, func(value: float) -> void:
+				settings.crowd_volume = value
+				_apply_live()
+			)
 			UiKit.toggle_row(self, AppCopy.SETTING_CAPTIONS, settings.captions, func(on: bool) -> void:
 				settings.captions = on
 				_app.save_settings()

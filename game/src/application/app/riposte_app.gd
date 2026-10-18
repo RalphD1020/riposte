@@ -23,6 +23,12 @@ var match_config: MatchConfig
 var last_session: MatchSession
 ## Where settings persist; tests point this at a scratch file.
 var settings_path: String = PlayerSettings.PATH
+## The one looping music player. Menus and the match select its stream;
+## they do not each own a player.
+const MENU_LOOP := "res://assets/presentation/audio/music/menu_theme.mp3"
+const LOOP_VOLUME_DB := -8.0
+var _loop: AudioStreamPlayer
+var _menu_music: AudioStream
 ## Non-zero pins match seeds (tests); zero draws them from entropy.
 var seed_override: int = 0
 var _ui_root: Control
@@ -68,6 +74,13 @@ func _ready() -> void:
 	router = ScreenRouter.new()
 	router.bind(self)
 	_ui_root.add_child(router)
+	_loop = AudioStreamPlayer.new()
+	_loop.name = "MusicLoop"
+	_loop.bus = AudioBuses.MUSIC
+	_loop.volume_db = LOOP_VOLUME_DB
+	add_child(_loop)
+	_menu_music = load(MENU_LOOP) as AudioStream
+	router.screen_changed.connect(_on_screen_changed)
 	var window := get_window()
 	window.size_changed.connect(_on_window_resized)
 	UiScale.apply(window)
@@ -78,6 +91,32 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	monitors.uninstall()
+
+
+## Select the one loop. The same stream, already playing, is left alone, so
+## opening Settings does not restart the menu. A match passes the arena theme
+## and replaces whatever was playing; there is no second player to overlap it.
+func play_loop(stream: AudioStream) -> void:
+	if _loop == null or stream == null:
+		return
+	if _loop.stream == stream and _loop.playing:
+		return
+	_loop.stream = stream
+	_loop.play()
+
+
+func is_loop_playing() -> bool:
+	return _loop != null and _loop.playing
+
+
+func loop_stream() -> AudioStream:
+	return _loop.stream if _loop != null else null
+
+
+func _on_screen_changed(screen: AppScreen.Id) -> void:
+	if screen == AppScreen.Id.MATCH:
+		return
+	play_loop(_menu_music)
 
 
 func go_to(screen: AppScreen.Id) -> void:

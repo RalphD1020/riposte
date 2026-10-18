@@ -18,6 +18,10 @@ enum Id {
 const NO_WINNER := -1
 const DRAW := 2
 
+
+static func is_combatant(slot: int) -> bool:
+	return slot == 0 or slot == 1
+
 const REASON_KILL := &"kill"
 ## A qualifying emergent point strike was lethal (COMBAT-010/011).
 const REASON_LETHAL_THRUST := &"lethal_thrust"

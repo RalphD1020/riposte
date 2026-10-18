@@ -14,7 +14,7 @@ Godot **4.7.2-stable** (`GODOT_BIN` or `godot` on PATH). Compatibility (`gl_comp
 ```text
 game/
 ├── project.godot            warnings=2 (errors), input map, 1280×720 canvas_items/expand
-├── default_bus_layout.tres  audio buses Master → Music, SFX (names: AudioBuses)
+├── default_bus_layout.tres  audio buses: Music, SFX, Voice, Crowd → Master; Combat, UI → SFX (names: AudioBuses)
 ├── export_presets.cfg       committed Web preset (safe-area + theme-color head include)
 ├── src/
 │   ├── domain/              deterministic simulation (no engine types)
@@ -40,20 +40,22 @@ game/
 
 One home per vocabulary; never retype a literal:
 
-| Vocabulary                                    | Home                                             |
-| --------------------------------------------- | ------------------------------------------------ |
-| Event names / payload keys                    | `DuelEventTypes` / `DuelEventKeys`               |
-| Match reasons, contact classes                | `MatchPhase.REASON_*`, `ContactResolver.CLASS_*` |
-| Input actions (match `project.godot [input]`) | `InputActions`                                   |
-| Product events / property keys                | `ProductEvents` / `ProductEvents.PROP_*`         |
-| Audio buses                                   | `AudioBuses` (+ `default_bus_layout.tres`)       |
-| Settings file layout                          | `PlayerSettings.SECTION_*` / `KEY_*`             |
-| Replay serialization                          | `ReplayRecord.KEY_*`                             |
-| Styles, sizes, colors                         | `RiposteTheme` tokens and type variations        |
-| Copy                                          | `AppCopy` (menus), `HudCopy` (HUD)               |
-| Content identities                            | `ContentIds`                                     |
-| Platform / display feature strings            | `Platform` (`is_web()`, `is_headless()`)         |
-| Browser safe-area JSON contract               | `SafeArea.WEB_PROPERTY` / `KEY_*` / `KEYS`       |
+| Vocabulary                                    | Home                                                                                      |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Event names / payload keys                    | `DuelEventTypes` / `DuelEventKeys`                                                        |
+| Match reasons, outcome slots, contact classes | `MatchPhase` (`REASON_*`, `NO_WINNER`, `DRAW`, `is_combatant`); `ContactResolver.CLASS_*` |
+| Input actions (match `project.godot [input]`) | `InputActions`                                                                            |
+| Product events / property keys                | `ProductEvents` / `ProductEvents.PROP_*`                                                  |
+| Audio buses                                   | `AudioBuses` (+ `default_bus_layout.tres`)                                                |
+| Crowd reaction / kit cue names                | `CrowdDirector.CUE_*` → `PresentationKit.CUE_CROWD_*`                                     |
+| Menu music path and loop trim                 | `RiposteApp.MENU_LOOP`, `LOOP_VOLUME_DB`                                                  |
+| Settings file layout                          | `PlayerSettings.SECTION_*` / `KEY_*`                                                      |
+| Replay serialization                          | `ReplayRecord.KEY_*`                                                                      |
+| Styles, sizes, colors                         | `RiposteTheme` tokens and type variations                                                 |
+| Copy                                          | `AppCopy` (menus), `HudCopy` (HUD)                                                        |
+| Content identities                            | `ContentIds`                                                                              |
+| Platform / display feature strings            | `Platform` (`is_web()`, `is_headless()`)                                                  |
+| Browser safe-area JSON contract               | `SafeArea.WEB_PROPERTY` / `KEY_*` / `KEYS`                                                |
 
 Two of these cross a boundary no compiler checks, so both are gated by tests instead:
 
@@ -92,6 +94,7 @@ Rules for anything authored later:
 - **`animation_clips` keys MUST be a subset of the declared semantics.** A clip nobody asks for never plays; a semantic with no clip falls back to procedural motion rather than freezing.
 - **Animation never decides anything.** A clip may not gate a hit, extend a window, or change a timing — the proxy is posed from the snapshot every frame and `_animate` only picks what to look like (PRES-001).
 - **Set materials once at build, never per frame.** Combatant color goes through `color_targets`; a rig must not bake a side's color into its own materials, and per-frame material work on a shared resource would leak between fighters.
+- **Index the face once.** `Eye*` and `DeadEye*` are collected by `FacePresentation.bind` when the proxy is built. A pose writes visibility only when `terminal_cause` changes (`game/src/presentation/entities/face_presentation.gd`).
 - **No physics nodes.** The simulation owns position, facing, and contact; a `CharacterBody3D` or an `Area3D` in a kit scene is a second opinion about the fight.
 - **Hands follow the displayed sword through `SwordRig3D`.** A fighter wrapper's root carries the script; the proxy calls `bind_sword(SwordCarriage, weapon_model)` and `apply_stance(FighterStanceProfile)` once, then `pose_sword(angle, phase, band, hand_lateral)` and `pose_elbows(poles)` every frame. The `SwordCarriage` node is the authoritative carriage and yaw, lifted by `CombatPresentationField` / `CutPresentationCurve` (PRES-CARRIAGE-001); `WeaponOrigin` stays as the undrawn authoritative sword. `look_toward(τ − φ)` lets the head glance toward the target bearing by at most `CombatPoseModifier3D.LOOK_LIMIT` (12°); otherwise the head faces the combat heading φ, so a committed heading that lags reads as lagging (PRES-HEADING-001). `apply_stance` turns the rig by the pelvis's blade and gives `CombatPoseModifier3D` the shoulders' blade, the head counter, and the per-side load-coil caps (PRES-STANCE-001); the chain then adds chest → spine → hips following the sword in decreasing, phase-capped shares. A two-setting `TwoBoneIK3D` (root `UpperArm.*`, middle `Forearm.*`, end `Hand.*`, end bone extended along its own `+Y`) puts the palms on the weapon's `GripDominant` / `GripOffhand` markers under the carriage, bending toward `ElbowGuideField` poles derived from each hand in the torso frame (PRES-ARMS-001) — off the shoulder→hand line, away from the body. A rig nobody guides (the showcase actor) keeps fallback poles on a `BoneAttachment3D` of the chest, lateral and slightly forward; a backward-biased pole clamps the sword to the torso and is wrong. Gameplay clips play on Godot's normal process step (modifiers run after them) with presentation time as `speed_scale`. Bone names are the rig contract: `Root, Hips, Spine, Chest, Neck, Head, Shoulder/UpperArm/Forearm/Hand.{L,R}, UpperLeg/LowerLeg/Foot.{L,R}`.
 - **Modifier output exists only during the skeleton update.** Godot applies `SkeletonModifier3D` results for the update and reverts them after, so a test reads the modified pose inside `Skeleton3D.skeleton_updated` (with `modifier_callback_mode_process = MANUAL` and `advance()`), never after it.

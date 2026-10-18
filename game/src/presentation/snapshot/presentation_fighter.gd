@@ -87,7 +87,7 @@ var dash_cost: float = 0.0
 var impact_authority: float = 1.0
 ## The fighter's condition this tick (CONDITION-001), copied from the domain's
 ## own `ConditionModel` — for the debug overlay and telemetry. The player HUD
-## shows health, the stamina bar, and the condition band; presentation never
+## shows the condition icon and the stamina bar; presentation never
 ## rederives these from health.
 var force_scale: float = 1.0
 var speed_scale: float = 1.0

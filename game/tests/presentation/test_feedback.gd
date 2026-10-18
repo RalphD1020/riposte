@@ -671,6 +671,42 @@ func test_effects_are_pooled_not_reallocated() -> void:
 ## impulse shoved the cutting blade; the arrest keeps them along the strike.
 ## The deflection label, when the redirected cut ends having struck nothing,
 ## adds only a quiet metal tail — no flash, no shake, nothing for the duel.
+## One resolved blade contact is one burst. Intensity orders the sparks and the
+## shake, and the shake stays inside the director's own cap. A repeated copy of
+## the same event is a second event; point_count is not a second burst.
+func test_clash_intensity_is_ordered_bounded_and_one_event() -> void:
+	var low := _frame([_clash(0.0, ContactResolver.CLASS_LIGHT)] as Array[DuelEvent])
+	var mid := _frame([_clash(0.5, ContactResolver.CLASS_SOLID)] as Array[DuelEvent])
+	var high := _frame([_clash(1.0, ContactResolver.CLASS_STRONG)] as Array[DuelEvent])
+	var low_sparks := _spark_total(low)
+	var mid_sparks := _spark_total(mid)
+	var high_sparks := _spark_total(high)
+	assert_true(low_sparks < mid_sparks and mid_sparks < high_sparks, "sparks climb with intensity (%d, %d, %d)" % [low_sparks, mid_sparks, high_sparks])
+	var low_shake := low.camera_requests[0].intensity
+	var mid_shake := mid.camera_requests[0].intensity
+	var high_shake := high.camera_requests[0].intensity
+	assert_true(low_shake < mid_shake and mid_shake < high_shake, "shake climbs with intensity")
+	assert_true(high_shake <= CombatFeedbackDirector.IMPULSE_BLADE_MAX * 100.0 + 1e-6, "and stays inside the blade cap")
+	assert_eq(low.audio_requests[0].cue, PresentationKit.CUE_BLADE_LIGHT, "a light contact does not take the heavy ring")
+	assert_eq(high.audio_requests[0].cue, PresentationKit.CUE_BLADE_STRONG, "a heavy contact does")
+	assert_eq(high.vfx_requests.size(), 2, "one event is the tangent burst and the normal burst, not one per solver point")
+	assert_true(high.vfx_requests[0].direction.dot(Vector3(1.0, 0.0, 0.0)) > 0.9, "the tangent burst follows the strike")
+
+
+func _clash(intensity: float, contact_class: StringName) -> DuelEvent:
+	return DuelEvent.create(DuelEventTypes.BLADE_CONTACT, 10, 0, 1, {
+		DuelEventKeys.INTENSITY: intensity,
+		DuelEventKeys.STRIKE_X: 1.0,
+		DuelEventKeys.STRIKE_Y: 0.0,
+		DuelEventKeys.NORMAL_X: 0.0,
+		DuelEventKeys.NORMAL_Y: 1.0,
+		DuelEventKeys.X: 0.0,
+		DuelEventKeys.Y: 0.0,
+		DuelEventKeys.POINT_COUNT: 2,
+		DuelEventKeys.CONTACT_CLASS: contact_class,
+	})
+
+
 func test_a_glancing_redirect_throws_its_sparks_the_way_the_blade_was_shoved() -> void:
 	## ARRANGE: two contacts differing only in what the solve did.
 	var arrested := _redirect(true, 0.0)

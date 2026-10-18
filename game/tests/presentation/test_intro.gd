@@ -129,3 +129,37 @@ func test_the_director_poses_intro_figures_from_the_take() -> void:
 	for node: Node in [audio, gameplay, stand_in]:
 		node.queue_free()
 	await await_frames(1)
+
+
+## The howl is under the announcer, on its own voice, once per fighter shot.
+## Skipping a beat does not replay a shot that already fired.
+func test_the_howl_plays_under_the_announcer_on_each_shot() -> void:
+	var kits := DuelKits.resolve(RiposteKits.build_catalog(), _rules)
+	var root := (Engine.get_main_loop() as SceneTree).root
+	var audio := AudioDirector.new()
+	root.add_child(audio)
+	var gameplay := Camera3D.new()
+	root.add_child(gameplay)
+	var stand_in := Node3D.new()
+	root.add_child(stand_in)
+	var first := SnapshotProjector.project(DuelSetup.new_state(_rules, 1), _rules)
+	var proxies: Array[Node3D] = [stand_in]
+	var director := SetIntroDirector.create(kits, first, audio, proxies, gameplay, [])
+	root.add_child(director)
+	var howl := kits.combatant(0).fighter.character_call
+	assert_true(howl != null, "fixture: Wolf has a howl")
+	director.advance(FRAME)
+	assert_true(audio.is_voice_playing(), "the first name is speaking")
+	assert_true(audio.is_character_call_playing(), "and the howl is under it")
+	assert_eq(audio.character_call_stream(), howl, "on the character-call voice, not the announcer's")
+	director.advance(SetIntroDirector.BEAT_ENDS[1])
+	var howls := 0
+	for played in audio.history:
+		if played == howl:
+			howls += 1
+	assert_eq(howls, 2, "each fighter's shot howls once")
+	assert_true(audio.is_voice_playing() and audio.is_character_call_playing(), "the second shot still overlaps")
+	director.finish()
+	for node: Node in [audio, gameplay, stand_in]:
+		node.queue_free()
+	await await_frames(1)

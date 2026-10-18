@@ -24,6 +24,7 @@ const KEY_MASTER := "master"
 const KEY_MUSIC := "music"
 const KEY_SFX := "sfx"
 const KEY_VOICE := "voice"
+const KEY_CROWD := "crowd"
 const KEY_CAPTIONS := "captions"
 const KEY_SOUND_CAPTIONS := "sound_captions"
 const SECTION_LOOK := "look"
@@ -65,6 +66,7 @@ var master_volume: float = 1.0
 var music_volume: float = 0.7
 var sfx_volume: float = 1.0
 var voice_volume: float = 1.0
+var crowd_volume: float = 0.8
 ## Announcer captions. On by default: the intro must read with sound off.
 var captions: bool = true
 ## Combat sounds as on-screen text (`SoundCaptions`). Off by default.
@@ -109,6 +111,7 @@ func load_from(path: String = PATH) -> void:
 	music_volume = _volume(config.get_value(SECTION_AUDIO, KEY_MUSIC, music_volume), music_volume)
 	sfx_volume = _volume(config.get_value(SECTION_AUDIO, KEY_SFX, sfx_volume), sfx_volume)
 	voice_volume = _volume(config.get_value(SECTION_AUDIO, KEY_VOICE, voice_volume), voice_volume)
+	crowd_volume = _volume(config.get_value(SECTION_AUDIO, KEY_CROWD, crowd_volume), crowd_volume)
 	captions = _flag(config.get_value(SECTION_AUDIO, KEY_CAPTIONS, captions), captions)
 	sound_captions = _flag(config.get_value(SECTION_AUDIO, KEY_SOUND_CAPTIONS, sound_captions), sound_captions)
 	fighter_skin = _id(config.get_value(SECTION_LOOK, KEY_FIGHTER_SKIN, fighter_skin))
@@ -138,6 +141,7 @@ func save_to(path: String = PATH) -> bool:
 	config.set_value(SECTION_AUDIO, KEY_MUSIC, music_volume)
 	config.set_value(SECTION_AUDIO, KEY_SFX, sfx_volume)
 	config.set_value(SECTION_AUDIO, KEY_VOICE, voice_volume)
+	config.set_value(SECTION_AUDIO, KEY_CROWD, crowd_volume)
 	config.set_value(SECTION_AUDIO, KEY_CAPTIONS, captions)
 	config.set_value(SECTION_AUDIO, KEY_SOUND_CAPTIONS, sound_captions)
 	config.set_value(SECTION_LOOK, KEY_FIGHTER_SKIN, fighter_skin)
@@ -186,6 +190,7 @@ func apply_audio() -> void:
 	_apply_bus(AudioBuses.MUSIC, music_volume)
 	_apply_bus(AudioBuses.SFX, sfx_volume)
 	_apply_bus(AudioBuses.VOICE, voice_volume)
+	_apply_bus(AudioBuses.CROWD, crowd_volume)
 
 
 static func _apply_bus(bus: StringName, volume: float) -> void:

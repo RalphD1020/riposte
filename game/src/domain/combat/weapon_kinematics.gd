@@ -5,6 +5,10 @@ extends RefCounted
 ## Every system that needs where a blade is, how fast a point on it moves, or
 ## how hard it is to turn asks here; nothing rebuilds `centre + û·r` itself.
 ##
+## The current weapon is this sword and only this sword: one planar angle, a
+## blade capsule, and a crossguard. A different shape would be a new model
+## with its own state. This file is that sword, not a registry.
+##
 ## The sword is rigid and has one coordinate, θ, its yaw from the combat heading
 ## φ (WEAPON-PATH-003). The attack track places its carriage (grip centre),
 ## `carriage = X + R(φ)·C(θ)`; the origin (pommel) sits a grip-centre radius `g`

@@ -62,6 +62,8 @@ func _build_victory(session: MatchSession, winner: int) -> void:
 	app.presentation_mount.add_child(_victory)
 	_card = VictoryCard.create()
 	_card.reduced_motion = options.reduced_motion
+	var marked := kits.combatant(winner)
+	_card.set_mark(marked.fighter.symbol_alternate if marked.mirror else marked.fighter.symbol)
 	add_child(_card)
 	_victory.card_requested.connect(_card.show_card)
 	_victory.streak_requested.connect(_card.set_streak)

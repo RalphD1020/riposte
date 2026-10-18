@@ -2,7 +2,7 @@ class_name DuelHud
 extends Control
 
 ## In-match status (UX §23–§24): two mirrored ornamental name plates with
-## a restrained health rule, sword-point round pips, the round and
+## a stamina bar and a condition icon, sword-point round pips, the round and
 ## low-time clock in a centre plate, one slashing banner, announcer captions,
 ## an optional coaching prompt, and the pause button. The human is always on
 ## the left. Condition reads first from the fighter's body in the world; the
@@ -21,11 +21,10 @@ var human_slot: int = 0
 var _human_side: DuelSide.Id = DuelSide.Id.LIGHT_SOUTH
 var _labels: PackedStringArray = PackedStringArray(["", ""])
 var _frame: MarginContainer
-## Name plates, health, round pips, clock, and Pause: the gameplay
+## Name plates, stamina, condition, round pips, clock, and Pause: the gameplay
 ## chrome, shown only while a duel is being fought. Banner, captions, and the
 ## coaching prompt sit outside it, so an intro card or a caption still reads.
 var _chrome: Control
-var _bars: Array[ProgressBar] = []
 var _stamina: Array[ProgressBar] = []
 var _condition_labels: Array[Label] = []
 var _condition_icons: Array[TextureRect] = []
@@ -89,10 +88,7 @@ func update(snapshot: PresentationSnapshot) -> void:
 		var fighter := snapshot.fighter(_slot_on(side))
 		if fighter.health != _shown_health[side]:
 			_shown_health[side] = fighter.health
-			var bar := _bars[side]
-			bar.max_value = fighter.max_health
-			bar.value = fighter.health
-			bar.accessibility_description = HudCopy.HEALTH_VALUE % [ceili(fighter.health), ceili(fighter.max_health)]
+			_condition_icons[side].accessibility_description = HudCopy.HEALTH_VALUE % [ceili(fighter.health), ceili(fighter.max_health)]
 		if fighter.stamina != _shown_stamina[side]:
 			_shown_stamina[side] = fighter.stamina
 			var stamina := _stamina[side]
@@ -226,10 +222,6 @@ func clock_text() -> String:
 	return _shown_clock
 
 
-func health_bar(side: int) -> ProgressBar:
-	return _bars[side]
-
-
 func stamina_bar(side: int) -> ProgressBar:
 	return _stamina[side]
 
@@ -254,9 +246,9 @@ func _side_of(display_side: int) -> DuelSide.Id:
 	return _human_side if display_side == 0 else DuelSide.other(_human_side)
 
 
-func _health_variation(display_side: int) -> StringName:
+func _meter_variation(display_side: int) -> StringName:
 	var duel_side := _side_of(display_side)
-	return &"LightHealthBar" if duel_side == DuelSide.Id.LIGHT_SOUTH else &"DarkHealthBar"
+	return RiposteTheme.METER_LIGHT if duel_side == DuelSide.Id.LIGHT_SOUTH else RiposteTheme.METER_DARK
 
 
 func _build() -> void:
@@ -351,21 +343,8 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	rule.size_flags_horizontal = SIZE_SHRINK_END if side == 1 else SIZE_SHRINK_BEGIN
 	rule.mouse_filter = MOUSE_FILTER_IGNORE
 	stack.add_child(rule)
-	var bar := ProgressBar.new()
-	bar.theme_type_variation = _health_variation(side)
-	bar.show_percentage = false
-	bar.min_value = 0.0
-	bar.max_value = 100.0
-	bar.value = 100.0
-	bar.custom_minimum_size = Vector2(0.0, RiposteTheme.HEALTH_BAR_HEIGHT)
-	bar.mouse_filter = MOUSE_FILTER_IGNORE
-	bar.accessibility_name = HudCopy.HEALTH % _labels[side]
-	## Bars drain toward the outer edges.
-	bar.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
-	stack.add_child(bar)
-	_bars.append(bar)
 	var stamina := ProgressBar.new()
-	stamina.theme_type_variation = _health_variation(side)
+	stamina.theme_type_variation = _meter_variation(side)
 	stamina.show_percentage = false
 	stamina.min_value = 0.0
 	stamina.max_value = 1.0
@@ -376,7 +355,8 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	stamina.custom_minimum_size = Vector2(0.0, RiposteTheme.STAMINA_BAR_HEIGHT)
 	stamina.mouse_filter = MOUSE_FILTER_IGNORE
 	stamina.accessibility_name = HudCopy.STAMINA % _labels[side]
-	stamina.fill_mode = bar.fill_mode
+	## The bar drains toward the outer edge.
+	stamina.fill_mode = ProgressBar.FILL_END_TO_BEGIN if side == 1 else ProgressBar.FILL_BEGIN_TO_END
 	stack.add_child(stamina)
 	_stamina.append(stamina)
 	var condition_row := HBoxContainer.new()
@@ -387,6 +367,7 @@ func _fighter_plate(row: HBoxContainer, side: int) -> void:
 	icon.texture = HudIcons.condition(FighterCondition.Id.HEALTHY)
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
 	icon.mouse_filter = MOUSE_FILTER_IGNORE
+	icon.accessibility_name = HudCopy.HEALTH % _labels[side]
 	_condition_icons.append(icon)
 	var cond := Label.new()
 	cond.theme_type_variation = &"HudCaptionLabel"

@@ -26,6 +26,7 @@
  * @see ../../docs/reference/godot.md
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -510,6 +511,20 @@ walk(join(GAME_ROOT, "scripts"), (full, name) => {
     fail(`${relPath(full)} must not hardcode a machine Godot path`);
   }
 });
+
+const artCheck = spawnSync(
+  "python",
+  ["-c", "import character_art; character_art.load()"],
+  {
+    cwd: join(GAME_ROOT, "..", "tools", "blender"),
+    encoding: "utf8",
+  },
+);
+if (artCheck.status !== 0) {
+  fail(
+    `character art JSON failed validation\n${artCheck.stderr || artCheck.stdout || artCheck.error || ""}`,
+  );
+}
 
 if (errors.length > 0) {
   console.error(`${errors.length} game lint issue(s):`);

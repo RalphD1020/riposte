@@ -267,7 +267,7 @@ func _fire(beat: int) -> void:
 		Beat.LOCK:
 			_charging = false
 			_audio.release_tension(CHARGE_SLOT)
-			_audio.play_sting(_profile.fanfare)
+			_audio.play_character_call(_combatant.fighter.character_call)
 		Beat.CARD:
 			card_requested.emit(_profile.display_name, _profile.title)
 		Beat.ANNOUNCER:

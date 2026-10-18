@@ -45,6 +45,18 @@ func _kit_weapon() -> PresentationKit:
 	return DuelKits.resolve(RiposteKits.build_catalog(), _rules).weapon
 
 
+func _looping_players(node: Node) -> int:
+	var count := 0
+	if node is AudioStreamPlayer:
+		var player := node as AudioStreamPlayer
+		var stream := player.stream
+		if player.playing and player.bus == AudioBuses.MUSIC and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
+			count += 1
+	for child in node.get_children():
+		count += _looping_players(child)
+	return count
+
+
 func _no_events() -> Array[DuelEvent]:
 	var none: Array[DuelEvent] = []
 	return none
@@ -804,15 +816,14 @@ func test_a_new_round_clears_every_terminal_latch() -> void:
 	mount.dispose()
 
 
-func test_arena_ambience_loops_on_the_music_bus_until_teardown() -> void:
+func test_the_presenter_starts_the_crowd_bed_and_not_a_music_loop() -> void:
 	var mount := _mount()
 	var audio := mount.presenter.audio()
-	assert_true(audio.is_music_playing(), "the arena kit's music starts with the duel")
-	var stream := audio.music_stream()
-	var loops := (stream is AudioStreamWAV and (stream as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD) or (stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop)
-	assert_true(loops, "and loops (authored or placeholder)")
+	assert_true(audio.is_crowd_bed_playing(), "the crowd bed starts with the duel")
+	assert_eq(String(audio.crowd_bed_stream().resource_path).get_file(), "bed.mp3", "from the arena kit")
+	assert_eq(_looping_players(audio), 0, "the music loop is not this director's player")
 	mount.presenter.detach_and_dispose()
-	assert_false(audio.is_music_playing(), "teardown silences it")
+	assert_false(audio.is_crowd_bed_playing(), "teardown silences the bed")
 	mount.root.queue_free()
 
 
@@ -964,6 +975,9 @@ func _clash_history(catalog: PresentationKitCatalog) -> PackedStringArray:
 		mount.presenter.push(SnapshotProjector.project(mount.state, _rules), events)
 	var names := PackedStringArray()
 	for stream in mount.presenter.audio().history:
+		## The crowd bed starts with the presenter. This history is the clashes.
+		if String(stream.resource_path).ends_with("bed.mp3"):
+			continue
 		names.append(stream.resource_name)
 	mount.dispose()
 	return names

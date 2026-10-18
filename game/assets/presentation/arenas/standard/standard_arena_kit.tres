@@ -4,7 +4,12 @@
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/round_start_01.mp3" id="1_p88kq"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/round_win_01.mp3" id="2_2fgvd"]
 [ext_resource type="PackedScene" path="res://assets/presentation/arenas/standard/standard_arena_wrapper.tscn" id="2_scene"]
-[ext_resource type="AudioStream" path="res://assets/presentation/audio/music/arena_ambience.mp3" id="3_p88kq"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/music/arena_theme.mp3" id="3_p88kq"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/bed.mp3" id="4_bed"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/cheer.mp3" id="6_cheer"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/cheer_strong.mp3" id="7_strong"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/setpoint.mp3" id="8_point"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/victory.mp3" id="9_roar"]
 
 [resource]
 script = ExtResource("1_kit")
@@ -13,6 +18,11 @@ primitive = &"ARENA"
 scene = ExtResource("2_scene")
 color_targets = PackedStringArray()
 audio_cues = {
+&"crowd.bed": Array[AudioStream]([ExtResource("4_bed")]),
+&"crowd.cheer": Array[AudioStream]([ExtResource("6_cheer")]),
+&"crowd.setpoint": Array[AudioStream]([ExtResource("8_point")]),
+&"crowd.strong": Array[AudioStream]([ExtResource("7_strong")]),
+&"crowd.victory": Array[AudioStream]([ExtResource("9_roar")]),
 &"music": Array[AudioStream]([ExtResource("3_p88kq")]),
 &"round": Array[AudioStream]([ExtResource("1_p88kq")]),
 &"round.win": Array[AudioStream]([ExtResource("2_2fgvd")])

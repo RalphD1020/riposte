@@ -75,10 +75,11 @@ const FONT_SMALL := 14
 const FONT_H2 := 28
 const FONT_H1 := 44
 const FONT_DISPLAY := 56
-## Restrained bars: condition is read primarily from the fighter's body.
-const HEALTH_BAR_HEIGHT := 8.0
-## Thinner than the health bar, so the two reads are not the same shape.
+## Stamina meter. Condition is the icon and its description, not a second bar.
 const STAMINA_BAR_HEIGHT := 4.0
+## Side color of that meter.
+const METER_LIGHT := &"LightMeter"
+const METER_DARK := &"DarkMeter"
 ## Ornamental plates.
 const PLATE_RULE := 2
 const PLATE_SWEPT := 14
@@ -236,7 +237,9 @@ static func _style_buttons(theme: Theme) -> void:
 	theme.set_stylebox("normal", "PrimaryButton", _box(STEEL_900, GOLD_ACCENT, BORDER_WIDTH))
 	theme.set_stylebox("hover", "PrimaryButton", _box(Color("4c5256"), GOLD_ACCENT, BORDER_WIDTH + 1))
 	theme.set_stylebox("pressed", "PrimaryButton", _box(Color("33383a"), GOLD_ACCENT, BORDER_WIDTH + 1))
+	theme.set_stylebox("disabled", "PrimaryButton", _box(Color("33383a"), SAGE_500, BORDER_WIDTH))
 	theme.set_stylebox("focus", "PrimaryButton", focus_box(FOCUS_ON_LIGHT))
+	theme.set_color("font_disabled_color", "PrimaryButton", TEXT_ON_DARK)
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
 		theme.set_color(state, "PrimaryButton", TEXT_ON_DARK)
 	theme.set_type_variation("HudButton", "Button")
@@ -355,10 +358,10 @@ static func _style_inputs(theme: Theme) -> void:
 	theme.set_color("font_hover_pressed_color", "CheckButton", TEXT_ON_LIGHT)
 	theme.set_stylebox("background", "ProgressBar", _box(HEALTH_TRACK, HEALTH_TRACK, 0, 2))
 	theme.set_stylebox("fill", "ProgressBar", _box(HEALTH_LIGHT, HEALTH_LIGHT, 0, 2))
-	theme.set_type_variation("LightHealthBar", "ProgressBar")
-	theme.set_stylebox("fill", "LightHealthBar", _box(HEALTH_LIGHT, HEALTH_LIGHT, 0, 2))
-	theme.set_type_variation("DarkHealthBar", "ProgressBar")
-	theme.set_stylebox("fill", "DarkHealthBar", _box(HEALTH_DARK, HEALTH_DARK, 0, 2))
+	theme.set_type_variation(METER_LIGHT, "ProgressBar")
+	theme.set_stylebox("fill", METER_LIGHT, _box(HEALTH_LIGHT, HEALTH_LIGHT, 0, 2))
+	theme.set_type_variation(METER_DARK, "ProgressBar")
+	theme.set_stylebox("fill", METER_DARK, _box(HEALTH_DARK, HEALTH_DARK, 0, 2))
 
 
 ## Visible focus (UX §42): a 3 px ring offset by a 3 px gap so it reads
