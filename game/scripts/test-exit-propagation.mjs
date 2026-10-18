@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Tooling gate (TOOL-TEST-001/002): failing Godot fixtures MUST make the test
- * gate fail. Runs real Godot processes; not part of `pnpm test`.
+ * Tooling gate (TOOL-TEST-001/002/003): failing Godot fixtures MUST make the
+ * test gate fail. Runs real Godot processes; not part of `pnpm test`.
  *
  * TOOL-TEST-001 — a FAIL harness result with exit 1 is classified as failure.
  * TOOL-TEST-002 — a SCRIPT ERROR followed by a fake PASS + exit 0 is still a
  *                 failure (engine errors outrank self-reported success).
+ * TOOL-TEST-003 — the missing-theme `ERROR:` is dropped only as that exact
+ *                 line; any other engine error still fails; unfiltered
+ *                 parseEngineIssues still reports it.
  *
  * @see ../../docs/reference/testing.md
  * @see ../../spec/invariants.md#test-truth-001
@@ -18,6 +21,8 @@ import {
   classifyGodotTestOutcome,
   godotHarnessFailed,
   parseEngineIssues,
+  unexpectedEngineIssues,
+  EXPECTED_TEST_ENGINE_ERROR,
   parseRiposteResult,
   resolveGodot,
   spawnGodot,
@@ -85,6 +90,49 @@ assert(
   "TOOL-TEST-002 SCRIPT ERROR must not classify as PASS",
 );
 
+const onlyExpected = unexpectedEngineIssues({
+  errors: [EXPECTED_TEST_ENGINE_ERROR],
+  warnings: [],
+});
+assert(
+  onlyExpected.errors.length === 0,
+  "TOOL-TEST-003 must drop only the missing-theme diagnostic",
+);
+const mixed = unexpectedEngineIssues({
+  errors: [EXPECTED_TEST_ENGINE_ERROR, "ERROR: unrelated engine fault"],
+  warnings: [],
+});
+assert(
+  mixed.errors.length === 1 &&
+    mixed.errors[0] === "ERROR: unrelated engine fault",
+  "TOOL-TEST-003 must keep any other ERROR line",
+);
+assert(
+  classifyGodotTestOutcome({
+    riposte: { failed: 0, errors: 0, status: "PASS" },
+    status: 0,
+    issues: mixed,
+  }) === "HARNESS_FAILURE",
+  "TOOL-TEST-003 an unexpected ERROR must still fail the run",
+);
+assert(
+  classifyGodotTestOutcome({
+    riposte: { failed: 0, errors: 0, status: "PASS" },
+    status: 0,
+    issues: onlyExpected,
+  }) === "PASS",
+  "TOOL-TEST-003 the expected diagnostic alone must not fail classification",
+);
+assert(
+  classifyGodotTestOutcome({
+    riposte: { failed: 0, errors: 0, status: "PASS" },
+    status: 0,
+    issues: parseEngineIssues(`${EXPECTED_TEST_ENGINE_ERROR}\n`),
+  }) === "HARNESS_FAILURE",
+  "TOOL-TEST-003 parseEngineIssues must still report the diagnostic",
+);
+
 console.log("TOOL-TEST-001 passed");
 console.log("TOOL-TEST-002 passed");
-console.log('RIPOSTE_RESULT {"kind":"tool-test","passed":2,"failed":0}');
+console.log("TOOL-TEST-003 passed");
+console.log('RIPOSTE_RESULT {"kind":"tool-test","passed":3,"failed":0}');

@@ -67,7 +67,7 @@ pnpm --filter @riposte/game godot:test
 
 ## Report runners
 
-`check`, `build`, and `verify` are synchronous Node runners that share `scripts/reports.mjs` (`runEchoed` spawns with echoed output; `writeReport` writes `latest.json` + `latest.md`). The expected Godot version lives once in `scripts/godot-bin.mjs` (`EXPECTED_GODOT_VERSION`).
+`check`, `build`, and `verify` are synchronous Node runners that share `scripts/reports.mjs` (`runEchoed` spawns with echoed output; `writeReport` writes `latest.json` + `latest.md`). The expected Godot version lives once in `scripts/godot-bin.mjs` (`EXPECTED_GODOT_VERSION`). `parseEngineIssues` reports every `ERROR:` / `SCRIPT ERROR:` / `Parse Error:` line. The Godot **test** wrapper then drops one exact line (`EXPECTED_TEST_ENGINE_ERROR`, `ERROR: RiposteApp: match music is missing`) so the missing-theme case can `push_error` and still pass. That filter is not applied to `pnpm check` or export. `pnpm test:tooling` (`game/scripts/test-exit-propagation.mjs`) is TOOL-TEST-001 (a FAIL harness result is a failure), TOOL-TEST-002 (a SCRIPT ERROR outranks a fake PASS), and TOOL-TEST-003 (the allowlist drops only that diagnostic; any other `ERROR:` still classifies as `HARNESS_FAILURE`; unfiltered `parseEngineIssues` still sees the line).
 
 ## Reports
 

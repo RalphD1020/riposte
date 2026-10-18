@@ -6,13 +6,13 @@
 
 Two verbs on every device. All sources merge into one `HumanInputState`, consumed once per tick into a `PlayerCommand`. Action names come only from `InputActions` (`game/src/application/input/input_actions.gd`); APP-SHELL proves each one exists in the InputMap.
 
-| Verb          | Desktop                        | Touch                                              |
-| ------------- | ------------------------------ | -------------------------------------------------- |
-| Move          | WASD or arrows (physical keys) | Floating joystick: anywhere in the lower-left zone |
-| Burst         | Double-tap a move direction    | Double-deflect the joystick in one direction       |
-| Attack        | Left mouse or Space            | Lower-right zone; hold to charge                   |
-| Pause         | Esc or the HUD pause button    | HUD pause button                                   |
-| Debug overlay | F3 (debug builds only)         | —                                                  |
+| Verb          | Desktop                              | Touch                                              |
+| ------------- | ------------------------------------ | -------------------------------------------------- |
+| Move          | WASD, arrows, or the left stick      | Floating joystick: anywhere in the lower-left zone |
+| Burst         | Double-tap a direction, or Shift / L | Double-deflect the joystick in one direction       |
+| Attack        | Left mouse, Space, or pad A          | Lower-right zone; hold to charge                   |
+| Pause         | Esc, Start, or the HUD button        | HUD pause button                                   |
+| Debug overlay | F3 (debug builds only)               | —                                                  |
 
 The desktop column is the default. Every gameplay action except the debug overlay can be rebound.
 

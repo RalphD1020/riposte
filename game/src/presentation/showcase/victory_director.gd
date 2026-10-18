@@ -6,8 +6,9 @@ extends Node3D
 ## the profile's authored cinematic on its own dark stage: a quick cut and the
 ## quick return cut — whose last stretch of streak becomes the composition's
 ## divider — then the gather into the duel's own high shoulder load, held
-## while the stage darkens, the fanfare lands on the lock, the camera pushes
-## from full body into the profile, and the announcer reads the name. No third,
+## while the stage darkens, the howl starts on VoiceFighter, the camera pushes
+## from full body into the profile, and the announcer reads the name on
+## VoiceAnnouncer so the two overlap. No third,
 ## released attack. It settles into the held load's breathing idle and hands
 ## the screen its results (`results_ready`).
 ##

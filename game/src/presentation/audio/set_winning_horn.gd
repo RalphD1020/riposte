@@ -1,9 +1,9 @@
 class_name SetWinningHorn
 extends RefCounted
 
-## The fanfare plays once, on the lethal blow that wins the set. A round win,
-## a ring-out, and a second observer do not play it again. Rematch clears it
-## by constructing a new screen.
+## The arena match horn plays once, on the lethal blow that wins the set. A
+## round win, a ring-out, and a second observer do not play it again. It is
+## not the fighter's howl. Rematch clears it by constructing a new screen.
 ##
 ## See also: /docs/concepts/presentation.md
 

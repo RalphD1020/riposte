@@ -15,6 +15,7 @@ extends Control
 
 var app: RiposteApp
 var session: MatchSession
+var host: LocalMatchHost
 var driver: FixedTickDriver = FixedTickDriver.new()
 var human: HumanController = HumanController.new()
 var presenter: MatchPresenter
@@ -53,10 +54,12 @@ func _ready() -> void:
 	var kits: DuelKits = null
 	if config != null:
 		session = app.compose(config, human)
+		host = LocalMatchHost.attach(session)
 		kits = app.resolve_kits(config)
 	if session == null or kits == null or not kits.is_complete():
 		push_error("MatchScreen: cannot compose the match (invalid rules or missing presentation kits)")
 		session = null
+		app.publish_match_music(null)
 		app.go_to(AppScreen.Id.MAIN_MENU)
 		return
 	var options := app.presentation_options()
@@ -69,8 +72,13 @@ func _ready() -> void:
 	presenter.hitstop_requested.connect(driver.hold)
 	presenter.slow_motion_requested.connect(driver.slow_motion)
 	app.presentation_mount.add_child(presenter)
+	var match_music: AudioStream = null
 	if kits.arena != null:
-		app.play_loop(kits.arena.stream_for(PresentationKit.CUE_MUSIC))
+		match_music = kits.arena.stream_for(PresentationKit.CUE_MUSIC)
+	app.publish_match_music(match_music)
+	## The router emits screen_changed after _ready. Selecting here as well
+	## means the arena theme owns the loop even if that signal already ran.
+	app.select_screen_music(AppScreen.Id.MATCH)
 	_build_ui(config, kits)
 	hud.reduced_motion = options.reduced_motion
 	round_start.reduced_motion = options.reduced_motion
@@ -100,10 +108,16 @@ func _ready() -> void:
 		ProductEvents.PROP_MODE: int(config.mode),
 		ProductEvents.PROP_DIFFICULTY: int(config.cpu_difficulty),
 	})
+	_ready_pad()
 
 
 func _exit_tree() -> void:
+	if Input.joy_connection_changed.is_connected(_on_pad_connection):
+		Input.joy_connection_changed.disconnect(_on_pad_connection)
 	human.input.cancel_all()
+	if host != null:
+		host.leave()
+		host = null
 	if presenter != null:
 		presenter.detach_and_dispose()
 		presenter = null
@@ -253,7 +267,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if driver.paused or _finished or event.is_echo() or not event.is_action(InputActions.ATTACK):
 		return
 	get_viewport().set_input_as_handled()
-	var source := HumanInputState.SOURCE_POINTER if event is InputEventMouseButton else HumanInputState.SOURCE_KEY
+	var source := HumanInputState.SOURCE_KEY
+	if event is InputEventMouseButton:
+		source = HumanInputState.SOURCE_POINTER
+	elif event is InputEventJoypadButton:
+		source = HumanInputState.SOURCE_PAD
 	if event.is_pressed():
 		human.input.attack_down(source)
 	else:
@@ -266,9 +284,24 @@ func _notification(what: int) -> void:
 			pause()
 
 
+func _ready_pad() -> void:
+	if not Input.joy_connection_changed.is_connected(_on_pad_connection):
+		Input.joy_connection_changed.connect(_on_pad_connection)
+
+
+func _on_pad_connection(_device: int, connected: bool) -> void:
+	if not connected:
+		release_pad()
+
+
+## A removed pad must not leave the attack held.
+func release_pad() -> void:
+	human.input.cancel_all()
+
+
 func _advance_tick() -> void:
 	var phase_before := session.state.phase
-	var events := session.step()
+	var events := host.step() if host != null else session.step()
 	var snapshot := SnapshotProjector.project(session.state, session.config.rules, debug_overlay != null and debug_overlay.visible)
 	presenter.push(snapshot, events)
 	hud.update(snapshot)
@@ -280,9 +313,14 @@ func _advance_tick() -> void:
 	if MatchPhase.is_combatant(snapshot.set_winner):
 		var loser := snapshot.fighter(1 - snapshot.set_winner)
 		if _horn.consider(snapshot.set_winner, loser.terminal_cause):
-			presenter.play_set_horn(snapshot.set_winner)
-	var crowd_cue := _crowd.observe(events, session.state.scores, session.config.rules.rounds_to_win, snapshot.set_winner)
-	presenter.play_crowd(crowd_cue, snapshot.set_winner)
+			presenter.play_set_horn()
+	var rules := session.config.rules
+	var reach := PackedFloat32Array([
+		WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1)),
+		WeaponKinematics.strike_reach(rules.combatant(1), rules.combatant(0)),
+	])
+	var crowd_cue := _crowd.observe(events, session.state.scores, rules.rounds_to_win, snapshot.set_winner, rules.combat, snapshot.distance, reach)
+	presenter.play_crowd(crowd_cue, snapshot.set_winner, _crowd.excitement)
 	if MatchPhase.is_combatant(snapshot.set_winner) and session.config.mode == MatchConfig.Mode.QUICK_PLAY_CPU:
 		## The set is decided: its deciding round plays on, live, and the
 		## winner's showcase follows the match's own end (PRES-VICTORY-001).

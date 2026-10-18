@@ -104,7 +104,7 @@ const CUE_UI_CONFIRM := &"ui.confirm"
 const CUE_UI_BACK := &"ui.back"
 const CUE_UI_HOVER := &"ui.hover"
 const UI_CUES: Array[StringName] = [CUE_UI_CONFIRM, CUE_UI_BACK, CUE_UI_HOVER]
-## Arena ambience; looped on the Music bus while a duel is mounted.
+## Arena theme. `RiposteApp` plays this on the one Music loop for MATCH.
 const CUE_MUSIC := &"music"
 const CUE_CROWD_BED := &"crowd.bed"
 const CUE_CROWD_CHEER := &"crowd.cheer"
@@ -112,6 +112,8 @@ const CUE_CROWD_STRONG := &"crowd.strong"
 const CUE_CROWD_SETPOINT := &"crowd.setpoint"
 const CUE_CROWD_VICTORY := &"crowd.victory"
 const CUE_CROWD_GASP := &"crowd.gasp"
+## The match-ending horn for this stage. Not a fighter's victory call.
+const CUE_MATCH_HORN := &"match.horn"
 
 ## VFX cues the presenter may request.
 ## Where a resolved strike's quality saturates the body hitstop band. The

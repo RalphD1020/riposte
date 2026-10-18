@@ -51,7 +51,8 @@ static func create() -> DuelRules:
 static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter_1: StringName, weapon_1: StringName) -> DuelRules:
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
-	rules.version = 57
+	## 58: a mutual hilt start-cap is not steel (STEEL-TOPOLOGY-001).
+	rules.version = 58
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
 	rules.arena_id = ContentIds.ARENA_STANDARD

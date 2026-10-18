@@ -223,7 +223,7 @@ func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 	await await_frames(1)
 	var screen := await _scenario(driver, ScenarioController.standing())
 	var beat := {"hid": false, "horns": 0}
-	var fanfare := DuelKits.resolve(driver.app.kit_catalog, screen.session.config.rules).combatant(0).victory().fanfare
+	var fanfare := DuelKits.resolve(driver.app.kit_catalog, screen.session.config.rules).arena.stream_for(PresentationKit.CUE_MATCH_HORN)
 	for _round in screen.session.config.rules.rounds_to_win:
 		if screen.is_finished():
 			break
@@ -251,18 +251,18 @@ func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 	var results := driver.results_screen()
 	var director := results.victory_director()
 	var profile := director.profile()
-	assert_true(results.is_victory() and profile.fanfare != null, "fixture: the winner's showcase has a fanfare")
-	assert_eq(_sting_count(director, profile.fanfare), 0, "fixture: it has not played on entry")
+	assert_true(results.is_victory() and profile.announcer_line != null, "fixture: the winner's showcase has its line")
+	assert_eq(_sting_count(director, fanfare), 0, "fixture: the showcase has not played the arena horn")
 	assert_near(director.camera().fov, profile.fov_start, 0.5, "the camera opens on the full figure")
 	var elapsed := 0.0
 	while results.is_victory_cinematic() and elapsed < 10.0:
 		results.advance_frame(AppDriver.FRAME)
 		elapsed += AppDriver.FRAME
 	assert_false(results.is_victory_cinematic(), "the showcase reaches the results")
-	assert_eq(_sting_count(director, profile.fanfare), 0, "the showcase does not play the horn again")
+	assert_eq(_sting_count(director, fanfare), 0, "the showcase does not play the arena horn")
 	assert_near(director.camera().fov, profile.fov_finish, 0.05, "and the camera has pushed in")
 	results.advance_frame(2.0)
-	assert_eq(_sting_count(director, profile.fanfare), 0, "sitting on the results does not play the horn")
+	assert_eq(_sting_count(director, fanfare), 0, "sitting on the results does not play the arena horn")
 	driver.shutdown()
 	await await_frames(2)
 
@@ -1275,7 +1275,7 @@ func _blade_contact_at(screen: MatchScreen, tick: int) -> DuelEvent:
 
 
 func _horn_count(screen: MatchScreen) -> int:
-	var fanfare := screen.presenter.duel_kits().combatant(0).victory().fanfare
+	var fanfare := screen.presenter.duel_kits().arena.stream_for(PresentationKit.CUE_MATCH_HORN)
 	var count := 0
 	for played in screen.presenter.audio().history:
 		if played == fanfare:
@@ -1293,10 +1293,14 @@ func _assert_living_face(proxy: FighterPresentation3D, label: String) -> void:
 
 func _assert_face(proxy: FighterPresentation3D, alive: bool, label: String) -> void:
 	var eyes := _face_parts(proxy.visual_root(), "Eye")
+	var brows := _face_parts(proxy.visual_root(), "Brow")
 	var marks := _face_parts(proxy.visual_root(), "DeadEye")
 	assert_true(eyes.size() >= 2 and marks.size() >= 2, "%s carries both faces" % label)
+	assert_true(brows.size() >= 1, "%s carries the brow" % label)
 	for eye: Node in eyes:
 		assert_eq(eye.visible, alive, "%s living eyes" % label)
+	for brow: Node in brows:
+		assert_true(brow.visible, "%s brow stays" % label)
 	for mark: Node in marks:
 		assert_eq(mark.visible, not alive, "%s X" % label)
 

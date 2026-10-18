@@ -165,7 +165,9 @@ func _replay_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2,
 ## Pinned final hashes. Presentation work of any size must leave these alone;
 ## only a deliberate rules change (with its `DuelRules.version` bump) may
 ## re-record them, and only beside a reviewed metrics re-pin (below).
-## Last re-recorded for rules 57, layout 9. The field is still
+## Last re-recorded for rules 58, layout 9. Seed 3's hash and counts are the
+## rules-57 pin: that duel never put both hilt caps on each other. Seeds 5,
+## 9 and 17 re-roll from the first mutual start-cap. The field is still
 ## `impact_authority`. Forcing the dip off reproduces the rules-55 metric
 ## table on every seed. With the dip, the first steel episode and the first
 ## later pose are state ticks 259/260, 121/131, 134/135 and 688/690 (seeds
@@ -188,9 +190,9 @@ func _replay_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2,
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
 		3: "63692944d8ae2e9b721914589ead052d195dfe4f706efe876301015f0ebc380d",
-		5: "a3ba2b77e5ef2b767ff36329b86c451524a0f08ab4926a54181178b6c2f2c0d9",
-		9: "21ae238bebc4f86330825e034fdb51a4a31405222aa147e4f2cbbd679938aa85",
-		17: "6128ca836c00004577396cd4ec53f54b055a62af20c2cb5ae1117bc47c4f86ad",
+		5: "879e861ab4ed7a25717e4401f5f119d10a725ca58909d0f1ccb0c255f4c54dd7",
+		9: "57159087f754ce6615f779fdbde85423e41b05c1dd209552775d7ac9a544646c",
+		17: "842046ff6a553d8ef65d4333e06a49d232fb01575b1cfd937cd0873f00b6236e",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -750,6 +752,18 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## window to 73 blade collisions and 7 parries. Recovery puts that steel
 ## play back. No golden duel faulted.
 ##
+## Rules 58 (mutual hilt start-caps are not steel). Seed 3 does not move.
+## Seeds 5, 9 and 17 re-roll from the first time both hilts sit in each
+## other's start cap. Corpus totals on these four seeds, rules 57 → 58:
+## attacks 109 → 124, blade collisions 98 → 125, parries 14 → 21,
+## deflections 1 → 2, body hits 73 → 63, pokes 11 → 8, criticals 7 → 7,
+## kills 7 → 5, rounds 7 → 5. Seed 5 loses a kill and a round (2/2 → 1/1).
+## Seed 17 loses a kill and a round (2/2 → 1/1) and its body hits fall
+## 30 → 17. Seed 9 keeps its kill, its round and its criticals. This is the
+## hilt filter, not a retune. The first tick of each divergence was not
+## isolated, so these pins record the new trace. They are not a verdict
+## that the lost kills were false contacts. No golden duel faulted.
+##
 ## Guard-stop arrival (still rules 57, GUARD-LIMIT-SOFT-001). `turned >= limit`
 ## kept outward speed when the same step's mirror, or the step itself, landed
 ## up to 1e-9 rad short. `STOP_ARRIVAL_RAD = 0` reproduces the previous final
@@ -794,9 +808,9 @@ func test_golden_final_hashes_are_pinned() -> void:
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
 		3: {"attack_released": 26, "blade_collision": 19, "parry": 4, "deflection": 0, "body_hit": 22, "body_poke": 4, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
-		5: {"attack_released": 29, "blade_collision": 23, "parry": 4, "deflection": 0, "body_hit": 14, "body_poke": 2, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
-		9: {"attack_released": 30, "blade_collision": 34, "parry": 3, "deflection": 1, "body_hit": 7, "body_poke": 1, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		17: {"attack_released": 24, "blade_collision": 22, "parry": 3, "deflection": 0, "body_hit": 30, "body_poke": 4, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		5: {"attack_released": 36, "blade_collision": 33, "parry": 7, "deflection": 0, "body_hit": 17, "body_poke": 2, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		9: {"attack_released": 31, "blade_collision": 33, "parry": 2, "deflection": 1, "body_hit": 7, "body_poke": 1, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		17: {"attack_released": 31, "blade_collision": 40, "parry": 8, "deflection": 1, "body_hit": 17, "body_poke": 1, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
 		var runner := _played(seed_value)

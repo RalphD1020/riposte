@@ -27,8 +27,20 @@ var settings_path: String = PlayerSettings.PATH
 ## they do not each own a player.
 const MENU_LOOP := "res://assets/presentation/audio/music/menu_theme.mp3"
 const LOOP_VOLUME_DB := -8.0
+## Exact diagnostic when MATCH has no arena stream. The test runner allows
+## this one `ERROR:` line; other engine errors still fail the gate.
+const FAULT_MATCH_MUSIC_MISSING := "RiposteApp: match music is missing"
 var _loop: AudioStreamPlayer
 var _menu_music: AudioStream
+## Arena theme published by MatchScreen._ready before the router reports MATCH.
+## Null means the match has no valid stream; the selector stops the loop.
+var _match_music: AudioStream
+## How many times `play()` ran on the loop. Same stream already playing does
+## not increment. Playback position is not this contract.
+var _loop_starts: int = 0
+## Last MATCH-music fault, or empty. Tests assert this; `push_error` still
+## prints it for the engine log.
+var last_music_fault: String = ""
 ## Non-zero pins match seeds (tests); zero draws them from entropy.
 var seed_override: int = 0
 var _ui_root: Control
@@ -78,6 +90,10 @@ func _ready() -> void:
 	_loop.name = "MusicLoop"
 	_loop.bus = AudioBuses.MUSIC
 	_loop.volume_db = LOOP_VOLUME_DB
+	## A long loop is a stream. The sample playback path is for one-shots;
+	## a looping sample can keep mixing after this player's stream has changed.
+	_loop.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
+	_loop.max_polyphony = 1
 	add_child(_loop)
 	_menu_music = load(MENU_LOOP) as AudioStream
 	router.screen_changed.connect(_on_screen_changed)
@@ -93,16 +109,31 @@ func _exit_tree() -> void:
 	monitors.uninstall()
 
 
+## The match screen publishes its arena theme here, before `screen_changed`.
+## A missing stream is a fault: the MATCH selector stops the loop rather than
+## keeping the menu theme.
+func publish_match_music(stream: AudioStream) -> void:
+	_match_music = stream
+
+
 ## Select the one loop. The same stream, already playing, is left alone, so
-## opening Settings does not restart the menu. A match passes the arena theme
-## and replaces whatever was playing; there is no second player to overlap it.
+## opening Settings does not restart the menu. A different stream is a hard
+## cut on this player: stop, clear, then play the new one from the start.
+## A null stream stops the player and clears it. There is no second music
+## owner and no scene-tree sweep; the horn and the crowd are other files
+## on other players.
 func play_loop(stream: AudioStream) -> void:
-	if _loop == null or stream == null:
+	if _loop == null:
 		return
-	if _loop.stream == stream and _loop.playing:
+	if stream != null and _loop.stream == stream and _loop.playing:
+		return
+	_loop.stop()
+	_loop.stream = null
+	if stream == null:
 		return
 	_loop.stream = stream
-	_loop.play()
+	_loop.play(0.0)
+	_loop_starts += 1
 
 
 func is_loop_playing() -> bool:
@@ -113,10 +144,46 @@ func loop_stream() -> AudioStream:
 	return _loop.stream if _loop != null else null
 
 
-func _on_screen_changed(screen: AppScreen.Id) -> void:
-	if screen == AppScreen.Id.MATCH:
+## Diagnostic only. Godot's playback position can lag the mix; tests must
+## not treat it as proof the loop was not restarted. Use `loop_start_count`.
+func loop_playback_position() -> float:
+	if _loop == null or not _loop.playing:
+		return 0.0
+	return _loop.get_playback_position()
+
+
+func loop_start_count() -> int:
+	return _loop_starts
+
+
+## Instance id of the one MusicLoop player. Tests use this to prove the
+## playing Music loop is this node, not a second source.
+func loop_player_id() -> int:
+	return 0 if _loop == null else _loop.get_instance_id()
+
+
+## MATCH and Results play the published arena theme. The victory showcase is
+## Results, so ending the match does not start the menu theme under the horn.
+## A menu screen (main, how-to, settings) plays the menu theme. A missing
+## arena stream on MATCH stops the loop rather than keeping the menu.
+func select_screen_music(screen: AppScreen.Id) -> void:
+	last_music_fault = ""
+	if screen == AppScreen.Id.MATCH or screen == AppScreen.Id.RESULTS:
+		if _match_music == null:
+			if screen == AppScreen.Id.RESULTS:
+				play_loop(_menu_music)
+				return
+			last_music_fault = FAULT_MATCH_MUSIC_MISSING
+			push_error(FAULT_MATCH_MUSIC_MISSING)
+			play_loop(null)
+			return
+		play_loop(_match_music)
 		return
 	play_loop(_menu_music)
+
+
+func _on_screen_changed(screen: AppScreen.Id) -> void:
+	select_screen_music(screen)
 
 
 func go_to(screen: AppScreen.Id) -> void:

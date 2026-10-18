@@ -242,8 +242,16 @@ func test_bindings_default_to_the_authored_actions() -> void:
 			if code != 0:
 				bound += 1
 				assert_true(KeyBindings.event_for(code).is_action(action, true), "%s: %s triggers it" % [action, AppCopy.binding_label(code)])
-		assert_eq(bound, authored.size(), "%s: every authored event and nothing else" % action)
-
+		var keys := 0
+		for event: Variant in authored:
+			if event is InputEvent and KeyBindings.code_of(event) != 0:
+				keys += 1
+		assert_eq(bound, keys, "%s: key and mouse slots match; pad events are not slots" % action)
+	var attack_pad := false
+	for event: Variant in (ProjectSettings.get_setting("input/%s" % InputActions.ATTACK) as Dictionary)["events"]:
+		if event is InputEventJoypadButton and (event as InputEventJoypadButton).button_index == JOY_BUTTON_A:
+			attack_pad = true
+	assert_true(attack_pad, "the bottom face button stays on attack")
 
 ## Binding an input another action uses swaps the two, so no input ever does
 ## two things; a swap that would leave an action with nothing is refused.

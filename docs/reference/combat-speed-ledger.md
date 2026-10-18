@@ -14,7 +14,7 @@ The abb6a27 column is a frozen record of rules 20 — the build whose feel the r
 <!-- prettier-ignore-start -->
 <!-- speed-ledger:begin -->
 
-| Quantity | Unit | Now (rules 57) | abb6a27 (rules 20) |
+| Quantity | Unit | Now (rules 58) | abb6a27 (rules 20) |
 | --- | --- | --- | --- |
 | Simulation rate | Hz | 60 | 60 |
 | Tap swing speed cap | rad/s | 10.5 | 10.5 |

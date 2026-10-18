@@ -93,13 +93,20 @@ func owner_of(binding: int) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-## Write these bindings into the `InputMap`, replacing the actions' events.
+## Write these bindings into the `InputMap`. Key and mouse events are replaced.
+## Pad events stay: they are not rebinding slots.
 func apply() -> void:
 	for action in ACTIONS:
+		var pads: Array[InputEvent] = []
+		for event in InputMap.action_get_events(action):
+			if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+				pads.append(event)
 		InputMap.action_erase_events(action)
 		for binding in _codes[action]:
 			if binding != 0:
 				InputMap.action_add_event(action, event_for(binding))
+		for event in pads:
+			InputMap.action_add_event(action, event)
 
 
 func save_to(config: ConfigFile, section: String) -> void:

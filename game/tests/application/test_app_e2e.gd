@@ -118,6 +118,21 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_true(app.is_loop_playing(), "the arena loop is the one that is playing")
 	assert_eq(_looping_players(first.presenter.audio()), 0, "the match director does not start a second loop")
 	assert_eq(_looping_players(booted.main), 1, "still one music loop")
+	assert_eq(_playing_named(booted.main, "menu_theme.mp3"), 0, "the menu file is not still playing on another player")
+	assert_eq(_loop_owner_id(booted.main), app.loop_player_id(), "that loop is RiposteApp.MusicLoop")
+	assert_true(first.is_intro_playing(), "the set intro is still the match screen")
+	var intro_starts := app.loop_start_count()
+	first.skip_intro()
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "the round card keeps the arena theme")
+	assert_true(app.is_loop_playing(), "and does not stop it for the card")
+	assert_eq(app.loop_start_count(), intro_starts, "and does not restart it for the card")
+	_run_until(first, func() -> bool: return first.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
+	assert_eq(first.session.state.phase, MatchPhase.Id.ROUND_ACTIVE, "the live round is still the match screen")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "ROUND_ACTIVE keeps the arena theme")
+	assert_true(app.is_loop_playing(), "and does not stop it")
+	assert_eq(app.loop_start_count(), intro_starts, "and does not restart it")
+	assert_eq(_playing_named(booted.main, "menu_theme.mp3"), 0, "ROUND_ACTIVE leaves no menu-theme player running")
+	assert_eq(_looping_players(booted.main), 1, "and still one looping Music source")
 	var frames := _run_until(first, first.is_finished)
 	assert_true(first.is_finished(), "an idle human still reaches a result (%d frames)" % frames)
 	assert_eq(app.telemetry.count_product(ProductEvents.MATCH_FINISHED), 1, "finished exactly once")
@@ -125,8 +140,10 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	await await_frames(1)
 	assert_false(is_instance_valid(first), "the finished duel screen was freed")
 	assert_eq(app.router.current_id, AppScreen.Id.RESULTS, "results follow the match")
-	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "results return to the menu loop")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "results keep the arena theme")
+	assert_eq(_playing_named(booted.main, "menu_theme.mp3"), 0, "the showcase does not start the menu theme")
 	assert_eq(_looping_players(booted.main), 1, "still one music loop")
+	assert_eq(_crowd_beds(booted.main), 0, "the crowd bed does not follow the match to Results")
 	var winner := first_session.state.match_winner
 	var expected := "VICTORY" if winner == 0 else ("DEFEAT" if winner == 1 else "DRAW")
 	var results := app.current_screen() as ResultsScreen
@@ -144,6 +161,10 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_true(second != null and second.session != first_session, "rematch composes a fresh session")
 	assert_ne(second.session.config.seed_value, first_session.config.seed_value, "with a fresh seed")
 	assert_eq(app.presentation_mount.get_child_count(), 1, "still exactly one presenter")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "rematch selects the arena theme again")
+	assert_true(app.is_loop_playing(), "and it is playing")
+	assert_near(second.presenter.audio().crowd_bed_volume_db(), -18.0, 0.01, "a new match starts the bed at ambient")
+	var rematch_starts := app.loop_start_count()
 	_run_until(second, func() -> bool: return second.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
 	_push(_key(KEY_ESCAPE, true))
 	_push(_key(KEY_ESCAPE, false))
@@ -152,11 +173,64 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	for _i in 10:
 		second.advance_frame(FRAME)
 	assert_eq(second.session.state.tick, tick, "the clock is stopped while paused")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "pause keeps the arena theme")
+	assert_true(app.is_loop_playing(), "and does not stop it")
+	assert_eq(app.loop_start_count(), rematch_starts, "and does not restart it")
 	assert_true(_press(second.pause_overlay, "QUIT TO MENU"), "Quit offered")
 	await await_frames(2)
 	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "quit returns to the menu")
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "quit returns to the menu theme")
+	assert_eq(_crowd_beds(booted.main), 0, "quit leaves no crowd bed")
 	assert_eq(app.telemetry.count_product(ProductEvents.MATCH_EXITED), 1, "exit recorded")
 	assert_eq(app.presentation_mount.get_child_count(), 0, "no presenter outlives its match")
+	await _shutdown(booted)
+
+
+## A missing arena cue is a fault: MATCH stops the loop instead of keeping the
+## menu theme. The stopped player is the observable failure. The selector also
+## `push_error`s that exact diagnostic (`FAULT_MATCH_MUSIC_MISSING`).
+func test_a_missing_match_theme_stops_the_loop() -> void:
+	var booted := await _boot_ready()
+	var app := booted.app
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "fixture: the menu theme is playing")
+	assert_true(app.is_loop_playing(), "fixture: the loop is up")
+	assert_eq(app.last_music_fault, "", "fixture: no music fault yet")
+	app.publish_match_music(null)
+	app.select_screen_music(AppScreen.Id.MATCH)
+	assert_eq(app.last_music_fault, RiposteApp.FAULT_MATCH_MUSIC_MISSING, "the missing-theme diagnostic is the named fault")
+	assert_false(app.is_loop_playing(), "a missing arena theme stops the loop")
+	assert_true(app.loop_stream() == null, "and does not keep the menu theme")
+	app.select_screen_music(AppScreen.Id.MAIN_MENU)
+	assert_eq(app.last_music_fault, "", "a successful select clears the fault")
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "leaving MATCH returns to the menu theme")
+	assert_true(app.is_loop_playing(), "and that loop plays")
+	await _shutdown(booted)
+
+
+## Same stream already playing must not call play() again. Switching streams
+## is a handoff. Playback position is not this contract.
+func test_selecting_the_same_stream_does_not_restart_the_loop() -> void:
+	var booted := await _boot_ready()
+	var app := booted.app
+	var menu_starts := app.loop_start_count()
+	assert_true(menu_starts > 0, "fixture: the menu loop has started")
+	app.select_screen_music(AppScreen.Id.MAIN_MENU)
+	assert_eq(app.loop_start_count(), menu_starts, "selecting the menu again does not restart it")
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "and it is still the menu theme")
+	app.start_quick_play()
+	await await_frames(1)
+	var screen := _match(booted)
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "MATCH hands off to the arena theme")
+	var arena_starts := app.loop_start_count()
+	assert_true(arena_starts > menu_starts, "that handoff started the arena loop")
+	app.select_screen_music(AppScreen.Id.MATCH)
+	assert_eq(app.loop_start_count(), arena_starts, "selecting MATCH again does not restart the arena theme")
+	screen.skip_intro()
+	assert_eq(app.loop_start_count(), arena_starts, "the round card is the same playback")
+	screen.quit_to_menu()
+	await await_frames(2)
+	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "quit hands off to the menu theme")
+	assert_true(app.loop_start_count() > arena_starts, "that handoff started the menu loop")
 	await _shutdown(booted)
 
 
@@ -619,13 +693,55 @@ func test_results_without_a_match_fall_back_to_the_menu() -> void:
 
 func _looping_players(node: Node) -> int:
 	var count := 0
-	if node is AudioStreamPlayer:
-		var player := node as AudioStreamPlayer
-		var stream := player.stream
-		if player.playing and player.bus == AudioBuses.MUSIC and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
+	if _is_any_player(node):
+		var stream: AudioStream = node.get("stream")
+		if bool(node.get("playing")) and node.get("bus") == AudioBuses.MUSIC and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
 			count += 1
 	for child in node.get_children():
 		count += _looping_players(child)
+	return count
+
+
+func _playing_named(node: Node, file: String) -> int:
+	var count := 0
+	if _is_any_player(node):
+		var stream: AudioStream = node.get("stream")
+		if bool(node.get("playing")) and stream != null and stream.resource_path.get_file() == file:
+			count += 1
+	for child in node.get_children():
+		count += _playing_named(child, file)
+	return count
+
+
+func _loop_owner_id(node: Node) -> int:
+	if node is AudioStreamPlayer and node.name == "MusicLoop":
+		return node.get_instance_id()
+	for child in node.get_children():
+		var found := _loop_owner_id(child)
+		if found != 0:
+			return found
+	return 0
+
+
+func _is_music_player(node: Node) -> bool:
+	return node is AudioStreamPlayer or node is AudioStreamPlayer2D or node is AudioStreamPlayer3D
+
+
+func _is_any_player(node: Node) -> bool:
+	return _is_music_player(node)
+
+
+## Playing looping Crowd voices. The bed lives on MatchPresenter.AudioDirector
+## and must not outlive the match screen.
+func _crowd_beds(node: Node) -> int:
+	var count := 0
+	if node is AudioStreamPlayer:
+		var player := node as AudioStreamPlayer
+		var stream := player.stream
+		if player.playing and player.bus == AudioBuses.CROWD and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
+			count += 1
+	for child in node.get_children():
+		count += _crowd_beds(child)
 	return count
 
 
@@ -682,9 +798,7 @@ func _slide(index: int, at: Vector2) -> InputEventScreenDrag:
 
 func _playing_on(root: Node, bus: StringName) -> int:
 	var count := 0
-	if root is AudioStreamPlayer and (root as AudioStreamPlayer).playing and (root as AudioStreamPlayer).bus == bus:
-		count += 1
-	elif root is AudioStreamPlayer3D and (root as AudioStreamPlayer3D).playing and (root as AudioStreamPlayer3D).bus == bus:
+	if _is_any_player(root) and bool(root.get("playing")) and root.get("bus") == bus:
 		count += 1
 	for child in root.get_children():
 		count += _playing_on(child, bus)
@@ -693,9 +807,7 @@ func _playing_on(root: Node, bus: StringName) -> int:
 
 func _players_on(root: Node, bus: StringName) -> int:
 	var count := 0
-	if root is AudioStreamPlayer and (root as AudioStreamPlayer).bus == bus:
-		count += 1
-	elif root is AudioStreamPlayer3D and (root as AudioStreamPlayer3D).bus == bus:
+	if _is_any_player(root) and root.get("bus") == bus:
 		count += 1
 	for child in root.get_children():
 		count += _players_on(child, bus)

@@ -267,6 +267,21 @@ export function parseEngineIssues(text) {
   return { errors, warnings };
 }
 
+/** Exact `ERROR:` line from `RiposteApp.FAULT_MATCH_MUSIC_MISSING`. The Godot
+ * test wrapper drops this one line so the missing-theme case can `push_error`
+ * and still pass. `parseEngineIssues` itself is not filtered; export and
+ * `pnpm check` still fail on it. Other engine errors still fail the test run.
+ */
+export const EXPECTED_TEST_ENGINE_ERROR =
+  "ERROR: RiposteApp: match music is missing";
+
+export function unexpectedEngineIssues(issues) {
+  const errors = (issues?.errors ?? []).filter(
+    (line) => line !== EXPECTED_TEST_ENGINE_ERROR,
+  );
+  return { errors, warnings: issues?.warnings ?? [] };
+}
+
 export function parseRiposteResult(text) {
   const matches = String(text ?? "").matchAll(/RIPOSTE_RESULT\s+(\{.*\})/g);
   let last = null;

@@ -117,6 +117,25 @@ func test_a_second_finger_attacking_preserves_both_inputs() -> void:
 	assert_true(reversed.is_attack_held(), "by the finger that pressed it")
 
 
+func test_the_pad_uses_the_same_attack_and_a_disconnect_cancels_it() -> void:
+	var input := HumanInputState.new()
+	input.attack_down(HumanInputState.SOURCE_PAD)
+	var held := input.consume(0)
+	assert_true(held.attack_pressed, "the face button is the one attack")
+	assert_true(input.is_attack_held(), "and it stays held")
+	var screen := MatchScreen.new()
+	screen.human = HumanController.new()
+	screen.human.input.attack_down(HumanInputState.SOURCE_PAD)
+	screen.release_pad()
+	var canceled := screen.human.input.consume(1)
+	assert_true(canceled.attack_cancel, "unplugging the pad cancels the hold")
+	assert_false(canceled.attack_pressed, "and does not start a new press")
+	screen.free()
+	var map := FileAccess.get_file_as_string("res://project.godot")
+	assert_true(map.contains("InputEventJoypadMotion"), "the stick is on the move actions")
+	assert_true(map.contains("InputEventJoypadButton"), "the face button and start are actions")
+
+
 func test_human_controller_reads_its_input() -> void:
 	var controller := HumanController.new()
 	var state := DuelFixture.state(DuelFixture.rules())

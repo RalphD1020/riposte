@@ -123,10 +123,15 @@ def validate(data):
         problems.extend(_chains(rig, [part for part in parts if isinstance(part, dict)]))
     alive = [part.get("name") for part in parts if isinstance(part, dict) and part.get("face", "alive") == "alive" and str(part.get("name", "")).startswith("Eye")]
     dead = [part.get("name") for part in parts if isinstance(part, dict) and part.get("face") == "dead"]
+    if "Brow" not in names:
+        problems.append("a Brow part is required")
     if "Eye.L" not in alive or "Eye.R" not in alive:
         problems.append("alive eyes Eye.L and Eye.R are required")
     if not any(str(item).startswith("DeadEye.L") for item in dead) or not any(str(item).startswith("DeadEye.R") for item in dead):
         problems.append("dead eyes need an X on each side")
+    ## DeadEye rotation is around Blender Y (forward) so the X sits in the
+    ## face plane (X right, Z up). Rotation around Z lays the bars in the
+    ## ground plane and they read as eyebrow slashes.
     return problems
 
 

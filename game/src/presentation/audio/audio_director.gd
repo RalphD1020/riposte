@@ -2,13 +2,13 @@ class_name AudioDirector
 extends Node
 
 ## Pooled match audio. Spatial voices for blade and body contact play on the
-## Combat bus, flat voices for round stings on SFX, menu/HUD cues on UI, the
-## announcer on Voice, and one sting voice (the set-winning horn) on Music.
-## The menu and arena loops are not this director's: `RiposteApp` owns that
-## one player and selects the stream. Cues come from
-## kits; a missing cue is silent and never holds anything up — a voiced line
-## still asks for its caption. Doppler is off: the camera moves, sounds should
-## not wobble.
+## Combat bus, flat voices for round stings on SFX, menu/HUD cues on UI, two
+## independently owned Voice players (the announcer and the fighter call),
+## and one sting voice (the set-winning horn) on Music. The menu and arena
+## loops are not this director's: `RiposteApp` owns that one player and
+## selects the stream. Cues come from kits; a missing cue is silent and never
+## holds anything up — a voiced line still asks for its caption. Doppler is
+## off: the camera moves, sounds should not wobble.
 ##
 ## Loop families: the one-shot paths (`play`, `play_flat`, `play_ui`,
 ## `play_voice`, `play_sting`) take streams that do not loop; a looping stream
@@ -18,8 +18,10 @@ extends Node
 ##
 ## Variety without nondeterminism: a cue with several takes picks one from a
 ## key the caller derives from the event (tick, actor), so a replay hears the
-## same takes in the same order. Layers declared on the kit play from the
-## same event with the same key.
+## same takes in the same order. Crowd reactions increment that key per cue
+## so a second eligible shot does not immediately repeat when alternatives
+## exist. Layers declared on the kit play from the same event with the same
+## key.
 ##
 ## See also: /docs/concepts/presentation.md
 
@@ -35,8 +37,15 @@ const UI_VOICES := 2
 const SPATIAL_UNIT_SIZE := 8.0
 ## Layers sit under the primary so the transient still leads.
 const LAYER_VOLUME_DB := -3.0
-## The howl sits under the announcer on the same bus.
-const CALL_TRIM_DB := -8.0
+## The howl sits under the announcer on the same bus, on its own player.
+## The howl file is denser than the spoken line, so −8 dB still covered the
+## words. −14 dB keeps the call present and leaves the line in front.
+const CALL_TRIM_DB := -14.0
+const PLAYER_ANNOUNCER := "VoiceAnnouncer"
+const PLAYER_FIGHTER := "VoiceFighter"
+const PLAYER_STING := "MusicSting"
+const PLAYER_CROWD_BED := "CrowdBed"
+const PLAYER_CROWD_SHOT := "CrowdShot"
 const CAPTION_MIN_SECONDS := 0.9
 const HISTORY_LIMIT := 64
 
@@ -69,6 +78,9 @@ var _character_call: AudioStreamPlayer
 var _sting: AudioStreamPlayer
 var _crowd_bed: AudioStreamPlayer
 var _crowd_shot: AudioStreamPlayer
+## Next take index per crowd cue. Incremented only when that cue actually
+## starts, so a replay of the same presentation sequence stays identical.
+var _crowd_shot_index: Dictionary = {}
 var _next_spatial: int = 0
 var _next_flat: int = 0
 var _next_ui: int = 0
@@ -85,18 +97,23 @@ func _init() -> void:
 	for _i in 2:
 		_tension.append(_spatial_voice(AudioBuses.COMBAT))
 		_bind.append(_spatial_voice(AudioBuses.COMBAT))
-	## One line and one sting at a time: a second request replaces the first
-	## rather than layering over it.
+	## Two Voice channels, not one polyphonic player: assigning a stream on
+	## the announcer must not stop the fighter call, and the reverse. Each
+	## channel is still one line at a time.
 	_voice = _flat_voice(AudioBuses.VOICE)
+	_voice.name = PLAYER_ANNOUNCER
 	_voice.max_polyphony = 1
-	## The howl sits under the announcer on the same bus, on its own player,
-	## so the two can sound together.
 	_character_call = _flat_voice(AudioBuses.VOICE)
+	_character_call.name = PLAYER_FIGHTER
+	_character_call.max_polyphony = 1
 	_character_call.volume_db = CALL_TRIM_DB
 	_sting = _flat_voice(AudioBuses.MUSIC)
+	_sting.name = PLAYER_STING
 	_sting.max_polyphony = 1
 	_crowd_bed = _flat_voice(AudioBuses.CROWD)
+	_crowd_bed.name = PLAYER_CROWD_BED
 	_crowd_shot = _flat_voice(AudioBuses.CROWD)
+	_crowd_shot.name = PLAYER_CROWD_SHOT
 
 
 func is_character_call_playing() -> bool:
@@ -107,12 +124,24 @@ func character_call_stream() -> AudioStream:
 	return _character_call.stream
 
 
+func announcer_stream() -> AudioStream:
+	return _voice.stream
+
+
 func is_crowd_bed_playing() -> bool:
 	return _crowd_bed.playing
 
 
 func crowd_bed_stream() -> AudioStream:
 	return _crowd_bed.stream
+
+
+func crowd_bed_volume_db() -> float:
+	return _crowd_bed.volume_db
+
+
+func set_crowd_bed_volume_db(volume_db: float) -> void:
+	_crowd_bed.volume_db = volume_db
 
 
 func crowd_shot_stream() -> AudioStream:
@@ -191,6 +220,20 @@ func play_crowd_shot(stream: AudioStream) -> bool:
 		return false
 	_start(_crowd_shot, stream, 0.0)
 	return true
+
+
+## A kit cue's next take. The key increments per cue so two eligible shots
+## of the same class do not immediately repeat when the kit has more than
+## one take. One take is still that one take.
+func play_crowd_cue(kit: PresentationKit, cue: StringName) -> bool:
+	if kit == null or not kit.has_audio(cue):
+		return false
+	var index := int(_crowd_shot_index.get(cue, 0))
+	var stream := kit.stream_for(cue, index)
+	if stream == null:
+		return false
+	_crowd_shot_index[cue] = index + 1
+	return play_crowd_shot(stream)
 
 
 ## A musical sting (the set-winning horn) on its own Music voice.

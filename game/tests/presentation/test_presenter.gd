@@ -47,10 +47,9 @@ func _kit_weapon() -> PresentationKit:
 
 func _looping_players(node: Node) -> int:
 	var count := 0
-	if node is AudioStreamPlayer:
-		var player := node as AudioStreamPlayer
-		var stream := player.stream
-		if player.playing and player.bus == AudioBuses.MUSIC and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
+	if node is AudioStreamPlayer or node is AudioStreamPlayer2D or node is AudioStreamPlayer3D:
+		var stream: AudioStream = node.get("stream")
+		if bool(node.get("playing")) and node.get("bus") == AudioBuses.MUSIC and stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop:
 			count += 1
 	for child in node.get_children():
 		count += _looping_players(child)
@@ -822,8 +821,17 @@ func test_the_presenter_starts_the_crowd_bed_and_not_a_music_loop() -> void:
 	assert_true(audio.is_crowd_bed_playing(), "the crowd bed starts with the duel")
 	assert_eq(String(audio.crowd_bed_stream().resource_path).get_file(), "bed.mp3", "from the arena kit")
 	assert_eq(_looping_players(audio), 0, "the music loop is not this director's player")
+	assert_eq(audio.get_parent(), mount.presenter, "AudioDirector is a child of MatchPresenter, not a persistent app node")
+	mount.presenter.play_crowd(&"", 0, 1.0)
+	mount.presenter.render(0.0, 10.0)
+	assert_near(audio.crowd_bed_volume_db(), MatchPresenter.CROWD_BED_MOMENTUM_DB, 0.01, "fixture: momentum raised the bed")
 	mount.presenter.detach_and_dispose()
 	assert_false(audio.is_crowd_bed_playing(), "teardown silences the bed")
+	var second := _mount()
+	assert_true(second.presenter.audio().is_crowd_bed_playing(), "a new presenter starts its own bed")
+	assert_near(second.presenter.audio().crowd_bed_volume_db(), MatchPresenter.CROWD_BED_AMBIENT_DB, 0.01, "at ambient, not the previous match's trim")
+	assert_false(audio.is_crowd_bed_playing(), "the disposed director stays silent")
+	second.dispose()
 	mount.root.queue_free()
 
 

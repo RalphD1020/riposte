@@ -175,6 +175,177 @@ func test_two_crossguards_never_meet() -> void:
 	assert_true(gap > 0.0 and _all_apart(geometry), "crossguard on crossguard is no steel (least steel gap %.4f m)" % gap)
 
 
+## Handles and crossguards pass through each other. Two bars sharing a centre,
+## blades parallel and a few centimetres apart, put each start cap in the
+## other's guard corner from the protected side. That cap is hilt on hilt, so
+## it is not steel. A tip on the quillon from the blade side still is. A
+## handle laid through the other bar is not.
+func test_hilts_pass_and_a_blade_still_meets_the_guard() -> void:
+	## ARRANGE: same heading, bars overlapping, blades clear of each other.
+	var weapon := _rules.combatant(1).weapon
+	var held := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(1), BladePose.new())
+	var bar_1 := Vector2(held.point_x(weapon.crossguard_centre_radius), held.point_y(weapon.crossguard_centre_radius))
+	var beside := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(0), BladePose.new())
+	var bar_0 := Vector2(beside.point_x(weapon.crossguard_centre_radius), beside.point_y(weapon.crossguard_centre_radius))
+	var lateral := 0.06
+	var poses := ContactFixture.poses(ContactFixture.pose(bar_1.x - bar_0.x, bar_1.y - bar_0.y + lateral, 0.0, 0.0, _rules.combatant(0)), ContactFixture.pose(0.0, 0.0, 0.0, 0.0, _rules.combatant(1)))
+	var a := WeaponKinematics.pose_at(poses[0].x, poses[0].y, poses[0].facing, 0.0, _rules.combatant(0), BladePose.new())
+	var b := WeaponKinematics.pose_at(poses[1].x, poses[1].y, poses[1].facing, 0.0, _rules.combatant(1), BladePose.new())
+	var guard_0 := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+	var guard_1 := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+	SwordContactGeometry.place_guard(a.origin_x, a.origin_y, a.ux, a.uy, weapon, guard_0)
+	SwordContactGeometry.place_guard(b.origin_x, b.origin_y, b.ux, b.uy, weapon, guard_1)
+	var bars := SegmentContact.new()
+	SimMath.closest_segments(guard_0[0], guard_0[1], guard_0[2], guard_0[3], guard_1[0], guard_1[1], guard_1[2], guard_1[3], bars)
+	assert_true(bars.distance < 2.0 * weapon.crossguard_radius, "fixture: the crossbars overlap (%.4f m)" % bars.distance)
+	var blade_0 := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+	SwordContactGeometry.place(a.origin_x, a.origin_y, a.ux, a.uy, weapon, blade_0)
+	assert_eq(SwordContactGeometry.guard_side(b.origin_x, b.origin_y, b.ux, b.uy, weapon, blade_0), 1, "fixture: that blade comes from the protected side")
+	## ACT
+	var geometry := SwordContactGeometry.new()
+	geometry.measure(poses[0].x, poses[0].y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, weapon, weapon)
+	## ASSERT
+	assert_eq(_start_cap_guards(geometry), 0, "a start cap in the other hilt is not steel")
+	var touching := weapon.crossguard_radius + weapon.blade_radius - 0.001
+	var inside := weapon.crossguard_half_span * 0.8
+	var on_guard: Array = _square_cut(_rules, weapon.crossguard_centre_radius + touching, inside, inside)[0]
+	assert_true(_gaps(_rules, on_guard) < 0.0, "a tip on the quillon from the blade side is still steel")
+	var handle := _handle_through_bar()
+	assert_true(_gaps(_rules, handle) > 0.0, "a handle through the other bar is not steel (%.4f m)" % _gaps(_rules, handle))
+
+
+## The mutual start-cap drop is the same whichever sword is named first.
+## A tip on the blade-side quillon, a grip-side miss, and blade on blade stay
+## steel or stay clear. `START_CAP` is not widened here.
+func test_the_mutual_cap_is_symmetric_and_one_sided_blocks_stay() -> void:
+	## ARRANGE + ACT: overlapped hilts at several headings and offsets.
+	var weapon := _rules.combatant(1).weapon
+	var overlapped := 0
+	for heading: float in PackedFloat64Array([0.0, PI / 6.0, PI / 2.0, PI]):
+		for lateral: float in PackedFloat64Array([0.0, 0.03, 0.06, 0.10]):
+			var poses: Array = _hilt_poses(heading, lateral)
+			if _bar_gap(poses) >= 2.0 * weapon.crossguard_radius:
+				continue
+			overlapped += 1
+			var forward := _geometry(poses)
+			var swapped := _geometry_swapped(poses)
+			## ASSERT
+			assert_eq(_start_cap_guards(forward), 0, "start caps are not steel (heading %.3f, offset %.2f)" % [heading, lateral])
+			assert_eq(_start_cap_guards(swapped), 0, "either naming of the pair (heading %.3f, offset %.2f)" % [heading, lateral])
+			assert_eq(_touching(forward), _touching(swapped), "the same number of contacts survive either order (heading %.3f, offset %.2f)" % [heading, lateral])
+	assert_true(overlapped >= 4, "fixture: several overlapped hilt poses were measured (%d)" % overlapped)
+	var reach := weapon.crossguard_radius + weapon.blade_radius - 0.001
+	var inside := weapon.crossguard_half_span * 0.8
+	var on_guard: Array = _square_cut(_rules, weapon.crossguard_centre_radius + reach, inside, inside)[0]
+	var below: Array = _square_cut(_rules, weapon.crossguard_centre_radius - reach, inside, inside)[0]
+	var on_blade: Array = _square_cut(_rules, (weapon.blade_base_radius + weapon.tip_radius) * 0.5, 2.0 * weapon.blade_radius - 0.001, 2.0 * weapon.blade_radius - 0.001)[0]
+	var struck := _geometry(on_guard)
+	var struck_swap := _geometry_swapped(on_guard)
+	assert_true(_guard_touches(struck) > 0, "a tip on the blade-side quillon is steel")
+	assert_true(_guard_touches(struck_swap) > 0, "and still steel when the swords are named the other way")
+	assert_eq(_start_cap_guards(struck), 0, "that block is the tip, not the start cap")
+	assert_eq(_start_cap_guards(struck_swap), 0, "and not the start cap the other way")
+	assert_eq(_guard_touches(_geometry(below)), 0, "the grip side of the same bar is not steel")
+	assert_true(_blade_touches(_geometry(on_blade)) > 0, "blade on blade stays steel")
+
+
+func _hilt_poses(heading: float, lateral: float) -> Array:
+	var weapon := _rules.combatant(1).weapon
+	var held := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(1), BladePose.new())
+	var bar_1 := Vector2(held.point_x(weapon.crossguard_centre_radius), held.point_y(weapon.crossguard_centre_radius))
+	var other := WeaponKinematics.pose_at(0.0, 0.0, heading, 0.0, _rules.combatant(0), BladePose.new())
+	var bar_0 := Vector2(other.point_x(weapon.crossguard_centre_radius), other.point_y(weapon.crossguard_centre_radius))
+	return ContactFixture.poses(ContactFixture.pose(bar_1.x - bar_0.x, bar_1.y - bar_0.y + lateral, heading, 0.0, _rules.combatant(0)), ContactFixture.pose(0.0, 0.0, 0.0, 0.0, _rules.combatant(1)))
+
+
+func _bar_gap(poses: Array) -> float:
+	var weapon := _rules.combatant(1).weapon
+	var a := WeaponKinematics.pose_at(poses[0].x, poses[0].y, poses[0].facing, 0.0, _rules.combatant(0), BladePose.new())
+	var b := WeaponKinematics.pose_at(poses[1].x, poses[1].y, poses[1].facing, 0.0, _rules.combatant(1), BladePose.new())
+	var guard_0 := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+	var guard_1 := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+	SwordContactGeometry.place_guard(a.origin_x, a.origin_y, a.ux, a.uy, weapon, guard_0)
+	SwordContactGeometry.place_guard(b.origin_x, b.origin_y, b.ux, b.uy, weapon, guard_1)
+	var bars := SegmentContact.new()
+	SimMath.closest_segments(guard_0[0], guard_0[1], guard_0[2], guard_0[3], guard_1[0], guard_1[1], guard_1[2], guard_1[3], bars)
+	return bars.distance
+
+
+func _geometry(poses: Array) -> SwordContactGeometry:
+	return _geometry_ordered(poses[0], poses[1], _rules.combatant(0), _rules.combatant(1))
+
+
+func _geometry_swapped(poses: Array) -> SwordContactGeometry:
+	return _geometry_ordered(poses[1], poses[0], _rules.combatant(1), _rules.combatant(0))
+
+
+func _geometry_ordered(first: FighterPose, second: FighterPose, spec_a: CombatantPhysicsSpec, spec_b: CombatantPhysicsSpec) -> SwordContactGeometry:
+	var a := WeaponKinematics.pose_at(first.x, first.y, first.facing, 0.0, spec_a, BladePose.new())
+	var b := WeaponKinematics.pose_at(second.x, second.y, second.facing, 0.0, spec_b, BladePose.new())
+	var geometry := SwordContactGeometry.new()
+	geometry.measure(first.x, first.y, a.origin_x, a.origin_y, a.ux, a.uy, b.origin_x, b.origin_y, b.ux, b.uy, spec_a.weapon, spec_b.weapon)
+	return geometry
+
+
+static func _touching(geometry: SwordContactGeometry) -> int:
+	var found := 0
+	for point in geometry.count:
+		if geometry.point_gap[point] <= 0.0:
+			found += 1
+	return found
+
+
+static func _blade_touches(geometry: SwordContactGeometry) -> int:
+	var found := 0
+	for point in geometry.count:
+		if geometry.point_gap[point] <= 0.0 and geometry.point_pair[point] == SwordContactSet.PAIR_BLADES:
+			found += 1
+	return found
+
+
+static func _guard_touches(geometry: SwordContactGeometry) -> int:
+	var found := 0
+	for point in geometry.count:
+		var pair := geometry.point_pair[point]
+		if geometry.point_gap[point] <= 0.0 and (pair == SwordContactSet.PAIR_BLADE_ON_GUARD or pair == SwordContactSet.PAIR_GUARD_ON_BLADE):
+			found += 1
+	return found
+
+
+## Guard-pair points whose blade point is the start cap and which overlap.
+func _start_cap_guards(geometry: SwordContactGeometry) -> int:
+	var found := 0
+	for point in geometry.count:
+		var pair := geometry.point_pair[point]
+		if pair == SwordContactSet.PAIR_BLADES or geometry.point_gap[point] > 0.0:
+			continue
+		var x := geometry.point_bx[point]
+		var y := geometry.point_by[point]
+		var sx := geometry.blade_b[0]
+		var sy := geometry.blade_b[1]
+		if pair == SwordContactSet.PAIR_BLADE_ON_GUARD:
+			x = geometry.point_ax[point]
+			y = geometry.point_ay[point]
+			sx = geometry.blade_a[0]
+			sy = geometry.blade_a[1]
+		if SimMath.length(x - sx, y - sy) <= SwordContactGeometry.START_CAP:
+			found += 1
+	return found
+
+
+## Fighter 0's handle laid across fighter 1's bar, its blade pointing away
+## from that bar so the start cap is not the thing in the guard.
+func _handle_through_bar() -> Array[FighterPose]:
+	var weapon := _rules.combatant(1).weapon
+	var held := WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, _rules.combatant(1), BladePose.new())
+	var bar := Vector2(held.point_x(weapon.crossguard_centre_radius), held.point_y(weapon.crossguard_centre_radius))
+	var facing := PI / 2.0
+	var away := WeaponKinematics.pose_at(0.0, 0.0, facing, 0.0, _rules.combatant(0), BladePose.new())
+	var along := weapon.dominant_grip_radius * 0.5
+	var grip := Vector2(away.point_x(along), away.point_y(along))
+	return ContactFixture.poses(ContactFixture.pose(bar.x - grip.x, bar.y - grip.y, facing, 0.0, _rules.combatant(0)), ContactFixture.pose(0.0, 0.0, 0.0, 0.0, _rules.combatant(1)))
+
+
 static func _all_apart(geometry: SwordContactGeometry) -> bool:
 	for point in geometry.count:
 		if geometry.point_gap[point] <= 0.0:

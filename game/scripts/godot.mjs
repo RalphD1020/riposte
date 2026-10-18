@@ -28,6 +28,7 @@ import {
   classifyGodotTestOutcome,
   godotHarnessFailed,
   parseEngineIssues,
+  unexpectedEngineIssues,
   parseRiposteResult,
   resolveGodot,
   spawnGodot,
@@ -147,7 +148,7 @@ async function runTest({ tier, suites = [], skipImport = false } = TIERS.gate) {
       env: { ...process.env, RIPOSTE_TIER: tier, ...suiteEnv },
     },
   );
-  const issues = parseEngineIssues(result.text);
+  const issues = unexpectedEngineIssues(parseEngineIssues(result.text));
   const riposte = parseRiposteResult(result.text);
   const category = classifyGodotTestOutcome({
     riposte,

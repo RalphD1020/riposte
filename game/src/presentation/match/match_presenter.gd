@@ -22,6 +22,12 @@ signal sound_caption_requested(text: String, seconds: float)
 
 ## Speed of a grind spark thrown from a scraping contact (m/s).
 const GRIND_SPEED := 0.9
+## Crowd bed trim. The Crowd bus fader is the player's mix; this is the
+## presentation ride, written only when the change passes hysteresis.
+const CROWD_BED_AMBIENT_DB := -18.0
+const CROWD_BED_MOMENTUM_DB := -10.0
+const CROWD_BED_SLEW_DB := 24.0
+const CROWD_BED_HYSTERESIS_DB := 0.35
 
 var _kits: DuelKits
 var _options: PresentationOptions
@@ -55,6 +61,9 @@ var _highlight: ContactHighlight3D
 ## caption however long it lasts; -1 when none is held.
 var _captioned_scrape: int = -1
 var _scrape_started: bool = false
+var _crowd_intensity: float = 0.0
+var _crowd_bed_trim: float = CROWD_BED_AMBIENT_DB
+var _crowd_bed_written: float = INF
 
 
 static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> MatchPresenter:
@@ -72,6 +81,9 @@ func _ready() -> void:
 	## The arena loop belongs to RiposteApp. This director starts the bed only.
 	if _kits.arena != null:
 		_audio.play_crowd_bed(_kits.arena.stream_for(PresentationKit.CUE_CROWD_BED))
+		_audio.set_crowd_bed_volume_db(CROWD_BED_AMBIENT_DB)
+		_crowd_bed_trim = CROWD_BED_AMBIENT_DB
+		_crowd_bed_written = CROWD_BED_AMBIENT_DB
 
 
 func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
@@ -136,6 +148,7 @@ func render(alpha: float, real_delta: float, scaled_delta: float = -1.0) -> void
 	if _camera != null:
 		_camera.frame(first, second, real_delta, _options, _snap)
 	_snap = false
+	_ride_crowd_bed(real_delta)
 
 
 func fighter_proxy(slot: int) -> FighterPresentation3D:
@@ -170,7 +183,8 @@ func vfx() -> VfxDirector:
 	return _vfx
 
 
-func play_crowd(cue: StringName, winner: int) -> void:
+func play_crowd(cue: StringName, winner: int, intensity: float = 0.0) -> void:
+	_crowd_intensity = clampf(intensity, 0.0, 1.0)
 	if cue == &"" or cue == CrowdDirector.CUE_MURMUR or _kits == null or _kits.arena == null:
 		return
 	if cue == CrowdDirector.CUE_VICTORY and MatchPhase.is_combatant(winner):
@@ -181,7 +195,7 @@ func play_crowd(cue: StringName, winner: int) -> void:
 	var named := _crowd_cue(cue)
 	if named == &"":
 		return
-	_audio.play_crowd_shot(_kits.arena.stream_for(named))
+	_audio.play_crowd_cue(_kits.arena, named)
 
 
 func _crowd_cue(cue: StringName) -> StringName:
@@ -194,14 +208,27 @@ func _crowd_cue(cue: StringName) -> StringName:
 			return PresentationKit.CUE_CROWD_SETPOINT
 		CrowdDirector.CUE_VICTORY:
 			return PresentationKit.CUE_CROWD_VICTORY
+		CrowdDirector.CUE_GASP:
+			return PresentationKit.CUE_CROWD_GASP
 		_:
 			return &""
 
 
-func play_set_horn(winner: int) -> void:
-	var profile := _kits.combatant(winner).victory()
-	if profile != null:
-		_audio.play_sting(profile.fanfare)
+func _ride_crowd_bed(delta: float) -> void:
+	if _audio == null or not _audio.is_crowd_bed_playing():
+		return
+	var target := lerpf(CROWD_BED_AMBIENT_DB, CROWD_BED_MOMENTUM_DB, _crowd_intensity)
+	_crowd_bed_trim = move_toward(_crowd_bed_trim, target, CROWD_BED_SLEW_DB * maxf(delta, 0.0))
+	if is_inf(_crowd_bed_written) or absf(_crowd_bed_trim - _crowd_bed_written) >= CROWD_BED_HYSTERESIS_DB:
+		_audio.set_crowd_bed_volume_db(_crowd_bed_trim)
+		_crowd_bed_written = _crowd_bed_trim
+
+
+## The arena's match horn, not a fighter's cue. A stage without one stays silent.
+func play_set_horn() -> void:
+	if _kits == null or _kits.arena == null:
+		return
+	_audio.play_sting(_kits.arena.stream_for(PresentationKit.CUE_MATCH_HORN))
 
 
 func audio() -> AudioDirector:

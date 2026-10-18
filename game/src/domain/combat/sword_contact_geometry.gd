@@ -23,7 +23,11 @@ extends RefCounted
 ## points, the conventional rule for two convex shapes: blade on blade
 ## (`PAIR_BLADES`); sword a's blade on sword b's guard (`PAIR_BLADE_ON_GUARD`);
 ## sword a's guard under sword b's blade (`PAIR_GUARD_ON_BLADE`). Never guard on
-## guard. A guard pair is steel only on the guard's protected side: the
+## guard. The blade capsule's start cap, within `blade_radius` of the apex,
+## sits in the wielder's own guard corner: while that handle or crossguard
+## meets the other handle or crossguard, a guard-pair candidate in the cap is
+## hilt on hilt and is dropped. A point farther up the blade still meets the
+## other guard. A guard pair is steel only on the guard's protected side: the
 ## attacking blade's centreline must cross the guard's own sword axis beyond
 ## the bar (`guard_side`), and the side is decided when the pair first touches
 ## and kept until it parts (`guard_modes`, kept by the caller in
@@ -90,6 +94,11 @@ const SIDE_TOLERANCE := 1.0e-6
 ## nearer by more than this (m): a numerical tolerance, so a tie at the guard
 ## root's apex never flips owner from one tick to the next.
 const OWNERSHIP_TOLERANCE := 1.0e-9
+## The blade segment's start is the apex. A guard-pair point this close to
+## that endpoint is the start cap sitting in the wielder's own guard corner,
+## not a point up the blade. One millimetre, not `blade_radius`: the forte
+## just above the guard still meets the other guard.
+const START_CAP := 0.001
 ## Candidates per pair: per segment pair the closest points and two overlap
 ## ends; a guard is three segments.
 const CANDIDATES_PER_PAIR := 9
@@ -272,6 +281,9 @@ func measure(cax: float, cay: float, pax: float, pay: float, uax: float, uay: fl
 		guard_gap[1] = _against_guard(PAIR_GUARD_ON_BLADE, blade_b, weapon_b.blade_radius, guard_a, weapon_a, true)
 		if not _steel(modes[1], guard_side_reading[1]):
 			_candidates = first
+	## A start cap sitting in the wielder's own guard corner is hilt on hilt
+	## once the handles or crossguards meet. It is not a blade meeting a guard.
+	_drop_hilt_on_hilt()
 	for i in _candidates:
 		_candidate_normal(i, cax, cay)
 	_select()
@@ -495,6 +507,103 @@ func _overlap(first: PackedFloat64Array, second: PackedFloat64Array) -> bool:
 ## contact: the ends stand for it.
 func _is_line(closest: float) -> bool:
 	return minf(_line[4], _line[10]) - closest <= LINE_TOLERANCE
+
+
+## Drop guard-pair candidates whose blade point is the start cap (within
+## `START_CAP` of that blade's apex) when both guards have such a candidate
+## and the hilts meet. Blade-on-blade candidates stay. A one-sided guard
+## candidate stays. A point farther up the blade still meets the other guard.
+func _drop_hilt_on_hilt() -> void:
+	if not _hilts_meet() or not _both_hilts_capped():
+		return
+	var write := 0
+	for i in _candidates:
+		if _c_pair[i] != PAIR_BLADES and _on_start_cap(i):
+			continue
+		if write != i:
+			_copy_candidate(write, i)
+		write += 1
+	_candidates = write
+
+
+## Both guards have a start-cap candidate: each hilt is in the other's
+## corner. One blade into one guard is a block and stays.
+func _both_hilts_capped() -> bool:
+	var on_a := false
+	var on_b := false
+	for i in _candidates:
+		if not _on_start_cap(i):
+			continue
+		if _c_pair[i] == PAIR_BLADE_ON_GUARD:
+			on_a = true
+		elif _c_pair[i] == PAIR_GUARD_ON_BLADE:
+			on_b = true
+	return on_a and on_b
+
+
+func _on_start_cap(i: int) -> bool:
+	var x := _c_bx[i]
+	var y := _c_by[i]
+	var sx := blade_b[0]
+	var sy := blade_b[1]
+	if _c_pair[i] == PAIR_BLADE_ON_GUARD:
+		x = _c_ax[i]
+		y = _c_ay[i]
+		sx = blade_a[0]
+		sy = blade_a[1]
+	return SimMath.length(x - sx, y - sy) <= START_CAP
+
+
+func _copy_candidate(to: int, from: int) -> void:
+	_c_pair[to] = _c_pair[from]
+	_c_ax[to] = _c_ax[from]
+	_c_ay[to] = _c_ay[from]
+	_c_bx[to] = _c_bx[from]
+	_c_by[to] = _c_by[from]
+	_c_gap[to] = _c_gap[from]
+	_c_nx[to] = _c_nx[from]
+	_c_ny[to] = _c_ny[from]
+	_c_ux[to] = _c_ux[from]
+	_c_uy[to] = _c_uy[from]
+
+
+## True when either handle or crossguard solid meets the other handle or
+## crossguard. The bar is the placed guard's first segment. The handle runs
+## from the pommel to the bar's underside.
+func _hilts_meet() -> bool:
+	var least := INF
+	var a_bar := _weapon_a.crossguard_half_span > 0.0
+	var b_bar := _weapon_b.crossguard_half_span > 0.0
+	if a_bar and b_bar:
+		least = minf(least, _solid_gap(guard_a[0], guard_a[1], guard_a[2], guard_a[3], guard_b[0], guard_b[1], guard_b[2], guard_b[3], _weapon_a.crossguard_radius, _weapon_b.crossguard_radius))
+	var a_hx := _origin_ax
+	var a_hy := _origin_ay
+	var b_hx := _origin_bx
+	var b_hy := _origin_by
+	var a_ex := _origin_ax
+	var a_ey := _origin_ay
+	var b_ex := _origin_bx
+	var b_ey := _origin_by
+	var along := 0.0
+	if a_bar:
+		along = maxf(_weapon_a.crossguard_centre_radius - _weapon_a.crossguard_radius, 0.0)
+		a_ex = _origin_ax + _uax * along
+		a_ey = _origin_ay + _uay * along
+	if b_bar:
+		along = maxf(_weapon_b.crossguard_centre_radius - _weapon_b.crossguard_radius, 0.0)
+		b_ex = _origin_bx + _ubx * along
+		b_ey = _origin_by + _uby * along
+	least = minf(least, _solid_gap(a_hx, a_hy, a_ex, a_ey, b_hx, b_hy, b_ex, b_ey, _weapon_a.handle_radius, _weapon_b.handle_radius))
+	if b_bar:
+		least = minf(least, _solid_gap(a_hx, a_hy, a_ex, a_ey, guard_b[0], guard_b[1], guard_b[2], guard_b[3], _weapon_a.handle_radius, _weapon_b.crossguard_radius))
+	if a_bar:
+		least = minf(least, _solid_gap(guard_a[0], guard_a[1], guard_a[2], guard_a[3], b_hx, b_hy, b_ex, b_ey, _weapon_a.crossguard_radius, _weapon_b.handle_radius))
+	return least <= 0.0
+
+
+func _solid_gap(ax0: float, ay0: float, ax1: float, ay1: float, bx0: float, by0: float, bx1: float, by1: float, ra: float, rb: float) -> float:
+	SimMath.closest_segments(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1, _contact)
+	return _contact.distance - ra - rb
 
 
 func _add(pair: int, x0: float, y0: float, x1: float, y1: float, surface_gap: float, ubx: float, uby: float) -> void:

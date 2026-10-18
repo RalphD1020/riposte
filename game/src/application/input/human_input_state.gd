@@ -17,6 +17,7 @@ extends RefCounted
 const SOURCE_POINTER := &"pointer"
 const SOURCE_KEY := &"key"
 const SOURCE_TOUCH := &"touch"
+const SOURCE_PAD := &"pad"
 ## The held source a toggled charge stands for.
 const SOURCE_TOGGLE := &"toggle"
 

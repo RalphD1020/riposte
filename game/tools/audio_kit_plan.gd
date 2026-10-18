@@ -4,7 +4,7 @@ extends RefCounted
 ## The cue map `author_audio_kits.gd` writes onto the kits that already exist.
 ## A second apply changes nothing that was already right, and it does not
 ## replace the intro, the symbol, the victory profile, or the announcer's
-## captions. `gasp.mp3` is generated and has no cue.
+## captions. The arena kit owns the match horn and the crowd gasp.
 ##
 ## See also: /docs/reference/assets.md
 
@@ -15,7 +15,6 @@ const WEAPON_KIT := "res://assets/presentation/weapons/bastard_sword/bastard_swo
 const VICTORY_PROFILE := "res://assets/presentation/fighters/duelist/duelist_victory.tres"
 const ANNOUNCER_KIT := "res://assets/presentation/voice/announcer/announcer_kit.tres"
 const UI_THEME_KIT := "res://assets/presentation/ui/ui_theme_kit.tres"
-const GASP_UNUSED := "res://assets/presentation/audio/crowd/gasp.mp3"
 const MATCH_LINES := 5
 
 const ARENA_SPECS := {
@@ -25,6 +24,8 @@ const ARENA_SPECS := {
 	PresentationKit.CUE_CROWD_STRONG: "crowd:cheer_strong",
 	PresentationKit.CUE_CROWD_SETPOINT: "crowd:setpoint",
 	PresentationKit.CUE_CROWD_VICTORY: "crowd:victory",
+	PresentationKit.CUE_CROWD_GASP: "crowd:gasp",
+	PresentationKit.CUE_MATCH_HORN: "sfx/arena:match_horn",
 	PresentationKit.CUE_ROUND: "sfx/round:round_start",
 	PresentationKit.CUE_ROUND_WIN: "sfx/round:round_win",
 }
@@ -82,7 +83,6 @@ static func apply_fighter(kit: PresentationKit, problems: PackedStringArray) -> 
 
 static func apply_victory(profile: FighterVictoryProfile, problems: PackedStringArray) -> void:
 	_set_stream(profile, "announcer_line", takes_for("voice/announcer:wolf_wins", problems))
-	_set_stream(profile, "fanfare", takes_for("sfx/victory:fanfare_wolf", problems))
 
 
 static func apply_announcer(kit: AnnouncerKit, problems: PackedStringArray) -> void:

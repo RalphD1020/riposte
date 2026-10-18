@@ -10,6 +10,8 @@
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/cheer_strong.mp3" id="7_strong"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/setpoint.mp3" id="8_point"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/victory.mp3" id="9_roar"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/gasp.mp3" id="10_gasp"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/arena/match_horn_01.mp3" id="11_horn"]
 
 [resource]
 script = ExtResource("1_kit")
@@ -23,6 +25,8 @@ audio_cues = {
 &"crowd.setpoint": Array[AudioStream]([ExtResource("8_point")]),
 &"crowd.strong": Array[AudioStream]([ExtResource("7_strong")]),
 &"crowd.victory": Array[AudioStream]([ExtResource("9_roar")]),
+&"crowd.gasp": Array[AudioStream]([ExtResource("10_gasp")]),
+&"match.horn": Array[AudioStream]([ExtResource("11_horn")]),
 &"music": Array[AudioStream]([ExtResource("3_p88kq")]),
 &"round": Array[AudioStream]([ExtResource("1_p88kq")]),
 &"round.win": Array[AudioStream]([ExtResource("2_2fgvd")])

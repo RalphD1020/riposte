@@ -15,18 +15,22 @@ func _figure() -> Dictionary:
 	root.name = "Figure"
 	var alive := MeshInstance3D.new()
 	alive.name = "Eye.L"
+	var brow := MeshInstance3D.new()
+	brow.name = "Brow"
 	var dead := MeshInstance3D.new()
 	dead.name = "DeadEye.L.A"
 	root.add_child(alive)
+	root.add_child(brow)
 	root.add_child(dead)
 	(Engine.get_main_loop() as SceneTree).root.add_child(root)
-	return {"root": root, "eye": alive, "dead": dead}
+	return {"root": root, "eye": alive, "brow": brow, "dead": dead}
 
 
 func test_a_living_fighter_shows_the_eyes() -> void:
 	var figure := _figure()
 	FacePresentation.apply(figure["root"], true)
 	assert_true(figure["eye"].visible, "the living eye is shown")
+	assert_true(figure["brow"].visible, "the brow stays")
 	assert_false(figure["dead"].visible, "the X is hidden")
 	figure["root"].free()
 
@@ -36,10 +40,13 @@ func test_death_keeps_the_x_until_a_new_figure() -> void:
 	FacePresentation.apply(figure["root"], false)
 	FacePresentation.apply(figure["root"], false)
 	assert_false(figure["eye"].visible, "the living eye stays hidden")
+	assert_true(figure["brow"].visible, "the brow is not the X")
 	assert_true(figure["dead"].visible, "the X stays through another update")
 	var rematch := _figure()
 	FacePresentation.apply(rematch["root"], true)
 	assert_true(rematch["eye"].visible, "a new presentation starts alive")
+	assert_true(rematch["brow"].visible, "and keeps the brow")
+	assert_false(rematch["dead"].visible, "with no leftover X")
 	assert_false(figure["eye"].visible, "the corpse is unchanged")
 	figure["root"].free()
 	rematch["root"].free()
@@ -52,9 +59,11 @@ func test_the_exported_bodies_and_the_proxy_share_one_face_contract() -> void:
 	for scene_path: String in ["res://assets/generated/fighters/wolf.glb", "res://assets/generated/fighters/wolf_training.glb"]:
 		var scene := (load(scene_path) as PackedScene).instantiate()
 		assert_true(_parts(scene, "Eye").size() >= 2, "%s has living eyes" % scene_path.get_file())
+		assert_true(_parts(scene, "Brow").size() >= 1, "%s has the brow" % scene_path.get_file())
 		assert_true(_parts(scene, "DeadEye").size() >= 2, "%s has the X" % scene_path.get_file())
 		scene.free()
 	var living := _proxy(&"", rules)
+	await await_frames(1)
 	_assert_face(living, true)
 	var killed := DuelSetup.new_state(rules, 3)
 	killed.fighter(0).health = 0.0
@@ -69,9 +78,11 @@ func test_the_exported_bodies_and_the_proxy_share_one_face_contract() -> void:
 	assert_eq(ring_row.terminal_cause, FighterState.Terminal.RING_OUT, "fixture: a supported loss with health left is a ring-out")
 	assert_true(ring_row.health > 0.0, "fixture: the ring-out is not a kill")
 	var fallen := _proxy(&"", rules)
+	await await_frames(1)
 	_pose(fallen, ring_row)
 	_assert_face(fallen, false)
 	var training := _proxy(RiposteKits.SKIN_DUELIST_TRAINING, rules)
+	await await_frames(1)
 	_assert_face(training, true)
 	_pose(training, dead_row)
 	_assert_face(training, false)
@@ -97,12 +108,44 @@ func _pose(proxy: FighterPresentation3D, row: PresentationFighter) -> void:
 
 func _assert_face(proxy: Node, alive: bool) -> void:
 	var eyes := _parts(proxy, "Eye")
+	var brows := _parts(proxy, "Brow")
 	var dead := _parts(proxy, "DeadEye")
 	assert_true(eyes.size() >= 2 and dead.size() >= 2, "the proxy is carrying both faces")
+	assert_true(brows.size() >= 1, "and the brow bar")
 	for eye: Node in eyes:
 		assert_eq(eye.visible, alive, "living eyes follow the terminal")
+	for brow: Node in brows:
+		assert_true(brow.visible, "the brow stays through the terminal")
 	for mark: Node in dead:
 		assert_eq(mark.visible, not alive, "the X follows the terminal")
+	if not alive:
+		_assert_x_covers_eyes_not_brows(eyes, brows, dead)
+
+
+func _assert_x_covers_eyes_not_brows(eyes: Array[Node], brows: Array[Node], marks: Array[Node]) -> void:
+	var eye := _merged_aabb(eyes)
+	var brow := _merged_aabb(brows)
+	var mark := _merged_aabb(marks)
+	assert_true(mark.size.y > 0.015, "the X stands in the face plane, not as a flat slash")
+	assert_true(mark.intersects(eye), "the X occupies the living-eye band")
+	assert_false(mark.intersects(brow), "and does not replace the brow")
+
+
+func _merged_aabb(nodes: Array[Node]) -> AABB:
+	var merged := AABB()
+	var started := false
+	for node in nodes:
+		if not node is MeshInstance3D:
+			continue
+		var mesh := node as MeshInstance3D
+		var box := mesh.global_transform * mesh.get_aabb()
+		if not started:
+			merged = box
+			started = true
+		else:
+			merged = merged.merge(box)
+	assert_true(started, "fixture: face parts are meshes")
+	return merged
 
 
 func _parts(root: Node, prefix: String) -> Array[Node]:

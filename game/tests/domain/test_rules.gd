@@ -311,7 +311,7 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 57, "rules version tracks gameplay-affecting changes (57: impact authority is a steel dip that recovers)")
+	assert_eq(rules.version, 58, "rules version tracks gameplay-affecting changes (58: mutual hilt start-caps are not steel)")
 
 
 ## IMPACT-PHYSICS-001 (rules 42): the injury calibration is a named physical
