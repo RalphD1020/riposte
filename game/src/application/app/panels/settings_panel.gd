@@ -78,7 +78,7 @@ func _show_list(focus_index: int) -> void:
 	if not _app.settings.persistence_available:
 		UiKit.caption(self, AppCopy.SETTINGS_NOT_SAVED)
 	UiKit.button(self, AppCopy.BACK, _defer(closed.emit))
-	_focus_first.call_deferred()
+	_arm_focus.call_deferred()
 
 
 func _show_section(index: int) -> void:
@@ -185,7 +185,7 @@ func _show_section(index: int) -> void:
 		Section.ACTION_KEYS:
 			_binding_page(OTHER_ACTIONS)
 	UiKit.button(self, AppCopy.BACK, _defer(_show_list.bind(index)))
-	_focus_first.call_deferred()
+	_arm_focus.call_deferred()
 
 
 func is_capturing() -> bool:
@@ -293,6 +293,12 @@ func _apply_live() -> void:
 ## Page swaps free the pressed button, so they never run inside its signal.
 func _defer(action: Callable) -> Callable:
 	return func() -> void: action.call_deferred()
+
+
+func _arm_focus() -> void:
+	if is_inside_tree():
+		UiKit.chain_focus(self)
+	_focus_first()
 
 
 func _focus_first() -> void:

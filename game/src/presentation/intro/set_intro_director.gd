@@ -91,6 +91,7 @@ func _ready() -> void:
 		add_child(body)
 		_figures.append(body)
 		var ribbon := SwordTrail3D.create(body.blade_color(), _kits.weapon.trail_samples)
+		ribbon.set_percussion_fraction(ContactMechanics.percussion_fraction(row.weapon_definition))
 		add_child(ribbon)
 		_trails.append(ribbon)
 		_perform(slot, 0.0, 0.0)

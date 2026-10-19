@@ -51,6 +51,10 @@ func test_banner_leaves_the_round_intro_to_the_card_then_names_the_outcome() -> 
 	assert_eq(HudCopy.banner(_project(state), 1), "TRADE · ROUND WON", "and so does a trade won on arrival order")
 	state.end_reason = MatchPhase.REASON_KILL
 	assert_eq(HudCopy.banner(_project(state), 1), "ROUND WON", "an ordinary kill needs no explanation")
+	state.scores = PackedInt32Array([0, _rules.rounds_to_win])
+	state.round_winner = 1
+	assert_eq(HudCopy.banner(_project(state), 1), "MATCH WON", "the deciding round is a match win from the winner's side")
+	assert_eq(HudCopy.banner(_project(state), 0), "MATCH LOST", "and a match loss from the other side")
 	state.set_phase(MatchPhase.Id.MATCH_ENDED)
 	state.match_winner = 1
 	assert_eq(HudCopy.banner(_project(state), 0), "DEFEAT", "match outcome from the human's side")

@@ -32,6 +32,12 @@ const IMPULSE_BODY_MAX := 0.09
 const IMPULSE_DEVASTATING_MAX := 0.14
 ## Spark geometry: the normal fan is the smaller half of a clash.
 const SPARK_NORMAL_SHARE := 0.4
+## A blade fraction at or below this is the guard end of a clash. Geometry
+## writes 0 for a guard-pair contact (`sword_contact_geometry.gd`). Missing
+## fractions are not treated as the guard.
+const GUARD_FRACTION := 0.2
+## Guard sparks are a tighter burst than the same clash at mid-blade.
+const GUARD_SPARK_SCALE := 0.55
 ## Parry ring.
 const PARRY_RING_SIZE := 0.8
 ## A deflection's tail sits well under the clash it follows (dB).
@@ -193,9 +199,13 @@ static func _on_burst(event: DuelEvent, snapshot: PresentationSnapshot, flash: f
 static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame, contact_height: float = NAN) -> void:
 	var world := _contact_world(event, weapon_kit, contact_height)
 	var intensity := clampf(event.number(DuelEventKeys.INTENSITY), 0.0, 1.0)
+	var shaped := response(intensity)
 	var profile := ImpactPresentationProfile.clash()
-	var count := lerpf(float(profile.spark_count_min), float(profile.spark_count_max), intensity)
-	var speed := lerpf(profile.spark_speed_min, profile.spark_speed_max, intensity)
+	var count := lerpf(float(profile.spark_count_min), float(profile.spark_count_max), shaped)
+	var speed := lerpf(profile.spark_speed_min, profile.spark_speed_max, shaped)
+	if _at_guard(event):
+		count *= GUARD_SPARK_SCALE
+		speed = lerpf(profile.spark_speed_min, speed, GUARD_SPARK_SCALE)
 	var tangent := _direction(event, DuelEventKeys.STRIKE_X, DuelEventKeys.STRIKE_Y)
 	var normal := _direction(event, DuelEventKeys.NORMAL_X, DuelEventKeys.NORMAL_Y)
 	## A glancing redirect — the cut not arrested, the swords separating — throws
@@ -210,7 +220,7 @@ static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, fla
 	_append_particles(frame, VfxRequest.sparks(world, normal, hot, roundi(count * SPARK_NORMAL_SHARE), speed, flash), particles)
 	frame.audio_requests.append(AudioCueRequest.create(_clash_cue(event), world, 0.0, clash_pitch(event), AudioCueRequest.KitSource.WEAPON, variant_key(event)))
 	frame.hitstop_requests.append(HitstopRequest.create(weapon_kit.hitstop_for_clash(intensity)))
-	frame.camera_requests.append(CameraShakeRequest.create(IMPULSE_BLADE_MAX * intensity * 100.0, normal, CameraShakeRequest.Profile.BLADE))
+	frame.camera_requests.append(CameraShakeRequest.create(IMPULSE_BLADE_MAX * shaped * 100.0, normal, CameraShakeRequest.Profile.BLADE))
 	frame.fighter_requests.append(FighterCueRequest.haptic(event.actor, FighterCueRequest.Kind.HAPTIC_BLADE))
 
 
@@ -234,6 +244,17 @@ static func _on_deflection(event: DuelEvent, snapshot: PresentationSnapshot, fra
 ## The clang's timbre from where the blades met (7C): steel struck near the
 ## crossguard rings lower than steel struck toward the point. Read from the
 ## contact's own blade fractions — never from charge or speed.
+## True when a carried blade fraction sits at the guard end. Absent fractions
+## stay false so an event that did not say where it met is not tightened.
+static func _at_guard(event: DuelEvent) -> bool:
+	var guard := false
+	if event.data.has(DuelEventKeys.FRACTION_0):
+		guard = guard or event.number(DuelEventKeys.FRACTION_0) <= GUARD_FRACTION
+	if event.data.has(DuelEventKeys.FRACTION_1):
+		guard = guard or event.number(DuelEventKeys.FRACTION_1) <= GUARD_FRACTION
+	return guard
+
+
 static func clash_pitch(event: DuelEvent) -> float:
 	var fraction := clampf((event.number(DuelEventKeys.FRACTION_0) + event.number(DuelEventKeys.FRACTION_1)) * 0.5, 0.0, 1.0)
 	return lerpf(CLASH_PITCH_FORTE, CLASH_PITCH_FOIBLE, fraction)
@@ -251,7 +272,10 @@ static func _on_parry(event: DuelEvent, weapon_kit: PresentationKit, flash: floa
 	frame.vfx_requests.append(VfxRequest.ring(world, palette.spark, PARRY_RING_SIZE * (0.7 + 0.3 * quality), flash))
 	var hot := palette.spark.lerp(palette.spark_hot, quality)
 	var count := roundi(lerpf(float(PARRY_SPARKS_MIN), float(PARRY_SPARKS_MAX), quality))
-	_append_particles(frame, VfxRequest.sparks(world, Vector3.ZERO, hot, count, PARRY_SPARK_SPEED, flash), particles)
+	var aim := _direction(event, DuelEventKeys.STRIKE_X, DuelEventKeys.STRIKE_Y)
+	if aim == Vector3.ZERO:
+		aim = _direction(event, DuelEventKeys.NORMAL_X, DuelEventKeys.NORMAL_Y)
+	_append_particles(frame, VfxRequest.sparks(world, aim, hot, count, PARRY_SPARK_SPEED, flash), particles)
 	frame.audio_requests.append(AudioCueRequest.create(
 		PresentationKit.CUE_BLADE_STRONG, world,
 		linear_to_db(lerpf(PARRY_VOLUME_MIN, 1.0, quality)),

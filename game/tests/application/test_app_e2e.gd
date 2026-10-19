@@ -80,6 +80,31 @@ func _match(booted: Booted) -> MatchScreen:
 
 
 ## Built-in ui_* actions match keycode; project actions match physical keys.
+func _joy(button: JoyButton, down: bool) -> InputEventJoypadButton:
+	var event := InputEventJoypadButton.new()
+	event.button_index = button
+	event.pressed = down
+	return event
+
+
+func _focus_owner(booted: Booted) -> Control:
+	return booted.main.get_viewport().gui_get_focus_owner()
+
+
+func _step_focus(booted: Booted, text: String, down: InputEvent) -> bool:
+	var release := down.duplicate()
+	release.pressed = false
+	for _i in 16:
+		var owner := _focus_owner(booted)
+		if owner is Button and (owner as Button).text == text:
+			return true
+		_push(down)
+		_push(release)
+		await await_frames(1)
+	var last := _focus_owner(booted)
+	return last is Button and (last as Button).text == text
+
+
 func _key(key: Key, down: bool) -> InputEventKey:
 	var event := InputEventKey.new()
 	event.keycode = key
@@ -364,6 +389,30 @@ func test_training_is_reached_from_how_to_play_and_coaches_by_doing() -> void:
 	await _shutdown(booted)
 
 
+## Keyboard and a pad button move the real focus owner and activate it.
+## A direct call to grab_focus is not this contract.
+func test_keyboard_and_a_pad_button_reach_settings() -> void:
+	var booted := await _boot_ready()
+	var owner := _focus_owner(booted)
+	assert_true(owner is Button and (owner as Button).text == AppCopy.QUICK_PLAY, "the menu opens with Quick Play focused")
+	var reached := await _step_focus(booted, AppCopy.SETTINGS, _key(KEY_DOWN, true))
+	assert_true(reached, "Down reaches Settings")
+	_push(_joy(JOY_BUTTON_A, true))
+	_push(_joy(JOY_BUTTON_A, false))
+	await await_frames(2)
+	var screen := booted.app.current_screen() as SettingsScreen
+	assert_true(screen != null, "the pad's accept button opens the focused control")
+	owner = _focus_owner(booted)
+	assert_true(owner is Button and (owner as Button).text == AppCopy.SETTINGS_SECTIONS[0], "the section list focuses its first row")
+	reached = await _step_focus(booted, "Display", _joy(JOY_BUTTON_DPAD_DOWN, true))
+	assert_true(reached, "the pad's down button moves to Display")
+	_push(_key(KEY_ENTER, true))
+	_push(_key(KEY_ENTER, false))
+	await await_frames(2)
+	assert_eq(screen.panel.section(), SettingsPanel.Section.DISPLAY, "Enter opens the focused section")
+	await _shutdown(booted)
+
+
 func test_settings_drill_down_saves_and_escape_walks_back() -> void:
 	var booted := await _boot_ready()
 	var app := booted.app
@@ -383,6 +432,8 @@ func test_settings_drill_down_saves_and_escape_walks_back() -> void:
 	_push(_key(KEY_ESCAPE, true))
 	await await_frames(1)
 	assert_eq(screen.panel.section(), SettingsPanel.LIST, "Escape leaves the section first")
+	var returned := _focus_owner(booted)
+	assert_true(returned is Button and (returned as Button).text == "Display", "focus returns to the section that was open")
 	_push(_key(KEY_ESCAPE, true))
 	await await_frames(1)
 	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "then leaves Settings")
@@ -575,7 +626,10 @@ func test_pause_sheet_pages_walk_back_with_escape_and_save_volume_on_close() -> 
 	_push(_key(KEY_ESCAPE, true))
 	assert_eq(panel.section(), SettingsPanel.LIST, "Escape leaves the section first")
 	_push(_key(KEY_ESCAPE, true))
+	await await_frames(1)
 	assert_eq(overlay.page(), PauseOverlay.Page.MENU, "then returns to the pause menu")
+	var pause_focus := _focus_owner(booted)
+	assert_true(pause_focus is Button and (pause_focus as Button).text == AppCopy.SETTINGS, "and focus returns to Settings, not Resume")
 	var reloaded := PlayerSettings.new()
 	reloaded.load_from(SETTINGS_PATH)
 	assert_near(reloaded.master_volume, 0.25, 1e-6, "closing the panel saved the drag once")

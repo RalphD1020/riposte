@@ -16,6 +16,9 @@ const FIGHT := "FIGHT!"
 const ROUND_WON := "ROUND WON"
 const ROUND_LOST := "ROUND LOST"
 const ROUND_DRAWN := "ROUND DRAWN"
+const MATCH_WON := "MATCH WON"
+const MATCH_LOST := "MATCH LOST"
+const MATCH_DRAWN := "MATCH DRAWN"
 const TIME_UP := "TIME"
 const TRADE := "TRADE"
 const VICTORY := "VICTORY"
@@ -64,7 +67,11 @@ static func sided(label: String, side: DuelSide.Id) -> String:
 static func banner(snapshot: PresentationSnapshot, human_slot: int) -> String:
 	match snapshot.phase:
 		MatchPhase.Id.ROUND_RESULT:
-			var outcome := _outcome(snapshot.round_winner, human_slot, ROUND_WON, ROUND_LOST, ROUND_DRAWN)
+			var match_end := snapshot.set_winner != MatchPhase.NO_WINNER
+			var won := MATCH_WON if match_end else ROUND_WON
+			var lost := MATCH_LOST if match_end else ROUND_LOST
+			var drawn := MATCH_DRAWN if match_end else ROUND_DRAWN
+			var outcome := _outcome(snapshot.round_winner, human_slot, won, lost, drawn)
 			var cause := _cause(snapshot.end_reason)
 			return outcome if cause.is_empty() else "%s · %s" % [cause, outcome]
 		MatchPhase.Id.MATCH_ENDED:

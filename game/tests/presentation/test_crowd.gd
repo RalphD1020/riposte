@@ -369,7 +369,9 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "wolf_chant.mp3", "Wolf's chant replaces that roar")
 	var sting := audio.get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
 	presenter.play_set_horn()
-	assert_true(sting.playing and sting.stream.resource_path.get_file().begins_with("match_horn"), "the set horn is the arena's")
+	assert_true(sting.playing and sting.stream is AudioStreamMP3 and not (sting.stream as AudioStreamMP3).loop, "the horn stays a one-shot, not a second music loop")
+	assert_true(sting.stream.resource_path.get_file().begins_with("match_horn"), "the set horn is the arena's")
+	assert_eq(AudioDirector.HORN_SECONDS, 6.0, "the match-end horn is held for six seconds")
 	assert_eq(sting.bus, AudioBuses.MUSIC, "on the sting's Music bus")
 	assert_false(audio.is_character_call_playing(), "and it is not Wolf's howl")
 	presenter.detach_and_dispose()

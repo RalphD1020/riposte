@@ -44,7 +44,7 @@ One home per vocabulary; never retype a literal:
 | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Event names / payload keys                    | `DuelEventTypes` / `DuelEventKeys`                                                        |
 | Match reasons, outcome slots, contact classes | `MatchPhase` (`REASON_*`, `NO_WINNER`, `DRAW`, `is_combatant`); `ContactResolver.CLASS_*` |
-| Input actions (match `project.godot [input]`) | `InputActions`                                                                            |
+| Input actions (match `project.godot [input]`) | `InputActions`. Built-in `ui_up` / `ui_down` already include the d-pad. `ui_accept` in this engine is Enter, keypad Enter, and Space only, so `project.godot` adds joypad button A and keeps those keys. |
 | Product events / property keys                | `ProductEvents` / `ProductEvents.PROP_*`                                                  |
 | Audio buses                                   | `AudioBuses` (+ `default_bus_layout.tres`)                                                |
 | Crowd reaction / kit cue names                | `CrowdDirector.CUE_*` → `PresentationKit.CUE_CROWD_*`                                     |

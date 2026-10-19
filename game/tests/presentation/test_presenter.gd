@@ -378,6 +378,33 @@ func test_the_sweet_region_is_drawn_as_its_own_shape() -> void:
 	keen.queue_free()
 
 
+## The glint is the centre of percussion on each sample. The sweet rib stays
+## the wider band. Moving the sample moves the glint. Clearing drops both.
+func test_the_percussion_glint_follows_the_sample_and_not_the_sweet_band() -> void:
+	var rules := _rules
+	var fraction := ContactMechanics.percussion_fraction(rules.combatant(0).weapon)
+	var trail := _ribbon(PackedFloat64Array([0.9, 0.9]))
+	trail.set_percussion_fraction(fraction)
+	trail.advance(0.0)
+	assert_eq(trail.surface_count(), 4, "the glint is its own surface beside the rib")
+	var expected := Vector3(0.0, 1.0, 0.0).lerp(Vector3(0.0, 1.0, 1.0), fraction)
+	assert_true(trail.percussion_at(0).distance_to(expected) < 0.0001, "the glint interpolates hilt to tip at the weapon fraction")
+	assert_true(fraction > SwingSemantics.SWEET_REGION_MIN and fraction < SwingSemantics.SWEET_REGION_MAX, "that fraction sits inside the sweet band")
+	assert_true(absf(fraction - (SwingSemantics.SWEET_REGION_MIN + SwingSemantics.SWEET_REGION_MAX) * 0.5) > 0.01, "and it is not the band's midpoint")
+	trail.add_sample(Vector3(4.0, 2.0, 0.0), Vector3(4.0, 2.0, 2.0), 0.9, 10.0, 1.0)
+	trail.advance(0.0)
+	var moved := Vector3(4.0, 2.0, 0.0).lerp(Vector3(4.0, 2.0, 2.0), fraction)
+	assert_true(trail.percussion_at(trail.sample_count() - 1).distance_to(moved) < 0.0001, "a new sample carries its own glint")
+	trail.set_reduced_motion(true)
+	trail.advance(0.0)
+	assert_eq(trail.drawn_sample_start(), trail.sample_count() - 2, "reduced motion keeps the latest samples")
+	assert_eq(trail.sample_count(), 3, "and does not drop the history")
+	trail.clear_trail()
+	assert_eq(trail.sample_count(), 0, "clearing drops the samples")
+	assert_eq(trail.surface_count(), 0, "and the glint")
+	trail.queue_free()
+
+
 ## Accessibility strengthens the cue and never the mechanic. Turning the
 ## sweet-spot cue off or up changes what is drawn; `SwingSemantics` still
 ## decides where the region is, and the band is still there to read.

@@ -26,6 +26,8 @@ CombatFeedbackDirector (pure computation, no SceneTree)
 
 **Critical rule:** Nothing below `CombatFeedbackDirector` may modify authoritative state. Presentation reads. It never writes back.
 
+The slash ribbon (`SwordTrail3D`) is not a second severity. Thickness follows projected `swing_potential`. The sweet rib is `SwingSemantics.SWEET_REGION_MIN/MAX`. The percussion glint is `ContactMechanics.percussion_fraction` on those same samples. Clash sparks and camera impulse follow `CombatFeedbackDirector.response()` of the event's `INTENSITY`, at the contact point. A guard-end fraction tightens the burst. `WeaponKinematics.lever` stays off the match ribbon.
+
 ### CombatFeedbackDirector
 
 Pure mapping from `PresentationSnapshot` + `DuelEvent[]` + `PlayerSettings` → `FeedbackFrame`. No node references, no SceneTree dependency. Outputs typed value-like requests:

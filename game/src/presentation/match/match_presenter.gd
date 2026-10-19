@@ -288,6 +288,8 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 		var capacity := _kits.weapon.trail_samples * (2 if _options.high_contrast_weapons else 1)
 		var ribbon := SwordTrail3D.create(proxy.blade_color(), capacity)
 		ribbon.set_strength(_options.trail_strength, _options.sweet_spot_cue)
+		ribbon.set_percussion_fraction(ContactMechanics.percussion_fraction(row.weapon_definition))
+		ribbon.set_reduced_motion(_options.reduced_motion)
 		add_child(ribbon)
 		_trails.append(ribbon)
 	_vectors = DebugVectors3D.create(_kits.weapon.blade_height)

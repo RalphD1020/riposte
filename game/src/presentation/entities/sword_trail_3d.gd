@@ -42,6 +42,11 @@ const ACCENT_LIFT := 0.014
 const ACCENT_LIGHTEN := 0.5
 const ACCENT_ALPHA := 0.95
 const ACCENT_MIN_POTENTIAL := 0.3
+## How much of an older sample's width remains. The newest sample is the
+## leading edge; the tail narrows instead of holding a full glowing sheet.
+const TAIL_WIDTH := 0.45
+## Half-length of the percussion glint along the blade (m).
+const GLINT_HALF := 0.02
 
 var _ribbon := ImmediateMesh.new()
 var _capacity: int = 10
@@ -55,6 +60,9 @@ var _ages := PackedFloat32Array()
 var _color: Color = Color.WHITE
 var _strength: float = 1.0
 var _sweet: float = 1.0
+## Centre of percussion as a blade fraction. Negative until the owner sets it.
+var _percussion: float = -1.0
+var _reduced: bool = false
 
 
 static func create(color: Color, capacity: int) -> SwordTrail3D:
@@ -79,6 +87,30 @@ static func create(color: Color, capacity: int) -> SwordTrail3D:
 func set_strength(trail: float, sweet: float) -> void:
 	_strength = maxf(trail, 0.0)
 	_sweet = maxf(sweet, 0.0)
+
+
+## `ContactMechanics.percussion_fraction` for this weapon. The glint uses it.
+## The sweet rib does not.
+func set_percussion_fraction(fraction: float) -> void:
+	_percussion = clampf(fraction, 0.0, 1.0)
+
+
+## Reduced Motion keeps the blade's latest samples and drops the long tail.
+func set_reduced_motion(on: bool) -> void:
+	_reduced = on
+
+
+## Where the percussion glint sits on sample `index`.
+func percussion_at(index: int) -> Vector3:
+	var fraction := _percussion if _percussion >= 0.0 else 0.0
+	return _hilts[index].lerp(_tips[index], fraction)
+
+
+## First sample included in the mesh. Reduced Motion keeps the last two.
+func drawn_sample_start() -> int:
+	if _reduced and _hilts.size() >= 2:
+		return _hilts.size() - 2
+	return 0
 
 
 func add_sample(hilt: Vector3, tip: Vector3, potential: float, speed: float, min_speed: float) -> void:
@@ -146,6 +178,8 @@ func _rebuild() -> void:
 	_emit_sheet(-1.0)
 	if _sweet > 0.0 and _peak_potential() >= ACCENT_MIN_POTENTIAL:
 		_emit_sweet_rib()
+		if _percussion >= 0.0:
+			_emit_glint()
 
 
 ## One face of the band, offset `side` × the sample's thickness from the sweep
@@ -153,14 +187,19 @@ func _rebuild() -> void:
 ## strip runs with the swing.
 func _emit_sheet(side: float) -> void:
 	_ribbon.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-	for i in _hilts.size():
-		var fade := _fade(i)
-		var lift := Vector3.UP * half_width_at(i) * side
+	for i in range(drawn_sample_start(), _hilts.size()):
+		var fade := _fade(i) * _edge(i)
+		var lift := Vector3.UP * half_width_at(i) * side * _edge(i)
 		_ribbon.surface_set_color(Color(_color, HILT_ALPHA * fade))
 		_ribbon.surface_add_vertex(_hilts[i] + lift)
 		_ribbon.surface_set_color(Color(_color, TIP_ALPHA * fade))
 		_ribbon.surface_add_vertex(_tips[i] + lift)
 	_ribbon.surface_end()
+
+
+## Newest sample is the full leading edge. Older samples narrow.
+func _edge(index: int) -> float:
+	return lerpf(TAIL_WIDTH, 1.0, float(index + 1) / float(_hilts.size()))
 
 
 ## The percussion band, swept. Drawn as one continuous strip with per-sample
@@ -169,7 +208,7 @@ func _emit_sheet(side: float) -> void:
 func _emit_sweet_rib() -> void:
 	var color := _color.lightened(ACCENT_LIGHTEN)
 	_ribbon.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-	for i in _hilts.size():
+	for i in range(drawn_sample_start(), _hilts.size()):
 		var span := _tips[i] - _hilts[i]
 		var lift := Vector3.UP * (half_width_at(i) + ACCENT_LIFT * _sweet)
 		var alpha := ACCENT_ALPHA * _fade(i) * _emphasis(i) * minf(_sweet, 1.0)
@@ -177,6 +216,26 @@ func _emit_sweet_rib() -> void:
 		_ribbon.surface_add_vertex(_hilts[i] + span * SwingSemantics.SWEET_REGION_MIN + lift)
 		_ribbon.surface_set_color(Color(color, alpha))
 		_ribbon.surface_add_vertex(_hilts[i] + span * SwingSemantics.SWEET_REGION_MAX + lift)
+	_ribbon.surface_end()
+
+
+## The centre of percussion, swept with the samples. A short mark along the
+## blade at that fraction, not the sweet band and not the tip.
+func _emit_glint() -> void:
+	var color := _color.lightened(ACCENT_LIGHTEN)
+	_ribbon.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in range(drawn_sample_start(), _hilts.size()):
+		var along := _tips[i] - _hilts[i]
+		if along.length_squared() <= 0.000001:
+			along = Vector3.FORWARD
+		else:
+			along = along.normalized()
+		var point := percussion_at(i) + Vector3.UP * (half_width_at(i) + ACCENT_LIFT * _sweet)
+		var alpha := ACCENT_ALPHA * _fade(i) * _emphasis(i) * minf(_sweet, 1.0)
+		_ribbon.surface_set_color(Color(color, alpha))
+		_ribbon.surface_add_vertex(point - along * GLINT_HALF)
+		_ribbon.surface_set_color(Color(color, alpha))
+		_ribbon.surface_add_vertex(point + along * GLINT_HALF)
 	_ribbon.surface_end()
 
 

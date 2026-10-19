@@ -113,6 +113,48 @@ func test_a_clash_rings_by_where_the_blades_met() -> void:
 	assert_eq(at.call(0.9, 0.9, 1.0), foible, "and a full charge changes nothing about it")
 
 
+## Clash magnitude follows `response()`, lands on sparks and the camera, and
+## stays a clash. A guard-end fraction tightens the burst. A graze is not this
+## event, and this event is not a parry.
+func test_clash_force_reaches_the_sparks_and_stays_a_clash() -> void:
+	var rules := StandardDuelRules.create()
+	var state := DuelSetup.new_state(rules, 1)
+	var snapshot := SnapshotProjector.project(state, rules)
+	var kit := PresentationKit.missing(PresentationKit.PRIMITIVE_BLADE)
+	var counts: Array[int] = []
+	var impulses: Array[float] = []
+	var samples := PackedFloat64Array([0.0, 0.25, 0.5, 1.0, 2.0])
+	for intensity in samples:
+		var frame := _clash_frame(snapshot, kit, intensity, -1.0)
+		counts.append(_spark_count(frame))
+		impulses.append(frame.camera_requests[0].intensity)
+		assert_eq(_ring_count(frame), 0, "a clash does not request a parry ring")
+		assert_eq(_streak_count(frame), 0, "or a body streak")
+		assert_eq(frame.audio_requests[0].cue, PresentationKit.CUE_BLADE_SOLID, "the cue stays the contact class")
+		assert_true(frame.vfx_requests[0].world_position.is_equal_approx(ArenaTransform.to_world(1.5, 2.5, kit.blade_height)), "sparks sit on the contact, not on a blade fraction")
+	for index in range(1, 4):
+		assert_true(counts[index] >= counts[index - 1], "more intensity does not ask for fewer sparks")
+		assert_true(impulses[index] + 0.001 >= impulses[index - 1], "or a smaller camera impulse")
+	assert_eq(counts[3], counts[4], "past the supported range the response stays at the maximum")
+	assert_near(impulses[0], 0.0, 0.001, "a zero clash does not kick the camera")
+	assert_near(impulses[3], CombatFeedbackDirector.IMPULSE_BLADE_MAX * 100.0, 0.001, "a full clash uses the blade ceiling")
+	assert_true(impulses[2] < CombatFeedbackDirector.IMPULSE_BLADE_MAX * 0.5 * 100.0, "the middle is bent down by the response curve")
+	var mid := _spark_count(_clash_frame(snapshot, kit, 1.0, 0.6))
+	var guard := _spark_count(_clash_frame(snapshot, kit, 1.0, 0.0))
+	assert_true(guard < mid, "a guard-end clash is a tighter burst than mid-blade (%d vs %d)" % [guard, mid])
+	var parry := CombatFeedbackDirector.process(snapshot, [
+		DuelEvent.create(DuelEventTypes.PARRY, 10, 0, 1, {
+			DuelEventKeys.MARGIN: CombatFeedbackDirector.PARRY_QUALITY_CEIL,
+			DuelEventKeys.STRIKE_X: 0.0,
+			DuelEventKeys.STRIKE_Y: 1.0,
+			DuelEventKeys.X: 0.0,
+			DuelEventKeys.Y: 0.0,
+		})
+	], kit, 1.0)
+	assert_true(_ring_count(parry) > 0, "a parry still has its ring")
+	assert_true(parry.vfx_requests[1].direction.length_squared() > 0.0, "and its sparks follow the contact direction")
+
+
 func test_director_classifies_blade_contact_into_typed_requests() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)
@@ -691,6 +733,49 @@ func test_clash_intensity_is_ordered_bounded_and_one_event() -> void:
 	assert_eq(high.audio_requests[0].cue, PresentationKit.CUE_BLADE_STRONG, "a heavy contact does")
 	assert_eq(high.vfx_requests.size(), 2, "one event is the tangent burst and the normal burst, not one per solver point")
 	assert_true(high.vfx_requests[0].direction.dot(Vector3(1.0, 0.0, 0.0)) > 0.9, "the tangent burst follows the strike")
+
+
+func _clash_frame(snapshot: PresentationSnapshot, kit: PresentationKit, intensity: float, fraction: float) -> FeedbackFrame:
+	var payload := {
+		DuelEventKeys.INTENSITY: intensity,
+		DuelEventKeys.STRIKE_X: 1.0,
+		DuelEventKeys.STRIKE_Y: 0.0,
+		DuelEventKeys.NORMAL_X: 0.0,
+		DuelEventKeys.NORMAL_Y: 1.0,
+		DuelEventKeys.X: 1.5,
+		DuelEventKeys.Y: 2.5,
+		DuelEventKeys.CONTACT_CLASS: ContactResolver.CLASS_SOLID,
+	}
+	if fraction >= 0.0:
+		payload[DuelEventKeys.FRACTION_0] = fraction
+		payload[DuelEventKeys.FRACTION_1] = 0.6
+	return CombatFeedbackDirector.process(snapshot, [
+		DuelEvent.create(DuelEventTypes.BLADE_CONTACT, 10, 0, 1, payload)
+	], kit, 1.0)
+
+
+func _spark_count(frame: FeedbackFrame) -> int:
+	var total := 0
+	for request in frame.vfx_requests:
+		if request.kind == VfxRequest.Kind.SPARKS:
+			total += request.count
+	return total
+
+
+func _ring_count(frame: FeedbackFrame) -> int:
+	var total := 0
+	for request in frame.vfx_requests:
+		if request.kind == VfxRequest.Kind.RING:
+			total += 1
+	return total
+
+
+func _streak_count(frame: FeedbackFrame) -> int:
+	var total := 0
+	for request in frame.vfx_requests:
+		if request.kind == VfxRequest.Kind.STREAK:
+			total += 1
+	return total
 
 
 func _clash(intensity: float, contact_class: StringName) -> DuelEvent:

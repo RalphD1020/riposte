@@ -38,6 +38,9 @@ var _touch_layout: bool = false
 ## showcase shown. Nothing is fast-forwarded or hidden.
 var _set_decided: bool = false
 var _horn: SetWinningHorn = SetWinningHorn.new()
+## Real seconds left on the match-end horn. The screen stays up until this
+## hold ends so leaving the match does not cut the sting short.
+var _horn_left: float = 0.0
 var _crowd: CrowdDirector = CrowdDirector.new()
 
 
@@ -145,8 +148,14 @@ func advance_frame(delta: float) -> void:
 		scaled = driver.presentation_delta()
 		for _i in steps:
 			_advance_tick()
-			if _finished:
+			if _finished or (session != null and session.is_finished()):
 				break
+		if _horn_left > 0.0:
+			_horn_left = maxf(_horn_left - delta, 0.0)
+			if _horn_left <= 0.0 and presenter != null:
+				presenter.audio().stop_sting()
+		if session != null and session.is_finished() and _horn_left <= 0.0:
+			_finish()
 	presenter.render(driver.alpha(), delta, scaled)
 	debug_overlay.update(presenter.current_snapshot(), Engine.get_frames_per_second())
 	_sync_chrome()
@@ -314,6 +323,7 @@ func _advance_tick() -> void:
 		var loser := snapshot.fighter(1 - snapshot.set_winner)
 		if _horn.consider(snapshot.set_winner, loser.terminal_cause):
 			presenter.play_set_horn()
+			_horn_left = AudioDirector.HORN_SECONDS
 	var rules := session.config.rules
 	var reach := PackedFloat32Array([
 		WeaponKinematics.strike_reach(rules.combatant(0), rules.combatant(1)),
@@ -325,7 +335,7 @@ func _advance_tick() -> void:
 		## The set is decided: its deciding round plays on, live, and the
 		## winner's showcase follows the match's own end (PRES-VICTORY-001).
 		_set_decided = true
-	if session.is_finished():
+	if session.is_finished() and _horn_left <= 0.0:
 		_finish()
 
 

@@ -34,6 +34,7 @@ func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_STOP
 	_build_frame()
 	build()
+	UiKit.chain_focus(self)
 	resized.connect(relayout)
 	relayout()
 	if not DisplayServer.is_touchscreen_available():

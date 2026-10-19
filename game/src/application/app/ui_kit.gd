@@ -45,6 +45,31 @@ static func caption(host: Container, text: String) -> Label:
 	return label
 
 
+## Up and down follow tree order. Left and right stay automatic, so a slider
+## row still moves along itself. Explicit neighbors are how a rebuilt page
+## stays navigable before the controls have a settled rect.
+static func chain_focus(root: Node) -> void:
+	var controls: Array[Control] = []
+	_collect_focus(root, controls)
+	for index in controls.size():
+		var control := controls[index]
+		control.focus_neighbor_top = control.get_path_to(controls[index - 1]) if index > 0 else NodePath()
+		control.focus_neighbor_bottom = control.get_path_to(controls[index + 1]) if index + 1 < controls.size() else NodePath()
+
+
+static func _collect_focus(node: Node, into: Array[Control]) -> void:
+	if node is Control:
+		var control := node as Control
+		if control.focus_mode == Control.FOCUS_ALL and control.visible and not _skips_focus(control):
+			into.append(control)
+	for child in node.get_children():
+		_collect_focus(child, into)
+
+
+static func _skips_focus(control: Control) -> bool:
+	return control is BaseButton and (control as BaseButton).disabled
+
+
 static func button(host: Container, text: String, handler: Callable, variation: StringName = &"") -> Button:
 	var control := Button.new()
 	control.text = text

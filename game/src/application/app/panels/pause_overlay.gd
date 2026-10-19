@@ -17,6 +17,8 @@ var _column: VBoxContainer
 var _page: Page = Page.MENU
 var _primary: Control
 var _settings: SettingsPanel
+## The pause-menu control to focus when a subpage closes. Empty on the first open.
+var _return_text: String = ""
 
 
 static func create(app: RiposteApp) -> PauseOverlay:
@@ -38,6 +40,7 @@ func open() -> void:
 func close() -> void:
 	visible = false
 	_settings = null
+	_return_text = ""
 	UiKit.clear(_column)
 
 
@@ -64,11 +67,17 @@ func back() -> void:
 
 
 func show_page(target: Page) -> void:
+	var restore := _return_text if target == Page.MENU else ""
+	if target == Page.SETTINGS:
+		_return_text = AppCopy.SETTINGS
+	elif target == Page.HOW_TO_PLAY:
+		_return_text = AppCopy.HOW_TO_PLAY
 	_page = target
 	_settings = null
 	UiKit.clear(_column)
 	match target:
 		Page.MENU:
+			_return_text = ""
 			var title := UiKit.heading(_column, AppCopy.PAUSED)
 			title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			title.accessibility_live = AccessibilityServer.LIVE_POLITE
@@ -77,6 +86,9 @@ func show_page(target: Page) -> void:
 			UiKit.button(line, AppCopy.SETTINGS, _later(show_page.bind(Page.SETTINGS)))
 			UiKit.button(line, AppCopy.HOW_TO_PLAY, _later(show_page.bind(Page.HOW_TO_PLAY)))
 			UiKit.button(_column, AppCopy.QUIT_TO_MENU, quit_requested.emit)
+			var returned := _button_named(_column, restore)
+			if returned != null and not returned.disabled:
+				_primary = returned
 		Page.SETTINGS:
 			UiKit.heading(_column, AppCopy.SETTINGS)
 			_settings = SettingsPanel.create(_app)
@@ -88,7 +100,20 @@ func show_page(target: Page) -> void:
 			HowToPlayPanel.controls(_column)
 			HowToPlayPanel.principles(_column)
 			_primary = UiKit.button(_column, AppCopy.BACK, _later(show_page.bind(Page.MENU)))
+	UiKit.chain_focus(_column)
 	_focus_primary.call_deferred()
+
+
+func _button_named(node: Node, text: String) -> Button:
+	if text == "":
+		return null
+	if node is Button and (node as Button).text == text:
+		return node as Button
+	for child in node.get_children():
+		var found := _button_named(child, text)
+		if found != null:
+			return found
+	return null
 
 
 func _later(action: Callable) -> Callable:

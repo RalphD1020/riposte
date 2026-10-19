@@ -87,6 +87,11 @@ func _rebuild(snapshot: PresentationSnapshot) -> void:
 		var across := along.rotated(Vector3.UP, PI * 0.5)
 		var mid := hilt.lerp(tip, (SwingSemantics.SWEET_REGION_MIN + SwingSemantics.SWEET_REGION_MAX) * 0.5)
 		_segment(mid - across * SWEET_MARK, mid + across * SWEET_MARK, RiposteTheme.BODY_IMPACT)
+		## The centre of percussion, shorter than the sweet-band cross so the
+		## two marks are not the same shape. Leverage needs a contact normal,
+		## so it is not drawn here.
+		var percussion := hilt.lerp(tip, ContactMechanics.percussion_fraction(row.weapon_definition))
+		_segment(percussion - across * SWEET_MARK * 0.4, percussion + across * SWEET_MARK * 0.4, RiposteTheme.CRITICAL)
 		## Where the tip could be at this heading — the 270° control domain,
 		## coverage and never a hitbox (SLASH-SHAPE-001) — faintly; and the
 		## swing actually in flight, from here to its committed end, strongly:

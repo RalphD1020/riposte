@@ -56,7 +56,7 @@ Swing potential is read from the blade ribbon's thickness, the sweet region from
 ## Accessibility
 
 - Contrast: text ≥ 4.5:1, essential boundaries ≥ 3:1 (tests: `game/tests/presentation/test_theme.gd`, `apps/web/src/app/theme.test.ts`).
-- Targets ≥ 48 UI units; visible focus ring (3 px + 3 px gap); keyboard focus starts on the primary action (touch devices: on first navigation key, so no ring sits under a thumb).
+- Targets ≥ 48 UI units; visible focus ring (3 px + 3 px gap); keyboard focus starts on the primary action (touch devices: on first navigation key, so no ring sits under a thumb). Up and down follow `UiKit.chain_focus`. Leaving a settings section or a pause subpage returns focus to the control that opened it. `ui_accept` is Enter, keypad Enter, Space, and joypad A (`project.godot`).
 - Selection shown by fill **and** a drawn marker; pips are shapes; switches move the knob. Never color alone.
 - Live regions announce banners, coaching prompts, pause, and results; the condition icon exposes health as "N of M".
 - Reduced Motion, Reduced Flash, Screen Shake, High Contrast Weapons, Charge Indicator, Trail Strength, Sweet-Spot Visualization, touch opacity, Haptics, Sound Captions, the contact highlight (Show where blades touch), and key rebinding ([controls](./controls.md#rebinding)) are settings.

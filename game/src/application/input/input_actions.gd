@@ -3,7 +3,9 @@ extends RefCounted
 
 ## InputMap action names. Project actions are defined in project.godot
 ## `[input]` (physical keys, so layouts stay put); `ui_*` are Godot's
-## built-in GUI actions. APP-SHELL proves every name here exists.
+## built-in GUI actions. This engine's `ui_accept` has no joypad button, so
+## `project.godot` adds joypad A beside Enter and Space. APP-SHELL proves
+## every name here exists.
 ##
 ## See also: /docs/concepts/controls.md
 
