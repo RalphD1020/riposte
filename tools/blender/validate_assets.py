@@ -289,7 +289,45 @@ def validate_arena():
     return problems
 
 
-VALIDATORS = {"fighter": validate_fighter, "weapon": validate_weapon, "arena": validate_arena}
+def validate_board():
+    names = {mat.name for mat in bpy.data.materials}
+    problems = []
+    for role_name in ("stone_pillar", "stone_edge", "stone_cliff", "stone_terracotta", "gold_trim", "basin_water", "stone_floor"):
+        if role_name not in names:
+            problems.append("missing %s" % role_name)
+    return problems
+
+
+def validate_bowl():
+    import math
+    problems = []
+    if bpy.data.objects.get("PlatformTop") is not None:
+        problems.append("the bowl must not carry PlatformTop")
+    nearest = math.inf
+    for obj in _meshes():
+        for corner in obj.bound_box:
+            point = obj.matrix_world @ Vector(corner)
+            nearest = min(nearest, math.hypot(point.x, point.y))
+    if nearest <= ARENA_RADIUS + 0.05:
+        problems.append("bowl reaches %.3f m, inside the disc" % nearest)
+    return problems
+
+
+def validate_crowd():
+    names = {obj.name for obj in _meshes()}
+    if "hair" in names or ({"skin", "fabric"} <= names):
+        return []
+    return ["crowd mesh needs skin and fabric, or hair"]
+
+
+VALIDATORS = {
+    "fighter": validate_fighter,
+    "weapon": validate_weapon,
+    "arena": validate_arena,
+    "board": validate_board,
+    "bowl": validate_bowl,
+    "crowd": validate_crowd,
+}
 
 
 def manifest(asset_id, kind):

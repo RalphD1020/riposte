@@ -64,15 +64,17 @@ var _scrape_started: bool = false
 var _crowd_intensity: float = 0.0
 var _crowd_bed_trim: float = CROWD_BED_AMBIENT_DB
 var _crowd_bed_written: float = INF
+var _crowd_seed: int = 1
 
 
-static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> MatchPresenter:
+static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot, crowd_seed: int = 1) -> MatchPresenter:
 	var presenter := MatchPresenter.new()
 	presenter.name = "MatchPresentation"
 	presenter._kits = kits
 	presenter._options = options
 	presenter._camera = camera
 	presenter._haptics.enabled = options.haptics
+	presenter._crowd_seed = crowd_seed
 	presenter._build(platform_radius, edge_warning_inset, first)
 	return presenter
 
@@ -148,6 +150,14 @@ func render(alpha: float, real_delta: float, scaled_delta: float = -1.0) -> void
 	if _camera != null:
 		_camera.frame(first, second, real_delta, _options, _snap)
 	_snap = false
+	if _arena != null:
+		var view := _camera.camera() if _camera != null else null
+		_arena.advance(real_delta, view, _options.reduced_motion)
+		if not _options.reduced_motion:
+			for proxy: FighterPresentation3D in _fighters:
+				var entry := proxy.take_water_entry()
+				if not is_nan(entry.x):
+					_arena.ripple_at(entry)
 	_ride_crowd_bed(real_delta)
 
 
@@ -185,6 +195,8 @@ func vfx() -> VfxDirector:
 
 func play_crowd(cue: StringName, winner: int, intensity: float = 0.0) -> void:
 	_crowd_intensity = clampf(intensity, 0.0, 1.0)
+	if _arena != null:
+		_arena.react(cue, _crowd_intensity)
 	if cue == &"" or cue == CrowdDirector.CUE_MURMUR or _kits == null or _kits.arena == null:
 		return
 	if cue == CrowdDirector.CUE_VICTORY and MatchPhase.is_combatant(winner):
@@ -228,7 +240,7 @@ func _ride_crowd_bed(delta: float) -> void:
 func play_set_horn() -> void:
 	if _kits == null or _kits.arena == null:
 		return
-	_audio.play_sting(_kits.arena.stream_for(PresentationKit.CUE_MATCH_HORN))
+	_audio.play_match_horn(_kits.arena.stream_for(PresentationKit.CUE_MATCH_HORN))
 
 
 func audio() -> AudioDirector:
@@ -276,13 +288,14 @@ func detach_and_dispose() -> void:
 
 
 func _build(platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot) -> void:
-	_arena = ArenaScaffold.create(_kits.arena, platform_radius, edge_warning_inset, first.spawn_offset)
+	_arena = ArenaScaffold.create(_kits.arena, platform_radius, edge_warning_inset, first.spawn_offset, _crowd_seed)
 	add_child(_arena)
 	for slot in 2:
 		var row := first.fighter(slot)
 		var proxy := FighterPresentation3D.create(slot, row.side, _kits.combatant(slot), row.push_radius, row.combatant_spec)
 		proxy.set_charge_indicator(_options.show_charge_indicator)
 		proxy.set_high_contrast(_options.high_contrast_weapons)
+		proxy.set_reduced_motion(_options.reduced_motion)
 		add_child(proxy)
 		_fighters.append(proxy)
 		var capacity := _kits.weapon.trail_samples * (2 if _options.high_contrast_weapons else 1)

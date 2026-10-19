@@ -1,0 +1,44 @@
+{
+  "asset_id": "arena.bowl",
+  "kind": "bowl",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -11.9,
+      -11.9,
+      -3.23
+    ],
+    "max": [
+      11.9,
+      11.9,
+      1.09
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "ArenaBowl",
+    "Bay00",
+    "Bay01",
+    "Bay02",
+    "Bay03",
+    "Bay04",
+    "Bay05",
+    "Bay06",
+    "Bay07",
+    "Bay08",
+    "Bay09",
+    "Bay10",
+    "Bay11"
+  ],
+  "material_slots": [
+    "basin_glint",
+    "basin_water",
+    "stone_cliff",
+    "stone_edge",
+    "stone_pillar",
+    "stone_terracotta"
+  ],
+  "triangle_count": 141648,
+  "color_targets": []
+}

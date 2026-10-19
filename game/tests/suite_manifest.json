@@ -368,6 +368,12 @@
       "budget_ms": 2000
     },
     {
+      "name": "PRES-ARENA",
+      "path": "res://tests/presentation/test_arena.gd",
+      "tier": "fast",
+      "budget_ms": 8000
+    },
+    {
       "name": "PRES-INTRO",
       "path": "res://tests/presentation/test_intro.gd",
       "tier": "focused",
@@ -568,6 +574,7 @@
         "PRES-VICTORY",
         "PRES-FACE",
         "PRES-CROWD",
+        "PRES-ARENA",
         "PRES-INTRO",
         "PRES-HUD"
       ]

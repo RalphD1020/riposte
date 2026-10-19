@@ -1,10 +1,15 @@
 """Bootstrap the standard arena (art-src/blender/arenas/standard_arena.blend).
 
-The combat footprint stays quiet; richness lives on the perimeter. The
-platform top ends exactly at the physical edge (`platform_radius`) — the
-visible cliff IS the boundary, so the ornamental relief sits on the cliff
-face below the floor, never on top of it. The warning ring and the two
-home-end marks are drawn by the game from the rules, not authored here.
+The combat footprint stays quiet. The platform top ends exactly at the
+physical edge (`platform_radius`) — the visible cliff IS the boundary, so
+relief on this disc sits on the cliff face below the floor, never on top of
+it. The warning ring and the two home-end marks are drawn by the game from
+the rules, not authored here.
+
+The replacement bowl is not more ornaments in the drop. It is a load-bearing
+arcade under a continuous seating deck, with the basin visible through the
+openings (docs/concepts/presentation.md). The first proof is one bay outside
+this disc. This script must not move PlatformTop.
 
 Floor colours are the theme's world tokens converted from sRGB to linear, so
 the imported albedo is exactly the colour the contrast tests prove.

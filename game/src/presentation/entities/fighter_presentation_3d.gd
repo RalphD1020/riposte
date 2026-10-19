@@ -143,6 +143,8 @@ var _death_style: StringName = DeathPresentationProfile.STYLE_DEAD_DROP
 var _fall_offset: float = 0.0
 var _is_falling: bool = false
 var _fall_request: FallPresentationRequest
+var _reduced_motion: bool = false
+var _water_sent: bool = false
 var _fall_time: float = 0.0
 var _weapon_dropped: bool = false
 var _grip_release: float = 0.0
@@ -211,12 +213,13 @@ func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: Present
 		_fall_offset = 0.0
 		_fall_time = 0.0
 		_fall_request = null
+		_water_sent = false
 		position = world
 	elif _fall_request != null:
 		## Authority stopped at the ledge; the fall owns the root from here,
 		## carrying the real exit momentum outward under presentation gravity.
 		_fall_time += delta
-		position = _fall_request.root_at(_fall_time)
+		position = RingOutWater.shown(_fall_request, _fall_time, _reduced_motion)
 		_fall_offset = _fall_request.exit_position.y - position.y
 	else:
 		_fall_offset += FALL_SPEED * delta
@@ -561,7 +564,7 @@ func is_weapon_dropped() -> bool:
 ## this, so it leaves the hand moving with the body that held it.
 func root_velocity() -> Vector3:
 	if _is_falling and _fall_request != null:
-		return _fall_request.exit_velocity + Vector3(0.0, -FallPresentationRequest.GRAVITY * _fall_time, 0.0)
+		return RingOutWater.velocity(_fall_request, _fall_time, _reduced_motion)
 	return Vector3.ZERO
 
 
@@ -576,6 +579,19 @@ func _restore_weapon() -> void:
 ## This fighter went over the edge: from now until the next round the fall owns
 ## the root, along the momentum they carried out. The first request wins; a
 ## fighter falls once.
+func set_reduced_motion(on: bool) -> void:
+	_reduced_motion = on
+
+
+## The basin entry, once, when a living fall reaches the water. Empty until then.
+func take_water_entry() -> Vector3:
+	if _water_sent or _fall_request == null or not RingOutWater.entered(_fall_request, _fall_time):
+		return Vector3(NAN, NAN, NAN)
+	_water_sent = true
+	var at := _fall_request.root_at(RingOutWater.entry_time(_fall_request))
+	return Vector3(at.x, RingOutWater.SURFACE_Y, at.z)
+
+
 func begin_fall(request: FallPresentationRequest) -> void:
 	if _fall_request == null:
 		_fall_request = request

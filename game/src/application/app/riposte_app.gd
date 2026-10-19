@@ -222,8 +222,12 @@ func current_screen() -> Control:
 	return router.current()
 
 
+var crowd_seed: int = 1
+
+
 func start_quick_play() -> void:
 	telemetry.record_product(ProductEvents.QUICK_PLAY_CLICKED, {ProductEvents.PROP_DIFFICULTY: int(settings.difficulty)})
+	crowd_seed = absi(_seeds.randi()) | 1
 	_start(MatchConfig.quick_play(settings.difficulty, _seeds.randi()))
 
 
@@ -239,6 +243,7 @@ func claim_set_victory() -> bool:
 
 func start_training() -> void:
 	telemetry.record_product(ProductEvents.TUTORIAL_STARTED)
+	crowd_seed = absi(_seeds.randi()) | 1
 	_start(MatchConfig.training(_seeds.randi()))
 
 

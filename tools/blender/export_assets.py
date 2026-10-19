@@ -32,6 +32,12 @@ ASSETS = [
     ("weapons/bastard_sword.blend", "weapon", "weapon.bastard_sword", "weapons/bastard_sword.glb"),
     ("weapons/bastard_sword_training.blend", "weapon", "weapon.bastard_sword.training", "weapons/bastard_sword_training.glb"),
     ("arenas/standard_arena.blend", "arena", "arena.standard", "arenas/standard_arena.glb"),
+    ("arenas/masonry_board.blend", "board", "arena.masonry_board", "arenas/masonry_board.glb"),
+    ("arenas/arena_bowl.blend", "bowl", "arena.bowl", "arenas/arena_bowl.glb"),
+    ("crowd/seated.blend", "crowd", "crowd.seated", "crowd/seated.glb"),
+    ("crowd/cheer.blend", "crowd", "crowd.cheer", "crowd/cheer.glb"),
+    ("crowd/hair_crop.blend", "crowd", "crowd.hair_crop", "crowd/hair_crop.glb"),
+    ("crowd/hair_bun.blend", "crowd", "crowd.hair_bun", "crowd/hair_bun.glb"),
 ]
 
 

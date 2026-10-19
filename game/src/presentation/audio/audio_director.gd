@@ -45,11 +45,9 @@ const CALL_TRIM_DB := -20.0
 const PLAYER_ANNOUNCER := "VoiceAnnouncer"
 const PLAYER_FIGHTER := "VoiceFighter"
 const PLAYER_STING := "MusicSting"
-## How long the match-end horn is heard. The take is a one-shot and is shorter
-## than this; it is started again until the hold ends. Real time, not sim ticks.
+## How long the match-end horn is heard, as one blast. A shorter take is
+## slowed so that single play fills this hold. It is not started again.
 const HORN_SECONDS := 6.0
-var _horn_left: float = 0.0
-var _horn_source: AudioStream
 const PLAYER_CROWD_BED := "CrowdBed"
 const PLAYER_CROWD_SHOT := "CrowdShot"
 const CAPTION_MIN_SECONDS := 0.9
@@ -120,10 +118,6 @@ func _init() -> void:
 	_crowd_bed.name = PLAYER_CROWD_BED
 	_crowd_shot = _flat_voice(AudioBuses.CROWD)
 	_crowd_shot.name = PLAYER_CROWD_SHOT
-
-
-func _ready() -> void:
-	set_process(false)
 
 
 func is_character_call_playing() -> bool:
@@ -246,37 +240,28 @@ func play_crowd_cue(kit: PresentationKit, cue: StringName) -> bool:
 	return play_crowd_shot(stream)
 
 
-## A musical sting (the set-winning horn) on its own Music voice. The file
-## stays a one-shot. A short take is started again until `HORN_SECONDS`.
+## A one-shot sting at its authored speed. The match horn uses `play_match_horn`.
 func play_sting(stream: AudioStream) -> bool:
 	if stream == null:
 		return false
-	_horn_source = stream
-	_horn_left = HORN_SECONDS
+	_sting.pitch_scale = 1.0
 	_start(_sting, stream, 0.0)
-	set_process(true)
+	return true
+
+
+## The set-winning horn, once, stretched so the take lasts `HORN_SECONDS`.
+func play_match_horn(stream: AudioStream) -> bool:
+	if stream == null:
+		return false
+	var length := stream.get_length()
+	_sting.pitch_scale = length / HORN_SECONDS if length > 0.0 and length < HORN_SECONDS else 1.0
+	_start(_sting, stream, 0.0)
 	return true
 
 
 func stop_sting() -> void:
-	_horn_left = 0.0
-	_horn_source = null
+	_sting.pitch_scale = 1.0
 	_sting.stop()
-	set_process(false)
-
-
-func _process(delta: float) -> void:
-	if _horn_left <= 0.0:
-		set_process(false)
-		return
-	_horn_left = maxf(_horn_left - delta, 0.0)
-	if _horn_left <= 0.0:
-		stop_sting()
-		return
-	if not _sting.playing and _horn_source != null:
-		_sting.stream = _horn_source
-		_sting.volume_db = 0.0
-		_sting.play()
 
 
 func is_voice_playing() -> bool:

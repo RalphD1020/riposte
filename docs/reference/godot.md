@@ -40,24 +40,24 @@ game/
 
 One home per vocabulary; never retype a literal:
 
-| Vocabulary                                    | Home                                                                                      |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Event names / payload keys                    | `DuelEventTypes` / `DuelEventKeys`                                                        |
-| Match reasons, outcome slots, contact classes | `MatchPhase` (`REASON_*`, `NO_WINNER`, `DRAW`, `is_combatant`); `ContactResolver.CLASS_*` |
+| Vocabulary                                    | Home                                                                                                                                                                                                     |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Event names / payload keys                    | `DuelEventTypes` / `DuelEventKeys`                                                                                                                                                                       |
+| Match reasons, outcome slots, contact classes | `MatchPhase` (`REASON_*`, `NO_WINNER`, `DRAW`, `is_combatant`); `ContactResolver.CLASS_*`                                                                                                                |
 | Input actions (match `project.godot [input]`) | `InputActions`. Built-in `ui_up` / `ui_down` already include the d-pad. `ui_accept` in this engine is Enter, keypad Enter, and Space only, so `project.godot` adds joypad button A and keeps those keys. |
-| Product events / property keys                | `ProductEvents` / `ProductEvents.PROP_*`                                                  |
-| Audio buses                                   | `AudioBuses` (+ `default_bus_layout.tres`)                                                |
-| Crowd reaction / kit cue names                | `CrowdDirector.CUE_*` → `PresentationKit.CUE_CROWD_*`                                     |
-| Contact-kind labels                           | `StrikeResult.KIND_SLASH` / `KIND_POKE` / `KIND_THRUST` / `KIND_GRAZE`                    |
-| Menu music path and loop trim                 | `RiposteApp.MENU_LOOP`, `LOOP_VOLUME_DB`, `LOOP_CUT_DB`                                   |
-| Friend-match wire                             | `MatchNote.KIND_*`, `SLOT_NONE`, `ACCEPT_WINDOW`                                          |
-| Settings file layout                          | `PlayerSettings.SECTION_*` / `KEY_*`                                                      |
-| Replay serialization                          | `ReplayRecord.KEY_*`                                                                      |
-| Styles, sizes, colors                         | `RiposteTheme` tokens and type variations                                                 |
-| Copy                                          | `AppCopy` (menus), `HudCopy` (HUD)                                                        |
-| Content identities                            | `ContentIds`                                                                              |
-| Platform / display feature strings            | `Platform` (`is_web()`, `is_headless()`)                                                  |
-| Browser safe-area JSON contract               | `SafeArea.WEB_PROPERTY` / `KEY_*` / `KEYS`                                                |
+| Product events / property keys                | `ProductEvents` / `ProductEvents.PROP_*`                                                                                                                                                                 |
+| Audio buses                                   | `AudioBuses` (+ `default_bus_layout.tres`)                                                                                                                                                               |
+| Crowd reaction / kit cue names                | `CrowdDirector.CUE_*` → `PresentationKit.CUE_CROWD_*`                                                                                                                                                    |
+| Contact-kind labels                           | `StrikeResult.KIND_SLASH` / `KIND_POKE` / `KIND_THRUST` / `KIND_GRAZE`                                                                                                                                   |
+| Menu music path and loop trim                 | `RiposteApp.MENU_LOOP`, `LOOP_VOLUME_DB`, `LOOP_CUT_DB`                                                                                                                                                  |
+| Friend-match wire                             | `MatchNote.KIND_*`, `SLOT_NONE`, `ACCEPT_WINDOW`                                                                                                                                                         |
+| Settings file layout                          | `PlayerSettings.SECTION_*` / `KEY_*`                                                                                                                                                                     |
+| Replay serialization                          | `ReplayRecord.KEY_*`                                                                                                                                                                                     |
+| Styles, sizes, colors                         | `RiposteTheme` tokens and type variations                                                                                                                                                                |
+| Copy                                          | `AppCopy` (menus), `HudCopy` (HUD)                                                                                                                                                                       |
+| Content identities                            | `ContentIds`                                                                                                                                                                                             |
+| Platform / display feature strings            | `Platform` (`is_web()`, `is_headless()`)                                                                                                                                                                 |
+| Browser safe-area JSON contract               | `SafeArea.WEB_PROPERTY` / `KEY_*` / `KEYS`                                                                                                                                                               |
 
 Two of these cross a boundary no compiler checks, so both are gated by tests instead:
 

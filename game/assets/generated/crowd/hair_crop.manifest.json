@@ -1,0 +1,27 @@
+{
+  "asset_id": "crowd.hair_crop",
+  "kind": "crowd",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.11,
+      -0.06,
+      1.19
+    ],
+    "max": [
+      0.11,
+      0.1,
+      1.29
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "hair_crop"
+  ],
+  "material_slots": [
+    "hair"
+  ],
+  "triangle_count": 12,
+  "color_targets": []
+}

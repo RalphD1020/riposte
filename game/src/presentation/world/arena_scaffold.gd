@@ -3,9 +3,10 @@ extends Node3D
 
 ## The duel space: Compatibility environment, a warm key and a cool rim light
 ## (no shadow maps), and the arena floor with its boundary ring, or the arena
-## kit's authored scene. The floor stays calmer than the fighters (UX §80):
-## richness lives on the perimeter and in the void, never under the fight.
-## Visual only; the authoritative boundary is ArenaConstraints.
+## kit's authored scene. The floor stays calmer than the fighters (UX §80).
+## The combat disc is the only presentation collider. A later bowl carries the
+## seating deck on a masonry arcade above the basin; that mesh stays outside
+## the disc and adds no collision. The authoritative boundary is ArenaConstraints.
 ##
 ## See also: /docs/concepts/presentation.md
 
@@ -31,9 +32,13 @@ const BRAZIER_SIZE := Vector3(0.36, 0.9, 0.36)
 const BRAZIER_GLOW := 2.2
 ## Presentation floor slab under the platform top (m).
 const GROUND_THICKNESS := 0.2
+const BOWL_SCENE := "res://assets/generated/arenas/arena_bowl.glb"
+
+var _crowd: CrowdStage
+var _ripple: MeshInstance3D
 
 
-static func create(kit: PresentationKit, platform_radius: float, edge_warning_inset: float, spawn_offset: float) -> ArenaScaffold:
+static func create(kit: PresentationKit, platform_radius: float, edge_warning_inset: float, spawn_offset: float, crowd_seed: int = 1) -> ArenaScaffold:
 	var scaffold := ArenaScaffold.new()
 	scaffold.name = "Arena"
 	scaffold._build_environment()
@@ -41,13 +46,18 @@ static func create(kit: PresentationKit, platform_radius: float, edge_warning_in
 		## The authored arena brings the platform, cliff, and perimeter; the
 		## warning ring and home marks still come from the rules, so they can
 		## never drift from the boundary and spawns they mark.
-		scaffold.add_child(kit.scene.instantiate())
+		var stage := kit.scene.instantiate()
+		scaffold.add_child(stage)
+		scaffold._hide_stand_in(stage)
 		scaffold._build_ring(platform_radius, edge_warning_inset)
 	else:
 		scaffold._build_floor(platform_radius, edge_warning_inset)
 		scaffold._build_perimeter(platform_radius)
 	scaffold._build_home_marks(spawn_offset)
 	scaffold._build_presentation_ground(platform_radius)
+	scaffold._build_bowl()
+	scaffold._crowd = CrowdStage.create(crowd_seed, platform_radius)
+	scaffold.add_child(scaffold._crowd)
 	return scaffold
 
 
@@ -71,6 +81,78 @@ func _build_presentation_ground(platform_radius: float) -> void:
 
 func presentation_ground() -> StaticBody3D:
 	return get_node_or_null("PresentationGround") as StaticBody3D
+
+
+func crowd() -> CrowdStage:
+	return _crowd
+
+
+func react(cue: StringName, excitement: float) -> void:
+	if _crowd != null:
+		_crowd.react(cue, excitement)
+
+
+func advance(delta: float, camera: Camera3D, reduced_motion: bool) -> void:
+	if _crowd != null:
+		_crowd.advance(delta, camera, reduced_motion)
+
+
+func reset_poses() -> void:
+	if _crowd != null:
+		_crowd.reset_poses()
+
+
+func ripple_at(at: Vector3) -> void:
+	if _ripple == null:
+		var mesh := TorusMesh.new()
+		mesh.inner_radius = 0.35
+		mesh.outer_radius = 0.7
+		mesh.rings = 16
+		mesh.ring_segments = 4
+		_ripple = MeshInstance3D.new()
+		_ripple.name = "Ripple"
+		_ripple.mesh = mesh
+		_ripple.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var material := StandardMaterial3D.new()
+		material.albedo_color = RiposteTheme.STONE_BASIN
+		material.roughness = 0.35
+		_ripple.material_override = material
+		add_child(_ripple)
+	_ripple.visible = true
+	_ripple.position = Vector3(at.x, RingOutWater.SURFACE_Y + 0.04, at.z)
+	_ripple.scale = Vector3(0.6, 0.15, 0.6)
+
+
+func _build_bowl() -> void:
+	if not ResourceLoader.exists(BOWL_SCENE):
+		return
+	var packed := load(BOWL_SCENE) as PackedScene
+	if packed == null:
+		return
+	var bowl := packed.instantiate()
+	bowl.name = "Bowl"
+	add_child(bowl)
+
+
+## Temporary. These prefixes are the ornamental stand-ins in the disc glb.
+## The bowl is a sibling and is not walked. Hiding is not a substitute for
+## deleting those objects from `standard_arena.blend` once the import names
+## are checked and the bowl is accepted. `standard_arena.glb` stays the rollback.
+const STAND_IN_PREFIXES: PackedStringArray = ["Pillar", "Banner", "Fragment", "Relief", "Rubble", "Brazier"]
+
+
+static func is_stand_in(label: String) -> bool:
+	for prefix: String in STAND_IN_PREFIXES:
+		if label.begins_with(prefix):
+			return true
+	return false
+
+
+func _hide_stand_in(node: Node) -> void:
+	for child: Node in node.get_children():
+		_hide_stand_in(child)
+		if child is Node3D and is_stand_in(String(child.name)):
+			(child as Node3D).visible = false
 
 
 func _build_environment() -> void:

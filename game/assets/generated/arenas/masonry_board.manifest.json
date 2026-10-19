@@ -1,0 +1,33 @@
+{
+  "asset_id": "arena.masonry_board",
+  "kind": "board",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -1.86,
+      -1.7,
+      0.0
+    ],
+    "max": [
+      2.16,
+      1.95,
+      1.44
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "MasonryBoard"
+  ],
+  "material_slots": [
+    "basin_water",
+    "gold_trim",
+    "stone_cliff",
+    "stone_edge",
+    "stone_floor",
+    "stone_pillar",
+    "stone_terracotta"
+  ],
+  "triangle_count": 1436,
+  "color_targets": []
+}

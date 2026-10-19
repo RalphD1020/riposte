@@ -1,0 +1,28 @@
+{
+  "asset_id": "crowd.seated",
+  "kind": "crowd",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.24,
+      -0.1011,
+      0.09
+    ],
+    "max": [
+      0.24,
+      0.33,
+      1.23
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "seated"
+  ],
+  "material_slots": [
+    "fabric",
+    "skin"
+  ],
+  "triangle_count": 112,
+  "color_targets": []
+}

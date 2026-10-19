@@ -130,15 +130,15 @@ A decided round is not a cutscene. `POST_ROUND_FREE` and `ROUND_RESULT` run one 
 
 ## Sessions and controllers
 
-| Concept                                                                          | Code                                                             |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `MatchConfig` (mode, rules, seed, controllers, difficulty; `rematch()` re-seeds) | `game/src/application/match/match_config.gd`                     |
-| `MatchComposer` (config → controllers → session)                                 | `game/src/application/match/match_composer.gd`                   |
-| `MatchSession` (sim + state + controllers + replay record + event log)           | `game/src/application/match/match_session.gd`                    |
-| Controllers: human, CPU, training dummy, replay                                  | `game/src/application/controllers/`, `game/src/application/cpu/` |
-| Local match host                                                                 | `game/src/application/match/local_match_host.gd`                 |
+| Concept                                                                          | Code                                                                              |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `MatchConfig` (mode, rules, seed, controllers, difficulty; `rematch()` re-seeds) | `game/src/application/match/match_config.gd`                                      |
+| `MatchComposer` (config → controllers → session)                                 | `game/src/application/match/match_composer.gd`                                    |
+| `MatchSession` (sim + state + controllers + replay record + event log)           | `game/src/application/match/match_session.gd`                                     |
+| Controllers: human, CPU, training dummy, replay                                  | `game/src/application/controllers/`, `game/src/application/cpu/`                  |
+| Local match host                                                                 | `game/src/application/match/local_match_host.gd`                                  |
 | Casual friend authority, wire note, and fake link (not Steam, not ranked)        | `game/src/application/match/friend_authority.gd`, `match_note.gd`, `fake_link.gd` |
-| Results stats                                                                    | `game/src/application/match/match_summary.gd`                    |
+| Results stats                                                                    | `game/src/application/match/match_summary.gd`                                     |
 
 Every match and rematch composes a fresh `MatchSession`; nothing is reset in place. Quick Play uses `LocalMatchHost` and does not open `FriendAuthority`. A missing guest command holds the last move and adds no attack edge. A dropped guest ends the session with `RESULT_ABANDONED` and `SLOT_NONE`. `FakeLink` is the test transport.
 

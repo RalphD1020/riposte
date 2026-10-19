@@ -94,16 +94,25 @@ const PULSE_SCALE := 1.04
 const BANNER_SLASH_DISTANCE := 48.0
 
 ## --- Duel world (UX §7, §13, §18, §80) -------------------------------------
-## A lit stone platform over a near-black void. The drama is in the void, the
-## warm key, the gold ring, and the rim light; the floor itself stays a warm
+## A lit stone platform. The open dark beyond the disc is the background until
+## the elevated arcade and basin occupy that drop. The floor itself stays a warm
 ## mid stone, because its luminance is where both a light and a dark combatant
 ## clear 3:1 (WORLD_READS). A darker floor would trade the dark fighter's
 ## readability for mood, and readability is not negotiable.
 const WORLD_BACKGROUND := Color("16161d")
 const WORLD_FLOOR := Color("8a7f6c")
 const WORLD_FLOOR_EDGE := Color("5e5648")
-## The platform's visible cliff face and the void it drops into.
+## The platform's visible cliff face, under the disc. Also the recessed
+## masonry role: soffits, bay interiors, and the dark joint.
 const WORLD_CLIFF := Color("3a352d")
+## Bowl stone, locked for the masonry board under the match key and rim.
+## The combat floor stays `WORLD_FLOOR`. These roles are the shared materials,
+## not a texture that draws the blocks.
+const STONE_TRAVERTINE := Color("d4c4a8")
+const STONE_LIMESTONE := Color("a89880")
+const STONE_TERRACOTTA := Color("8a5344")
+const STONE_BRONZE := Color("8a6a3a")
+const STONE_BASIN := Color("1a3a40")
 ## Warning ring: an etched gold groove, emissive so it reads as a boundary
 ## under any lighting.
 const WORLD_RING := Color("c4a050")
