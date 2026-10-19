@@ -26,7 +26,9 @@ def role(name):
     metallic = 0.0
     emission = None
     strength = 0.0
-    if name == "gold_trim":
+    if name == "stone_floor":
+        roughness = 1.0
+    elif name == "gold_trim":
         roughness = 0.45
         metallic = 0.65
     elif name == "basin_water":
@@ -36,7 +38,30 @@ def role(name):
         metallic = 0.35
         emission = stone.srgb(stone.ROLES["basin_glint"])
         strength = 0.55
-    return rb.material(name, stone.srgb(stone.ROLES[name]), roughness=roughness, metallic=metallic, emission=emission, emission_strength=strength)
+    mat = rb.material(name, stone.srgb(stone.ROLES[name]), roughness=roughness, metallic=metallic, emission=emission, emission_strength=strength)
+    _multiply_vertex_color(mat)
+    return mat
+
+
+def _multiply_vertex_color(mat):
+    """Per-block Color is a multiplier. The exporter keeps it only if the shader uses it."""
+    tree = mat.node_tree
+    if any(node.type == "VERTEX_COLOR" for node in tree.nodes):
+        return
+    bsdf = next(node for node in tree.nodes if node.type == "BSDF_PRINCIPLED")
+    base = tree.nodes.new("ShaderNodeRGB")
+    base.outputs[0].default_value = bsdf.inputs["Base Color"].default_value
+    tint = tree.nodes.new("ShaderNodeVertexColor")
+    tint.layer_name = "Color"
+    mix = tree.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    mix.blend_type = "MULTIPLY"
+    mix.inputs[0].default_value = 1.0
+    color_a = next(socket for socket in mix.inputs if socket.name == "A" and socket.enabled)
+    color_b = next(socket for socket in mix.inputs if socket.name == "B" and socket.enabled)
+    tree.links.new(base.outputs[0], color_a)
+    tree.links.new(tint.outputs["Color"], color_b)
+    tree.links.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
 
 
 def paint(obj, tint):
@@ -51,7 +76,7 @@ def paint(obj, tint):
 
 
 def tint_for(index, worn=False):
-    """Most blocks sit on the role color. Every seventh block shifts."""
+    """Masonry-board swatches. Every seventh block shifts so the lanes read."""
     scale = 1.0
     if index % 7 == 3:
         scale = 1.08
@@ -59,6 +84,15 @@ def tint_for(index, worn=False):
         scale = 0.90
     if worn:
         scale *= 0.78
+    return (scale, scale, scale)
+
+
+def course_tint(index, worn=False):
+    """Stand courses. A few percent of value, and a darker foot. No accent stripe."""
+    shift = ((index * 13) % 5) - 2
+    scale = 0.97 + shift * 0.012
+    if worn:
+        scale *= 0.88
     return (scale, scale, scale)
 
 
@@ -125,8 +159,8 @@ def voussoirs(parent, prefix, center_x, spring, inner_radius, thickness, depth, 
             (center_x, y, z),
             material,
             parent,
-            tint_for(i, i == count // 2),
-            0.01,
+            course_tint(i, i == count // 2),
+            0.004,
             (math.pi * 0.5 - angle, 0.0, 0.0),
         ))
     return made

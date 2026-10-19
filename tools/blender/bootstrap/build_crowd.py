@@ -1,8 +1,11 @@
 """Seated and cheer block figures at Wolf's head proportion.
 
 Blender faces the figure along +Y, which the glTF export turns into Godot -Z,
-so a node that looks at the arena centre is facing the fight. Skin, cloth,
-and hair are separate meshes so a MultiMesh can tint each one.
+so a node that looks at the arena centre is facing the fight. Wolf faces -Y,
+so his face numbers are mirrored in Y and shifted down onto this shorter body.
+Skin, cloth, hair, and the face are separate meshes so a MultiMesh can tint
+each one. The hair is the same pentagon as the head. The eyes and the brow
+bar are Wolf's, on that face.
 
 Run: blender --background --factory-startup --python tools/blender/bootstrap/build_crowd.py
 """
@@ -18,6 +21,30 @@ import bpy  # noqa: E402
 import riposte_blocks as rb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+## Wolf's HeadSkin in game/content/characters/wolf.character.json, moved from
+## z 1.50 onto this figure's neck. The point faces +Y here and -Y on Wolf.
+HEAD_RADIUS = 0.125
+HEAD_Z0 = 0.98
+HEAD_Z1 = 1.23
+HEAD_DEPTH = 0.95
+HEAD_SPIN = math.pi * 0.5
+HEAD_BEVEL = 0.008
+WOLF_HEAD_Z0 = 1.5
+## Wolf's Eye and Brow, same file. Y is mirrored because he faces the other way.
+EYE_SIZE = (0.035, 0.012, 0.02)
+EYE_Z = 1.635 + (HEAD_Z0 - WOLF_HEAD_Z0)
+EYE_Y = 0.093
+EYE_X = 0.04
+BROW_SIZE = (0.12, 0.02, 0.022)
+## Wolf's bar sits just inside the point. This one is a few millimetres prouder
+## so the bar still reads once the head is a few metres from the match camera.
+BROW_AT = (0.0, 0.100, 1.668 + (HEAD_Z0 - WOLF_HEAD_Z0))
+## The crown overhangs the head the way Wolf's hair slab overhangs his prism.
+HAIR_RADIUS = 0.128
+HAIR_OVERLAP = 0.015
+CROP_THICK = 0.032
+BUN_THICK = 0.05
 
 
 def _mat(name, hex_code, roughness=0.8):
@@ -47,7 +74,46 @@ def _figure(parent, cheer):
 
 
 def _head(parent, material):
-    rb.prism("HeadSkin", 5, 0.125, 0.98, 1.23, material, parent=parent, spin=math.pi * 0.5)
+    rb.prism(
+        "HeadSkin", 5, HEAD_RADIUS, HEAD_Z0, HEAD_Z1, material,
+        parent=parent, depth_scale=HEAD_DEPTH, spin=HEAD_SPIN, bevel=HEAD_BEVEL,
+    )
+
+
+def _face(parent, material):
+    ## The same dark marks as Wolf: two eyes and one brow bar, on the point.
+    rb.box("Eye.L", EYE_SIZE, (EYE_X, EYE_Y, EYE_Z), material, parent=parent)
+    rb.box("Eye.R", EYE_SIZE, (-EYE_X, EYE_Y, EYE_Z), material, parent=parent)
+    rb.box("Brow", BROW_SIZE, BROW_AT, material, parent=parent)
+
+
+def _cap(parent, material, thick):
+    z0 = HEAD_Z1 - HAIR_OVERLAP
+    rb.prism(
+        "HairCap", 5, HAIR_RADIUS, z0, z0 + thick, material,
+        parent=parent, depth_scale=HEAD_DEPTH, spin=HEAD_SPIN, bevel=0.006,
+    )
+
+
+def _back_edge_y():
+    ## A five-sided head has an edge opposite the forward point, not a vertex.
+    step = math.tau / 5.0
+    samples = []
+    for index in (2, 3):
+        angle = HEAD_SPIN + step * index
+        samples.append(math.sin(angle) * HEAD_RADIUS * HEAD_DEPTH)
+    return 0.5 * (samples[0] + samples[1])
+
+
+def _bun(parent, material):
+    ## Sit on that back edge. The width stays inside the edge so it does not
+    ## square off the pentagon.
+    edge_y = _back_edge_y()
+    rb.box(
+        "HairBun", (0.12, 0.06, 0.1),
+        (0.0, edge_y - 0.01, HEAD_Z0 + 0.16),
+        material, parent=parent, bevel=0.006,
+    )
 
 
 def _join_materials():
@@ -79,10 +145,11 @@ def _save(name, cheer):
     print("RIPOSTE_CROWD", out)
 
 
-def _save_hair(name, location):
+def _save_part(name, build):
     rb.reset_scene()
-    root = rb.empty(name, (0.0, 0.0, 0.0), size=0.2)
-    rb.box("Hair", (0.22, 0.16, 0.1), location, _mat("hair", "2a2420", 0.9), parent=root)
+    ## The joined mesh takes the material name. The empty must not take it first.
+    root = rb.empty(name if name != "face" else "crowd_face", (0.0, 0.0, 0.0), size=0.2)
+    build(root)
     _join_materials()
     out = os.path.join(ROOT, "art-src", "blender", "crowd", "%s.blend" % name)
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -90,11 +157,26 @@ def _save_hair(name, location):
     print("RIPOSTE_CROWD", out)
 
 
+def _build_crop(root):
+    _cap(root, _mat("hair", "2a2420", 0.9), CROP_THICK)
+
+
+def _build_bun(root):
+    hair = _mat("hair", "2a2420", 0.9)
+    _cap(root, hair, BUN_THICK)
+    _bun(root, hair)
+
+
+def _build_face(root):
+    _face(root, _mat("face", "08080c", 0.6))
+
+
 def main():
     _save("seated", False)
     _save("cheer", True)
-    _save_hair("hair_crop", (0.0, 0.02, 1.24))
-    _save_hair("hair_bun", (0.0, -0.06, 1.28))
+    _save_part("hair_crop", _build_crop)
+    _save_part("hair_bun", _build_bun)
+    _save_part("face", _build_face)
 
 
 if __name__ == "__main__":

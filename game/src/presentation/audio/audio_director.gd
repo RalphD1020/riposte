@@ -50,6 +50,7 @@ const PLAYER_STING := "MusicSting"
 const HORN_SECONDS := 6.0
 const PLAYER_CROWD_BED := "CrowdBed"
 const PLAYER_CROWD_SHOT := "CrowdShot"
+const PLAYER_CROWD_CHANT := "CrowdChant"
 const CAPTION_MIN_SECONDS := 0.9
 const HISTORY_LIMIT := 64
 
@@ -82,6 +83,15 @@ var _character_call: AudioStreamPlayer
 var _sting: AudioStreamPlayer
 var _crowd_bed: AudioStreamPlayer
 var _crowd_shot: AudioStreamPlayer
+var _crowd_chant: AudioStreamPlayer
+var _chant_source: AudioStream
+var _chant_fade_from: float = -8.0
+var _chant_fade_left: float = 0.0
+var _chant_fade_seconds: float = 0.0
+## Ordinary release. A finish and the set win stop instead of fading.
+const CHANT_TRIM_DB := -8.0
+const CHANT_FADE_FLOOR_DB := -40.0
+const CHANT_RELEASE_SECONDS := 0.4
 ## Next take index per crowd cue. Incremented only when that cue actually
 ## starts, so a replay of the same presentation sequence stays identical.
 var _crowd_shot_index: Dictionary = {}
@@ -118,6 +128,9 @@ func _init() -> void:
 	_crowd_bed.name = PLAYER_CROWD_BED
 	_crowd_shot = _flat_voice(AudioBuses.CROWD)
 	_crowd_shot.name = PLAYER_CROWD_SHOT
+	_crowd_chant = _flat_voice(AudioBuses.CROWD)
+	_crowd_chant.name = PLAYER_CROWD_CHANT
+	_crowd_chant.volume_db = CHANT_TRIM_DB
 
 
 func is_character_call_playing() -> bool:
@@ -229,6 +242,73 @@ func play_crowd_shot(stream: AudioStream) -> bool:
 ## A kit cue's next take. The key increments per cue so two eligible shots
 ## of the same class do not immediately repeat when the kit has more than
 ## one take. One take is still that one take.
+## True when this stream was imported as a loop. A one-shot is not made
+## loopable here: `wolf_chant.mp3` is a shout with a quiet tail, and flipping
+## its loop flag would repeat that tail. The set win still plays it once.
+func accepts_crowd_chant(stream: AudioStream) -> bool:
+	return stream is AudioStreamMP3 and (stream as AudioStreamMP3).loop
+
+
+## One looping name. The same source, already playing, does not restart.
+## A different source replaces it. A stream that is not a loop does not play
+## and does not disturb whatever is already playing; the caller stops that.
+func play_crowd_chant(stream: AudioStream) -> bool:
+	if not accepts_crowd_chant(stream):
+		return false
+	if _crowd_chant.playing and _chant_source == stream:
+		_chant_fade_left = 0.0
+		_crowd_chant.volume_db = CHANT_TRIM_DB
+		return false
+	_chant_fade_left = 0.0
+	_chant_source = stream
+	var playing := stream.duplicate() as AudioStream
+	_start(_crowd_chant, playing, CHANT_TRIM_DB)
+	return true
+
+
+## Fade the name out, then stop. A fade already running is left alone.
+## A silent player is left silent.
+func release_crowd_chant(seconds: float) -> void:
+	if not _crowd_chant.playing:
+		_chant_source = null
+		_chant_fade_left = 0.0
+		return
+	if seconds <= 0.0:
+		stop_crowd_chant()
+		return
+	if _chant_fade_left > 0.0:
+		return
+	_chant_fade_from = _crowd_chant.volume_db
+	_chant_fade_seconds = seconds
+	_chant_fade_left = seconds
+
+
+func advance_crowd_chant(delta: float) -> void:
+	if _chant_fade_left <= 0.0:
+		return
+	_chant_fade_left = maxf(_chant_fade_left - maxf(delta, 0.0), 0.0)
+	var span := _chant_fade_seconds if _chant_fade_seconds > 0.0 else 1.0
+	var along := 1.0 - _chant_fade_left / span
+	_crowd_chant.volume_db = lerpf(_chant_fade_from, CHANT_FADE_FLOOR_DB, clampf(along, 0.0, 1.0))
+	if _chant_fade_left <= 0.0:
+		stop_crowd_chant()
+
+
+func stop_crowd_chant() -> void:
+	_chant_source = null
+	_chant_fade_left = 0.0
+	_crowd_chant.stop()
+	_crowd_chant.volume_db = CHANT_TRIM_DB
+
+
+func is_crowd_chant_playing() -> bool:
+	return _crowd_chant.playing
+
+
+func crowd_chant_volume_db() -> float:
+	return _crowd_chant.volume_db
+
+
 func play_crowd_cue(kit: PresentationKit, cue: StringName) -> bool:
 	if kit == null or not kit.has_audio(cue):
 		return false
@@ -278,7 +358,7 @@ func is_any_playing() -> bool:
 		for player: Variant in pool:
 			if player.playing:
 				return true
-	return _voice.playing or _character_call.playing or _sting.playing or _crowd_bed.playing or _crowd_shot.playing
+	return _voice.playing or _character_call.playing or _sting.playing or _crowd_bed.playing or _crowd_shot.playing or _crowd_chant.playing
 
 
 ## Hold or update one fighter's wind-back tension. Idempotent per frame: the
@@ -365,6 +445,7 @@ func stop_all() -> void:
 
 
 func _start_spatial(stream: AudioStream, world: Vector3, volume_db: float, pitch: float) -> void:
+	_crowd_chant.stop()
 	var voice := _spatial[_next_spatial]
 	_next_spatial = (_next_spatial + 1) % _spatial.size()
 	voice.position = world

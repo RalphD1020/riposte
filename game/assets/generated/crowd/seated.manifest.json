@@ -5,7 +5,7 @@
   "bounds": {
     "min": [
       -0.24,
-      -0.1011,
+      -0.1,
       0.09
     ],
     "max": [
@@ -23,6 +23,6 @@
     "fabric",
     "skin"
   ],
-  "triangle_count": 112,
+  "triangle_count": 152,
   "color_targets": []
 }

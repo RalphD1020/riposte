@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -11.9,
-      -11.9,
-      -3.23
+      -14.84,
+      -14.84,
+      -3.18
     ],
     "max": [
-      11.9,
-      11.9,
-      1.09
+      14.84,
+      14.84,
+      1.67
     ]
   },
   "bone_names": [],
@@ -34,11 +34,8 @@
   "material_slots": [
     "basin_glint",
     "basin_water",
-    "stone_cliff",
-    "stone_edge",
-    "stone_pillar",
-    "stone_terracotta"
+    "stone_stand"
   ],
-  "triangle_count": 141648,
+  "triangle_count": 1265280,
   "color_targets": []
 }

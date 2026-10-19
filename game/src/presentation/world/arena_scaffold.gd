@@ -3,10 +3,11 @@ extends Node3D
 
 ## The duel space: Compatibility environment, a warm key and a cool rim light
 ## (no shadow maps), and the arena floor with its boundary ring, or the arena
-## kit's authored scene. The floor stays calmer than the fighters (UX §80).
-## The combat disc is the only presentation collider. A later bowl carries the
-## seating deck on a masonry arcade above the basin; that mesh stays outside
-## the disc and adds no collision. The authoritative boundary is ArenaConstraints.
+## kit's authored scene. The combat disc is the only presentation collider.
+## `arena_floor.glb`, when present, used to replace the visible plug. The
+## fighting surface is now the sand disc on this scaffold. The brick file
+## stays on disk. `arena_bowl.glb` carries the arches and the treads. Neither
+## mesh adds a collider. The authoritative boundary is ArenaConstraints.
 ##
 ## See also: /docs/concepts/presentation.md
 
@@ -35,6 +36,7 @@ const GROUND_THICKNESS := 0.2
 const BOWL_SCENE := "res://assets/generated/arenas/arena_bowl.glb"
 
 var _crowd: CrowdStage
+var _surface: ArenaSurfaceState
 var _ripple: MeshInstance3D
 
 
@@ -42,14 +44,19 @@ static func create(kit: PresentationKit, platform_radius: float, edge_warning_in
 	var scaffold := ArenaScaffold.new()
 	scaffold.name = "Arena"
 	scaffold._build_environment()
+	var layout := ArenaSection.load_layout()
 	if kit.scene != null:
 		## The authored arena brings the platform, cliff, and perimeter; the
-		## warning ring and home marks still come from the rules, so they can
-		## never drift from the boundary and spawns they mark.
+		## warning ring and home marks still come from the rules. The sand disc
+		## hides that plug. The brick glb stays the previous surface.
 		var stage := kit.scene.instantiate()
 		scaffold.add_child(stage)
 		scaffold._hide_stand_in(stage)
-		scaffold._build_ring(platform_radius, edge_warning_inset)
+		scaffold._hide_replaced_disc(stage)
+		scaffold._surface = ArenaSurfaceState.create(platform_radius)
+		scaffold.add_child(scaffold._surface)
+		var curb := layout.curb_inner_radius if layout.issues().is_empty() else -1.0
+		scaffold._build_ring(platform_radius, edge_warning_inset, curb)
 	else:
 		scaffold._build_floor(platform_radius, edge_warning_inset)
 		scaffold._build_perimeter(platform_radius)
@@ -87,9 +94,23 @@ func crowd() -> CrowdStage:
 	return _crowd
 
 
+func surface() -> ArenaSurfaceState:
+	return _surface
+
+
 func react(cue: StringName, excitement: float) -> void:
 	if _crowd != null:
 		_crowd.react(cue, excitement)
+
+
+func hold_chant(active: bool) -> void:
+	if _crowd != null:
+		_crowd.hold_chant(active)
+
+
+func focus_chant(side: DuelSide.Id) -> void:
+	if _crowd != null:
+		_crowd.focus_on_side(side)
 
 
 func advance(delta: float, camera: Camera3D, reduced_motion: bool) -> void:
@@ -141,6 +162,20 @@ func _build_bowl() -> void:
 const STAND_IN_PREFIXES: PackedStringArray = ["Pillar", "Banner", "Fragment", "Relief", "Rubble", "Brazier"]
 
 
+## The old disc plug. Hidden only while the replacement floor is instanced.
+## These are not ornamental stand-ins: without the new floor they are the stage.
+const REPLACED_DISC: PackedStringArray = ["PlatformTop", "PlatformCliff", "PlatformUnderside", "SpawnNorth", "SpawnSouth"]
+
+
+static func is_replaced_disc(label: String) -> bool:
+	if label.begins_with("Motif"):
+		return true
+	for disc_name: String in REPLACED_DISC:
+		if label == disc_name:
+			return true
+	return false
+
+
 static func is_stand_in(label: String) -> bool:
 	for prefix: String in STAND_IN_PREFIXES:
 		if label.begins_with(prefix):
@@ -155,10 +190,29 @@ func _hide_stand_in(node: Node) -> void:
 			(child as Node3D).visible = false
 
 
+func _hide_replaced_disc(node: Node) -> void:
+	for child: Node in node.get_children():
+		_hide_replaced_disc(child)
+		if child is Node3D and is_replaced_disc(String(child.name)):
+			(child as Node3D).visible = false
+
+
 func _build_environment() -> void:
 	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = RiposteTheme.WORLD_BACKGROUND
+	environment.background_mode = Environment.BG_SKY
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = RiposteTheme.SKY_TOP
+	sky_material.sky_horizon_color = RiposteTheme.SKY_HORIZON
+	sky_material.sky_curve = 0.08
+	sky_material.sky_energy_multiplier = 0.85
+	sky_material.ground_bottom_color = RiposteTheme.SKY_GROUND
+	sky_material.ground_horizon_color = RiposteTheme.SKY_GROUND_HORIZON
+	sky_material.ground_curve = 0.12
+	sky_material.ground_energy_multiplier = 0.85
+	sky_material.sun_angle_max = 0.0
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = RiposteTheme.WORLD_AMBIENT
 	environment.ambient_light_energy = RiposteTheme.WORLD_AMBIENT_ENERGY
@@ -204,7 +258,7 @@ func _build_floor(platform_radius: float, edge_warning_inset: float) -> void:
 
 ## Warning ring: an etched, faintly glowing groove, plus the dropped edge
 ## strip out to the physical cliff.
-func _build_ring(platform_radius: float, edge_warning_inset: float) -> void:
+func _build_ring(platform_radius: float, edge_warning_inset: float, curb_inner: float = -1.0) -> void:
 	var warning_radius := platform_radius - edge_warning_inset
 	var ring_mesh := TorusMesh.new()
 	ring_mesh.inner_radius = warning_radius - RING_WIDTH * 0.5
@@ -214,14 +268,20 @@ func _build_ring(platform_radius: float, edge_warning_inset: float) -> void:
 	var ring := _add("BoundaryRing", ring_mesh, RiposteTheme.WORLD_RING, Vector3(0.0, 0.01, 0.0), RiposteTheme.WORLD_RING_EMISSION)
 	ring.scale = Vector3(1.0, RING_FLATTEN, 1.0)
 	## Edge strip: annular disc between warning ring and platform edge.
-	## Slightly dropped to create a visual depth cue at the cliff.
+	## With the raised curb, it stops at the curb's inner edge and sits on
+	## the paving instead of climbing the lip.
 	if edge_warning_inset > 0.0:
+		var edge_outer := platform_radius
+		var edge_y := -EDGE_STRIP_DROP
+		if curb_inner > 0.0:
+			edge_outer = minf(curb_inner, platform_radius)
+			edge_y = 0.012
 		var edge_mesh := TorusMesh.new()
 		edge_mesh.inner_radius = warning_radius
-		edge_mesh.outer_radius = platform_radius
+		edge_mesh.outer_radius = edge_outer
 		edge_mesh.rings = CIRCLE_SEGMENTS
 		edge_mesh.ring_segments = 4
-		var edge := _add("EdgeStrip", edge_mesh, RiposteTheme.WORLD_FLOOR_EDGE, Vector3(0.0, -EDGE_STRIP_DROP, 0.0))
+		var edge := _add("EdgeStrip", edge_mesh, RiposteTheme.WORLD_FLOOR_EDGE, Vector3(0.0, edge_y, 0.0))
 		edge.scale = Vector3(1.0, RING_FLATTEN, 1.0)
 
 

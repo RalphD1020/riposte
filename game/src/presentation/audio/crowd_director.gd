@@ -5,6 +5,13 @@ extends RefCounted
 ## one reaction. It does not write combat state. Intensity is a separate
 ## decaying meter: a class step adds once per run, and a quiet tick takes the
 ## max of that decay and one heavy wound, strong clash, or committed whiff.
+## A second meter, per fighter, can hold a name chant. That slot is not a cue.
+## Credits decay once per authority tick, inside `observe`, not on a render
+## frame. The floor, the gap, and the two-second hold say "this fighter is
+## clearly ahead, and a brief trade does not flip the name." They are not a
+## listening result. A finish roar and the set win release the name
+## immediately. The roar then owns the hold, so the name does not return
+## under it. The set win keeps it down for the rest of this director.
 ## Ordinary clashes and light wounds do not lift it. A gasp waits on a
 ## longer cooldown than a class cue; the meter can still move during that
 ## wait, and playing a shot does not itself raise it. Those levels are
@@ -63,6 +70,28 @@ var _victory_played: bool = false
 ## Finish shot already fired for this scoreline. A duplicated kill or ring-out
 ## at the same scores does not roar again. A new round result may.
 var _finish_scores: PackedInt32Array = PackedInt32Array()
+## Per-fighter name momentum. The room meter stays `excitement`. A ring-out's
+## actor is the fighter who left, so that credit goes to the one still in.
+var _momentum := PackedFloat32Array([0.0, 0.0])
+var chant_slot: int = -1
+var _hold_left: int = 0
+## Set on the match-winning cue. Later ticks of this director stay unnamed.
+var _name_closed: bool = false
+## Same per-tick decay as the room meter. At 60 observes per second, 120
+## ticks is two seconds: the minimum a name is protected from ordinary
+## trades, and the quiet after a finish before a name may return.
+const MOMENTUM_DECAY := 0.985
+## A slot is ahead only when it is at least this high and leads by `LEAD_GAP`.
+## One critical (0.35) misses the floor. A sustained run can clear it.
+const MOMENTUM_FLOOR := 0.55
+const LEAD_GAP := 0.2
+const CREDIT_CRITICAL := 0.35
+const CREDIT_PARRY := 0.2
+const CREDIT_HIT := 0.25
+const CREDIT_KILL := 0.5
+const CREDIT_RING := 0.45
+## Once a name starts, a lull this long cannot drop it. 120 ticks is 2 s.
+const CHANT_HOLD_TICKS := 120
 
 
 func observe(events: Array[DuelEvent], scores: PackedInt32Array, rounds_to_win: int, set_winner: int, tuning: CombatTuning = null, distance: float = INF, reach: PackedFloat32Array = PackedFloat32Array()) -> StringName:
@@ -73,7 +102,10 @@ func observe(events: Array[DuelEvent], scores: PackedInt32Array, rounds_to_win: 
 	var rising := _mark_setpoint(scores, rounds_to_win)
 	var klass := _class_of(events, set_winner, rising)
 	_apply_intensity(klass, events, tuning)
-	return _select_shot(klass, events, scores, distance, reach)
+	_credit(events, tuning)
+	var cue := _select_shot(klass, events, scores, distance, reach)
+	_update_chant(cue)
+	return cue
 
 
 func _mark_setpoint(scores: PackedInt32Array, rounds_to_win: int) -> bool:
@@ -255,3 +287,91 @@ func _same_scores(left: PackedInt32Array, right: PackedInt32Array) -> bool:
 		if left[i] != right[i]:
 			return false
 	return true
+
+
+func momentum_of(slot: int) -> float:
+	if slot < 0 or slot >= _momentum.size():
+		return 0.0
+	return _momentum[slot]
+
+
+func _credit(events: Array[DuelEvent], tuning: CombatTuning) -> void:
+	for slot: int in _momentum.size():
+		_momentum[slot] *= MOMENTUM_DECAY
+	for event: DuelEvent in events:
+		var slot := _credited_slot(event)
+		if slot < 0:
+			continue
+		var amount := _credit_amount(event, tuning)
+		if amount <= 0.0:
+			continue
+		_momentum[slot] = minf(_momentum[slot] + amount, 1.5)
+
+
+func _credited_slot(event: DuelEvent) -> int:
+	if event.type == DuelEventTypes.RING_OUT:
+		if event.actor != 0 and event.actor != 1:
+			return -1
+		return 1 - event.actor
+	if event.actor != 0 and event.actor != 1:
+		return -1
+	return event.actor
+
+
+func _credit_amount(event: DuelEvent, tuning: CombatTuning) -> float:
+	match event.type:
+		DuelEventTypes.CRITICAL_HIT:
+			return CREDIT_CRITICAL
+		DuelEventTypes.PARRY:
+			if _parry_quality(event) >= CLEAN_PARRY_QUALITY:
+				return CREDIT_PARRY
+		DuelEventTypes.BODY_HIT:
+			if _body_level(event, tuning) > 0.0:
+				return CREDIT_HIT
+		DuelEventTypes.FIGHTER_KILLED:
+			return CREDIT_KILL
+		DuelEventTypes.RING_OUT:
+			return CREDIT_RING
+	return 0.0
+
+
+func _update_chant(cue: StringName) -> void:
+	if cue == CUE_VICTORY:
+		chant_slot = -1
+		_hold_left = 0
+		_name_closed = true
+		return
+	if _name_closed:
+		return
+	## A kill or a ring-out owns the crowd. The name stops now, including
+	## inside the hold, and the hold becomes the quiet before it may return.
+	if cue == CUE_STRONG:
+		chant_slot = -1
+		_hold_left = CHANT_HOLD_TICKS
+		return
+	if _hold_left > 0:
+		_hold_left -= 1
+		if _hold_left > 0:
+			return
+	var lead := _qualified_lead()
+	if lead < 0:
+		chant_slot = -1
+		return
+	if chant_slot != lead:
+		chant_slot = lead
+		_hold_left = CHANT_HOLD_TICKS
+
+
+## The fighter who is clearly ahead, or -1 when the room is quiet or the
+## two slots are too close to name either of them. The previous favorite
+## does not have to stay strong for the other to qualify.
+func _qualified_lead() -> int:
+	if excitement < STRONG_LEVEL:
+		return -1
+	var lead := 0 if _momentum[0] >= _momentum[1] else 1
+	var trailing := 1 - lead
+	if _momentum[lead] < MOMENTUM_FLOOR:
+		return -1
+	if _momentum[lead] < _momentum[trailing] + LEAD_GAP:
+		return -1
+	return lead

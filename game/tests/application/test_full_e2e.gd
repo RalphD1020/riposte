@@ -738,6 +738,35 @@ func test_a_clean_charged_cut_is_decisive() -> void:
 	await await_frames(2)
 
 
+## The crowd is match-level. A live round stays seated until a name or the
+## set win. A round-ending blow does not stand the bowl, and the next round
+## keeps the momentum the blow earned.
+func test_a_round_keeps_the_crowd_seated_and_the_momentum() -> void:
+	var driver := AppDriver.boot(7)
+	await await_frames(1)
+	var screen := await _scenario(driver, ScenarioController.standing())
+	var crowd := screen.presenter.crowd()
+	assert_eq(crowd.standing_sections(), 0, "the round opens seated")
+	var phase := crowd.phase_of_section(0)
+	screen.advance_frame(AppDriver.FRAME)
+	assert_false(is_equal_approx(crowd.phase_of_section(0), phase), "the seats move on the live frame")
+	assert_false(screen.presenter.audio().is_crowd_chant_playing(), "the shipped name is not looping")
+	_cut_at(driver, screen, CLEAN_REACH, CLEAN_CHARGE_TICKS, Vector2(0.0, 1.0), Vector2.ZERO)
+	assert_true(crowd.standing_sections() < crowd.section_count(), "a round's blow does not stand the whole bowl")
+	var killed := _first(screen, DuelEventTypes.FIGHTER_KILLED, 0) != null
+	if killed:
+		assert_eq(screen._crowd.chant_slot, -1, "a round-ending roar releases the name")
+		assert_eq(screen.session.state.match_winner, MatchPhase.NO_WINNER, "one round is not the match")
+	var remembered := screen._crowd.momentum_of(0)
+	if screen.session.state.phase != MatchPhase.Id.ROUND_ACTIVE:
+		driver.run_until(screen, func() -> bool: return screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
+		assert_eq(screen.session.state.phase, MatchPhase.Id.ROUND_ACTIVE, "the next round is the same match")
+		assert_true(screen._crowd.momentum_of(0) > 0.0 or remembered == 0.0, "match momentum survives the round")
+		assert_true(crowd.standing_sections() < crowd.section_count(), "the new round does not inherit a celebration")
+	driver.shutdown()
+	await await_frames(2)
+
+
 ## PHYS-001 / COMMITMENT-001, through real input: the same tap released at the
 ## same distance, once walking in and once planted. The body's own velocity is
 ## in the blade's: the advancing cut delivers more energy, with no movement

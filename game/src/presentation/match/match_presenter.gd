@@ -116,6 +116,8 @@ func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
 		var none: Array[PresentationContact] = []
 		_highlight.show_contacts(none if is_nan(_contact_height) else snapshot.contacts, _contact_height)
 	_caption_sounds()
+	if _arena != null and _arena.surface() != null:
+		_arena.surface().consume(snapshot, events)
 
 
 ## One caption per tick: the most significant sound the frame played, else a
@@ -159,6 +161,8 @@ func render(alpha: float, real_delta: float, scaled_delta: float = -1.0) -> void
 				if not is_nan(entry.x):
 					_arena.ripple_at(entry)
 	_ride_crowd_bed(real_delta)
+	if _audio != null:
+		_audio.advance_crowd_chant(real_delta)
 
 
 func fighter_proxy(slot: int) -> FighterPresentation3D:
@@ -193,10 +197,37 @@ func vfx() -> VfxDirector:
 	return _vfx
 
 
-func play_crowd(cue: StringName, winner: int, intensity: float = 0.0) -> void:
+func crowd() -> CrowdStage:
+	if _arena == null:
+		return null
+	return _arena.crowd()
+
+
+func play_crowd(cue: StringName, winner: int, intensity: float = 0.0, chant_slot: int = -1) -> void:
 	_crowd_intensity = clampf(intensity, 0.0, 1.0)
+	var cut := cue == CrowdDirector.CUE_VICTORY or cue == CrowdDirector.CUE_STRONG
+	var naming := chant_slot >= 0 and not cut
 	if _arena != null:
 		_arena.react(cue, _crowd_intensity)
+		if naming and _current != null:
+			_arena.focus_chant(_current.fighter(chant_slot).side)
+		_arena.hold_chant(naming)
+	if _audio != null:
+		if cut:
+			_audio.stop_crowd_chant()
+		elif naming and _kits != null:
+			var fighter := _kits.combatant(chant_slot).fighter
+			var stream := fighter.crowd_chant
+			if stream == null or not _audio.accepts_crowd_chant(stream):
+				_audio.stop_crowd_chant()
+			elif _audio.play_crowd_chant(stream):
+				var spoken := ""
+				if fighter.intro != null:
+					spoken = fighter.intro.spoken()
+				if _options.sound_captions and spoken != "" and SoundCaptions.pick(_last_frame.audio_requests) == "":
+					sound_caption_requested.emit(spoken, SoundCaptions.HOLD_SECONDS)
+		else:
+			_audio.release_crowd_chant(AudioDirector.CHANT_RELEASE_SECONDS)
 	if cue == &"" or cue == CrowdDirector.CUE_MURMUR or _kits == null or _kits.arena == null:
 		return
 	if cue == CrowdDirector.CUE_VICTORY and MatchPhase.is_combatant(winner):

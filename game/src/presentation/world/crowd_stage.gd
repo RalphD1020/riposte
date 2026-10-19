@@ -1,40 +1,22 @@
 class_name CrowdStage
 extends Node3D
 
-## The bowl's spectators. `CrowdDirector` still names the cue. This stage
-## only decides how many existing seats move, how far that spreads, and how
-## long they hold. Rematch resets poses. Quitting frees this node with the
-## scaffold.
+## The bowl's spectators. Seats come from `ArenaSection`. During a match they
+## stay in their seats: they rock, and a shifting share swap to the arms-up
+## mesh. A louder room keeps more arms up. A name chant stands the sections
+## on that fighter's side of the bowl. The match result stands everyone. A
+## round roar does not. Reduced motion drops the seated wave and still lets a
+## stand finish. Rematch builds a new stage.
 ##
 ## See also: /docs/concepts/presentation.md
 
-const SECTIONS := 8
-const SEATS := 8
-const ROW := 4
-const INNER_RADIUS := 11.2
-const OUTER_RADIUS := 12.4
-const SEAT_HEIGHT := 0.35
 const SETTLE_SECONDS := 0.2
 const MOVE_EPSILON := 0.04
-
-const COVERAGE_SMALL := 2
-const COVERAGE_PARRY := 3
-const COVERAGE_HEAVY := 5
-const COVERAGE_STEEL := 4
-const COVERAGE_FINISH := 6
-const COVERAGE_VICTORY := 8
-const HOLD_SHORT := 0.35
-const HOLD_STEEL := 0.45
-const HOLD_HEAVY := 0.9
-const HOLD_FINISH := 1.3
-const HOLD_VICTORY := 1.6
-const RECOVERY := 0.8
-## How far the meter must rise before a silent steel tick moves seats.
-const EXCITEMENT_RISE := 0.02
-const BOX_HEIGHT := 1.1
-const BOX_SOUTH := 13.2
 const FIGURE_GAP := 0.7
-const SECTION_HALF := 1.6
+## Sections within this ring distance of the named fighter's side stand.
+const CHANT_SPAN := 1
+## Stable offset so neighboring sections do not lean on the same beat.
+const SECTION_PHASE := 1.3
 
 const SKIN: Array[Color] = [
 	Color(0.988, 0.914, 0.855), Color(0.973, 0.863, 0.776),
@@ -49,6 +31,8 @@ const CLOTH: Array[Color] = [
 const HAIR: Array[Color] = [
 	Color("2a2420"), Color("6b4226"), Color("c2a36a"), Color("b7b1a8"),
 ]
+## Wolf's eyes and brow are the dark hair slot, not the dyed hair.
+const FACE_INK := Color(0.03, 0.03, 0.035)
 
 var seed_value: int = 1
 var focus_section: int = 0
@@ -56,9 +40,14 @@ var focus_section: int = 0
 var _sections: Array[CrowdSection] = []
 var _rows: Array[CrowdRoster] = []
 var _disc_radius: float = 8.27
+var _layout: ArenaSection
+var _bounds: Array[AABB] = []
+var _origins := PackedVector3Array()
 var _camera_at := Vector3.INF
 var _still := 0.0
 var _excitement := 0.0
+var _chant := false
+var _match_celebration := false
 var _corners := PackedVector3Array()
 
 
@@ -70,6 +59,10 @@ static func create(p_seed: int, disc_radius: float) -> CrowdStage:
 	stage._corners.resize(8)
 	stage._build()
 	return stage
+
+
+func layout() -> ArenaSection:
+	return _layout
 
 
 func roster_at(index: int) -> CrowdRoster:
@@ -94,6 +87,10 @@ func instance_count() -> int:
 	return total
 
 
+func placed_origins() -> PackedVector3Array:
+	return _origins
+
+
 func cheering_count() -> int:
 	var total := 0
 	for section: CrowdSection in _sections:
@@ -105,30 +102,64 @@ func section_hidden(index: int) -> bool:
 	return _sections[index].spectators_hidden
 
 
-func react(cue: StringName, excitement: float) -> void:
-	var rose := excitement > _excitement + EXCITEMENT_RISE
-	_excitement = excitement
-	if cue == CrowdDirector.CUE_GASP or cue == CrowdDirector.CUE_MURMUR:
-		return
-	if cue == &"":
-		if rose and excitement >= CrowdDirector.STRONG_LEVEL:
-			_spread(1, COVERAGE_STEEL, HOLD_STEEL, false)
-		return
-	if cue == CrowdDirector.CUE_VICTORY:
-		_spread(3, COVERAGE_VICTORY, HOLD_VICTORY, true)
-	elif cue == CrowdDirector.CUE_STRONG:
-		_spread(2, COVERAGE_FINISH, HOLD_FINISH, true)
-	elif cue == CrowdDirector.CUE_CHEER and excitement >= CrowdDirector.STEP_CRITICAL:
-		_spread(1, COVERAGE_HEAVY, HOLD_HEAVY, false)
-	elif cue == CrowdDirector.CUE_CHEER:
-		_spread(0, COVERAGE_PARRY, HOLD_SHORT, false)
-	elif cue == CrowdDirector.CUE_SETPOINT:
-		_spread(0, COVERAGE_SMALL, HOLD_SHORT, false)
+func seated_energy() -> float:
+	return _excitement
 
 
-func advance(delta: float, camera: Camera3D, _reduced_motion: bool) -> void:
+func phase_of(index: int) -> float:
+	return phase_of_section(0, index)
+
+
+func phase_of_section(section_index: int, seat: int = 0) -> float:
+	if section_index < 0 or section_index >= _sections.size():
+		return 0.0
+	return _sections[section_index].phase_of(seat)
+
+
+func arms_up_count() -> int:
+	var total := 0
 	for section: CrowdSection in _sections:
-		section.advance(delta)
+		total += section.arms_up_count()
+	return total
+
+
+func standing_sections() -> int:
+	var total := 0
+	for section: CrowdSection in _sections:
+		if section.stand_target() >= 0.5:
+			total += 1
+	return total
+
+
+func react(cue: StringName, excitement: float) -> void:
+	_excitement = clampf(excitement, 0.0, 1.0)
+	for section: CrowdSection in _sections:
+		section.set_energy(_excitement)
+	if cue == CrowdDirector.CUE_VICTORY:
+		_match_celebration = true
+		_chant = false
+	_apply_stand_targets()
+
+
+func hold_chant(active: bool) -> void:
+	if _match_celebration:
+		return
+	_chant = active
+	_apply_stand_targets()
+
+
+## The sections behind this fighter, not the sections the camera faces.
+func focus_on_side(side: DuelSide.Id) -> void:
+	if _layout == null:
+		return
+	var at := ArenaTransform.to_world(0.0, DuelSide.home_sign(side), 0.0)
+	focus_section = _layout.section_for(atan2(at.z, at.x))
+
+
+func advance(delta: float, camera: Camera3D, reduced_motion: bool) -> void:
+	for section: CrowdSection in _sections:
+		section.set_energy(_excitement)
+		section.advance(delta, not reduced_motion)
 	if camera == null:
 		return
 	var origin := camera.global_position
@@ -146,24 +177,35 @@ func advance(delta: float, camera: Camera3D, _reduced_motion: bool) -> void:
 
 
 func reset_poses() -> void:
+	_chant = false
+	_match_celebration = false
+	_excitement = 0.0
 	for section: CrowdSection in _sections:
 		section.reset_poses()
 
 
+func _apply_stand_targets() -> void:
+	var count := _sections.size()
+	for index: int in count:
+		var want := false
+		if _match_celebration:
+			want = true
+		elif _chant:
+			var gap := absi(index - focus_section)
+			gap = mini(gap, count - gap)
+			want = gap <= CHANT_SPAN
+		_sections[index].set_stand_target(1.0 if want else 0.0)
+
+
 func _focus_from(camera: Camera3D) -> void:
+	if _chant:
+		return
+	var count := _sections.size()
+	if count == 0:
+		return
 	var forward := -camera.global_transform.basis.z
 	var turns := atan2(forward.z, forward.x) / TAU
-	focus_section = wrapi(int(round(turns * float(SECTIONS))), 0, SECTIONS)
-
-
-func _spread(reach: int, coverage: int, hold: float, punch: bool) -> void:
-	for offset: int in reach * 2 + 1:
-		var index := wrapi(focus_section + offset - reach, 0, SECTIONS)
-		var section := _sections[index]
-		if section.cooldown > 0.0 and not punch:
-			continue
-		section.cheer_span(coverage, hold)
-		section.cooldown = RECOVERY
+	focus_section = wrapi(int(round(turns * float(count))), 0, count)
 
 
 func _apply_visibility(camera: Camera3D) -> void:
@@ -180,64 +222,99 @@ func _apply_visibility(camera: Camera3D) -> void:
 
 
 func _build() -> void:
+	_layout = ArenaSection.load_layout()
+	if not _layout.issues().is_empty():
+		return
 	var seated_skin := CrowdMeshes.part(false, "skin")
 	var cheer_skin := CrowdMeshes.part(true, "skin")
 	var seated_cloth := CrowdMeshes.part(false, "fabric")
 	var cheer_cloth := CrowdMeshes.part(true, "fabric")
 	var crop := CrowdMeshes.hair(false)
 	var bun := CrowdMeshes.hair(true)
+	var face := CrowdMeshes.face()
+	var count := _layout.section_count
+	var seat_section := PackedInt32Array()
+	var poses: Array[Transform3D] = []
+	_bounds.resize(count)
+	var started: Array[bool] = []
+	started.resize(count)
 	var previous: CrowdRoster = null
-	for index: int in SECTIONS:
+	var global := 0
+	for tier: int in _layout.tier_count():
+		for bay: int in _layout.bay_count:
+			for slot: int in _layout.slots_in_bay(tier):
+				var pose := _layout.pose_for(tier, bay, slot)
+				var row := CrowdRoster.assign(seed_value, global, previous)
+				previous = row
+				_rows.append(row)
+				poses.append(pose)
+				_origins.append(pose.origin)
+				var section_index := _layout.section_for(atan2(pose.origin.z, pose.origin.x))
+				seat_section.append(section_index)
+				_include(section_index, pose.origin, started)
+				global += 1
+	for index: int in count:
+		if not started[index]:
+			_bounds[index] = AABB(Vector3(0.0, -20.0, 0.0), Vector3.ONE)
+			continue
+		var box := _bounds[index].grow(0.45)
+		box.size.y += 1.2
+		_bounds[index] = box
+	for index: int in count:
 		var section := CrowdSection.new()
 		section.name = "Section%d" % index
+		section.prime_phase(float(index) * SECTION_PHASE)
 		var seats: Array[Transform3D] = []
 		var skin := PackedColorArray()
 		var cloth := PackedColorArray()
 		var hair := PackedColorArray()
+		var which: PackedInt32Array = []
+		for seat: int in poses.size():
+			if seat_section[seat] != index:
+				continue
+			seats.append(poses[seat])
+			which.append(seat)
+			skin.append(SKIN[_rows[seat].skin])
+			cloth.append(CLOTH[_rows[seat].cloth])
+			hair.append(HAIR[_rows[seat].hair_color])
+		if seats.is_empty():
+			_sections.append(section)
+			add_child(section)
+			continue
 		var crop_used := PackedByteArray()
 		var bun_used := PackedByteArray()
-		crop_used.resize(SEATS)
-		bun_used.resize(SEATS)
-		for seat: int in SEATS:
-			var global := index * SEATS + seat
-			var row := CrowdRoster.assign(seed_value, global, previous)
-			previous = row
-			_rows.append(row)
-			var radius := INNER_RADIUS if seat < ROW else OUTER_RADIUS
-			var along := (float(seat % ROW) - 1.5) * 0.55
-			var center := TAU * float(index) / float(SECTIONS)
-			var angle := center + along / radius
-			var at := Vector3(cos(angle) * radius, SEAT_HEIGHT + (0.28 if seat >= ROW else 0.0), sin(angle) * radius)
-			var xf := Transform3D.IDENTITY
-			xf.origin = at
-			xf = xf.looking_at(Vector3(0.0, at.y, 0.0), Vector3.UP)
-			seats.append(xf)
-			skin.append(SKIN[row.skin])
-			cloth.append(CLOTH[row.cloth])
-			hair.append(HAIR[row.hair_color])
-			if row.hair == 0:
-				crop_used[seat] = 1
+		crop_used.resize(seats.size())
+		bun_used.resize(seats.size())
+		for local: int in which.size():
+			if _rows[which[local]].hair == 0:
+				crop_used[local] = 1
 			else:
-				bun_used[seat] = 1
+				bun_used[local] = 1
 		var everyone := PackedByteArray()
-		everyone.resize(SEATS)
+		everyone.resize(seats.size())
 		everyone.fill(1)
+		var ink := PackedColorArray()
+		ink.resize(seats.size())
+		ink.fill(FACE_INK)
 		section.add_layer(seated_skin, cheer_skin, seats, skin, everyone)
 		section.add_layer(seated_cloth, cheer_cloth, seats, cloth, everyone)
+		section.add_layer(face, face, seats, ink, everyone)
 		section.add_layer(crop, crop, seats, hair, crop_used)
 		section.add_layer(bun, bun, seats, hair, bun_used)
 		_sections.append(section)
 		add_child(section)
-	_build_box()
+	_build_box(started)
 
 
-func _build_box() -> void:
+func _build_box(started: Array[bool]) -> void:
+	var pose := _layout.box_pose()
 	var box := Node3D.new()
 	box.name = "ImperialBox"
-	box.position = Vector3(0.0, BOX_HEIGHT, BOX_SOUTH)
+	box.transform = pose
 	var names: PackedStringArray = ["Emperor", "Attendant", "Dignitary"]
 	var shades: Array[Color] = [RiposteTheme.STONE_BRONZE, RiposteTheme.STONE_LIMESTONE, RiposteTheme.STONE_TERRACOTTA]
 	var posed := CrowdMeshes.pose_scene(false)
+	var section_index := _layout.section_for(atan2(pose.origin.z, pose.origin.x))
 	for index: int in 3:
 		var person := MeshInstance3D.new()
 		person.name = names[index]
@@ -251,11 +328,38 @@ func _build_box() -> void:
 			figure.name = "Figure"
 			person.add_child(figure)
 			_tint_rendered(figure, material)
+			_worn(person, "Face", CrowdMeshes.face(), FACE_INK)
+			_worn(person, "Hair", CrowdMeshes.hair(false), HAIR[0])
 		else:
 			person.mesh = CrowdMeshes.part(false, "skin")
 			person.material_override = material
 		box.add_child(person)
+		var at := pose * person.position
+		_include(section_index, at, started)
+		_include(section_index, at + Vector3(0.0, 1.4, 0.0), started)
 	add_child(box)
+
+
+func _include(section_index: int, point: Vector3, started: Array[bool]) -> void:
+	var box := _bounds[section_index]
+	if not started[section_index]:
+		box = AABB(point, Vector3(0.2, 0.2, 0.2))
+		started[section_index] = true
+	else:
+		box = box.expand(point)
+	_bounds[section_index] = box
+
+
+func _worn(person: Node3D, part_name: String, mesh: Mesh, ink: Color) -> void:
+	var part := MeshInstance3D.new()
+	part.name = part_name
+	part.mesh = mesh
+	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var material := StandardMaterial3D.new()
+	material.albedo_color = ink
+	material.roughness = 0.85
+	part.material_override = material
+	person.add_child(part)
 
 
 func _tint_rendered(node: Node, material: Material) -> void:
@@ -266,10 +370,7 @@ func _tint_rendered(node: Node, material: Material) -> void:
 
 
 func _section_bounds(index: int) -> AABB:
-	var center := TAU * float(index) / float(SECTIONS)
-	var radius := (INNER_RADIUS + OUTER_RADIUS) * 0.5
-	var at := Vector3(cos(center) * radius, 1.0, sin(center) * radius)
-	return AABB(at - Vector3(SECTION_HALF, 0.2, SECTION_HALF), Vector3(SECTION_HALF * 2.0, 2.2, SECTION_HALF * 2.0))
+	return _bounds[index]
 
 
 func _corner(aabb: AABB, index: int) -> Vector3:

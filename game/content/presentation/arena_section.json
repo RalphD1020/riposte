@@ -1,0 +1,77 @@
+{
+  "expected_disc_radius": 8.27,
+  "angular_zero": 0.0,
+  "bay_count": 12,
+  "section_count": 8,
+  "foot_offset": 0.09,
+  "water_height": -3.0,
+  "floor": {
+    "soffit": -0.4,
+    "paving_top": 0.0,
+    "curb_height": 0.0,
+    "curb_inner_radius": 8.08,
+    "curb_mid_radius": 8.16,
+    "brick_length": 0.52,
+    "brick_width": 0.26,
+    "brick_thickness": 0.1,
+    "joint": 0.008,
+    "stagger": 0.26,
+    "course_axis": "east_west"
+  },
+  "inner_arcade": {
+    "inner_radius": 6.95,
+    "outer_radius": 8.27,
+    "opening": 2.0,
+    "pier_width": 0.72,
+    "spring": -1.74,
+    "arch_radius": 1.0,
+    "voussoir_thickness": 0.34,
+    "voussoir_count": 9
+  },
+  "moat": {
+    "inner_radius": 8.27,
+    "outer_radius": 10.7
+  },
+  "outer_arcade": {
+    "inner_radius": 10.7,
+    "outer_radius": 14.84,
+    "opening": 2.2,
+    "pier_width": 1.15,
+    "pier_depth": 1.26,
+    "soffit": -0.4,
+    "spring": -1.84,
+    "arch_radius": 1.1,
+    "voussoir_thickness": 0.34,
+    "voussoir_count": 9
+  },
+  "tiers": [
+    {
+      "inner_radius": 10.7,
+      "outer_radius": 11.735,
+      "tread_height": 0.29,
+      "seat_radius": 11.22,
+      "seat_count": 24
+    },
+    {
+      "inner_radius": 11.735,
+      "outer_radius": 12.77,
+      "tread_height": 0.75,
+      "seat_radius": 12.25,
+      "seat_count": 24
+    },
+    {
+      "inner_radius": 12.77,
+      "outer_radius": 13.805,
+      "tread_height": 1.21,
+      "seat_radius": 13.29,
+      "seat_count": 24
+    },
+    {
+      "inner_radius": 13.805,
+      "outer_radius": 14.84,
+      "tread_height": 1.67,
+      "seat_radius": 14.32,
+      "seat_count": 24
+    }
+  ]
+}

@@ -330,7 +330,7 @@ func _advance_tick() -> void:
 		WeaponKinematics.strike_reach(rules.combatant(1), rules.combatant(0)),
 	])
 	var crowd_cue := _crowd.observe(events, session.state.scores, rules.rounds_to_win, snapshot.set_winner, rules.combat, snapshot.distance, reach)
-	presenter.play_crowd(crowd_cue, snapshot.set_winner, _crowd.excitement)
+	presenter.play_crowd(crowd_cue, snapshot.set_winner, _crowd.excitement, _crowd.chant_slot)
 	if MatchPhase.is_combatant(snapshot.set_winner) and session.config.mode == MatchConfig.Mode.QUICK_PLAY_CPU:
 		## The set is decided: its deciding round plays on, live, and the
 		## winner's showcase follows the match's own end (PRES-VICTORY-001).

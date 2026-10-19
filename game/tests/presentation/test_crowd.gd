@@ -367,6 +367,51 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	assert_eq(fallback.resource_path.get_file(), "victory.mp3", "a fighter without a chant gets the generic roar")
 	presenter.play_crowd(&"victory", 0)
 	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "wolf_chant.mp3", "Wolf's chant replaces that roar")
+	var name_take := fighter.crowd_chant as AudioStreamMP3
+	assert_false(audio.accepts_crowd_chant(name_take), "the shipped name is not a loop")
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_false(audio.is_crowd_chant_playing(), "a one-shot name does not start the chant player")
+	assert_false(name_take.loop, "and the set-win file is not rewritten into a loop")
+	var looped := name_take.duplicate() as AudioStreamMP3
+	looped.loop = true
+	var other := name_take.duplicate() as AudioStreamMP3
+	other.loop = true
+	fighter.crowd_chant = looped
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	var chant_voice := audio.get_node(AudioDirector.PLAYER_CROWD_CHANT) as AudioStreamPlayer
+	assert_true(chant_voice.playing, "a looping name starts its own player")
+	var started := chant_voice.stream
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_true(chant_voice.stream == started and _playing_shots(audio, started) == 1, "the same name does not start a second voice")
+	kits.combatant(1).fighter.crowd_chant = other
+	presenter.play_crowd(&"", 1, 0.5, 1)
+	assert_eq(_playing_shots(audio, started), 0, "the previous name is no longer playing")
+	assert_true(chant_voice.playing and _playing_shots(audio, chant_voice.stream) == 1, "the new name is the one voice")
+	fighter.crowd_chant = null
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_false(audio.is_crowd_chant_playing(), "a missing stream stops the previous name")
+	fighter.crowd_chant = looped
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_true(audio.is_crowd_chant_playing(), "fixture: the name is up again")
+	presenter.play_crowd(&"", 0, 0.5, -1)
+	assert_true(audio.is_crowd_chant_playing(), "an ordinary release fades instead of cutting")
+	presenter.render(0.0, 0.15)
+	assert_true(audio.crowd_chant_volume_db() < AudioDirector.CHANT_TRIM_DB, "the fade has started")
+	presenter.render(0.0, AudioDirector.CHANT_RELEASE_SECONDS)
+	assert_false(audio.is_crowd_chant_playing(), "the fade ends in silence")
+	var captions: PackedStringArray = []
+	presenter.sound_caption_requested.connect(func(text: String, _seconds: float) -> void: captions.append(text))
+	presenter.push(SnapshotProjector.project(state, rules), [_event(DuelEventTypes.CRITICAL_HIT)])
+	presenter._options.sound_captions = true
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_eq(captions.size(), 0, "a hit caption already on the frame keeps the name off it")
+	fighter.crowd_chant = chant
+	presenter.play_crowd(CrowdDirector.CUE_VICTORY, 0, 1.0, 0)
+	assert_false(audio.is_crowd_chant_playing(), "the set win stops the loop")
+	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "wolf_chant.mp3", "and plays the name once on the shot")
+	assert_false((audio.crowd_shot_stream() as AudioStreamMP3).loop, "that shot is the original take")
+	fighter.crowd_chant = chant
+	kits.combatant(1).fighter.crowd_chant = chant
 	var sting := audio.get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
 	presenter.play_set_horn()
 	assert_true(sting.playing and sting.stream is AudioStreamMP3 and not (sting.stream as AudioStreamMP3).loop, "the horn stays one blast, not a loop")
@@ -376,13 +421,21 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	assert_near(sting.pitch_scale, horn_length / AudioDirector.HORN_SECONDS, 0.001, "that one blast is slowed to six seconds")
 	assert_eq(sting.bus, AudioBuses.MUSIC, "on the sting's Music bus")
 	assert_false(audio.is_character_call_playing(), "and it is not Wolf's howl")
+	fighter.crowd_chant = looped
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_true(audio.is_crowd_chant_playing(), "fixture: a name is playing at teardown")
+	fighter.crowd_chant = chant
+	kits.combatant(1).fighter.crowd_chant = chant
 	presenter.detach_and_dispose()
 	assert_false(audio.is_crowd_bed_playing(), "disposing the presenter stops that bed")
+	assert_false(audio.is_crowd_chant_playing(), "and the name")
+	assert_false(audio.is_any_playing(), "and the shot")
 	var next := MatchPresenter.create(kits, PresentationOptions.new(), camera, rules.platform_radius, rules.edge_warning_inset, SnapshotProjector.project(state, rules))
 	root.add_child(next)
 	assert_true(next.audio().is_crowd_bed_playing(), "a new presenter starts its own bed")
 	assert_near(next.audio().crowd_bed_volume_db(), -18.0, 0.01, "at ambient, not the previous match's trim")
 	assert_false(audio.is_crowd_bed_playing(), "the disposed director stays silent")
+	assert_false(next.audio().is_crowd_chant_playing(), "a new match does not inherit the name")
 	root.queue_free()
 
 
@@ -463,6 +516,130 @@ func _playing_shots(node: Node, stream: AudioStream) -> int:
 	for child in node.get_children():
 		count += _playing_shots(child, stream)
 	return count
+
+
+func test_a_name_holds_through_a_trade_and_a_round() -> void:
+	var crowd := CrowdDirector.new()
+	var first := _event(DuelEventTypes.CRITICAL_HIT)
+	assert_eq(crowd.observe([first], _live(), 3, MatchPhase.NO_WINNER), CrowdDirector.CUE_CHEER, "fixture: the critical still cheers")
+	assert_eq(crowd.chant_slot, -1, "one credit does not start a name")
+	crowd.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(crowd.chant_slot, 1, "a second credit for the same fighter starts the name")
+	var held := crowd.chant_slot
+	crowd.observe([DuelEvent.create(DuelEventTypes.CRITICAL_HIT, 0, 0, DuelEvent.NONE)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(crowd.chant_slot, held, "a single answer during the hold does not switch")
+	for _tick: int in 30:
+		crowd.observe([], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(crowd.chant_slot, held, "the name survives a quiet stretch inside the hold")
+	for _tick: int in CrowdDirector.CHANT_HOLD_TICKS:
+		crowd.observe([], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(crowd.chant_slot, -1, "once the hold is over, a faded lead ends the name")
+	var again := CrowdDirector.new()
+	again.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	again.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(again.chant_slot, 1, "fixture: the name is up")
+	assert_eq(again.observe([_event(DuelEventTypes.FIGHTER_KILLED)], PackedInt32Array([1, 0]), 3, 1), CrowdDirector.CUE_VICTORY, "the set win is still the shot")
+	assert_eq(again.chant_slot, -1, "the set win ends the looping name")
+	again.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, 1)
+	again.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, 1)
+	assert_eq(again.chant_slot, -1, "the set win keeps the name down afterwards")
+	var tuning := StandardDuelRules.create().combat
+	var hit := CrowdDirector.new()
+	hit.observe([_body(tuning.reference_severity * 0.2, "slash")], _live(), 3, MatchPhase.NO_WINNER, tuning)
+	assert_eq(hit.momentum_of(1), 0.0, "a scratch is not a name credit")
+	hit.observe([_body(tuning.reference_severity, "slash")], _live(), 3, MatchPhase.NO_WINNER, tuning)
+	assert_true(hit.momentum_of(1) > 0.0 and hit.momentum_of(0) == 0.0, "a heavy hit credits the actor")
+	var ring := CrowdDirector.new()
+	ring.observe([_event(DuelEventTypes.RING_OUT)], PackedInt32Array([0, 1]), 3, MatchPhase.NO_WINNER)
+	assert_true(ring.momentum_of(0) > 0.0 and ring.momentum_of(1) == 0.0, "a ring-out credits the fighter who stayed")
+	assert_eq(ring.chant_slot, -1, "one ring-out is not a name")
+	var roar := CrowdDirector.new()
+	roar.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	roar.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	for _step: int in CrowdDirector.CHANT_HOLD_TICKS - 1:
+		roar.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(roar.chant_slot, 1, "fixture: the name is still held")
+	assert_eq(roar.observe([_event(DuelEventTypes.FIGHTER_KILLED)], PackedInt32Array([1, 0]), 3, MatchPhase.NO_WINNER), CrowdDirector.CUE_STRONG, "fixture: the roar is the shot")
+	assert_eq(roar.chant_slot, -1, "a roar during the hold ends the name")
+	roar.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(roar.chant_slot, -1, "the roar's quiet keeps the next credit from restarting it")
+	var early := CrowdDirector.new()
+	early.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	early.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(early.chant_slot, 1, "fixture: the name just started")
+	var before_left := early.momentum_of(0)
+	var before_gone := early.momentum_of(1)
+	assert_eq(early.observe([_event(DuelEventTypes.RING_OUT)], PackedInt32Array([0, 1]), 3, MatchPhase.NO_WINNER), CrowdDirector.CUE_STRONG, "a ring-out is the roar")
+	assert_eq(early.chant_slot, -1, "and it releases the name inside the hold")
+	assert_true(early.momentum_of(0) > before_left, "the fighter who stayed is credited")
+	assert_true(early.momentum_of(1) < before_gone, "the fighter who left is not")
+	var lead := CrowdDirector.new()
+	lead.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	lead.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	var challenger := DuelEvent.create(DuelEventTypes.CRITICAL_HIT, 0, 0, DuelEvent.NONE)
+	for _step: int in CrowdDirector.CHANT_HOLD_TICKS:
+		lead.observe([challenger], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(lead.chant_slot, 0, "a cold favorite yields when the other fighter has the lead")
+	assert_true(lead.momentum_of(1) < CrowdDirector.MOMENTUM_FLOOR, "the old favorite was not kept alive")
+	lead.observe([_event(DuelEventTypes.CRITICAL_HIT)], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(lead.chant_slot, 0, "the new hold ignores one answer")
+	var tied := CrowdDirector.new()
+	var left := DuelEvent.create(DuelEventTypes.CRITICAL_HIT, 0, 0, DuelEvent.NONE)
+	var right := _event(DuelEventTypes.CRITICAL_HIT)
+	tied.observe([left, left, right, right], _live(), 3, MatchPhase.NO_WINNER)
+	assert_eq(tied.chant_slot, -1, "a tied tick names nobody")
+
+
+func test_the_seated_cheer_does_not_stand_the_bowl() -> void:
+	var stage := CrowdStage.create(4, 8.27)
+	assert_false(is_equal_approx(stage.phase_of_section(0), stage.phase_of_section(1)), "sections do not share a phase")
+	var locked := stage.phase_of_section(0)
+	stage.advance(0.3, null, true)
+	assert_eq(stage.phase_of_section(0), locked, "reduced motion drops the sway")
+	stage.react(CrowdDirector.CUE_CHEER, 0.2)
+	stage.advance(0.5, null, false)
+	assert_eq(stage.standing_sections(), 0, "a cheer stays seated")
+	assert_true(stage.arms_up_count() > 0, "some seats throw their arms while seated")
+	stage.advance(0.2, null, true)
+	assert_eq(stage.arms_up_count(), 0, "reduced motion drops the seated cheer")
+	assert_false(is_equal_approx(stage.phase_of(0), stage.phase_of(1)), "neighbors do not share a phase")
+	assert_false(is_equal_approx(stage.phase_of_section(0), locked), "the sway advances when motion is allowed")
+	stage.react(CrowdDirector.CUE_CHEER, 0.95)
+	stage.advance(0.4, null, false)
+	assert_eq(stage.standing_sections(), 0, "a louder room still does not stand anyone")
+	stage.focus_on_side(DuelSide.Id.LIGHT_SOUTH)
+	var south := stage.focus_section
+	stage.focus_on_side(DuelSide.Id.DARK_NORTH)
+	assert_ne(stage.focus_section, south, "the two homes are different sections")
+	stage.focus_on_side(DuelSide.Id.LIGHT_SOUTH)
+	stage.hold_chant(true)
+	var early := stage.get_child(south) as CrowdSection
+	stage.advance(0.0, null, false)
+	assert_eq(early.stand_weight(), 0.0, "the rise starts from seated")
+	stage.advance(0.225, null, false)
+	assert_near(early.stand_weight(), 0.5, 0.02, "halfway through the rise")
+	stage.advance(0.25, null, true)
+	assert_near(early.stand_weight(), 1.0, 0.02, "reduced motion still finishes the stand")
+	assert_true(stage.standing_sections() > 0 and stage.standing_sections() < stage.section_count(), "only the chant's sections stand")
+	var up := stage.cheering_count()
+	assert_true(up > 0, "fixture: the chant has seats up")
+	stage.hold_chant(false)
+	assert_eq(stage.cheering_count(), up, "ending the chant does not sit them on that frame")
+	stage.advance(1.0, null, false)
+	assert_eq(stage.cheering_count(), 0, "the chant ending sits them")
+	stage.react(CrowdDirector.CUE_STRONG, 1.0)
+	stage.advance(1.0, null, false)
+	assert_eq(stage.standing_sections(), 0, "a round roar does not stand the bowl")
+	stage.react(CrowdDirector.CUE_VICTORY, 1.0)
+	stage.advance(1.0, null, false)
+	assert_eq(stage.standing_sections(), stage.section_count(), "the match stands every section")
+	stage.react(CrowdDirector.CUE_CHEER, 0.1)
+	stage.advance(0.5, null, false)
+	assert_eq(stage.standing_sections(), stage.section_count(), "a later cue cannot sit the celebration")
+	var fresh := CrowdStage.create(4, 8.27)
+	assert_eq(fresh.standing_sections(), 0, "a new match starts seated")
+	fresh.free()
+	stage.free()
 
 
 func test_the_horn_fires_once_for_a_killing_set_win() -> void:

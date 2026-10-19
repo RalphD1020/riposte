@@ -368,6 +368,12 @@
       "budget_ms": 2000
     },
     {
+      "name": "PRES-SURFACE",
+      "path": "res://tests/presentation/test_surface.gd",
+      "tier": "fast",
+      "budget_ms": 2000
+    },
+    {
       "name": "PRES-ARENA",
       "path": "res://tests/presentation/test_arena.gd",
       "tier": "fast",
@@ -574,6 +580,7 @@
         "PRES-VICTORY",
         "PRES-FACE",
         "PRES-CROWD",
+        "PRES-SURFACE",
         "PRES-ARENA",
         "PRES-INTRO",
         "PRES-HUD"

@@ -10,6 +10,7 @@ const SEATED := "res://assets/generated/crowd/seated.glb"
 const CHEER := "res://assets/generated/crowd/cheer.glb"
 const HAIR_CROP := "res://assets/generated/crowd/hair_crop.glb"
 const HAIR_BUN := "res://assets/generated/crowd/hair_bun.glb"
+const FACE := "res://assets/generated/crowd/face.glb"
 const FALLBACK := "fallback"
 
 static var _cache: Dictionary = {}
@@ -21,6 +22,13 @@ static func part(cheer: bool, slot: String) -> Mesh:
 	if found != null:
 		return found
 	return _fallback("%s.%s" % [FALLBACK, slot])
+
+
+static func face() -> Mesh:
+	var found := _named(FACE, "face")
+	if found != null:
+		return found
+	return _fallback(FALLBACK + ".face")
 
 
 static func hair(bun: bool) -> Mesh:

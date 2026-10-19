@@ -1,0 +1,28 @@
+{
+  "asset_id": "arena.floor",
+  "kind": "floor",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -8.27,
+      -8.27,
+      -0.4
+    ],
+    "max": [
+      8.27,
+      8.27,
+      0.0
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "ArenaFloor"
+  ],
+  "material_slots": [
+    "stone_cliff",
+    "stone_floor"
+  ],
+  "triangle_count": 70968,
+  "color_targets": []
+}

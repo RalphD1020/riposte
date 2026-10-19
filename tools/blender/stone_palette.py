@@ -1,12 +1,15 @@
-"""Stone roles for the bowl. Hex values match `RiposteTheme` constants.
+"""Stone roles. Hex values match `RiposteTheme` constants.
 
-`WORLD_FLOOR` (#8a7f6c) is the combat disc and is not a bowl role. Blender
-stores the same sRGB hex as linear base color, the way `build_arena.py` does.
+`stone_floor` is `WORLD_FLOOR` (#8a7f6c), the fighting surface only. The bowl
+does not use it. Blender stores the same sRGB hex as linear base color, the
+way `build_arena.py` does.
 """
 
 ROLES = {
     "stone_pillar": "d4c4a8",
     "stone_edge": "a89880",
+    "stone_stand": "6e6558",
+    "stone_floor": "8a7f6c",
     "stone_terracotta": "8a5344",
     "stone_cliff": "3a352d",
     "gold_trim": "8a6a3a",

@@ -1,0 +1,27 @@
+{
+  "asset_id": "crowd.face",
+  "kind": "crowd",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.06,
+      0.087,
+      1.105
+    ],
+    "max": [
+      0.06,
+      0.11,
+      1.159
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "crowd_face"
+  ],
+  "material_slots": [
+    "face"
+  ],
+  "triangle_count": 36,
+  "color_targets": []
+}

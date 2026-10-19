@@ -33,11 +33,13 @@ ASSETS = [
     ("weapons/bastard_sword_training.blend", "weapon", "weapon.bastard_sword.training", "weapons/bastard_sword_training.glb"),
     ("arenas/standard_arena.blend", "arena", "arena.standard", "arenas/standard_arena.glb"),
     ("arenas/masonry_board.blend", "board", "arena.masonry_board", "arenas/masonry_board.glb"),
+    ("arenas/arena_floor.blend", "floor", "arena.floor", "arenas/arena_floor.glb"),
     ("arenas/arena_bowl.blend", "bowl", "arena.bowl", "arenas/arena_bowl.glb"),
     ("crowd/seated.blend", "crowd", "crowd.seated", "crowd/seated.glb"),
     ("crowd/cheer.blend", "crowd", "crowd.cheer", "crowd/cheer.glb"),
     ("crowd/hair_crop.blend", "crowd", "crowd.hair_crop", "crowd/hair_crop.glb"),
     ("crowd/hair_bun.blend", "crowd", "crowd.hair_bun", "crowd/hair_bun.glb"),
+    ("crowd/face.blend", "crowd", "crowd.face", "crowd/face.glb"),
 ]
 
 
@@ -66,13 +68,28 @@ def _export_kwargs(path, kind):
         "export_reset_pose_bones": True,
         "export_image_format": "NONE",
     }
+    ## Stone blocks carry a per-block Color multiplier. The default material
+    ## mode skips it when images are not exported.
+    if kind in ("bowl", "floor", "board"):
+        wanted["export_vertex_color"] = "ACTIVE"
     available = {p.identifier for p in bpy.ops.export_scene.gltf.get_rna_type().properties}
     return {k: v for k, v in wanted.items() if k in available}
 
 
+def _selected(assets):
+    if "--" not in sys.argv:
+        return assets
+    extra = sys.argv[sys.argv.index("--") + 1:]
+    if "--only" not in extra:
+        return assets
+    wanted = set(extra[extra.index("--only") + 1].split(","))
+    return [row for row in assets if row[2] in wanted or row[3] in wanted]
+
+
 def main():
     failed = []
-    for source, kind, asset_id, output in ASSETS:
+    chosen = _selected(ASSETS)
+    for source, kind, asset_id, output in chosen:
         source_path = os.path.join(SOURCES, source)
         if not os.path.exists(source_path):
             failed.append("%s: missing source" % source)
@@ -97,7 +114,7 @@ def main():
         for problem in failed:
             print("RIPOSTE_ASSET_PROBLEM", problem)
         sys.exit(1)
-    print("RIPOSTE_ASSETS_OK", len(ASSETS))
+    print("RIPOSTE_ASSETS_OK", len(chosen))
 
 
 if __name__ == "__main__":

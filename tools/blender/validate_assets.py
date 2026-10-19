@@ -298,24 +298,99 @@ def validate_board():
     return problems
 
 
+def _layout():
+    import arena_layout
+    return arena_layout.load()
+
+
+def _world_vertices():
+    bpy.context.view_layer.update()
+    for obj in _meshes():
+        matrix = obj.matrix_world
+        for vert in obj.data.vertices:
+            yield matrix @ vert.co
+
+
 def validate_bowl():
+    """Fighting volume, not a blanket outside-the-disc test.
+
+    Supports under the floor may sit inside the combat radius when they stay
+    below the fighting surface. Arch crowns stay under the soffit. Treads
+    stay outside the disc. Water is not a collider here; the mesh just has
+    to cover the ground under both arcades, out to the outer tread.
+    """
     import math
     problems = []
     if bpy.data.objects.get("PlatformTop") is not None:
         problems.append("the bowl must not carry PlatformTop")
-    nearest = math.inf
-    for obj in _meshes():
-        for corner in obj.bound_box:
-            point = obj.matrix_world @ Vector(corner)
-            nearest = min(nearest, math.hypot(point.x, point.y))
-    if nearest <= ARENA_RADIUS + 0.05:
-        problems.append("bowl reaches %.3f m, inside the disc" % nearest)
+    layout = _layout()
+    disc = layout["expected_disc_radius"]
+    soffit = layout["floor"]["soffit"]
+    outer_inner = layout["outer_arcade"]["inner_radius"]
+    top = layout["tiers"][-1]["tread_height"]
+    first = layout["tiers"][0]["tread_height"]
+    second = layout["tiers"][1]["inner_radius"]
+    names = _material_names(_meshes())
+    if "basin_water" not in names:
+        problems.append("missing basin_water")
+    for point in _world_vertices():
+        radius = math.hypot(point.x, point.y)
+        if radius <= disc + 0.05 and point.z > 0.02:
+            problems.append("fighting volume blocked at r %.3f z %.3f" % (radius, point.z))
+            break
+        if radius < outer_inner - 0.05 and point.z > soffit + 0.05:
+            problems.append("crown or deck above the soffit at r %.3f z %.3f" % (radius, point.z))
+            break
+        if point.z > first + 0.05 and radius < second - 0.08:
+            problems.append("upper tread reaches into the first row at r %.3f" % radius)
+            break
+        if point.z > top + 0.05:
+            problems.append("stone above the top tread (z %.3f)" % point.z)
+            break
+    return problems
+
+
+def validate_floor():
+    """Nothing solid on the floor stands above the fighting plane."""
+    import math
+    problems = []
+    if bpy.data.objects.get("PlatformTop") is not None:
+        problems.append("the floor asset must not carry PlatformTop")
+    layout = _layout()
+    floor = layout["floor"]
+    disc = layout["expected_disc_radius"]
+    names = _material_names(_meshes())
+    for role_name in ("stone_floor", "stone_cliff"):
+        if role_name not in names:
+            problems.append("missing %s" % role_name)
+    reached = 0.0
+    rim = 0
+    lo_x = math.inf
+    hi_x = -math.inf
+    lo_y = math.inf
+    hi_y = -math.inf
+    for point in _world_vertices():
+        radius = math.hypot(point.x, point.y)
+        reached = max(reached, radius)
+        lo_x, hi_x = min(lo_x, point.x), max(hi_x, point.x)
+        lo_y, hi_y = min(lo_y, point.y), max(hi_y, point.y)
+        if radius <= disc + 0.02 and point.z > floor["paving_top"] + 0.004:
+            problems.append("floor rises above the paving (z %.3f)" % point.z)
+            break
+        if radius >= floor["curb_mid_radius"] and point.z <= floor["paving_top"] + 0.004:
+            rim += 1
+    if reached < disc - 0.05 or reached > disc + 0.08:
+        problems.append("floor radius %.3f, disc is %.2f" % (reached, disc))
+    if abs(lo_x + hi_x) > 0.05 or abs(lo_y + hi_y) > 0.05:
+        problems.append("floor is not centred")
+    if rim < 8:
+        problems.append("the paving does not reach the rim")
     return problems
 
 
 def validate_crowd():
     names = {obj.name for obj in _meshes()}
-    if "hair" in names or ({"skin", "fabric"} <= names):
+    if names & {"hair", "face"} or ({"skin", "fabric"} <= names):
         return []
     return ["crowd mesh needs skin and fabric, or hair"]
 
@@ -326,6 +401,7 @@ VALIDATORS = {
     "arena": validate_arena,
     "board": validate_board,
     "bowl": validate_bowl,
+    "floor": validate_floor,
     "crowd": validate_crowd,
 }
 

@@ -189,6 +189,9 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "rematch selects the arena theme again")
 	assert_true(app.is_loop_playing(), "and it is playing")
 	assert_near(second.presenter.audio().crowd_bed_volume_db(), -18.0, 0.01, "a new match starts the bed at ambient")
+	assert_false(second.presenter.audio().is_crowd_chant_playing(), "rematch starts without a name")
+	assert_eq(second._crowd.chant_slot, -1, "rematch has no favorite")
+	assert_eq(second.presenter.crowd().standing_sections(), 0, "rematch starts seated")
 	var rematch_starts := app.loop_start_count()
 	_run_until(second, func() -> bool: return second.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
 	_push(_key(KEY_ESCAPE, true))
@@ -214,6 +217,22 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 ## A missing arena cue is a fault: MATCH stops the loop instead of keeping the
 ## menu theme. The stopped player is the observable failure. The selector also
 ## `push_error`s that exact diagnostic (`FAULT_MATCH_MUSIC_MISSING`).
+func test_a_live_round_keeps_the_crowd_seated() -> void:
+	var booted := await _boot_ready()
+	var screen := await _active_duel(booted)
+	var crowd := screen.presenter.crowd()
+	assert_true(crowd != null, "fixture: the bowl has a crowd")
+	var before := crowd.phase_of_section(0)
+	for _i in 8:
+		screen.advance_frame(FRAME)
+	assert_eq(crowd.standing_sections(), 0, "ordinary play does not stand anyone")
+	assert_false(is_equal_approx(crowd.phase_of_section(0), before), "the seats are moving")
+	assert_false(is_equal_approx(crowd.phase_of_section(0), crowd.phase_of_section(1)), "neighboring sections do not share a phase")
+	assert_false(screen.presenter.audio().is_crowd_chant_playing(), "the one-shot name is not looping")
+	assert_eq(screen._crowd.chant_slot, -1, "no name has been earned")
+	await _shutdown(booted)
+
+
 func test_a_missing_match_theme_stops_the_loop() -> void:
 	var booted := await _boot_ready()
 	var app := booted.app
@@ -663,7 +682,7 @@ func test_pausing_changes_the_buses_of_the_music_that_is_playing() -> void:
 	assert_eq(playing_before, 1 if director.is_sting_playing() else 0, "the director's playing Music voice is the sting, when it is up")
 	assert_eq(_players_on(director, AudioBuses.MUSIC), 1, "the sting is the director's only Music voice")
 	assert_eq(_players_on(director, AudioBuses.VOICE), 2, "the announcer and the character call each have a Voice player")
-	assert_eq(_players_on(director, AudioBuses.CROWD), 2, "the crowd bed and one reaction each have a Crowd player")
+	assert_eq(_players_on(director, AudioBuses.CROWD), 3, "the bed, the one-shot, and the name chant each have a Crowd player")
 	var combat := AudioServer.get_bus_index(AudioBuses.COMBAT)
 	var ui := AudioServer.get_bus_index(AudioBuses.UI)
 	assert_eq(AudioServer.get_bus_send(combat), AudioBuses.SFX, "fixture: combat sends to effects")
