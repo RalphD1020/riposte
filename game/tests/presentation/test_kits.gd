@@ -253,6 +253,30 @@ func test_the_wolfs_death_styles_name_clips_its_scenes_carry() -> void:
 		scene.free()
 
 
+func test_every_playable_fighter_resolves_a_victory_sting() -> void:
+	var catalog := RiposteKits.build_catalog()
+	var announcer := RiposteKits.announcer()
+	var ids := RiposteKits.playable_fighter_ids()
+	assert_eq(ids.size(), 1, "fixture: the roster is the one shipped fighter")
+	for fighter_id in ids:
+		var kit := catalog.resolve(fighter_id, PresentationKit.PRIMITIVE_FIGHTER)
+		var profile := kit.victory if kit != null else null
+		assert_true(profile != null, "%s resolves a victory profile" % fighter_id)
+		var sting := profile.sting
+		assert_true(sting != null, "%s (%s) is missing its victory sting" % [fighter_id, profile.display_name])
+		assert_false(bool(sting.get("loop")), "%s victory sting must be a one-shot (%s)" % [fighter_id, sting.resource_path])
+		assert_true(sting != profile.announcer_line, "%s sting is not the announcer line" % fighter_id)
+		assert_true(sting.resource_path.get_file() == "wolf_victory.mp3", "%s victory theme is wolf_victory" % fighter_id)
+	var kits := DuelKits.resolve(catalog, StandardDuelRules.create())
+	assert_eq(kits.combatant(0).fighter.id, ContentIds.FIGHTER_DUELIST, "slot 0 is the playable fighter")
+	assert_eq(kits.combatant(1).fighter.id, ContentIds.FIGHTER_DUELIST, "slot 1 is the same fighter")
+	assert_true(kits.combatant(0).victory().sting == kits.combatant(1).victory().sting, "both slots share that fighter's sting")
+	var fallback := RiposteKits.duelist_victory()
+	assert_true(fallback.sting != null, "the factory profile for %s keeps a sting" % fallback.display_name)
+	assert_eq(fallback.sting.resource_path, RiposteKits.VICTORY_STING_STAND_IN, "the factory assigns Wolf's victory theme")
+	assert_ne(announcer.sting.resource_path, RiposteKits.VICTORY_STING_STAND_IN, "the victory theme is not the announcer intro sting")
+
+
 func test_placeholder_audio_is_deterministic_and_cached() -> void:
 	var first := PlaceholderAudio.cues()
 	var second := PlaceholderAudio.cues()

@@ -28,6 +28,7 @@ func test_frames_the_midpoint_and_looks_at_it() -> void:
 	assert_true(forward.is_equal_approx(to_focus), "camera looks at the focus")
 	assert_true(rig.camera().global_position.y > 0.0, "elevated")
 	assert_eq(rig.rotation, Vector3.ZERO, "no orientation of its own until a local side asks for one")
+	assert_true(rig.camera().environment == null, "the match camera does not override the world environment")
 	rig.queue_free()
 
 

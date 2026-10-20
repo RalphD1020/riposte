@@ -165,9 +165,7 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	await await_frames(1)
 	assert_false(is_instance_valid(first), "the finished duel screen was freed")
 	assert_eq(app.router.current_id, AppScreen.Id.RESULTS, "results follow the match")
-	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "results keep the arena theme")
 	assert_eq(_playing_named(booted.main, "menu_theme.mp3"), 0, "the showcase does not start the menu theme")
-	assert_eq(_looping_players(booted.main), 1, "still one music loop")
 	assert_eq(_crowd_beds(booted.main), 0, "the crowd bed does not follow the match to Results")
 	var winner := first_session.state.match_winner
 	var expected := "VICTORY" if winner == 0 else ("DEFEAT" if winner == 1 else "DRAW")
@@ -175,13 +173,39 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	for child in app.presentation_mount.get_children():
 		assert_false(child is MatchPresenter, "leaving the duel disposed its presenter")
 	assert_eq(results.is_victory(), winner == 0 or winner == 1, "a decided set opens on the winner's showcase")
+	await await_frames(2)
 	if results.is_victory():
+		var director := results.victory_director()
+		assert_false(app.is_loop_playing(), "the match ending stops the arena theme")
+		assert_true(app.loop_stream() == null, "and clears it")
+		assert_eq(_playing_named(booted.main, "arena_theme.mp3"), 0, "the arena file is not still playing")
+		assert_eq(_playing_named(booted.main, "menu_theme.mp3"), 0, "the menu theme stays gone")
+		assert_eq(_looping_players(booted.main), 0, "no looping music under the victory")
+		assert_true(director.audio().is_sting_playing(), "the showcase plays the sting itself")
+		var sting := director.audio().get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
+		assert_eq(sting.stream.resource_path.get_file(), "wolf_victory.mp3", "that sting is wolf_victory")
+		assert_eq(sting.volume_db, AudioDirector.VICTORY_STING_DB, "under the announcer")
+		var stopped_starts := app.loop_start_count()
+		director.advance(director.profile().announcer_time + 0.05)
+		var voice := director.audio().get_node(AudioDirector.PLAYER_ANNOUNCER) as AudioStreamPlayer
+		assert_true(voice.playing, "the announcer still reads the winner")
+		assert_eq(voice.stream, director.profile().announcer_line, "that line is the winner's")
+		assert_true(sting.playing, "the sting is still under that line")
+		assert_true(voice.volume_db > sting.volume_db, "and the line stays in front")
+		assert_false(app.is_loop_playing(), "the arena theme stays stopped through the victory")
+		assert_eq(app.loop_start_count(), stopped_starts, "and is not started again")
 		results.set_process(false)
 		results.skip_victory()
+		assert_false(director.audio().is_sting_playing(), "skip stops the sting")
+		assert_false(app.is_loop_playing(), "skip leaves the arena theme stopped")
 		assert_true(results.victory_card().has_mark(), "the winner's mark is on the victory card")
+	else:
+		assert_false(app.is_loop_playing(), "a draw stops the arena theme too")
+		assert_eq(_playing_named(booted.main, "arena_theme.mp3"), 0, "the arena file is not still playing")
+		assert_eq(_looping_players(booted.main), 0, "and no other loop takes its place")
 	assert_eq(_results_title(results), expected, "outcome from the human's side")
 	assert_true(_press(results, "REMATCH"), "Rematch offered")
-	await await_frames(1)
+	await await_frames(2)
 	var second := _match(booted)
 	assert_true(second != null and second.session != first_session, "rematch composes a fresh session")
 	assert_ne(second.session.config.seed_value, first_session.config.seed_value, "with a fresh seed")
@@ -192,6 +216,9 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_false(second.presenter.audio().is_crowd_chant_playing(), "rematch starts without a name")
 	assert_eq(second._crowd.chant_slot, -1, "rematch has no favorite")
 	assert_eq(second.presenter.crowd().standing_sections(), 0, "rematch starts seated")
+	assert_near(app.loop_volume_db(), RiposteApp.LOOP_VOLUME_DB, 0.01, "rematch leaves the arena loop at its resting level")
+	assert_eq(_count_named(booted.main, AudioDirector.PLAYER_STING), 1, "the showcase sting player does not survive rematch")
+	assert_false(second.presenter.audio().is_sting_playing(), "the match horn player is not still playing the victory sting")
 	var rematch_starts := app.loop_start_count()
 	_run_until(second, func() -> bool: return second.session.state.phase == MatchPhase.Id.ROUND_ACTIVE)
 	_push(_key(KEY_ESCAPE, true))
@@ -208,6 +235,8 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	await await_frames(2)
 	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "quit returns to the menu")
 	assert_eq(app.loop_stream().resource_path.get_file(), "menu_theme.mp3", "quit returns to the menu theme")
+	assert_near(app.loop_volume_db(), RiposteApp.LOOP_VOLUME_DB, 0.01, "the menu theme is at its own level")
+	assert_eq(_count_named(booted.main, AudioDirector.PLAYER_STING), 0, "quit leaves no sting player")
 	assert_eq(_crowd_beds(booted.main), 0, "quit leaves no crowd bed")
 	assert_eq(app.telemetry.count_product(ProductEvents.MATCH_EXITED), 1, "exit recorded")
 	assert_eq(app.presentation_mount.get_child_count(), 0, "no presenter outlives its match")
@@ -279,6 +308,38 @@ func test_selecting_the_same_stream_does_not_restart_the_loop() -> void:
 	await _shutdown(booted)
 
 
+## Results stops the arena theme. The next match starts it again, once.
+func test_results_stop_the_arena_theme_and_rematch_starts_it() -> void:
+	var booted := await _boot_ready()
+	var app := booted.app
+	var arena := load(AudioKitPlan.ARENA_KIT) as PresentationKit
+	var theme := arena.stream_for(PresentationKit.CUE_MUSIC)
+	assert_true(theme != null, "fixture: the arena theme exists")
+	app.publish_match_music(theme)
+	app.select_screen_music(AppScreen.Id.MATCH)
+	await await_frames(2)
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "fixture: the arena theme is up")
+	assert_true(app.is_loop_playing(), "fixture: and it is playing")
+	var arena_starts := app.loop_start_count()
+	app.select_screen_music(AppScreen.Id.MATCH)
+	assert_eq(app.loop_start_count(), arena_starts, "staying on the match does not restart it")
+	app.select_screen_music(AppScreen.Id.RESULTS)
+	await await_frames(2)
+	assert_false(app.is_loop_playing(), "results stop the arena theme")
+	assert_true(app.loop_stream() == null, "and clear the player")
+	assert_eq(_playing_named(booted.main, "arena_theme.mp3"), 0, "the arena file is not still playing")
+	assert_eq(app.loop_start_count(), arena_starts, "stopping does not count as a new start")
+	app.select_screen_music(AppScreen.Id.MATCH)
+	await await_frames(2)
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "the next match starts the arena theme")
+	assert_true(app.is_loop_playing(), "and it is playing")
+	assert_near(app.loop_volume_db(), RiposteApp.LOOP_VOLUME_DB, 0.01, "at its resting level")
+	assert_eq(app.loop_start_count(), arena_starts + 1, "that start happens once")
+	app.select_screen_music(AppScreen.Id.MATCH)
+	assert_eq(app.loop_start_count(), arena_starts + 1, "the theme already playing does not restart")
+	await _shutdown(booted)
+
+
 ## A set is one match (PRES-INTRO-001): introduced once at its start, never at
 ## a new round, and a Rematch is a new set.
 func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
@@ -324,7 +385,12 @@ func test_the_set_intro_plays_once_per_set_and_never_touches_the_duel() -> void:
 	assert_eq(screen.hud.find_children("*", "ProgressBar", true, false).size(), 2, "two stamina bars and no health bars")
 	assert_true(screen.hud.stamina_bar(0).visible and screen.hud.stamina_bar(1).visible, "both stamina bars are up")
 	assert_true(String(screen.hud.condition_icon(0).accessibility_name).ends_with(" health"), "health is the icon")
+	var round_music := app.loop_start_count()
 	_run_until(screen, func() -> bool: return screen.session.state.round_number >= 2 or screen.is_finished())
+	assert_eq(app.loop_start_count(), round_music, "a new round does not restart the arena theme")
+	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "and does not stop it")
+	assert_true(app.is_loop_playing(), "the arena theme is still the music")
+	assert_near(app.loop_volume_db(), RiposteApp.LOOP_VOLUME_DB, 0.01, "a round break leaves the arena theme at its level")
 	assert_false(screen.is_intro_playing(), "a new round is never introduced again")
 	assert_false(screen.is_finished(), "fixture: a first-to-three set has a second round")
 	assert_eq(screen.round_start.text(), "MATCH 2", "but every round gets its card")
@@ -763,6 +829,15 @@ func test_results_without_a_match_fall_back_to_the_menu() -> void:
 	await await_frames(2)
 	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "an empty results screen hands back to the menu")
 	await _shutdown(booted)
+
+
+func _count_named(node: Node, node_name: String) -> int:
+	var count := 0
+	if String(node.name) == node_name:
+		count += 1
+	for child in node.get_children():
+		count += _count_named(child, node_name)
+	return count
 
 
 func _looping_players(node: Node) -> int:

@@ -4,7 +4,8 @@ extends Node
 ## Pooled match audio. Spatial voices for blade and body contact play on the
 ## Combat bus, flat voices for round stings on SFX, menu/HUD cues on UI, two
 ## independently owned Voice players (the announcer and the fighter call),
-## and one sting voice (the set-winning horn) on Music. The menu and arena
+## and one sting voice on Music (the match horn, or this director's victory
+## sting). The menu and arena
 ## loops are not this director's: `RiposteApp` owns that one player and
 ## selects the stream. Cues come from kits; a missing cue is silent and never
 ## holds anything up — a voiced line still asks for its caption. Doppler is
@@ -42,6 +43,10 @@ const LAYER_VOLUME_DB := -3.0
 ## call stays well under that line.
 const ANNOUNCER_GAIN_DB := 6.0
 const CALL_TRIM_DB := -20.0
+## The character victory sting, on this director's Music player. Under the
+## announcer. The howl's trim is the call, not this cue. Listening can retune
+## it; the buses stay as they are.
+const VICTORY_STING_DB := -6.0
 const PLAYER_ANNOUNCER := "VoiceAnnouncer"
 const PLAYER_FIGHTER := "VoiceFighter"
 const PLAYER_STING := "MusicSting"
@@ -320,6 +325,17 @@ func play_crowd_cue(kit: PresentationKit, cue: StringName) -> bool:
 	return play_crowd_shot(stream)
 
 
+## The winner's one-shot, under the announcer. A null or looping stream is
+## refused. The match horn uses `play_match_horn`; the intro sting uses
+## `play_sting`.
+func play_victory_sting(stream: AudioStream) -> bool:
+	if stream == null or _loops(stream):
+		return false
+	_sting.pitch_scale = 1.0
+	_start(_sting, stream, VICTORY_STING_DB)
+	return true
+
+
 ## A one-shot sting at its authored speed. The match horn uses `play_match_horn`.
 func play_sting(stream: AudioStream) -> bool:
 	if stream == null:
@@ -451,6 +467,13 @@ func _start_spatial(stream: AudioStream, world: Vector3, volume_db: float, pitch
 	voice.position = world
 	voice.pitch_scale = pitch
 	_start(voice, stream, volume_db)
+
+
+func _loops(stream: AudioStream) -> bool:
+	if stream is AudioStreamWAV:
+		return (stream as AudioStreamWAV).loop_mode != AudioStreamWAV.LOOP_DISABLED
+	var looping: Variant = stream.get("loop")
+	return looping == null or bool(looping)
 
 
 func _start(player: Node, stream: AudioStream, volume_db: float) -> void:

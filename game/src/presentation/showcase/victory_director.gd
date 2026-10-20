@@ -8,8 +8,9 @@ extends Node3D
 ## divider — then the gather into the duel's own high shoulder load, held
 ## while the stage darkens, the howl starts on VoiceFighter, the camera pushes
 ## from full body into the profile, and the announcer reads the name on
-## VoiceAnnouncer so the two overlap. No third,
-## released attack. It settles into the held load's breathing idle and hands
+## VoiceAnnouncer so the howl and the line overlap. This director plays the
+## winner's one-shot sting once on its own Music player, under that line.
+## The arena theme has already stopped with the match. No third, released attack. It settles into the held load's breathing idle and hands
 ## the screen its results (`results_ready`).
 ##
 ## Presentation-only: it never steps, reads, or writes the simulation, and it
@@ -47,6 +48,8 @@ const STREAK_FROM := 0.8
 const CHARGE_DARKEN := 0.7
 const STAGE_RADIUS := 3.0
 const STAGE_COLOR := Color("2a2622")
+## Results-stage fill. Independent of the match `WORLD_AMBIENT_ENERGY`.
+const STAGE_AMBIENT_ENERGY := 0.35
 ## The held charge voice (the duel's tension slot 0; the showcase has one
 ## fighter).
 const CHARGE_SLOT := 0
@@ -75,6 +78,9 @@ var _flash_scale: float = 1.0
 var _particles: float = 1.0
 var _hilt: float = 0.0
 var _tip: float = 0.0
+## True from the moment the one-shot starts until it finishes, is skipped, or
+## the showcase is torn down. A second call does not start another copy.
+var _sting_hold: bool = false
 
 
 static func create(combatant: CombatantPresentationKit, side: DuelSide.Id, push_radius: float, hilt: float, tip: float, flash_scale: float = 1.0, particles: float = 1.0) -> VictoryDirector:
@@ -82,6 +88,8 @@ static func create(combatant: CombatantPresentationKit, side: DuelSide.Id, push_
 	director.name = "Victory"
 	director._combatant = combatant
 	director._side = side
+	## A blank profile is silence. A playable fighter is not supposed to arrive
+	## here without a profile; the roster test is what catches that.
 	director._profile = combatant.victory() if combatant.victory() != null else FighterVictoryProfile.new()
 	director._flash_scale = flash_scale
 	director._particles = particles
@@ -115,6 +123,7 @@ func _ready() -> void:
 	_actor.advance(0.0)
 	_frame_camera(0.0)
 	_previous_tip = _blade_tip()
+	_begin_sting()
 
 
 ## The profile's beats as one time-ordered table (a stable insertion sort of
@@ -147,7 +156,8 @@ func _build_stage() -> void:
 	_environment.background_color = RiposteTheme.WORLD_BACKGROUND
 	_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_environment.ambient_light_color = RiposteTheme.WORLD_AMBIENT
-	_environment.ambient_light_energy = 0.35
+	## The results stage keeps its own fill. It does not follow the match sky.
+	_environment.ambient_light_energy = STAGE_AMBIENT_ENERGY
 	_ambient = _environment.ambient_light_energy
 	world.environment = _environment
 	add_child(world)
@@ -198,6 +208,7 @@ func advance(delta: float) -> void:
 func finish() -> void:
 	if _stage == Stage.RESULTS:
 		return
+	_end_sting(true)
 	_time = maxf(_time, _profile.interactive_time)
 	_combo_done = true
 	_darken()
@@ -234,6 +245,7 @@ func elapsed() -> float:
 
 ## Stop every sound this showcase started. Safe during teardown.
 func dispose() -> void:
+	_end_sting(true)
 	if _audio != null and is_instance_valid(_audio):
 		_audio.stop_all()
 	if _vfx != null and is_instance_valid(_vfx):
@@ -242,6 +254,35 @@ func dispose() -> void:
 
 func _exit_tree() -> void:
 	dispose()
+
+
+## The winner's sting, once, as the showcase opens. A missing or looping
+## stream stays silent. The arena theme is already stopped with the match.
+func _begin_sting() -> void:
+	if _sting_hold or _audio == null:
+		return
+	var stream := _profile.one_shot_sting()
+	var player := _audio.get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
+	if stream == null or player == null:
+		return
+	if not player.finished.is_connected(_on_sting_finished):
+		player.finished.connect(_on_sting_finished)
+	_sting_hold = true
+	if _audio.play_victory_sting(stream):
+		return
+	_sting_hold = false
+
+
+## Natural end. `stop()` does not emit `finished`, so skip and teardown
+## stop the player themselves.
+func _on_sting_finished() -> void:
+	_end_sting(false)
+
+
+func _end_sting(stop_player: bool) -> void:
+	if stop_player and _audio != null and is_instance_valid(_audio):
+		_audio.stop_sting()
+	_sting_hold = false
 
 
 ## Fire every beat at or before `until`, each exactly once, in time order.

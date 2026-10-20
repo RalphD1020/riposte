@@ -23,8 +23,9 @@ var match_config: MatchConfig
 var last_session: MatchSession
 ## Where settings persist; tests point this at a scratch file.
 var settings_path: String = PlayerSettings.PATH
-## The one looping music player. Menus and the match select its stream;
-## they do not each own a player.
+## The one music player. Menus and the match select its stream. The victory
+## sting does not: the showcase plays that one-shot itself. Results stops this
+## loop. Rematch starts the arena theme again.
 const MENU_LOOP := "res://assets/presentation/audio/music/menu_theme.mp3"
 const LOOP_VOLUME_DB := -8.0
 ## Applied to the outgoing playback before stop. Godot fades a stopped
@@ -43,6 +44,9 @@ var _match_music: AudioStream
 ## `play()` stacks a voice, and `stop()` only fades the old one. The new
 ## voice starts on the next frame, after that fade has left the server.
 var _pending_music: AudioStream
+## Level applied when the pending voice actually starts. Themes use
+## `LOOP_VOLUME_DB`.
+var _pending_volume_db: float = LOOP_VOLUME_DB
 var _music_dirty: bool = false
 ## How many times `play()` ran on the loop. Same stream already playing does
 ## not increment. Playback position is not this contract.
@@ -126,11 +130,12 @@ func publish_match_music(stream: AudioStream) -> void:
 	_match_music = stream
 
 
-## Select the one loop. The same stream, already playing, is left alone, so
-## opening Settings does not restart the menu. A different stream stops this
-## player now and starts the new voice next frame, so the faded menu voice
-## and the arena voice are never both in the mix. A null stream stops it.
-func play_loop(stream: AudioStream) -> void:
+## Select the one music voice. The same stream, already playing, is left
+## alone, so opening Settings does not restart the menu and a new round does
+## not restart the arena theme. A different stream, or a stop, mutes this
+## player now and applies the change next frame, so two themes are never both
+## in the mix. A null stream stops it.
+func play_loop(stream: AudioStream, volume_db: float = LOOP_VOLUME_DB) -> void:
 	if _loop == null:
 		return
 	if _music_dirty and stream == _pending_music:
@@ -138,6 +143,12 @@ func play_loop(stream: AudioStream) -> void:
 	if not _music_dirty and stream != null and _loop.stream == stream and _loop.playing:
 		return
 	_pending_music = stream
+	_pending_volume_db = volume_db
+	_music_dirty = true
+	_loop.volume_db = LOOP_CUT_DB
+	_loop.stop()
+	_loop.stream = null
+	set_process(true)
 	_music_dirty = true
 	_loop.volume_db = LOOP_CUT_DB
 	_loop.stop()
@@ -151,7 +162,7 @@ func _process(_delta: float) -> void:
 		return
 	_music_dirty = false
 	var stream := _pending_music
-	_loop.volume_db = LOOP_VOLUME_DB
+	_loop.volume_db = _pending_volume_db
 	set_process(false)
 	if stream == null:
 		return
@@ -184,23 +195,28 @@ func loop_start_count() -> int:
 	return _loop_starts
 
 
+func loop_volume_db() -> float:
+	return 0.0 if _loop == null else _loop.volume_db
+
+
 ## Instance id of the one MusicLoop player. Tests use this to prove the
 ## playing Music loop is this node, not a second source.
 func loop_player_id() -> int:
 	return 0 if _loop == null else _loop.get_instance_id()
 
 
-## MATCH and Results play the published arena theme. The victory showcase is
-## Results, so ending the match does not start the menu theme under the horn.
-## A menu screen (main, how-to, settings) plays the menu theme. A missing
-## arena stream on MATCH stops the loop rather than keeping the menu.
+## MATCH plays the published arena theme through every round. RESULTS stops
+## it: the match is over, and the victory sting is the showcase's own player.
+## Rematch is a new MATCH, so the arena theme starts again. A menu screen
+## plays the menu theme. A missing arena stream on MATCH stops the loop
+## rather than keeping the menu.
 func select_screen_music(screen: AppScreen.Id) -> void:
 	last_music_fault = ""
-	if screen == AppScreen.Id.MATCH or screen == AppScreen.Id.RESULTS:
+	if screen == AppScreen.Id.RESULTS:
+		play_loop(null)
+		return
+	if screen == AppScreen.Id.MATCH:
 		if _match_music == null:
-			if screen == AppScreen.Id.RESULTS:
-				play_loop(_menu_music)
-				return
 			last_music_fault = FAULT_MATCH_MUSIC_MISSING
 			push_error(FAULT_MATCH_MUSIC_MISSING)
 			play_loop(null)

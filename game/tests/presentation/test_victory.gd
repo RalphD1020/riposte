@@ -72,6 +72,7 @@ func test_every_beat_sounds_exactly_once_over_a_long_showcase() -> void:
 	assert_eq(_count(director, _horn()), 0, "a long results screen never plays the arena horn")
 	assert_eq(_count(director, profile.announcer_line), 1, "or the line")
 	assert_eq(_count(director, combatant.fighter.character_call), 1, "or the howl")
+	assert_eq(_count(director, profile.sting), 1, "or the sting")
 	director.free()
 
 
@@ -85,7 +86,8 @@ func test_the_charge_is_held_through_the_gather_and_released_on_the_lock() -> vo
 	assert_true(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "the charge is held through the gather")
 	_run(director, ceili((profile.charge_lock_time - mid) / FRAME) + 2)
 	assert_false(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "the lock releases it — a looping stream never outlives the gather")
-	assert_false(director.audio().is_sting_playing(), "the lock does not start the set horn")
+	assert_eq(_count(director, _horn()), 0, "the lock does not start the set horn")
+	assert_eq(_count(director, profile.sting), 1, "the sting started once with the showcase, not on the lock")
 	_run(director, 600)
 	assert_false(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "nothing restarts the charge afterwards")
 	director.free()
@@ -117,6 +119,10 @@ func test_the_howl_and_the_announcer_play_together() -> void:
 	assert_eq(announcer.volume_db, AudioDirector.ANNOUNCER_GAIN_DB, "the announcer is boosted")
 	assert_eq(fighter.volume_db, AudioDirector.CALL_TRIM_DB, "the howl is trimmed under that line")
 	assert_true(fighter.volume_db <= announcer.volume_db - 20.0, "the line stays well in front of the howl")
+	var sting := audio.get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
+	assert_true(sting != null and sting != announcer and sting != fighter, "the sting has its own player")
+	assert_false(sting.playing, "a skip stops the sting instead of leaving it running")
+	assert_eq(_count(director, profile.sting), 1, "after the one start")
 	director.free()
 
 
@@ -129,6 +135,8 @@ func test_skipping_twice_or_pausing_replays_nothing() -> void:
 	director.finish()
 	assert_eq(_count(director, _horn()), 0, "a skip does not play the arena horn")
 	assert_eq(_count(director, profile.announcer_line), 1, "and the line once")
+	assert_eq(_count(director, profile.sting), 1, "the sting is not started again")
+	assert_false(director.audio().is_sting_playing(), "a skip stops the sting without waiting for finished")
 	assert_false(director.audio().is_tension_held(VictoryDirector.CHARGE_SLOT), "a skip never leaves the charge held")
 	## A paused screen advances by zero; a resume continues where it was.
 	for _i in 120:
@@ -162,7 +170,8 @@ func test_a_missing_take_never_holds_the_timeline() -> void:
 	assert_false(director.is_cinematic(), "the results still arrive")
 	assert_eq(cards[0], 1, "the card still shows, once")
 	assert_eq(captions, [director.profile().announcer_caption] as Array[String], "the winner line still reads as a caption, once")
-	assert_false(director.audio().is_sting_playing() or director.audio().is_voice_playing(), "and nothing sounds in their place")
+	assert_false(director.audio().is_voice_playing(), "a missing line does not invent a voice")
+	assert_eq(_count(director, _horn()), 0, "and the horn stays out")
 	director.free()
 
 
@@ -186,6 +195,7 @@ func test_one_shot_streams_never_loop() -> void:
 	one_shots.append_array(announcer.match_numbers)
 	var victory := kits.combatant(0).victory()
 	one_shots.append(victory.announcer_line)
+	one_shots.append(victory.sting)
 	one_shots.append(_horn())
 	var checked := 0
 	for stream in one_shots:
@@ -196,3 +206,114 @@ func test_one_shot_streams_never_loop() -> void:
 	assert_true(checked >= 6, "fixture: the announcer and victory takes are authored (%d checked)" % checked)
 	var held := kits.weapon.stream_for(PresentationKit.CUE_CHARGE, 0)
 	assert_true(held != null and bool(held.get("loop")), "the held charge loops — it has an owner that releases it")
+
+
+## The announcer stays on Voice. The sting is this director's Music player,
+## already started, and the two overlap.
+func test_the_announcer_and_the_sting_play_together() -> void:
+	var combatant := _combatant()
+	var director := _director(combatant)
+	var profile := director.profile()
+	_run(director, ceili(profile.announcer_time / FRAME) + 2)
+	var audio := director.audio()
+	var voice := audio.get_node(AudioDirector.PLAYER_ANNOUNCER) as AudioStreamPlayer
+	var sting := audio.get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
+	assert_true(voice != null and sting != null and voice != sting, "the line and the sting player are different")
+	assert_eq(voice.bus, AudioBuses.VOICE, "the announcer stays on Voice")
+	assert_eq(sting.bus, AudioBuses.MUSIC, "the sting stays on Music")
+	assert_true(voice.playing, "the winner line is playing")
+	assert_true(sting.playing, "and the sting is playing with it")
+	assert_eq(voice.stream, profile.announcer_line, "the voice player is the winner line")
+	assert_eq(sting.stream, profile.one_shot_sting(), "the sting player is the winner's one-shot")
+	assert_eq(_count(director, profile.sting), 1, "the sting started once")
+	assert_eq(_count(director, profile.announcer_line), 1, "and so did the line")
+	assert_true(voice.volume_db > sting.volume_db, "the line is louder than the sting")
+	director.free()
+
+
+## The assigned file is the imported stand-in. The music player is what plays it.
+func test_the_stand_in_is_the_real_stream() -> void:
+	var profile := _combatant().victory()
+	var sting := profile.one_shot_sting()
+	assert_true(sting != null, "fixture: Wolf has a one-shot sting")
+	assert_eq(sting.resource_path, RiposteKits.VICTORY_STING_STAND_IN, "the player is holding the assigned file")
+	assert_near(sting.get_length(), 6.5, 1.0, "Wolf's victory theme is about five seconds")
+
+
+func test_a_silent_profile_does_not_keep_the_previous_sting() -> void:
+	var first := _director(_combatant())
+	assert_true(first.audio().is_sting_playing(), "fixture: Wolf's showcase starts its sting")
+	first.free()
+	var second := _director(_with_sting(null))
+	assert_false(second.audio().is_sting_playing(), "a profile without a sting stays silent")
+	assert_true(second.profile().one_shot_sting() == null, "and it has nothing to start")
+	second.free()
+
+
+func test_the_sting_plays_once_and_a_skip_stops_it() -> void:
+	var combatant := _combatant()
+	var director := _director(combatant)
+	assert_eq(_count(director, combatant.victory().sting), 1, "the showcase starts the sting once")
+	assert_eq(_count(director, _horn()), 0, "and not the match horn")
+	assert_true(director.audio().is_sting_playing(), "its music player is the sting")
+	director.finish()
+	director.finish()
+	assert_eq(_count(director, combatant.victory().sting), 1, "a skip does not start another")
+	assert_false(director.audio().is_sting_playing(), "and it stops the one that was playing")
+	director.free()
+
+
+## Emitting `finished` proves the end handler. It does not prove the mixer
+## played the file to the end.
+func test_a_finished_signal_ends_the_sting_once() -> void:
+	var director := _director(_combatant())
+	var player := director.audio().get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
+	assert_true(player.playing, "fixture: the sting is up")
+	player.finished.emit()
+	player.finished.emit()
+	assert_eq(_count(director, director.profile().sting), 1, "a finished signal does not start the sting again")
+	director.finish()
+	assert_eq(_count(director, director.profile().sting), 1, "and a skip after that does not either")
+	assert_false(director.audio().is_sting_playing(), "the player is stopped")
+	director.free()
+
+
+func test_a_missing_or_looping_sting_is_not_a_one_shot() -> void:
+	var missing := _with_sting(null)
+	assert_true(missing.victory().one_shot_sting() == null, "an unset sting is not played")
+	var looped := AudioStreamWAV.new()
+	looped.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	var refused := _with_sting(looped)
+	assert_true(refused.victory().one_shot_sting() == null, "a looping stream is not played")
+	var director := _director(refused)
+	assert_false(director.audio().is_sting_playing(), "and the showcase does not start it")
+	director.free()
+
+
+func test_two_showcases_do_not_leave_a_sting_player() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var before := _named(tree.root, AudioDirector.PLAYER_STING)
+	var first := _director(_combatant())
+	var second := _director(_combatant())
+	assert_eq(_named(tree.root, AudioDirector.PLAYER_STING) - before, 2, "each showcase owns one sting player")
+	first.free()
+	second.free()
+	assert_eq(_named(tree.root, AudioDirector.PLAYER_STING), before, "freeing both showcases removes both players")
+
+
+func _with_sting(stream: AudioStream) -> CombatantPresentationKit:
+	var combatant := _combatant()
+	var fighter := combatant.fighter.duplicate() as PresentationKit
+	var victory := combatant.victory().duplicate() as FighterVictoryProfile
+	victory.sting = stream
+	fighter.victory = victory
+	return CombatantPresentationKit.of(fighter, combatant.weapon, combatant.fighter_skin, combatant.weapon_skin)
+
+
+func _named(node: Node, node_name: String) -> int:
+	var count := 0
+	if String(node.name) == node_name:
+		count += 1
+	for child in node.get_children():
+		count += _named(child, node_name)
+	return count

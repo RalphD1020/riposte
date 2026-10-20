@@ -36,7 +36,6 @@ const GROUND_THICKNESS := 0.2
 const BOWL_SCENE := "res://assets/generated/arenas/arena_bowl.glb"
 
 var _crowd: CrowdStage
-var _surface: ArenaSurfaceState
 var _ripple: MeshInstance3D
 
 
@@ -53,8 +52,7 @@ static func create(kit: PresentationKit, platform_radius: float, edge_warning_in
 		scaffold.add_child(stage)
 		scaffold._hide_stand_in(stage)
 		scaffold._hide_replaced_disc(stage)
-		scaffold._surface = ArenaSurfaceState.create(platform_radius)
-		scaffold.add_child(scaffold._surface)
+		scaffold.add_child(ArenaSurfaceState.create(platform_radius))
 		var curb := layout.curb_inner_radius if layout.issues().is_empty() else -1.0
 		scaffold._build_ring(platform_radius, edge_warning_inset, curb)
 	else:
@@ -92,10 +90,6 @@ func presentation_ground() -> StaticBody3D:
 
 func crowd() -> CrowdStage:
 	return _crowd
-
-
-func surface() -> ArenaSurfaceState:
-	return _surface
 
 
 func react(cue: StringName, excitement: float) -> void:
@@ -188,6 +182,7 @@ func _hide_stand_in(node: Node) -> void:
 		_hide_stand_in(child)
 		if child is Node3D and is_stand_in(String(child.name)):
 			(child as Node3D).visible = false
+			child.queue_free()
 
 
 func _hide_replaced_disc(node: Node) -> void:
@@ -195,6 +190,7 @@ func _hide_replaced_disc(node: Node) -> void:
 		_hide_replaced_disc(child)
 		if child is Node3D and is_replaced_disc(String(child.name)):
 			(child as Node3D).visible = false
+			child.queue_free()
 
 
 func _build_environment() -> void:
@@ -203,13 +199,14 @@ func _build_environment() -> void:
 	var sky_material := ProceduralSkyMaterial.new()
 	sky_material.sky_top_color = RiposteTheme.SKY_TOP
 	sky_material.sky_horizon_color = RiposteTheme.SKY_HORIZON
-	sky_material.sky_curve = 0.08
-	sky_material.sky_energy_multiplier = 0.85
+	sky_material.sky_curve = RiposteTheme.SKY_CURVE
+	sky_material.sky_energy_multiplier = RiposteTheme.SKY_ENERGY
 	sky_material.ground_bottom_color = RiposteTheme.SKY_GROUND
 	sky_material.ground_horizon_color = RiposteTheme.SKY_GROUND_HORIZON
-	sky_material.ground_curve = 0.12
-	sky_material.ground_energy_multiplier = 0.85
-	sky_material.sun_angle_max = 0.0
+	sky_material.ground_curve = RiposteTheme.SKY_GROUND_CURVE
+	sky_material.ground_energy_multiplier = RiposteTheme.SKY_GROUND_ENERGY
+	sky_material.sun_angle_max = RiposteTheme.SKY_SUN_ANGLE_MAX
+	sky_material.sun_curve = RiposteTheme.SKY_SUN_CURVE
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 	environment.sky = sky
@@ -220,8 +217,13 @@ func _build_environment() -> void:
 	world.name = "Environment"
 	world.environment = environment
 	add_child(world)
-	add_child(_light("KeyLight", RiposteTheme.WORLD_KEY, RiposteTheme.WORLD_KEY_ENERGY, RiposteTheme.WORLD_KEY_ROTATION_DEGREES))
-	add_child(_light("RimLight", RiposteTheme.WORLD_RIM, RiposteTheme.WORLD_RIM_ENERGY, RiposteTheme.WORLD_RIM_ROTATION_DEGREES))
+	## The key owns the sun disc. The rim stays a fill, so the sky has one sun.
+	var key := _light("KeyLight", RiposteTheme.WORLD_KEY, RiposteTheme.WORLD_KEY_ENERGY, RiposteTheme.WORLD_KEY_ROTATION_DEGREES)
+	key.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
+	add_child(key)
+	var rim := _light("RimLight", RiposteTheme.WORLD_RIM, RiposteTheme.WORLD_RIM_ENERGY, RiposteTheme.WORLD_RIM_ROTATION_DEGREES)
+	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	add_child(rim)
 
 
 static func _light(light_name: String, color: Color, energy: float, rotation_deg: Vector3) -> DirectionalLight3D:

@@ -160,7 +160,7 @@ func test_the_layout_puts_feet_on_four_treads_and_leaves_the_disc_alone() -> voi
 	var raised := ArenaSection.load_layout()
 	raised.curb_height = 0.09
 	assert_true(raised.issues().size() > 0, "a 9 cm lip is not a flush edge")
-	assert_near(layout.foot_offset, 0.09, 1e-6, "the seated mesh minimum is the foot offset")
+	assert_near(layout.foot_offset, 0.4, 1e-6, "the origin drops so the seat of the figure meets the tread")
 	assert_near(layout.water_height, RingOutWater.SURFACE_Y, 1e-6, "the basin stays on the existing water line")
 	assert_true(layout.seats_clear_piers(), "a pier does not land in front of a seat")
 	var previous_height := -1.0
@@ -212,10 +212,20 @@ func test_the_layout_puts_feet_on_four_treads_and_leaves_the_disc_alone() -> voi
 	var sky_mat := env.environment.sky.sky_material as ProceduralSkyMaterial
 	assert_true(sky_mat != null, "the sky is procedural")
 	assert_eq(sky_mat.sky_top_color, RiposteTheme.SKY_TOP, "the overhead color is the theme")
-	assert_near(sky_mat.sun_angle_max, 0.0, 1e-4, "the sky draws no sun disc")
+	assert_eq(sky_mat.sky_horizon_color, RiposteTheme.SKY_HORIZON, "the horizon color is the theme")
+	assert_near(sky_mat.sun_angle_max, RiposteTheme.SKY_SUN_ANGLE_MAX, 1e-4, "the sun disc is the theme's small region")
+	assert_true(RiposteTheme.SKY_SUN_ANGLE_MAX > 0.0, "the sky keeps a sun disc")
 	assert_eq(env.environment.ambient_light_source, Environment.AMBIENT_SOURCE_COLOR, "the sky does not relight the fighters")
-	assert_false((arena.get_node("KeyLight") as DirectionalLight3D).shadow_enabled, "the key stays shadowless")
-	assert_false((arena.get_node("RimLight") as DirectionalLight3D).shadow_enabled, "the rim stays shadowless")
+	assert_near(env.environment.ambient_light_energy, RiposteTheme.WORLD_AMBIENT_ENERGY, 1e-4, "the fill energy is the theme")
+	var key := arena.get_node("KeyLight") as DirectionalLight3D
+	var rim := arena.get_node("RimLight") as DirectionalLight3D
+	assert_false(key.shadow_enabled, "the key stays shadowless")
+	assert_false(rim.shadow_enabled, "the rim stays shadowless")
+	assert_eq(key.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY, "the key draws the one sun")
+	assert_eq(rim.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_ONLY, "the rim does not add a second sun")
+	assert_true(key.light_energy > rim.light_energy, "the key stays stronger than the cool fill")
+	assert_eq(RiposteTheme.SAND, Color("c2baaa"), "the visible disc stays the sand token")
+	assert_eq(RiposteTheme.WORLD_FLOOR, Color("8a7f6c"), "the clothing token stays the mid stone")
 	var paving := arena.get_node_or_null("SandSurface")
 	var bowl := arena.get_node_or_null("Bowl")
 	assert_true(paving != null, "the sand disc is on the scaffold")
@@ -245,10 +255,19 @@ func _on_tread(origin: Vector3, layout: ArenaSection) -> bool:
 
 func _assert_sand(paving: Node, platform_radius: float) -> void:
 	var top := paving.get_node("Top") as MeshInstance3D
-	var disc := top.mesh as CylinderMesh
-	assert_near(disc.top_radius, platform_radius, 1e-4, "the sand disc is the combat radius")
+	var reached := 0.0
+	for vertex: Vector3 in top.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		reached = maxf(reached, Vector2(vertex.x, vertex.z).length())
+	assert_near(reached, platform_radius - ArenaSurfaceState.RIM_WIDTH, 1e-2, "sand stops inside the wooden rim")
+	var sand := top.material_override as StandardMaterial3D
+	assert_eq(sand.albedo_color, RiposteTheme.SAND, "the top is flat sand")
+	var rim := paving.get_node("Rim") as MeshInstance3D
+	var rim_wood := rim.material_override as StandardMaterial3D
+	assert_eq(rim_wood.albedo_color, RiposteTheme.WOOD, "the top of the raised edge is wood")
 	var side := paving.get_node("Side") as MeshInstance3D
-	for instance: MeshInstance3D in [top, side]:
+	var wood := side.material_override as StandardMaterial3D
+	assert_eq(wood.albedo_color, RiposteTheme.WOOD, "the raised side is wood")
+	for instance: MeshInstance3D in [top, rim, side]:
 		var mesh := instance.mesh
 		var xform := _chain(instance)
 		for surface_index: int in mesh.get_surface_count():

@@ -28,8 +28,10 @@ func _run() -> void:
 	viewport.add_child(world)
 	var rules := StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), rules)
+	kits.match_loadout = RiposteKits.match_loadout(kits.arena)
 	var arena := ArenaScaffold.create(kits.arena, rules.platform_radius, rules.edge_warning_inset, rules.spawn_offset, 4)
 	world.add_child(arena)
+	_fighters(world, rules, kits)
 	if not full:
 		var layout := ArenaSection.load_layout()
 		var bowl := arena.get_node_or_null("Bowl")
@@ -65,8 +67,29 @@ func _run() -> void:
 		await process_frame
 		await process_frame
 		_save(viewport, out, "%s%s" % ["full_" if full else "", String(shot["name"])])
+	_grayscale(arena, true)
+	await process_frame
+	await process_frame
+	_save(viewport, out, "%sgray" % ["full_" if full else ""])
 	print("RIPOSTE_LOOK_DIR", out)
 	quit()
+
+
+func _fighters(world: Node3D, rules: DuelRules, kits: DuelKits) -> void:
+	var state := DuelSetup.new_state(rules, 1)
+	var snap := SnapshotProjector.project(state, rules)
+	for slot in 2:
+		var row := snap.fighter(slot)
+		var spec := rules.combatant(slot)
+		var proxy := FighterPresentation3D.create(slot, row.side, kits.combatant(slot), spec.fighter.push_radius, spec)
+		world.add_child(proxy)
+		proxy.apply_pose(ArenaTransform.to_world(row.x, row.y), row.facing, row.weapon_angle, row, 1.0 / 60.0)
+
+
+func _grayscale(arena: Node, on: bool) -> void:
+	var env := arena.get_node("Environment") as WorldEnvironment
+	env.environment.adjustment_enabled = on
+	env.environment.adjustment_saturation = 0.0 if on else 1.0
 
 
 func _figure(arena: Node3D, mesh: Mesh, pose: Transform3D) -> void:

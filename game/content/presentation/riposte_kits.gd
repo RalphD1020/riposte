@@ -24,6 +24,9 @@ const SKIN_BASTARD_SWORD_TRAINING := &"skin.bastard_sword.training"
 
 ## Match-wide and cosmetic layers. All optional: a missing file is the default.
 const ANNOUNCER_PATH := "res://assets/presentation/voice/announcer/announcer_kit.tres"
+## Wolf's victory theme. Both match slots use this fighter, so they share it.
+## It is not the announcer's intro sting.
+const VICTORY_STING_STAND_IN := "res://assets/presentation/audio/music/wolf_victory.mp3"
 const UI_THEME_PATH := "res://assets/presentation/ui/ui_theme_kit.tres"
 const VFX_STYLE_PATH := "res://assets/presentation/vfx/vfx_style_kit.tres"
 const FIGHTER_SKIN_PATHS: PackedStringArray = [
@@ -113,6 +116,12 @@ static func required_ids() -> Array[StringName]:
 	return [ContentIds.FIGHTER_DUELIST, ContentIds.WEAPON_BASTARD_SWORD, ContentIds.ARENA_STANDARD]
 
 
+## Fighters a match can field. Both slots are this one character today.
+static func playable_fighter_ids() -> Array[StringName]:
+	var ids: Array[StringName] = [ContentIds.FIGHTER_DUELIST]
+	return ids
+
+
 static func factory_kits() -> Array[PresentationKit]:
 	var audio := PlaceholderAudio.cues()
 	var fighter := PresentationKit.new()
@@ -164,6 +173,7 @@ static func duelist_victory() -> FighterVictoryProfile:
 	var victory := FighterVictoryProfile.new()
 	victory.display_name = "WOLF"
 	victory.announcer_caption = "Wolf wins."
+	victory.sting = load(VICTORY_STING_STAND_IN) as AudioStream
 	return victory
 
 

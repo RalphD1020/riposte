@@ -20,6 +20,12 @@ extends Resource
 ## intro read: the joke lands because the name is finally right.
 @export var announcer_caption: String = ""
 @export var announcer_line: AudioStream
+## One-shot under the arena loop, chosen by this profile. A null stream leaves
+## the arena theme playing. A looping stream is refused. Every playable
+## fighter's resolved profile is required to have a one-shot; that check is
+## the roster test, not this field. Wolf's file is `music/wolf_victory.mp3`.
+## This is not the match horn, the howl, or a crowd voice.
+@export var sting: AudioStream
 
 ## The one-shot cinematic and the settled loop that follows it: a quick cut,
 ## the quick return cut, then the gather into the same high shoulder load the
@@ -34,8 +40,9 @@ extends Resource
 ## The return cut is through; the last part of its streak becomes the divider.
 @export var quick_cut_2_end_time: float = 0.57
 @export var charge_start_time: float = 0.7
-## The load is gathered and held: the fighter's howl starts here. The arena
-## horn is a separate sting and does not play in this cinematic.
+## The load is gathered and held: the fighter's howl starts here. The match
+## horn does not play in this cinematic. The profile sting is the director's
+## one-shot, started with the showcase, not on this beat.
 @export var charge_lock_time: float = 1.2
 @export var camera_push_start: float = 1.2
 @export var camera_push_end: float = 2.0
@@ -67,3 +74,17 @@ func is_ordered() -> bool:
 		if beats[index] < beats[index - 1]:
 			return false
 	return true
+
+
+## The sting when it is a one-shot. A null or looping stream is not played.
+func one_shot_sting() -> AudioStream:
+	if sting == null:
+		return null
+	if sting is AudioStreamWAV:
+		if (sting as AudioStreamWAV).loop_mode != AudioStreamWAV.LOOP_DISABLED:
+			return null
+		return sting
+	var looping: Variant = sting.get("loop")
+	if looping == null or bool(looping):
+		return null
+	return sting

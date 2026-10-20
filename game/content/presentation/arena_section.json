@@ -3,7 +3,7 @@
   "angular_zero": 0.0,
   "bay_count": 12,
   "section_count": 8,
-  "foot_offset": 0.09,
+  "foot_offset": 0.4,
   "water_height": -3.0,
   "floor": {
     "soffit": -0.4,

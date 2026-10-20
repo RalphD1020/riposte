@@ -83,6 +83,7 @@ static func apply_fighter(kit: PresentationKit, problems: PackedStringArray) -> 
 
 static func apply_victory(profile: FighterVictoryProfile, problems: PackedStringArray) -> void:
 	_set_stream(profile, "announcer_line", takes_for("voice/announcer:wolf_wins", problems))
+	_set_stream(profile, "sting", takes_for("music:wolf_victory", problems))
 
 
 static func apply_announcer(kit: AnnouncerKit, problems: PackedStringArray) -> void:

@@ -94,17 +94,16 @@ const PULSE_SCALE := 1.04
 const BANNER_SLASH_DISTANCE := 48.0
 
 ## --- Duel world (UX §7, §13, §18, §80) -------------------------------------
-## A lit stone platform under a muted daylight sky (`SKY_*` on the match
-## environment). `WORLD_BACKGROUND` remains the victory stage. The floor itself
-## stays a warm mid stone, because its luminance is where both a light and a
-## dark combatant clear 3:1 (WORLD_READS). A darker floor would trade the dark
-## fighter's readability for mood, and readability is not negotiable.
+## A lit sand disc under a saturated outdoor sky (`SKY_*` on the match
+## environment). `WORLD_BACKGROUND` remains the victory stage. The clothing
+## token stays a warm mid stone, because its luminance is where both a light
+## and a dark combatant clear 3:1 (WORLD_READS). The visible disc is `SAND`.
 const WORLD_BACKGROUND := Color("16161d")
 const WORLD_FLOOR := Color("8a7f6c")
 const WORLD_FLOOR_EDGE := Color("5e5648")
-## Sand over the wooden disc. Pale white, so the worn wood shows through the
-## scuffs. The contrast token for clothing stays `WORLD_FLOOR`.
-const SAND := Color("f4f1e8")
+## Sand on the fighting disc. Between the pale white and the original mid sand.
+## The wooden side is `WOOD`. The contrast token for clothing stays `WORLD_FLOOR`.
+const SAND := Color("c2baaa")
 const WOOD := Color("6b5344")
 ## The platform's visible cliff face, under the disc. Also the recessed
 ## masonry role: soffits, bay interiors, and the dark joint.
@@ -128,13 +127,21 @@ const WORLD_RING_EMISSION := 0.6
 const WORLD_HOME_LIGHT := Color("a09379")
 const WORLD_HOME_DARK := Color("6e6556")
 const WORLD_AMBIENT := Color("d0d0e0")
-const WORLD_AMBIENT_ENERGY := 0.35
-## Match sky. Background only: ambient stays `WORLD_AMBIENT`, so this does not
-## relight the fighters. Muted daylight, no sun disc.
-const SKY_TOP := Color("8fa4b8")
-const SKY_HORIZON := Color("b7a890")
-const SKY_GROUND_HORIZON := Color("a89880")
-const SKY_GROUND := Color("7a7164")
+## Cool fill, kept under the warm key so pale sand does not flatten both fighters.
+const WORLD_AMBIENT_ENERGY := 0.22
+## Match sky. Background only: ambient stays `WORLD_AMBIENT`, so the sky does
+## not relight the fighters. Saturated blue above, warm horizon, small sun.
+const SKY_TOP := Color("3a6ea5")
+const SKY_HORIZON := Color("e4bf96")
+const SKY_GROUND_HORIZON := Color("b08968")
+const SKY_GROUND := Color("4a4036")
+const SKY_CURVE := 0.16
+const SKY_ENERGY := 0.78
+const SKY_GROUND_CURVE := 0.2
+const SKY_GROUND_ENERGY := 0.55
+## Degrees. A tight disc from the key light, not a glow across the bowl.
+const SKY_SUN_ANGLE_MAX := 10.0
+const SKY_SUN_CURVE := 0.45
 const WORLD_KEY := Color("fff0d0")
 const WORLD_KEY_ENERGY := 1.3
 const WORLD_KEY_ROTATION_DEGREES := Vector3(-58.0, -32.0, 0.0)

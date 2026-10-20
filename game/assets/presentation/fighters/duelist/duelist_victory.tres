@@ -2,9 +2,11 @@
 
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/announcer/wolf_wins_01.mp3" id="1_hkasg"]
 [ext_resource type="Script" path="res://src/presentation/kit/fighter_victory_profile.gd" id="1_victory"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/music/wolf_victory.mp3" id="2_sting"]
 
 [resource]
 script = ExtResource("1_victory")
 display_name = "WOLF"
 announcer_caption = "Wolf wins."
 announcer_line = ExtResource("1_hkasg")
+sting = ExtResource("2_sting")

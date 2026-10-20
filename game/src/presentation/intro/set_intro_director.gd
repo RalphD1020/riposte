@@ -17,6 +17,8 @@ extends Node3D
 ## Timeline (~3.1 s): first fighter's shot and card, a versus beat, second
 ## fighter's shot and card, then a cut back to the gameplay camera under the
 ## sting; the round's "Match N … FIGHT!" follows from `RoundStartDirector`.
+## Only the fighter whose shot is playing is visible. The other intro figure
+## and its trail stay hidden, so that sword is not in the shot.
 ## The gameplay HUD is hidden throughout by `MatchScreen`'s chrome policy
 ## (PRES-CHROME-001), never by this director. Every voiced line is captioned,
 ## so the intro reads with sound off. Driven by `advance(delta)` from the
@@ -100,6 +102,7 @@ func _ready() -> void:
 	_camera.fov = SHOT_FOV
 	add_child(_camera)
 	_camera.make_current()
+	_show_shot(0)
 
 
 func advance(delta: float) -> void:
@@ -185,6 +188,7 @@ func _enter(beat_now: Beat) -> void:
 		Beat.FIRST, Beat.SECOND:
 			var slot := 0 if beat_now == Beat.FIRST else 1
 			var intro := _combatants[slot].intro()
+			_show_shot(slot)
 			_trails[slot].clear_trail()
 			_frame_shot(slot)
 			card_requested.emit(intro.display_name if intro != null else "")
@@ -208,6 +212,14 @@ func _enter(beat_now: Beat) -> void:
 				ribbon.visible = false
 			card_requested.emit("")
 			_audio.play_sting(_announcer.sting)
+
+
+## One fighter per shot. The other figure's sword stays out of the frame.
+func _show_shot(slot: int) -> void:
+	for index in _figures.size():
+		var on := index == slot
+		_figures[index].visible = on
+		_trails[index].visible = on
 
 
 ## Place the shot's camera from where the fighter starts the take: three

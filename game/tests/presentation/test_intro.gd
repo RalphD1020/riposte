@@ -124,6 +124,8 @@ func test_the_director_poses_intro_figures_from_the_take() -> void:
 		assert_true(drawn[int(end[0])].distance_to(truth) < 1.0e-3, "the planar sword's %s is the rehearsal's (%.4f m off)" % [end[2], drawn[int(end[0])].distance_to(truth)])
 	assert_true(figure.animation_player().has_animation(figure.playing_clip()), "the legs play a clip the rig has (%s)" % figure.playing_clip())
 	assert_true(figure != stand_in, "an intro figure, not a match proxy")
+	assert_true(director.figure(0).visible, "the fighter being introduced is on stage")
+	assert_false(director.figure(1).visible, "the other fighter's sword stays out of the shot")
 	director.finish()
 	assert_true(stand_in.visible, "finishing hands the stage back")
 	for node: Node in [audio, gameplay, stand_in]:
@@ -167,6 +169,8 @@ func test_the_howl_plays_under_the_announcer_on_each_shot() -> void:
 			howls += 1
 	assert_eq(howls, 2, "each fighter's shot howls once")
 	assert_true(audio.is_voice_playing() and audio.is_character_call_playing(), "the second shot still overlaps")
+	assert_true(director.figure(1).visible, "the second fighter is the one on stage")
+	assert_false(director.figure(0).visible, "the first fighter's sword is not left in the shot")
 	director.finish()
 	for node: Node in [audio, gameplay, stand_in]:
 		node.queue_free()

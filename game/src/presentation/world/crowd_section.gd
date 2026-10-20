@@ -141,17 +141,17 @@ func set_spectators_hidden(hidden: bool) -> void:
 func _pose_all(sway: bool) -> void:
 	if _home.is_empty() or _seated.is_empty():
 		return
-	var amp := lerpf(0.18, 0.42, _energy) if sway else 0.0
-	var bob := lerpf(0.04, 0.1, _energy) if sway else 0.0
+	var amp := lerpf(0.08, 0.16, _energy) if sway else 0.0
 	## Quiet seats still throw their arms. A louder room keeps more of them up.
-	## The wave is per seat, so the row does not rise as one block.
+	## The wave is per seat, so the row does not rise as one block. The origin
+	## stays on the tread; a vertical bob lifted them off the stone.
 	var gate := lerpf(0.42, -0.2, _energy)
 	for index: int in _seat_count:
 		var home := _home[index]
 		var wave := sin(_phase + _offset[index])
 		var lean := wave * amp * (1.0 - _stand)
 		var posed := home
-		posed.origin.y += bob * maxf(wave, 0.0) * (1.0 - _stand) + STAND_LIFT * _stand
+		posed.origin.y += STAND_LIFT * _stand
 		posed.basis = home.basis.rotated(home.basis.x.normalized(), lean)
 		var hidden := Transform3D(Basis.from_scale(Vector3(HIDDEN_SCALE, HIDDEN_SCALE, HIDDEN_SCALE)), posed.origin)
 		var standing := _stand >= 0.35

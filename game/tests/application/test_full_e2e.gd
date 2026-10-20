@@ -263,6 +263,13 @@ func test_the_deciding_round_hides_the_hud_and_the_fanfare_plays_once() -> void:
 	assert_near(director.camera().fov, profile.fov_finish, 0.05, "and the camera has pushed in")
 	results.advance_frame(2.0)
 	assert_eq(_sting_count(director, fanfare), 0, "sitting on the results does not play the arena horn")
+	assert_true(profile.sting != null, "fixture: the winner has a sting")
+	assert_eq(_sting_count(director, profile.sting), 1, "the showcase plays that sting once")
+	assert_eq(_sting_count(director, profile.announcer_line), 1, "and the announcer still reads the winner")
+	assert_false(driver.app.is_loop_playing(), "the match ending stops the arena theme")
+	assert_true(driver.app.loop_stream() == null, "and clears it")
+	var sting := director.audio().get_node(AudioDirector.PLAYER_STING) as AudioStreamPlayer
+	assert_true(sting.playing and sting.stream == profile.one_shot_sting(), "the sting is the showcase's own player")
 	driver.shutdown()
 	await await_frames(2)
 

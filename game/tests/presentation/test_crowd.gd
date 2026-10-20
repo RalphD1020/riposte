@@ -494,6 +494,7 @@ func test_the_author_plan_matches_the_kits_and_does_not_drift() -> void:
 	assert_eq(victory.title, victory_title, "the victory title survives")
 	assert_true(weapon.stream_for(PresentationKit.CUE_SWING) != null, "the swing cue survives")
 	assert_true(victory.announcer_line != null, "the winner line survives")
+	assert_true(victory.sting != null and victory.sting.resource_path.get_file().begins_with("wolf_victory"), "Wolf's victory theme stays on the profile")
 	assert_true(arena.stream_for(PresentationKit.CUE_MATCH_HORN) != null, "and the match horn stays on the arena")
 
 

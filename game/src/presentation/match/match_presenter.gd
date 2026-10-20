@@ -116,8 +116,6 @@ func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
 		var none: Array[PresentationContact] = []
 		_highlight.show_contacts(none if is_nan(_contact_height) else snapshot.contacts, _contact_height)
 	_caption_sounds()
-	if _arena != null and _arena.surface() != null:
-		_arena.surface().consume(snapshot, events)
 
 
 ## One caption per tick: the most significant sound the frame played, else a
