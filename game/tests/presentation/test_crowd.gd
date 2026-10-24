@@ -338,14 +338,14 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	var bed := _player_for(audio, audio.crowd_bed_stream())
 	assert_true(bed != null and bed.bus == AudioBuses.CROWD, "on the Crowd bus")
 	assert_true((bed.stream as AudioStreamMP3).loop, "and it loops")
-	assert_near(audio.crowd_bed_volume_db(), -18.0, 0.01, "intensity 0 sits on the ambient trim")
+	assert_near(audio.crowd_bed_volume_db(), MatchPresenter.CROWD_BED_AMBIENT_DB, 0.01, "intensity 0 sits on the ambient trim")
 	var written := audio.crowd_bed_volume_db()
 	presenter.play_crowd(&"", 0, 0.01)
 	presenter.render(0.0, 1.0)
 	assert_eq(audio.crowd_bed_volume_db(), written, "a tiny intensity change does not rewrite volume_db")
 	presenter.play_crowd(&"", 0, 1.0)
 	presenter.render(0.0, 10.0)
-	assert_near(audio.crowd_bed_volume_db(), -10.0, 0.01, "intensity 1 sits on the momentum trim")
+	assert_near(audio.crowd_bed_volume_db(), MatchPresenter.CROWD_BED_MOMENTUM_DB, 0.01, "intensity 1 sits on the momentum trim")
 	presenter.play_crowd(&"cheer", 0)
 	var shot := _player_for(audio, audio.crowd_shot_stream())
 	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "cheer.mp3", "the light cheer is the shot")
@@ -368,29 +368,56 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	presenter.play_crowd(&"victory", 0)
 	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "wolf_chant.mp3", "Wolf's chant replaces that roar")
 	var name_take := fighter.crowd_chant as AudioStreamMP3
-	assert_false(audio.accepts_crowd_chant(name_take), "the shipped name is not a loop")
+	assert_false(audio.accepts_crowd_chant(name_take), "the shipped shout is not a loop")
+	fighter.name_phrase = null
 	presenter.play_crowd(&"", 0, 0.5, 0)
-	assert_false(audio.is_crowd_chant_playing(), "a one-shot name does not start the chant player")
-	assert_false(name_take.loop, "and the set-win file is not rewritten into a loop")
+	assert_false(audio.is_crowd_chant_playing(), "the set-win shout does not start the chant player")
+	assert_false(name_take.loop, "and that file is not rewritten into a loop")
+	var phrase := _known_phrase(0.25)
+	assert_near(phrase.get_length(), 0.25, 0.02, "the test phrase has a known length")
+	fighter.name_phrase = phrase
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_true(audio.is_crowd_chant_playing(), "the name phrase starts")
+	var phrase_voice := audio.get_node(AudioDirector.PLAYER_CROWD_CHANT) as AudioStreamPlayer
+	assert_true(phrase_voice.stream != name_take, "the phrase player does not hold the shout resource")
+	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "wolf_chant.mp3", "the shot still holds the earlier shout")
+	audio.advance_crowd_chant(phrase.get_length() * 0.5)
+	assert_true(audio.is_crowd_chant_playing(), "half the phrase is still the same play")
+	audio.advance_crowd_chant(phrase.get_length())
+	assert_false(audio.is_crowd_chant_playing(), "the phrase ends before the gap")
+	audio.advance_crowd_chant(AudioDirector.PHRASE_GAP_SECONDS * 0.5)
+	assert_false(audio.is_crowd_chant_playing(), "the gap is not a second copy")
+	audio.advance_crowd_chant(AudioDirector.PHRASE_GAP_SECONDS)
+	assert_true(audio.is_crowd_chant_playing(), "the phrase plays again after the gap")
+	presenter.play_crowd(CrowdDirector.CUE_STRONG, 0)
+	assert_false(audio.is_crowd_chant_playing(), "a strong cue stops the phrase")
+	presenter.play_crowd(&"", 0, 0.5, 0)
+	assert_true(audio.is_crowd_chant_playing(), "the phrase returns when the name is held again")
+	audio.advance_crowd_chant(phrase.get_length() + 0.02)
+	assert_false(audio.is_crowd_chant_playing(), "the returned phrase ends into its gap")
+	presenter.play_crowd(CrowdDirector.CUE_VICTORY, 0, 1.0, 0)
+	audio.advance_crowd_chant(AudioDirector.PHRASE_GAP_SECONDS + 0.05)
+	assert_false(audio.is_crowd_chant_playing(), "victory during the gap does not restart the phrase")
+	assert_eq(audio.crowd_shot_stream().resource_path.get_file(), "wolf_chant.mp3", "and the shout plays once")
 	var looped := name_take.duplicate() as AudioStreamMP3
 	looped.loop = true
 	var other := name_take.duplicate() as AudioStreamMP3
 	other.loop = true
-	fighter.crowd_chant = looped
+	fighter.name_phrase = looped
 	presenter.play_crowd(&"", 0, 0.5, 0)
 	var chant_voice := audio.get_node(AudioDirector.PLAYER_CROWD_CHANT) as AudioStreamPlayer
 	assert_true(chant_voice.playing, "a looping name starts its own player")
 	var started := chant_voice.stream
 	presenter.play_crowd(&"", 0, 0.5, 0)
 	assert_true(chant_voice.stream == started and _playing_shots(audio, started) == 1, "the same name does not start a second voice")
-	kits.combatant(1).fighter.crowd_chant = other
+	kits.combatant(1).fighter.name_phrase = other
 	presenter.play_crowd(&"", 1, 0.5, 1)
 	assert_eq(_playing_shots(audio, started), 0, "the previous name is no longer playing")
 	assert_true(chant_voice.playing and _playing_shots(audio, chant_voice.stream) == 1, "the new name is the one voice")
-	fighter.crowd_chant = null
+	fighter.name_phrase = null
 	presenter.play_crowd(&"", 0, 0.5, 0)
 	assert_false(audio.is_crowd_chant_playing(), "a missing stream stops the previous name")
-	fighter.crowd_chant = looped
+	fighter.name_phrase = looped
 	presenter.play_crowd(&"", 0, 0.5, 0)
 	assert_true(audio.is_crowd_chant_playing(), "fixture: the name is up again")
 	presenter.play_crowd(&"", 0, 0.5, -1)
@@ -421,10 +448,12 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	assert_near(sting.pitch_scale, horn_length / AudioDirector.HORN_SECONDS, 0.001, "that one blast is slowed to six seconds")
 	assert_eq(sting.bus, AudioBuses.MUSIC, "on the sting's Music bus")
 	assert_false(audio.is_character_call_playing(), "and it is not Wolf's howl")
-	fighter.crowd_chant = looped
+	fighter.name_phrase = looped
 	presenter.play_crowd(&"", 0, 0.5, 0)
 	assert_true(audio.is_crowd_chant_playing(), "fixture: a name is playing at teardown")
+	fighter.name_phrase = null
 	fighter.crowd_chant = chant
+	kits.combatant(1).fighter.name_phrase = null
 	kits.combatant(1).fighter.crowd_chant = chant
 	presenter.detach_and_dispose()
 	assert_false(audio.is_crowd_bed_playing(), "disposing the presenter stops that bed")
@@ -433,9 +462,13 @@ func test_the_bed_and_one_reaction_play_on_the_crowd_bus() -> void:
 	var next := MatchPresenter.create(kits, PresentationOptions.new(), camera, rules.platform_radius, rules.edge_warning_inset, SnapshotProjector.project(state, rules))
 	root.add_child(next)
 	assert_true(next.audio().is_crowd_bed_playing(), "a new presenter starts its own bed")
-	assert_near(next.audio().crowd_bed_volume_db(), -18.0, 0.01, "at ambient, not the previous match's trim")
+	assert_near(next.audio().crowd_bed_volume_db(), MatchPresenter.CROWD_BED_AMBIENT_DB, 0.01, "at ambient, not the previous match's trim")
 	assert_false(audio.is_crowd_bed_playing(), "the disposed director stays silent")
 	assert_false(next.audio().is_crowd_chant_playing(), "a new match does not inherit the name")
+	var quiet := MatchPresenter.create(kits, PresentationOptions.new(), camera, rules.platform_radius, rules.edge_warning_inset, SnapshotProjector.project(state, rules))
+	quiet.crowd_bed_enabled = false
+	root.add_child(quiet)
+	assert_false(quiet.audio().is_crowd_bed_playing(), "a stage without the bed flag stays quiet")
 	root.queue_free()
 
 
@@ -472,7 +505,11 @@ func test_the_author_plan_matches_the_kits_and_does_not_drift() -> void:
 	assert_true(fighter.symbol == symbol, "and the mark")
 	assert_eq(fighter.victory.display_name if fighter.victory != null else "", victory_name, "and the victory card's name")
 	assert_true(fighter.character_call.resource_path.get_file().begins_with("wolf_howl"), "the howl is the character call")
-	assert_true(fighter.crowd_chant.resource_path.get_file().begins_with("wolf_chant"), "the chant is the name call")
+	assert_true(fighter.crowd_chant.resource_path.get_file().begins_with("wolf_chant"), "the chant is the set-win shout")
+	assert_true(fighter.name_phrase != null and str(fighter.name_phrase.resource_path.get_file()).begins_with("wolf_name"), "the repeating phrase is its own take")
+	assert_true(fighter.name_phrase.get_length() > 0.4, "the imported phrase has a duration")
+	assert_false((fighter.name_phrase as AudioStreamMP3).loop, "the phrase is not a loop")
+	assert_true(fighter.name_phrase != fighter.crowd_chant, "the shout is not the repeating phrase")
 	var announcer := load(AudioKitPlan.ANNOUNCER_KIT) as AnnouncerKit
 	var caption := announcer.versus_caption
 	AudioKitPlan.apply_announcer(announcer, problems)
@@ -496,6 +533,18 @@ func test_the_author_plan_matches_the_kits_and_does_not_drift() -> void:
 	assert_true(victory.announcer_line != null, "the winner line survives")
 	assert_true(victory.sting != null and victory.sting.resource_path.get_file().begins_with("wolf_victory"), "Wolf's victory theme stays on the profile")
 	assert_true(arena.stream_for(PresentationKit.CUE_MATCH_HORN) != null, "and the match horn stays on the arena")
+
+
+func _known_phrase(seconds: float) -> AudioStreamWAV:
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = 22050
+	wav.stereo = false
+	var frames := int(round(seconds * float(wav.mix_rate)))
+	var data := PackedByteArray()
+	data.resize(frames * 2)
+	wav.data = data
+	return wav
 
 
 func _player_for(node: Node, stream: AudioStream) -> AudioStreamPlayer:
@@ -592,7 +641,9 @@ func test_a_name_holds_through_a_trade_and_a_round() -> void:
 
 
 func test_the_seated_cheer_does_not_stand_the_bowl() -> void:
-	var stage := CrowdStage.create(4, 8.27)
+	var roman := ArenaScaffold.profile_of(DuelKits.resolve(RiposteKits.build_catalog(), StandardDuelRules.create()).arena).crowd
+	assert_true(roman != null, "fixture: the Arena seats a crowd")
+	var stage := CrowdStage.create(roman, 4)
 	assert_false(is_equal_approx(stage.phase_of_section(0), stage.phase_of_section(1)), "sections do not share a phase")
 	var locked := stage.phase_of_section(0)
 	stage.advance(0.3, null, true)
@@ -637,7 +688,7 @@ func test_the_seated_cheer_does_not_stand_the_bowl() -> void:
 	stage.react(CrowdDirector.CUE_CHEER, 0.1)
 	stage.advance(0.5, null, false)
 	assert_eq(stage.standing_sections(), stage.section_count(), "a later cue cannot sit the celebration")
-	var fresh := CrowdStage.create(4, 8.27)
+	var fresh := CrowdStage.create(roman, 4)
 	assert_eq(fresh.standing_sections(), 0, "a new match starts seated")
 	fresh.free()
 	stage.free()

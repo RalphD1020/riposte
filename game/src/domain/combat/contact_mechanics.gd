@@ -46,14 +46,6 @@ static func weapon_inertia(pose: BladePose, spec: CombatantPhysicsSpec) -> float
 	return WeaponKinematics.held_inertia(spec, pose)
 
 
-## The restitution of a new contact between two weapons closing at `closing`
-## (m/s): the less elastic of the two materials decides (each weapon's own
-## threshold applies to itself), so a soft weapon never rings like steel. For
-## two of the same weapon it is that weapon's restitution exactly.
-static func weapon_restitution(weapon_a: WeaponDefinition, weapon_b: WeaponDefinition, closing: float) -> float:
-	return minf(weapon_a.restitution_at(closing), weapon_b.restitution_at(closing))
-
-
 ## A held sword's two terms at a blade-on-blade point (`px`, `py`): its weapon
 ## coordinate's inertia into `out[0]` and its wielder's inverse body mass into
 ## `out[1]`, both the combatant `spec`'s own.
@@ -143,13 +135,16 @@ static func _reference_inverse_mass(attacker: CombatantPhysicsSpec, target: Comb
 
 ## Impulse (N·s) of the reference strike at the attacker's weapon's reference
 ## closing speed.
-static func reference_impulse(attacker: CombatantPhysicsSpec, target: CombatantPhysicsSpec, combat: CombatTuning) -> float:
-	return normal_impulse(attacker.weapon.reference_closing_speed, reference_inverse_mass(attacker, target), combat.sword_body_restitution)
+## `pair` is the attacker's steel on the target's body.
+static func reference_impulse(attacker: CombatantPhysicsSpec, target: CombatantPhysicsSpec, pair: ContactPair) -> float:
+	var speed := attacker.weapon.reference_closing_speed
+	return normal_impulse(speed, reference_inverse_mass(attacker, target), pair.restitution_at(speed))
 
 
 ## Energy (J) the reference strike dissipates.
-static func reference_severity(attacker: CombatantPhysicsSpec, target: CombatantPhysicsSpec, combat: CombatTuning) -> float:
-	return dissipated_energy(attacker.weapon.reference_closing_speed, reference_inverse_mass(attacker, target), combat.sword_body_restitution)
+static func reference_severity(attacker: CombatantPhysicsSpec, target: CombatantPhysicsSpec, pair: ContactPair) -> float:
+	var speed := attacker.weapon.reference_closing_speed
+	return dissipated_energy(speed, reference_inverse_mass(attacker, target), pair.restitution_at(speed))
 
 
 ## Energy (J) a reference strong clash dissipates: the two loadouts' swords
@@ -157,10 +152,11 @@ static func reference_severity(attacker: CombatantPhysicsSpec, target: Combatant
 ## `blade_strong_speed` — the yardstick a clash's own dissipated energy is
 ## read against, from the same mechanics, so a clash reads as hard as the
 ## solve says it was.
-static func reference_clash_energy(a: CombatantPhysicsSpec, b: CombatantPhysicsSpec, combat: CombatTuning) -> float:
+## `pair` is the two swords' steel.
+static func reference_clash_energy(a: CombatantPhysicsSpec, b: CombatantPhysicsSpec, pair: ContactPair, combat: CombatTuning) -> float:
 	var k := (body_inverse_mass(a) + body_inverse_mass(b)) + (_clash_term(a) + _clash_term(b))
 	var speed := combat.blade_strong_speed
-	return dissipated_energy(speed, k, weapon_restitution(a.weapon, b.weapon, speed))
+	return dissipated_energy(speed, k, pair.restitution_at(speed))
 
 
 ## One sword's `c² / M_θ` at its centre of percussion from Long Guard.
@@ -174,5 +170,6 @@ static func _clash_term(spec: CombatantPhysicsSpec) -> float:
 ## Energy (J) the reference thrust dissipates at the reference closing speed:
 ## the right yardstick for a point, never the cut's, because along the blade
 ## almost nothing gives way but the bodies.
-static func reference_thrust_severity(attacker: CombatantPhysicsSpec, target: CombatantPhysicsSpec, combat: CombatTuning) -> float:
-	return dissipated_energy(attacker.weapon.reference_closing_speed, reference_thrust_inverse_mass(attacker, target), combat.sword_body_restitution)
+static func reference_thrust_severity(attacker: CombatantPhysicsSpec, target: CombatantPhysicsSpec, pair: ContactPair) -> float:
+	var speed := attacker.weapon.reference_closing_speed
+	return dissipated_energy(speed, reference_thrust_inverse_mass(attacker, target), pair.restitution_at(speed))

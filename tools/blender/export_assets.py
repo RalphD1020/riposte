@@ -9,6 +9,7 @@ Each source is validated against its contract first (validate_assets.py). Any
 problem fails the build with a non-zero exit and nothing is half-written.
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -35,12 +36,33 @@ ASSETS = [
     ("arenas/masonry_board.blend", "board", "arena.masonry_board", "arenas/masonry_board.glb"),
     ("arenas/arena_floor.blend", "floor", "arena.floor", "arenas/arena_floor.glb"),
     ("arenas/arena_bowl.blend", "bowl", "arena.bowl", "arenas/arena_bowl.glb"),
+    ("arenas/end_stage.blend", "deck", "arena.end", "arenas/end_stage.glb"),
     ("crowd/seated.blend", "crowd", "crowd.seated", "crowd/seated.glb"),
     ("crowd/cheer.blend", "crowd", "crowd.cheer", "crowd/cheer.glb"),
     ("crowd/hair_crop.blend", "crowd", "crowd.hair_crop", "crowd/hair_crop.glb"),
     ("crowd/hair_bun.blend", "crowd", "crowd.hair_bun", "crowd/hair_bun.glb"),
+    ("crowd/hair_fringe.blend", "crowd", "crowd.hair_fringe", "crowd/hair_fringe.glb"),
     ("crowd/face.blend", "crowd", "crowd.face", "crowd/face.glb"),
 ]
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _require_known():
+    """The suite's required list has to be a subset of this export list."""
+    path = os.path.join(HERE, "required_presentation_assets.json")
+    with open(path, encoding="utf-8") as handle:
+        rows = json.load(handle)
+    known = {row[2] for row in ASSETS}
+    missing = [row["id"] for row in rows if row["id"] not in known]
+    if missing:
+        raise SystemExit("required assets missing from the export list: %s" % ", ".join(missing))
 
 
 def _export_kwargs(path, kind):
@@ -68,9 +90,10 @@ def _export_kwargs(path, kind):
         "export_reset_pose_bones": True,
         "export_image_format": "NONE",
     }
-    ## Stone blocks carry a per-block Color multiplier. The default material
-    ## mode skips it when images are not exported.
-    if kind in ("bowl", "floor", "board"):
+    ## Stone blocks carry a per-block Color multiplier, and the deck top a
+    ## faint lift toward its rim. The default material mode skips it when
+    ## images are not exported.
+    if kind in ("bowl", "floor", "board", "deck"):
         wanted["export_vertex_color"] = "ACTIVE"
     available = {p.identifier for p in bpy.ops.export_scene.gltf.get_rna_type().properties}
     return {k: v for k, v in wanted.items() if k in available}
@@ -87,6 +110,7 @@ def _selected(assets):
 
 
 def main():
+    _require_known()
     failed = []
     chosen = _selected(ASSETS)
     for source, kind, asset_id, output in chosen:
@@ -106,8 +130,11 @@ def main():
         ## alone) cost glTF JSON and nothing else: Godot poses an untracked
         ## bone at rest.
         glb_compact.compact(out_path)
+        recorded = validate_assets.manifest(asset_id, kind)
+        recorded["source"] = source.replace("\\", "/")
+        recorded["source_sha256"] = _sha256(source_path)
         with open(os.path.splitext(out_path)[0] + ".manifest.json", "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(validate_assets.manifest(asset_id, kind), handle, indent=2)
+            json.dump(recorded, handle, indent=2)
             handle.write("\n")
         print("RIPOSTE_EXPORTED", output)
     if failed:

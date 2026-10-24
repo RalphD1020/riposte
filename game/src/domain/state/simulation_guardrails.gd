@@ -42,9 +42,26 @@ static func validate_capacity(fighter: FighterState, rules: DuelRules) -> bool:
 	## A non-finite speed is `StateInvariants`' to name; these comparisons are
 	## false for NaN, so it passes through to that check.
 	var spin := absf(fighter.weapon.speed)
-	if spin > spec.weapon.swing_speed_full * CAPACITY_SAFETY_FACTOR and spin > physical_weapon_speed_bound(spec, opponent) * CAPACITY_SAFETY_FACTOR:
+	var bound := physical_weapon_speed_bound(spec, opponent)
+	if not rules.structures.is_empty():
+		bound = maxf(bound, structure_weapon_speed_bound(fighter.slot, rules))
+	if spin > spec.weapon.swing_speed_full * CAPACITY_SAFETY_FACTOR and spin > bound * CAPACITY_SAFETY_FACTOR:
 		return false
 	return true
+
+
+## The same bound for a kick from a structure (STRUCTURE-CONTACT-001): the
+## world side has no inverse mass, so only the wielder's own body shares the
+## impulse (`Σ1/m = 1/m`), the closing speed is this side's alone, and `e` is
+## the most elastic structure pair this sword can meet.
+static func structure_weapon_speed_bound(slot: int, rules: DuelRules) -> float:
+	var spec := rules.combatant(slot)
+	var weapon := spec.weapon
+	var centroidal := maxf(weapon.moment_of_inertia() - weapon.mass * weapon.center_of_mass_radius * weapon.center_of_mass_radius, SimMath.EPSILON)
+	var restitution := 0.0
+	for index in rules.structures.size():
+		restitution = maxf(restitution, rules.structure_pair(slot, index).restitution_bound())
+	return weapon.swing_speed_full + (1.0 + restitution) * _contact_speed(spec) / (2.0 * sqrt(centroidal / spec.fighter.mass))
 
 
 ## The fastest the weapon coordinate can legally turn (rad/s): the motor's
@@ -65,7 +82,7 @@ static func physical_weapon_speed_bound(spec: CombatantPhysicsSpec, opponent: Co
 	var inertia := centroidal
 	var closing := _contact_speed(spec) + _contact_speed(opponent)
 	var bodies := 1.0 / spec.fighter.mass + 1.0 / opponent.fighter.mass
-	var restitution := maxf(weapon.restitution, opponent.weapon.restitution)
+	var restitution := maxf(weapon.material.restitution, opponent.weapon.material.restitution)
 	return weapon.swing_speed_full + (1.0 + restitution) * closing / (2.0 * sqrt(inertia * bodies))
 
 

@@ -34,6 +34,8 @@ static func evaluate_walk(
 	rules: DuelRules,
 	condition: ConditionState,
 ) -> EdgeSafetyResult:
+	if rules.is_closed_edge():
+		return _closed_edge(rules)
 	var def := rules.spec_of(fighter).fighter
 	var dt := SimulationTimebase.TICK_SECONDS
 	var fx := SimMath.heading_cosine(fighter.facing)
@@ -68,6 +70,8 @@ static func evaluate_burst(
 	rules: DuelRules,
 	condition: ConditionState,
 ) -> EdgeSafetyResult:
+	if rules.is_closed_edge():
+		return _closed_edge(rules)
 	var def := rules.spec_of(fighter).fighter
 	var dt := SimulationTimebase.TICK_SECONDS
 	var heading := DirectionalTapRecognizer.heading(fighter, burst_kind)
@@ -129,6 +133,18 @@ static func _rollout(
 	else:
 		result.stopping_margin = 0.0
 	result.recoverable = not result.crosses_platform and result.stopping_margin < result.min_clearance
+	return result
+
+
+## A closed edge has no ring-out to predict. The candidate is safe, and the
+## clearance is the whole disc so a caller that ranks by clearance does not
+## treat the rim as a cliff.
+static func _closed_edge(rules: DuelRules) -> EdgeSafetyResult:
+	var result := EdgeSafetyResult.new()
+	result.crosses_platform = false
+	result.min_clearance = rules.platform_radius
+	result.stopping_margin = 0.0
+	result.recoverable = true
 	return result
 
 

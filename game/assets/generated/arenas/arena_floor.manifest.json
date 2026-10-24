@@ -24,5 +24,7 @@
     "stone_floor"
   ],
   "triangle_count": 70968,
-  "color_targets": []
+  "color_targets": [],
+  "source": "arenas/arena_floor.blend",
+  "source_sha256": "a87937c2ebbd2a38d6d89f817552047a2ce8e12e04268f1b8fc00dc688581b6c"
 }

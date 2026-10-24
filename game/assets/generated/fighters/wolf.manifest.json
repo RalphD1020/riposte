@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.3552,
-      -0.275,
+      -0.365,
+      -0.3,
       -0.0
     ],
     "max": [
-      0.3603,
+      0.3694,
       0.185,
-      1.78
+      1.825
     ]
   },
   "bone_names": [
@@ -66,18 +66,22 @@
   ],
   "attachment_names": [],
   "material_slots": [
+    "cloth",
     "fabric",
+    "fur",
     "hair",
     "leather",
     "metal",
     "side_accent",
     "skin"
   ],
-  "triangle_count": 1588,
+  "triangle_count": 2136,
   "color_targets": [
     "SideAccentBracer.L",
     "SideAccentBracer.R",
     "SideAccentMark",
     "SideAccentSash"
-  ]
+  ],
+  "source": "fighters/wolf.blend",
+  "source_sha256": "51270ebefecc6b008819a5fb79e68b3e18fcbc4024f12ba59a40078d1be51999"
 }

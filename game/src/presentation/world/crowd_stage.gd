@@ -1,12 +1,14 @@
 class_name CrowdStage
 extends Node3D
 
-## The bowl's spectators. Seats come from `ArenaSection`. During a match they
-## stay in their seats: they rock, and a shifting share swap to the arms-up
-## mesh. A louder room keeps more arms up. A name chant stands the sections
-## on that fighter's side of the bowl. The match result stands everyone. A
-## round roar does not. Reduced motion drops the seated wave and still lets a
-## stand finish. Rematch builds a new stage.
+## The bowl's spectators: the stage's `CrowdProfile` (its figures and
+## palettes) seated by `ArenaSection`. During a match they
+## stay in their seats and stay drawn: a section is not removed when its box
+## crosses the fight on screen. They rock, and a shifting share swap to the
+## arms-up mesh. A louder room keeps more arms up. A name chant stands the
+## sections on that fighter's side of the bowl. The match result stands
+## everyone. A round roar does not. Reduced motion drops the seated wave and
+## still lets a stand finish. Rematch builds a new stage.
 ##
 ## See also: /docs/concepts/presentation.md
 
@@ -18,28 +20,12 @@ const CHANT_SPAN := 1
 ## Stable offset so neighboring sections do not lean on the same beat.
 const SECTION_PHASE := 1.3
 
-const SKIN: Array[Color] = [
-	Color(0.988, 0.914, 0.855), Color(0.973, 0.863, 0.776),
-	Color(0.953, 0.804, 0.69), Color(0.925, 0.729, 0.592),
-	Color(0.878, 0.647, 0.494), Color(0.808, 0.541, 0.384),
-	Color(0.71, 0.439, 0.29), Color(0.553, 0.333, 0.141),
-	Color(0.435, 0.271, 0.094), Color(0.29, 0.173, 0.086),
-]
-const CLOTH: Array[Color] = [
-	Color("a85a45"), Color("c4924a"), Color("e6d7c3"), Color("8a9a78"), Color("7f92a8"),
-]
-const HAIR: Array[Color] = [
-	Color("2a2420"), Color("6b4226"), Color("c2a36a"), Color("b7b1a8"),
-]
-## Wolf's eyes and brow are the dark hair slot, not the dyed hair.
-const FACE_INK := Color(0.03, 0.03, 0.035)
-
 var seed_value: int = 1
 var focus_section: int = 0
 
+var _profile: CrowdProfile
 var _sections: Array[CrowdSection] = []
 var _rows: Array[CrowdRoster] = []
-var _disc_radius: float = 8.27
 var _layout: ArenaSection
 var _bounds: Array[AABB] = []
 var _origins := PackedVector3Array()
@@ -48,17 +34,19 @@ var _still := 0.0
 var _excitement := 0.0
 var _chant := false
 var _match_celebration := false
-var _corners := PackedVector3Array()
 
 
-static func create(p_seed: int, disc_radius: float) -> CrowdStage:
+static func create(audience: CrowdProfile, p_seed: int) -> CrowdStage:
 	var stage := CrowdStage.new()
 	stage.name = "Crowd"
+	stage._profile = audience
 	stage.seed_value = p_seed if p_seed != 0 else 1
-	stage._disc_radius = disc_radius
-	stage._corners.resize(8)
 	stage._build()
 	return stage
+
+
+func profile() -> CrowdProfile:
+	return _profile
 
 
 func layout() -> ArenaSection:
@@ -173,7 +161,6 @@ func advance(delta: float, camera: Camera3D, reduced_motion: bool) -> void:
 		return
 	_still = 0.0
 	_focus_from(camera)
-	_apply_visibility(camera)
 
 
 func reset_poses() -> void:
@@ -208,30 +195,20 @@ func _focus_from(camera: Camera3D) -> void:
 	focus_section = wrapi(int(round(turns * float(count))), 0, count)
 
 
-func _apply_visibility(camera: Camera3D) -> void:
-	var combat := CrowdForeground.project(camera, CrowdForeground.disc_points(_disc_radius))
-	for index: int in _sections.size():
-		var section := _sections[index]
-		var aabb := _section_bounds(index)
-		for corner: int in 8:
-			_corners[corner] = _corner(aabb, corner)
-		var points := CrowdForeground.project(camera, _corners)
-		var conceal := CrowdForeground.overlaps(points, combat, section.spectators_hidden)
-		if conceal != section.spectators_hidden:
-			section.set_spectators_hidden(conceal)
-
-
 func _build() -> void:
 	_layout = ArenaSection.load_layout()
 	if not _layout.issues().is_empty():
 		return
-	var seated_skin := CrowdMeshes.part(false, "skin")
-	var cheer_skin := CrowdMeshes.part(true, "skin")
-	var seated_cloth := CrowdMeshes.part(false, "fabric")
-	var cheer_cloth := CrowdMeshes.part(true, "fabric")
-	var crop := CrowdMeshes.hair(false)
-	var bun := CrowdMeshes.hair(true)
-	var face := CrowdMeshes.face()
+	var seated_skin := _profile.part(false, "skin")
+	var cheer_skin := _profile.part(true, "skin")
+	var seated_cloth := _profile.part(false, "fabric")
+	var cheer_cloth := _profile.part(true, "fabric")
+	var seated_leather := _profile.part(false, "leather")
+	var cheer_leather := _profile.part(true, "leather")
+	var hairs: Array[Mesh] = []
+	for style: int in _profile.hair_scenes.size():
+		hairs.append(_profile.hair_style(style))
+	var face := _profile.face()
 	var count := _layout.section_count
 	var seat_section := PackedInt32Array()
 	var poses: Array[Transform3D] = []
@@ -267,6 +244,7 @@ func _build() -> void:
 		var seats: Array[Transform3D] = []
 		var skin := PackedColorArray()
 		var cloth := PackedColorArray()
+		var leather := PackedColorArray()
 		var hair := PackedColorArray()
 		var which: PackedInt32Array = []
 		for seat: int in poses.size():
@@ -274,33 +252,34 @@ func _build() -> void:
 				continue
 			seats.append(poses[seat])
 			which.append(seat)
-			skin.append(SKIN[_rows[seat].skin])
-			cloth.append(CLOTH[_rows[seat].cloth])
-			hair.append(HAIR[_rows[seat].hair_color])
+			skin.append(_tone(_profile.skin, _rows[seat].skin))
+			cloth.append(_tone(_profile.cloth, _rows[seat].cloth))
+			leather.append(_tone(_profile.leather, _rows[seat].cloth))
+			hair.append(_tone(_profile.hair, _rows[seat].hair_color))
 		if seats.is_empty():
 			_sections.append(section)
 			add_child(section)
 			continue
-		var crop_used := PackedByteArray()
-		var bun_used := PackedByteArray()
-		crop_used.resize(seats.size())
-		bun_used.resize(seats.size())
+		var hair_used: Array[PackedByteArray] = []
+		for _style: int in hairs.size():
+			var used := PackedByteArray()
+			used.resize(seats.size())
+			hair_used.append(used)
 		for local: int in which.size():
-			if _rows[which[local]].hair == 0:
-				crop_used[local] = 1
-			else:
-				bun_used[local] = 1
+			var style := _rows[which[local]].hair % hairs.size()
+			hair_used[style][local] = 1
 		var everyone := PackedByteArray()
 		everyone.resize(seats.size())
 		everyone.fill(1)
 		var ink := PackedColorArray()
 		ink.resize(seats.size())
-		ink.fill(FACE_INK)
+		ink.fill(_profile.face_ink)
 		section.add_layer(seated_skin, cheer_skin, seats, skin, everyone)
 		section.add_layer(seated_cloth, cheer_cloth, seats, cloth, everyone)
+		section.add_layer(seated_leather, cheer_leather, seats, leather, everyone)
 		section.add_layer(face, face, seats, ink, everyone)
-		section.add_layer(crop, crop, seats, hair, crop_used)
-		section.add_layer(bun, bun, seats, hair, bun_used)
+		for style: int in hairs.size():
+			section.add_layer(hairs[style], hairs[style], seats, hair, hair_used[style])
 		_sections.append(section)
 		add_child(section)
 	_build_box(started)
@@ -313,7 +292,7 @@ func _build_box(started: Array[bool]) -> void:
 	box.transform = pose
 	var names: PackedStringArray = ["Emperor", "Attendant", "Dignitary"]
 	var shades: Array[Color] = [RiposteTheme.STONE_BRONZE, RiposteTheme.STONE_LIMESTONE, RiposteTheme.STONE_TERRACOTTA]
-	var posed := CrowdMeshes.pose_scene(false)
+	var posed := _profile.pose_scene(false)
 	var section_index := _layout.section_for(atan2(pose.origin.z, pose.origin.x))
 	for index: int in 3:
 		var person := MeshInstance3D.new()
@@ -328,16 +307,21 @@ func _build_box(started: Array[bool]) -> void:
 			figure.name = "Figure"
 			person.add_child(figure)
 			_tint_rendered(figure, material)
-			_worn(person, "Face", CrowdMeshes.face(), FACE_INK)
-			_worn(person, "Hair", CrowdMeshes.hair(false), HAIR[0])
+			_worn(person, "Face", _profile.face(), _profile.face_ink)
+			_worn(person, "Hair", _profile.hair_style(0), _profile.hair[0])
 		else:
-			person.mesh = CrowdMeshes.part(false, "skin")
+			person.mesh = _profile.part(false, "skin")
 			person.material_override = material
 		box.add_child(person)
 		var at := pose * person.position
 		_include(section_index, at, started)
 		_include(section_index, at + Vector3(0.0, 1.4, 0.0), started)
 	add_child(box)
+
+
+## A roster index into a palette of any length.
+static func _tone(palette: PackedColorArray, index: int) -> Color:
+	return palette[index % palette.size()]
 
 
 func _include(section_index: int, point: Vector3, started: Array[bool]) -> void:
@@ -362,23 +346,11 @@ func _worn(person: Node3D, part_name: String, mesh: Mesh, ink: Color) -> void:
 	person.add_child(part)
 
 
+## Spectators never cast into the key's shadow map.
 func _tint_rendered(node: Node, material: Material) -> void:
 	if node is MeshInstance3D:
 		(node as MeshInstance3D).material_override = material
+		(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for child: Node in node.get_children():
 		_tint_rendered(child, material)
 
-
-func _section_bounds(index: int) -> AABB:
-	return _bounds[index]
-
-
-func _corner(aabb: AABB, index: int) -> Vector3:
-	var spot := aabb.position
-	if index & 1:
-		spot.x += aabb.size.x
-	if index & 2:
-		spot.y += aabb.size.y
-	if index & 4:
-		spot.z += aabb.size.z
-	return spot

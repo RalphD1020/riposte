@@ -41,6 +41,8 @@ func show_screen(screen: AppScreen.Id) -> Control:
 
 func _create(screen: AppScreen.Id) -> Control:
 	match screen:
+		AppScreen.Id.FIGHT_SETUP:
+			return FightSetupScreen.new().bind(_app)
 		AppScreen.Id.HOW_TO_PLAY:
 			return HowToPlayScreen.new().bind(_app)
 		AppScreen.Id.SETTINGS:

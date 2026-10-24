@@ -33,5 +33,7 @@
     "steel"
   ],
   "triangle_count": 182,
-  "color_targets": []
+  "color_targets": [],
+  "source": "weapons/bastard_sword.blend",
+  "source_sha256": "14f5cef46f65f6465ea65649b5b27391301a33dd45fff220fe5e4c86a023ed21"
 }

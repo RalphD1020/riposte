@@ -86,8 +86,8 @@ func _solve(state: MatchState, rules: DuelRules = null) -> PackedFloat64Array:
 
 func _frictionless() -> DuelRules:
 	var rules := DuelFixture.rules()
-	rules.combat.blade_friction = 0.0
-	rules.combat.blade_body_friction = 0.0
+	rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.STEEL, 0.0)
+	rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.FLESH, 0.0)
 	return rules
 
 
@@ -115,7 +115,7 @@ func test_a_fast_slide_saturates_the_cone_and_keeps_sliding() -> void:
 	var solved := _solve(state)
 	var after := _relative(state, frame, frame[4], frame[5])
 	assert_true(solved[0] > 0.0, "fixture: the press loads the contact (%.3f N·s)" % solved[0])
-	assert_near(absf(solved[1]), _rules.combat.blade_friction * solved[0], TIGHT, "the accumulated tangent impulse sits on the Coulomb bound μ·Jn")
+	assert_near(absf(solved[1]), _rules.blade_pair().friction * solved[0], TIGHT, "the accumulated tangent impulse sits on the Coulomb bound μ·Jn")
 	assert_true(signf(after) == signf(before) and absf(after) > 0.5, "and the blades keep sliding the same way (%.2f → %.2f m/s)" % [before, after])
 	assert_true(absf(after) < absf(before), "slower than before: friction took some of it")
 	assert_true(signf(solved[1]) == -signf(before), "friction opposes the slide")
@@ -126,7 +126,7 @@ func test_a_slow_slide_inside_the_cone_sticks() -> void:
 	var frame := _blade_frame(state)
 	assert_true(absf(_relative(state, frame, frame[4], frame[5])) > 0.01, "fixture: a small slide")
 	var solved := _solve(state)
-	assert_true(absf(solved[1]) < _rules.combat.blade_friction * solved[0], "inside the cone (|%.4f| < μ·%.4f)" % [solved[1], solved[0]])
+	assert_true(absf(solved[1]) < _rules.blade_pair().friction * solved[0], "inside the cone (|%.4f| < μ·%.4f)" % [solved[1], solved[0]])
 	assert_near(_relative(state, frame, frame[4], frame[5]), 0.0, 1e-9, "a demand inside the cone stops the slide")
 
 
@@ -140,7 +140,7 @@ func test_pressure_sets_what_friction_can_take() -> void:
 	assert_true(heavy_solved[0] > light_solved[0], "fixture: the harder press has more normal impulse (%.3f vs %.3f N·s)" % [heavy_solved[0], light_solved[0]])
 	assert_true(absf(heavy_solved[1]) > absf(light_solved[1]), "so friction takes more (%.4f vs %.4f N·s)" % [absf(heavy_solved[1]), absf(light_solved[1])])
 	for solved: PackedFloat64Array in [light_solved, heavy_solved]:
-		assert_true(absf(solved[1]) <= _rules.combat.blade_friction * solved[0] + TIGHT, "and neither leaves its cone")
+		assert_true(absf(solved[1]) <= _rules.blade_pair().friction * solved[0] + TIGHT, "and neither leaves its cone")
 
 
 func test_a_separating_contact_has_no_friction() -> void:
@@ -183,13 +183,13 @@ func _on_torso(press: float, slide: float) -> MatchState:
 
 
 func test_a_sword_on_a_torso_grips_far_less_than_on_a_blade() -> void:
-	assert_true(_rules.combat.blade_body_friction < _rules.combat.blade_friction, "fixture: cloth and flesh grip less than steel")
+	assert_true(_rules.sword_body_pair(0).friction < _rules.blade_pair().friction, "fixture: cloth and flesh grip less than steel")
 	var state := _on_torso(0.5, 2.0)
 	var target := state.fighter(1)
 	RigidContactSolver.new().solve_velocity(state, _rules, true)
 	var lifecycle := state.weapon_body_contacts[0]
 	assert_true(lifecycle.hold_normal > 0.0, "fixture: the torso presses on the sword (%.3f N·s)" % lifecycle.hold_normal)
-	assert_near(absf(lifecycle.hold_tangent), _rules.combat.blade_body_friction * lifecycle.hold_normal, TIGHT, "the slide saturates the body's cone")
+	assert_near(absf(lifecycle.hold_tangent), _rules.sword_body_pair(0).friction * lifecycle.hold_normal, TIGHT, "the slide saturates the body's cone")
 	assert_true(target.vx > 1.5, "so the body keeps sliding along the blade (%.2f m/s)" % target.vx)
 	assert_true(lifecycle.hold_slip > 1.5, "and the reading says it slides (%.2f m/s)" % lifecycle.hold_slip)
 
@@ -225,7 +225,7 @@ func test_a_warm_start_reads_only_the_same_point() -> void:
 	var probe := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	var unsaturated := _solve(probe)
 	assert_true(unsaturated[0] > 0.0, "fixture: the press loads the contact (%.4f N·s)" % unsaturated[0])
-	assert_true(absf(unsaturated[1]) < _rules.combat.blade_friction * unsaturated[0], "fixture: the cold slide stays inside the cone (|%.4f| < μ·%.4f)" % [unsaturated[1], unsaturated[0]])
+	assert_true(absf(unsaturated[1]) < _rules.blade_pair().friction * unsaturated[0], "fixture: the cold slide stays inside the cone (|%.4f| < μ·%.4f)" % [unsaturated[1], unsaturated[0]])
 	var cold := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	var foreign := _crossed(0.8, WARM_SLIDE, 1.0, null, WARM_OFFSET)
 	foreign.blade_contact.hold_active[0] = 1
@@ -250,7 +250,7 @@ func test_a_warm_start_reads_only_the_same_point() -> void:
 	var frame := _blade_frame(warm)
 	assert_ne(warm.fighter(0).vx, cold.fighter(0).vx, "a matching record is a warm start")
 	assert_true(_relative(warm, frame, frame[2], frame[3]) >= -1e-9, "and it is still a hold, not a pull (%s m/s)" % str(_relative(warm, frame, frame[2], frame[3])))
-	assert_true(absf(solved[1]) <= _rules.combat.blade_friction * solved[0] + TIGHT, "inside the cone")
+	assert_true(absf(solved[1]) <= _rules.blade_pair().friction * solved[0] + TIGHT, "inside the cone")
 
 
 func test_the_position_stage_never_feeds_the_warm_start() -> void:

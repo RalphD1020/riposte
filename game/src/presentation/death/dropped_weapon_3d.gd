@@ -40,6 +40,7 @@ static func create(visual: Node3D, weapon_mass: float, length: float, width: flo
 	collider.shape = shape
 	collider.position = Vector3(0.0, 0.0, center_z)
 	body.add_child(collider)
+	FighterPresentation3D.set_shadow_casting(visual, true)
 	body.add_child(visual)
 	return body
 

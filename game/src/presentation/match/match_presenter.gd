@@ -24,8 +24,9 @@ signal sound_caption_requested(text: String, seconds: float)
 const GRIND_SPEED := 0.9
 ## Crowd bed trim. The Crowd bus fader is the player's mix; this is the
 ## presentation ride, written only when the change passes hysteresis.
-const CROWD_BED_AMBIENT_DB := -18.0
-const CROWD_BED_MOMENTUM_DB := -10.0
+## The bed was inaudible at -18 under the arena theme. The 8 dB ride stays.
+const CROWD_BED_AMBIENT_DB := -12.0
+const CROWD_BED_MOMENTUM_DB := -4.0
 const CROWD_BED_SLEW_DB := 24.0
 const CROWD_BED_HYSTERESIS_DB := 0.35
 
@@ -65,6 +66,7 @@ var _crowd_intensity: float = 0.0
 var _crowd_bed_trim: float = CROWD_BED_AMBIENT_DB
 var _crowd_bed_written: float = INF
 var _crowd_seed: int = 1
+var crowd_bed_enabled: bool = true
 
 
 static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCameraRig, platform_radius: float, edge_warning_inset: float, first: PresentationSnapshot, crowd_seed: int = 1) -> MatchPresenter:
@@ -81,7 +83,7 @@ static func create(kits: DuelKits, options: PresentationOptions, camera: DuelCam
 
 func _ready() -> void:
 	## The arena loop belongs to RiposteApp. This director starts the bed only.
-	if _kits.arena != null:
+	if _kits.arena != null and crowd_bed_enabled:
 		_audio.play_crowd_bed(_kits.arena.stream_for(PresentationKit.CUE_CROWD_BED))
 		_audio.set_crowd_bed_volume_db(CROWD_BED_AMBIENT_DB)
 		_crowd_bed_trim = CROWD_BED_AMBIENT_DB
@@ -167,6 +169,12 @@ func fighter_proxy(slot: int) -> FighterPresentation3D:
 	return _fighters[slot]
 
 
+## NONE leaves a ring-out on the ballistic fall. WATER holds it at `height`.
+func set_basin(enabled: bool, height: float) -> void:
+	for proxy: FighterPresentation3D in _fighters:
+		proxy.set_basin(enabled, height)
+
+
 ## The once-per-set introduction, built over this presenter's world from the
 ## fighters' recorded takes. The screen decides whether a set is starting and
 ## records the takes; the presenter only stages them.
@@ -201,6 +209,14 @@ func crowd() -> CrowdStage:
 	return _arena.crowd()
 
 
+func _caption_name(fighter: PresentationKit) -> void:
+	var spoken := ""
+	if fighter.intro != null:
+		spoken = fighter.intro.spoken()
+	if _options.sound_captions and spoken != "" and SoundCaptions.pick(_last_frame.audio_requests) == "":
+		sound_caption_requested.emit(spoken, SoundCaptions.HOLD_SECONDS)
+
+
 func play_crowd(cue: StringName, winner: int, intensity: float = 0.0, chant_slot: int = -1) -> void:
 	_crowd_intensity = clampf(intensity, 0.0, 1.0)
 	var cut := cue == CrowdDirector.CUE_VICTORY or cue == CrowdDirector.CUE_STRONG
@@ -215,15 +231,14 @@ func play_crowd(cue: StringName, winner: int, intensity: float = 0.0, chant_slot
 			_audio.stop_crowd_chant()
 		elif naming and _kits != null:
 			var fighter := _kits.combatant(chant_slot).fighter
-			var stream := fighter.crowd_chant
-			if stream == null or not _audio.accepts_crowd_chant(stream):
+			var stream := fighter.name_phrase
+			if stream == null:
 				_audio.stop_crowd_chant()
-			elif _audio.play_crowd_chant(stream):
-				var spoken := ""
-				if fighter.intro != null:
-					spoken = fighter.intro.spoken()
-				if _options.sound_captions and spoken != "" and SoundCaptions.pick(_last_frame.audio_requests) == "":
-					sound_caption_requested.emit(spoken, SoundCaptions.HOLD_SECONDS)
+			elif _audio.accepts_crowd_chant(stream):
+				if _audio.play_crowd_chant(stream):
+					_caption_name(fighter)
+			elif _audio.play_name_phrase(stream):
+				_caption_name(fighter)
 		else:
 			_audio.release_crowd_chant(AudioDirector.CHANT_RELEASE_SECONDS)
 	if cue == &"" or cue == CrowdDirector.CUE_MURMUR or _kits == null or _kits.arena == null:
@@ -443,6 +458,8 @@ func _apply(frame: FeedbackFrame) -> void:
 	for request in frame.death_requests:
 		_present_death(request)
 	for request in frame.fall_requests:
+		if _arena != null:
+			request.leave_ground(_arena.ground_outline())
 		_fighters[request.slot].begin_fall(request)
 	for request in frame.weapon_drop_requests:
 		_drops.request(request)

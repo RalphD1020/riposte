@@ -72,7 +72,7 @@ static func apply_colorway(combatant: CombatantPresentationKit, side: DuelSide.I
 	var profile := combatant.colorway()
 	if profile == null:
 		return
-	profile.apply(model, ColorwayResolver.variant_for(side, combatant.mirror))
+	profile.apply(model, combatant.chosen_variant(side))
 
 
 static func material(color: Color, unshaded: bool = false) -> StandardMaterial3D:

@@ -37,7 +37,9 @@ extends RefCounted
 ## Bump when the meaning or layout of the resolved content changes, so a
 ## replay recorded against another content schema is refused, not reinterpreted.
 ## (4: `FighterDefinition.grip_damage_factor` left the digest. Rules 55.)
-const CONTENT_SCHEMA_VERSION := 4
+## (5: weapon restitution moved into its `ContactMaterial`, and each body
+## gained one; both materials are digested.)
+const CONTENT_SCHEMA_VERSION := 5
 
 var fighter: FighterDefinition
 var weapon: WeaponDefinition
@@ -96,7 +98,9 @@ func fingerprint() -> String:
 	var floats := PackedFloat64Array()
 	var names := PackedStringArray()
 	_digest(fighter, ints, floats, names)
+	_digest(fighter.material if fighter != null else null, ints, floats, names)
 	_digest(weapon, ints, floats, names)
+	_digest(weapon.material if weapon != null else null, ints, floats, names)
 	_digest(handling, ints, floats, names)
 	var context := HashingContext.new()
 	context.start(HashingContext.HASH_SHA256)

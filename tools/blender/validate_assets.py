@@ -39,7 +39,9 @@ STANCE_BONES = ["Hips", "UpperLeg.L", "LowerLeg.L", "Foot.L", "UpperLeg.R", "Low
 ## ~0.25 s (frame 16 at 60 fps).
 RING_FALL_CLIPS = ["ring_fall_a", "ring_fall_b", "ring_fall_c"]
 RING_FALL_ARMS_UP_BY = 16
-FIGHTER_TRIANGLES = 2000
+## The layered costume (bib, harness, fur tufts, pauldron, knee caps, boot toes, hair locks) is past the old 2000.
+## 2400 is the hero's cap. The crowd stays on its own budget.
+FIGHTER_TRIANGLES = 2400
 FIGHTER_HEIGHT = (1.70, 1.85)
 ## The usable handle and the hands on it mirror PhysicalBaseline
 ## (POMMEL_SHOULDER_M, GUARD_UNDERSIDE_M, GRIP_*_M): off hand just above the
@@ -311,6 +313,136 @@ def _world_vertices():
             yield matrix @ vert.co
 
 
+def _validate_pit(layout):
+    """The sand stays clear. The wall and the seats stay outside the disc.
+    The gates may rise through the wall. Nothing clears the top tread.
+    """
+    import math
+    problems = []
+    disc = layout["expected_disc_radius"]
+    top = layout["tiers"][-1]["tread_height"]
+    names = _material_names(_meshes())
+    if "stone_stand" not in names:
+        problems.append("missing stone_stand")
+    if "basin_water" in names:
+        problems.append("the pit has no water")
+    for point in _world_vertices():
+        radius = math.hypot(point.x, point.y)
+        if radius <= disc + 0.02 and point.z > 0.02:
+            problems.append("fighting volume blocked at r %.3f z %.3f" % (radius, point.z))
+            break
+        if point.z > top + 0.35:
+            problems.append("stone above the top tread (z %.3f)" % point.z)
+            break
+    problems.extend(_pit_doors(layout))
+    return problems
+
+
+def _pit_doors(layout):
+    """Inner-course stone beside each door, none in the opening or the wood.
+
+    The flat gate bays face north and south. Their inner face is the plane
+    |y| = inner_radius + 0.08. The door width runs along X. A vertex on the
+    outer course cannot satisfy the jamb, and a vertex inside the wood fails.
+    """
+    import math
+    gate = layout["gates"]
+    inner = layout["wall"]["inner_radius"] + 0.08
+    half = gate["width"] * 0.5
+    face = inner + 0.05
+    side = half + 0.08
+    band_hi = inner + 0.45
+    bpy.context.view_layer.update()
+    stone = []
+    gates = []
+    for obj in _meshes():
+        matrix = obj.matrix_world
+        if obj.name in ("GateNorth", "GateSouth"):
+            gates.append(obj)
+            continue
+        for vert in obj.data.vertices:
+            point = matrix @ vert.co
+            if math.hypot(point.x, point.y) > band_hi:
+                continue
+            if point.z <= 0.15 or point.z >= gate["height"] - 0.15:
+                continue
+            stone.append(point)
+    problems = []
+    if len(gates) != 2:
+        problems.append("the pit needs both doors")
+    for sign in (1.0, -1.0):
+        y = sign * face
+        for x_sign in (1.0, -1.0):
+            nearest = _nearest(stone, (x_sign * side, y, 0.8))
+            if nearest > 0.20:
+                problems.append("inner course missing beside the door at (%.2f, %.2f), nearest %.2f" % (x_sign * side, y, nearest))
+    buried = 0
+    for point in stone:
+        if abs(point.x) >= half - 0.05:
+            continue
+        if inner + 0.03 < abs(point.y) < inner + gate["depth"] - 0.03:
+            buried += 1
+            break
+    if buried:
+        problems.append("stone inside the door recess")
+    disc = layout["expected_disc_radius"]
+    for obj in gates:
+        matrix = obj.matrix_world
+        coords = [matrix @ vert.co for vert in obj.data.vertices]
+        if not coords:
+            problems.append("%s has no vertices" % obj.name)
+            continue
+        if min(math.hypot(point.x, point.y) for point in coords) < disc + 0.02:
+            problems.append("%s crosses the combat disc" % obj.name)
+        inset = 0.04
+        lo_x = min(point.x for point in coords) + inset
+        hi_x = max(point.x for point in coords) - inset
+        lo_y = min(point.y for point in coords) + inset
+        hi_y = max(point.y for point in coords) - inset
+        lo_z = min(point.z for point in coords) + inset
+        hi_z = max(point.z for point in coords) - inset
+        for point in stone:
+            if lo_x < point.x < hi_x and lo_y < point.y < hi_y and lo_z < point.z < hi_z:
+                problems.append("stone inside %s" % obj.name)
+                break
+    found = {1.0: False, -1.0: False}
+    depth = gate["depth"]
+    for obj in _meshes():
+        if obj.name in ("GateNorth", "GateSouth"):
+            continue
+        matrix = obj.matrix_world
+        for poly in obj.data.polygons:
+            center = matrix @ poly.center
+            if abs(abs(center.x) - half) > 0.08:
+                continue
+            if not (inner - 0.05 < abs(center.y) < inner + depth + 0.08):
+                continue
+            if not (0.3 < center.z < 1.3):
+                continue
+            normal = (matrix.to_3x3() @ poly.normal).normalized()
+            if abs(normal.x) < 0.85:
+                continue
+            toward = center.x * normal.x
+            if toward < -0.4:
+                found[1.0 if center.x > 0.0 else -1.0] = True
+            elif toward > 0.4:
+                problems.append("jamb face points into the stone at x %.2f" % center.x)
+                return problems[:8]
+            if len(problems) >= 8:
+                return problems
+    if not found[1.0] or not found[-1.0]:
+        problems.append("no jamb face on both sides of the doors")
+    return problems[:8]
+
+
+def _nearest(points, at):
+    import math
+    nearest = 1000.0
+    for point in points:
+        nearest = min(nearest, math.dist(at, (point.x, point.y, point.z)))
+    return nearest
+
+
 def validate_bowl():
     """Fighting volume, not a blanket outside-the-disc test.
 
@@ -324,6 +456,8 @@ def validate_bowl():
     if bpy.data.objects.get("PlatformTop") is not None:
         problems.append("the bowl must not carry PlatformTop")
     layout = _layout()
+    if layout.get("kind") == "pit":
+        return _validate_pit(layout)
     disc = layout["expected_disc_radius"]
     soffit = layout["floor"]["soffit"]
     outer_inner = layout["outer_arcade"]["inner_radius"]
@@ -395,6 +529,50 @@ def validate_crowd():
     return ["crowd mesh needs skin and fabric, or hair"]
 
 
+def _emission_strength(mat_name):
+    mat = bpy.data.materials.get(mat_name)
+    if mat is None or mat.node_tree is None:
+        return 0.0
+    bsdf = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if bsdf is None or "Emission Strength" not in bsdf.inputs:
+        return 0.0
+    return bsdf.inputs["Emission Strength"].default_value
+
+
+def validate_deck():
+    problems = []
+    names = {o.name for o in bpy.data.objects}
+    for required in ("Top", "Edge", "Underside", "Orb"):
+        if required not in names:
+            problems.append("missing %s" % required)
+    if problems:
+        return problems
+    top = bpy.data.objects.get("Top")
+    lo, hi = rb.world_bounds([top])
+    radius = max(hi.x, -lo.x, hi.y, -lo.y)
+    if abs(radius - ARENA_RADIUS) > TOLERANCE:
+        problems.append("deck radius %.4f, rules say %.2f" % (radius, ARENA_RADIUS))
+    if abs(hi.z) > 0.01:
+        problems.append("deck top at %.4f, not on the floor" % hi.z)
+    edge = bpy.data.objects.get("Edge")
+    _elo, ehi = rb.world_bounds([edge])
+    if max(ehi.x, -_elo.x, ehi.y, -_elo.y) <= ARENA_RADIUS:
+        problems.append("the lip does not pass the deck")
+    if _emission_strength("edge") <= 0.0 or _emission_strength("orb") <= 0.0:
+        problems.append("the edge and the orb carry a little emission")
+    if _emission_strength("deck") > 0.0 or _emission_strength("underside") > 0.0:
+        problems.append("the deck and the underside stay unlit")
+    for mat_name in ("deck", "edge", "underside", "orb"):
+        if bpy.data.materials.get(mat_name) is None:
+            problems.append("missing material %s" % mat_name)
+    if any(o.type == "ARMATURE" for o in bpy.data.objects):
+        problems.append("the deck has no rig")
+    tris = rb.triangle_count(_meshes())
+    if tris > 2000:
+        problems.append("triangles %d over budget 2000" % tris)
+    return problems
+
+
 VALIDATORS = {
     "fighter": validate_fighter,
     "weapon": validate_weapon,
@@ -403,6 +581,7 @@ VALIDATORS = {
     "bowl": validate_bowl,
     "floor": validate_floor,
     "crowd": validate_crowd,
+    "deck": validate_deck,
 }
 
 

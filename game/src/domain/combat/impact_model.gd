@@ -110,7 +110,7 @@ static func resolve_at(attacker: FighterState, point_x: float, point_y: float, c
 	impact.weapon_inertia = ContactMechanics.weapon_inertia(pose, wielding)
 	var bodies := 1.0 / impact.attacker_mass + 1.0 / impact.target_mass
 	impact.inverse_effective_mass = bodies + impact.lever_cross * impact.lever_cross / impact.weapon_inertia
-	impact.restitution = combat.sword_body_restitution
+	impact.restitution = rules.sword_body_pair(attacker.slot).restitution_at(impact.normal_speed)
 	impact.impulse = ContactMechanics.normal_impulse(impact.normal_speed, impact.inverse_effective_mass, impact.restitution)
 	impact.available_energy = ContactMechanics.available_energy(impact.normal_speed, impact.inverse_effective_mass)
 	impact.kinetic_severity = ContactMechanics.dissipated_energy(impact.normal_speed, impact.inverse_effective_mass, impact.restitution)

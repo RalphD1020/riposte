@@ -23,7 +23,8 @@ static func resolve(
 	rules: DuelRules,
 	fighter_skins: Array[StringName] = [],
 	weapon_skins: Array[StringName] = [],
-	loadout: MatchPresentationLoadout = null
+	loadout: MatchPresentationLoadout = null,
+	palette_slot: PackedInt32Array = PackedInt32Array()
 ) -> DuelKits:
 	var kits := DuelKits.new()
 	## Each slot is dressed from its own combatant's content ids.
@@ -51,6 +52,8 @@ static func resolve(
 		var blade := catalog.weapon_skin(weapon_skins[slot]) if slot < weapon_skins.size() else null
 		var entry := CombatantPresentationKit.of(fighter_kits[slot], weapon_kits[slot], skin, blade)
 		entry.mirror = mirror
+		if slot < palette_slot.size():
+			entry.palette_override = palette_slot[slot]
 		kits.combatants.append(entry)
 	kits.match_loadout = loadout if loadout != null else MatchPresentationLoadout.of(kits.arena, null, null, null)
 	return kits

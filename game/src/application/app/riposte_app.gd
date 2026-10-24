@@ -241,7 +241,27 @@ func current_screen() -> Control:
 var crowd_seed: int = 1
 
 
+func start_arena(palettes: PackedInt32Array, stage_id: StringName = ContentIds.ARENA_STANDARD) -> void:
+	var stage := StageCatalog.of(stage_id)
+	if stage == null:
+		stage = StageCatalog.arena()
+	if stage.problem() != "":
+		push_error("RiposteApp: %s" % stage.problem())
+		return
+	telemetry.record_product(ProductEvents.QUICK_PLAY_CLICKED, {ProductEvents.PROP_DIFFICULTY: int(settings.difficulty)})
+	crowd_seed = absi(_seeds.randi()) | 1
+	var config := MatchConfig.for_stage(stage, settings.difficulty, _seeds.randi())
+	if palettes.size() == 2:
+		config.palette_slot = palettes
+	_start(config)
+
+
 func start_quick_play() -> void:
+	start_arena(PackedInt32Array([0, 1]))
+
+
+## Version 58, open edge. Journeys that must ring out call this. It is not Quick Play.
+func start_open_edge() -> void:
 	telemetry.record_product(ProductEvents.QUICK_PLAY_CLICKED, {ProductEvents.PROP_DIFFICULTY: int(settings.difficulty)})
 	crowd_seed = absi(_seeds.randi()) | 1
 	_start(MatchConfig.quick_play(settings.difficulty, _seeds.randi()))
@@ -275,7 +295,7 @@ func rematch() -> void:
 ## The match's presentation kits, resolved once for the duel and again for its
 ## results: rules decide identity, settings decide the local player's skin.
 func resolve_kits(config: MatchConfig) -> DuelKits:
-	var kits := DuelKits.resolve(kit_catalog, config.rules, fighter_skins(), weapon_skins())
+	var kits := DuelKits.resolve(kit_catalog, config.rules, fighter_skins(), weapon_skins(), null, config.palette_slot)
 	if kits.is_complete():
 		kits.match_loadout = RiposteKits.match_loadout(kits.arena)
 	return kits

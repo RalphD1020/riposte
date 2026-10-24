@@ -176,3 +176,22 @@ func test_a_body_is_hashed_and_only_the_dead_are_bodies() -> void:
 	assert_eq(StateInvariants.check_fighter(living, _rules), StateInvariants.OK, "fixture: the winner is sound")
 	living.fallen.active = true
 	assert_eq(StateInvariants.check_fighter(living, _rules), StateInvariants.FALLEN_ALIVE, "a living fighter is never a body")
+
+
+func test_a_closed_edge_holds_a_body_instead_of_a_corpse_fall() -> void:
+	var rules := StandardDuelRules.pit()
+	var body := FighterState.new()
+	body.slot = 0
+	body.health = 0.0
+	body.fallen.begin(0.0, 0)
+	var half := rules.combatant(0).fighter.lying_half_length
+	var limit := rules.platform_radius - half
+	body.x = limit + 0.5
+	body.vx = 3.0
+	var events: Array[DuelEvent] = []
+	FallenBodySystem.step(body, rules, 1, events)
+	assert_eq(events.size(), 0, "a closed edge does not emit a corpse fall")
+	assert_false(body.fallen.over_edge, "the body stays on the floor")
+	assert_near(body.x, limit, 1e-6, "its centre is held inside its lying length")
+	assert_true(body.x + half <= rules.platform_radius + 1.0e-6, "the far end of the body stays inside the disc")
+	assert_near(body.vx, 0.0, 1e-6, "and its outward speed is gone")

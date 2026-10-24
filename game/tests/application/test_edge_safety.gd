@@ -76,6 +76,47 @@ func test_backward_dash_near_edge_is_unsafe() -> void:
 	assert_true(result.crosses_platform, "backward dash near edge crosses the platform (facing away, back dash goes outward)")
 
 
+func test_a_closed_edge_does_not_pull_footwork_toward_the_centre() -> void:
+	var pit := StandardDuelRules.pit()
+	var closed := CpuController.create(pit, CpuProfile.medium(), 1, 0)
+	var open := CpuController.create(DuelFixture.rules(), CpuProfile.medium(), 1, 0)
+	var radius := pit.platform_radius - 0.2
+	var me := FighterState.new()
+	DuelFixture.place(me, radius, 0.0, 0.0)
+	closed._sight_x = radius - 2.0
+	closed._sight_y = 0.0
+	closed._sight_distance = 2.0
+	closed._move = CpuController.Move.RETREAT
+	open._sight_x = radius - 2.0
+	open._sight_y = 0.0
+	open._sight_distance = 2.0
+	open._move = CpuController.Move.RETREAT
+	var held := closed._steer(me)
+	var pulled := open._steer(me)
+	assert_true(held[1] < 0.0, "retreat on a closed edge stays outward")
+	assert_true(pulled[1] > 0.0, "the open edge pulls that same retreat back toward the centre")
+	var home := FighterState.new()
+	DuelFixture.place(home, 0.0, -pit.spawn_offset, DuelSide.NORTH_FACING)
+	closed._sight_x = 0.0
+	closed._sight_y = pit.spawn_offset
+	closed._sight_distance = pit.spawn_offset * 2.0
+	closed._move = CpuController.Move.RETREAT
+	var from_spawn := closed._steer(home)
+	assert_true(from_spawn[1] < 0.0, "a retreat from the spawn is still a retreat")
+
+
+func test_a_closed_edge_does_not_predict_a_ring_out() -> void:
+	var rules := StandardDuelRules.pit()
+	var fighter := _fighter_near_edge(0.05, 0.0)
+	fighter.health = rules.combatant(0).fighter.max_health
+	var walk := EdgeSafetyEvaluator.evaluate_walk(fighter, 0.0, 1.0, rules, ConditionState.healthy())
+	assert_false(walk.crosses_platform, "an outward walk is not a ring-out on a closed edge")
+	assert_near(walk.min_clearance, rules.platform_radius, 1e-6, "clearance is the whole disc")
+	assert_true(walk.recoverable, "and the candidate stays recoverable")
+	var burst := EdgeSafetyEvaluator.evaluate_burst(fighter, MovementGestureState.BurstKind.FORWARD_DASH, rules, ConditionState.healthy())
+	assert_false(burst.crosses_platform, "and neither is an outward dash")
+
+
 func test_forward_dash_near_edge_facing_outward_is_unsafe() -> void:
 	var fighter := _fighter_near_edge(0.8, 0.0)
 	fighter.health = _rules.combatant(0).fighter.max_health

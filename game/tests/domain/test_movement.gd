@@ -287,6 +287,254 @@ func test_both_fighters_charging_never_cross_through_each_other() -> void:
 
 ## MOVE-001. A buffer longer than a few frames fires an attack the player has
 ## already mentally abandoned, which reads as the game acting on its own.
+func test_a_closed_edge_holds_the_centre_and_drops_outward_speed() -> void:
+	var rules := StandardDuelRules.pit()
+	var fighter := _fighter()
+	var push := rules.spec_of(fighter).fighter.push_radius
+	var limit := rules.platform_radius - push
+	fighter.x = limit + 1.0
+	fighter.y = 0.0
+	fighter.vx = 4.0
+	fighter.vy = 1.0
+	ArenaConstraints.constrain(fighter, rules)
+	assert_near(fighter.x, limit, 1e-9, "the centre comes back to the support radius")
+	assert_near(fighter.vx, 0.0, 1e-9, "outward speed is removed")
+	assert_near(fighter.vy, 1.0, 1e-9, "tangent speed stays")
+	fighter.x = limit
+	fighter.vx = 2.0
+	ArenaConstraints.constrain(fighter, rules)
+	assert_near(fighter.x, limit, 1e-9, "a centre already on the support radius stays")
+	assert_near(fighter.vx, 0.0, 1e-9, "and still cannot keep walking out")
+	fighter.vx = -2.0
+	fighter.vy = 1.5
+	ArenaConstraints.constrain(fighter, rules)
+	assert_near(fighter.vx, -2.0, 1e-9, "inward speed on the circle stays")
+	assert_near(fighter.vy, 1.5, 1e-9, "tangent speed on the circle stays")
+	var inside := _fighter()
+	inside.x = rules.spawn_offset
+	inside.vx = 3.0
+	inside.vy = 1.0
+	ArenaConstraints.constrain(inside, rules)
+	assert_eq(inside.x, rules.spawn_offset, "a centre inside the disc is not pulled")
+	assert_eq(inside.vx, 3.0, "and its outward speed is not taken")
+	assert_eq(inside.vy, 1.0, "nor its tangent")
+	var open := _fighter()
+	open.x = _rules.platform_radius
+	open.vx = 3.0
+	ArenaConstraints.constrain(open, _rules)
+	assert_eq(open.x, _rules.platform_radius, "an open edge does not pull the centre back")
+	assert_eq(open.vx, 3.0, "and does not take its speed")
+	var falling := _fighter()
+	falling.is_falling = true
+	falling.x = limit + 2.0
+	ArenaConstraints.constrain(falling, rules)
+	assert_eq(falling.x, limit + 2.0, "a fighter who already lost support is left on the fall")
+	var centre := _fighter()
+	centre.vx = 3.0
+	ArenaConstraints.constrain(centre, rules)
+	assert_eq(centre.vx, 3.0, "a centre at the origin is not given a normal")
+	var tight := StandardDuelRules.pit()
+	tight.platform_radius = push
+	var parked := _fighter()
+	parked.x = 1.0
+	ArenaConstraints.constrain(parked, tight)
+	assert_eq(parked.x, 1.0, "no support radius means no pull")
+
+
+## MOVE-001. Both fighters face each other, so a retreat is away from the
+## centre. The closed hold must not delete that step. These drives go through
+## `DuelSimulation`, which is what calls `constrain` after the movement system.
+func test_retreat_from_the_spawn_on_a_closed_edge_moves_outward() -> void:
+	var rules := StandardDuelRules.pit()
+	var runner := SimRunner.create(rules, 21)
+	runner.skip_intro()
+	var mover := runner.state.fighter(0)
+	var home := SimMath.length(mover.x, mover.y)
+	assert_near(home, rules.spawn_offset, 1e-6, "fixture: the production spawn")
+	_drive(runner, 0, 0.0, -1.0, 45)
+	var retreated := SimMath.length(mover.x, mover.y)
+	assert_true(retreated > home + 0.4, "retreat increases distance from the centre (%.3f -> %.3f)" % [home, retreated])
+	assert_true(retreated < rules.platform_radius - 1.0, "and has not reached the wall")
+	assert_true(_radial(mover) > 0.4, "outward speed survives inside the disc")
+	assert_eq(runner.count(DuelEventTypes.RING_OUT), 0, "the arena does not ring out")
+	assert_true(runner.is_sound(), runner.violation_summary())
+
+
+func test_forward_from_the_spawn_on_a_closed_edge_closes() -> void:
+	var rules := StandardDuelRules.pit()
+	var runner := SimRunner.create(rules, 21)
+	runner.skip_intro()
+	var mover := runner.state.fighter(0)
+	var home := SimMath.length(mover.x, mover.y)
+	_drive(runner, 0, 0.0, 1.0, 30)
+	var closed := SimMath.length(mover.x, mover.y)
+	assert_true(closed < home - 0.3, "forward stride decreases distance from the centre (%.3f -> %.3f)" % [home, closed])
+	assert_true(_radial(mover) < -0.4, "that velocity points inward")
+	assert_eq(runner.count(DuelEventTypes.RING_OUT), 0, "closing is not a ring-out")
+
+
+func test_lateral_and_diagonal_footwork_keep_their_components() -> void:
+	var rules := StandardDuelRules.pit()
+	var lateral := SimRunner.create(rules, 21)
+	lateral.skip_intro()
+	var side := lateral.state.fighter(0)
+	assert_near(side.x, 0.0, 1e-6, "fixture: the spawn is on the north-south axis")
+	_drive(lateral, 0, 1.0, 0.0, 30)
+	assert_true(absf(side.x) > 0.3, "lateral footwork leaves the spawn axis")
+	assert_true(absf(side.vx) > 0.4, "and keeps a tangent speed")
+	var diagonal := SimRunner.create(rules, 21)
+	diagonal.skip_intro()
+	var mover := diagonal.state.fighter(0)
+	var home := SimMath.length(mover.x, mover.y)
+	_drive(diagonal, 0, 1.0, -1.0, 30)
+	assert_true(absf(mover.x) > 0.2, "a diagonal keeps its lateral part")
+	assert_true(SimMath.length(mover.x, mover.y) > home + 0.2, "and its retreat still leaves the centre")
+	assert_true(_radial(mover) > 0.2, "so the outward part was not stripped")
+
+
+func test_the_support_circle_removes_only_outward_speed() -> void:
+	var rules := StandardDuelRules.pit()
+	var runner := SimRunner.create(rules, 21)
+	runner.skip_intro()
+	var mover := runner.state.fighter(0)
+	var push := rules.combatant(0).fighter.push_radius
+	var limit := rules.platform_radius - push
+	_drive(runner, 0, 0.0, -1.0, 160)
+	var reached := SimMath.length(mover.x, mover.y)
+	assert_true(reached > limit - 0.15, "the retreat arrived at the wall (%.3f, limit %.3f)" % [reached, limit])
+	assert_true(reached <= limit + 1e-4, "and did not pass it")
+	assert_true(_radial(mover) <= 0.05, "outward speed is gone on the circle")
+	assert_eq(runner.count(DuelEventTypes.RING_OUT), 0, "holding the wall is not a ring-out")
+	var along := mover.x
+	_drive(runner, 0, 1.0, 0.0, 30)
+	assert_true(absf(mover.x - along) > 0.2, "tangent footwork still slides along the wall")
+	assert_true(SimMath.length(mover.x, mover.y) <= limit + 1e-4, "the slide stays inside")
+	assert_true(runner.is_sound(), runner.violation_summary())
+
+
+func test_a_meeting_along_a_closed_wall_does_not_stick() -> void:
+	var rules := StandardDuelRules.pit()
+	var runner := SimRunner.create(DuelFixture.mirror(rules), 8)
+	runner.skip_intro()
+	var push := rules.combatant(0).fighter.push_radius
+	var limit := rules.platform_radius - push
+	var touching := 2.0 * push
+	DuelFixture.place(runner.state.fighter(0), limit - 1.0, 1.1, 0.0)
+	DuelFixture.place(runner.state.fighter(1), limit - 1.0, -1.1, 0.0)
+	var start_0 := Vector2(runner.state.fighter(0).x, runner.state.fighter(0).y)
+	var start_1 := Vector2(runner.state.fighter(1).x, runner.state.fighter(1).y)
+	for i in 70:
+		var dash := i % 20 == 0
+		var east := PlayerCommand.create(runner.state.tick, 1.0, 0.0, false, false, false, dash)
+		var west := PlayerCommand.create(runner.state.tick, -1.0, 0.0, false, false, false, dash)
+		runner.push(east, west)
+		var gap := DuelGeometry.distance(runner.state.fighter(0), runner.state.fighter(1))
+		assert_true(gap >= touching - 1e-6, "bodies stay apart along the wall (gap %.4f)" % gap)
+		for slot in 2:
+			var fighter := runner.state.fighter(slot)
+			assert_true(SimMath.length(fighter.x, fighter.y) <= limit + 1e-4, "slot %d stays inside" % slot)
+	assert_eq(runner.count(DuelEventTypes.RING_OUT), 0, "the meeting is not a ring-out")
+	var mark_0 := Vector2(runner.state.fighter(0).x, runner.state.fighter(0).y)
+	var mark_1 := Vector2(runner.state.fighter(1).x, runner.state.fighter(1).y)
+	for _i in 30:
+		var east := PlayerCommand.create(runner.state.tick, 1.0, 0.0)
+		var west := PlayerCommand.create(runner.state.tick, -1.0, 0.0)
+		runner.push(east, west)
+	var later_0 := Vector2(runner.state.fighter(0).x, runner.state.fighter(0).y).distance_to(mark_0)
+	var later_1 := Vector2(runner.state.fighter(1).x, runner.state.fighter(1).y).distance_to(mark_1)
+	assert_true(later_0 > 0.25 or later_1 > 0.25, "footwork still covers ground after they meet (%.3f, %.3f)" % [later_0, later_1])
+	assert_true(Vector2(runner.state.fighter(0).x, runner.state.fighter(0).y).distance_to(start_0) > 0.5, "slot 0 was not pinned at the start")
+	assert_true(Vector2(runner.state.fighter(1).x, runner.state.fighter(1).y).distance_to(start_1) > 0.5, "slot 1 was not pinned at the start")
+	assert_true(runner.is_sound(), runner.violation_summary())
+
+
+func _drive(runner: SimRunner, slot: int, intent_x: float, intent_y: float, ticks: int) -> void:
+	for _i in ticks:
+		var move := PlayerCommand.create(runner.state.tick, intent_x, intent_y)
+		var hold := PlayerCommand.idle(runner.state.tick)
+		if slot == 0:
+			runner.push(move, hold)
+		else:
+			runner.push(hold, move)
+
+
+func _radial(fighter: FighterState) -> float:
+	var dist := SimMath.length(fighter.x, fighter.y)
+	if dist <= SimMath.EPSILON:
+		return 0.0
+	return (fighter.vx * fighter.x + fighter.vy * fighter.y) / dist
+
+
+func test_walking_out_of_a_closed_arena_does_not_ring_out() -> void:
+	var closed := _walk_south(StandardDuelRules.pit())
+	assert_eq(closed.count(DuelEventTypes.RING_OUT), 0, "the closed edge emits no ring-out")
+	assert_true(closed.is_sound(), closed.violation_summary())
+	var walker := closed.state.fighter(0)
+	var push := closed.rules.combatant(0).fighter.push_radius
+	var limit := closed.rules.platform_radius - push
+	assert_true(walker.is_alive() and not walker.is_falling, "the walker is still in the round")
+	assert_true(SimMath.length(walker.x, walker.y) <= limit + 1e-4, "the centre stays inside the support radius")
+	assert_true(walker.y < -(limit - 0.2), "the walk reached the wall")
+	var open := _walk_south(DuelFixture.rules())
+	assert_true(open.count(DuelEventTypes.RING_OUT) > 0, "the same walk on version 58 still rings out")
+
+
+func _walk_south(rules: DuelRules) -> SimRunner:
+	var runner := SimRunner.create(DuelFixture.mirror(rules), 3)
+	runner.skip_intro()
+	var push := rules.combatant(0).fighter.push_radius
+	var limit := rules.platform_radius - push
+	DuelFixture.place(runner.state.fighter(0), 0.0, -(limit - 0.4), DuelSide.NORTH_FACING)
+	DuelFixture.place(runner.state.fighter(1), 0.0, 2.0, DuelSide.SOUTH_FACING)
+	for _i in 80:
+		runner.push(PlayerCommand.create(runner.state.tick, 0.0, -1.0), PlayerCommand.idle(runner.state.tick))
+	return runner
+
+
+func test_a_sustained_push_into_a_closed_edge_stays_inside() -> void:
+	var rules := StandardDuelRules.pit()
+	var runner := SimRunner.create(DuelFixture.mirror(rules), 4)
+	runner.skip_intro()
+	var push := rules.combatant(0).fighter.push_radius
+	var limit := rules.platform_radius - push
+	DuelFixture.place(runner.state.fighter(0), limit - 0.4, 0.2, 0.0)
+	DuelFixture.place(runner.state.fighter(1), limit - 0.4, -0.2, 0.0)
+	for i in 150:
+		var dash := i % 15 == 0
+		var outward := PlayerCommand.create(runner.state.tick, 0.0, 1.0, false, false, false, dash)
+		runner.push(outward, outward)
+	assert_eq(runner.count(DuelEventTypes.RING_OUT), 0, "a long shove into the wall is not a ring-out")
+	assert_true(runner.is_sound(), runner.violation_summary())
+	for slot in 2:
+		var fighter := runner.state.fighter(slot)
+		assert_true(SimMath.length(fighter.x, fighter.y) <= limit + 1.0e-4, "slot %d stays inside the support radius" % slot)
+	DuelFixture.kill(runner.state.fighter(1))
+	runner.idle(1)
+	var body := runner.state.fighter(1)
+	DuelFixture.place(body, limit - 0.05, 0.0, 0.0)
+	body.vx = 8.0
+	runner.idle(40)
+	assert_eq(runner.count(DuelEventTypes.POST_ROUND_CORPSE_FALL), 0, "the body does not fall off a closed edge")
+	assert_false(body.fallen.over_edge, "and it is not marked over the edge")
+	assert_true(SimMath.length(body.x, body.y) <= limit + 1.0e-4, "its centre stays on the floor")
+	var gap := DuelGeometry.distance(runner.state.fighter(0), body)
+	assert_true(gap >= push * 2.0 - 0.05, "the pair is not left piled on one point (gap %.3f)" % gap)
+
+
+func test_separation_on_a_closed_edge_cannot_leave_a_centre_outside() -> void:
+	var rules := StandardDuelRules.pit()
+	var a := _fighter()
+	var b := _fighter()
+	b.slot = 1
+	var push := rules.combatant(0).fighter.push_radius
+	var limit := rules.platform_radius - push
+	DuelFixture.place(a, limit - 0.05, 0.0, 0.0)
+	DuelFixture.place(b, limit + 0.2, 0.0, PI)
+	ArenaConstraints.resolve(a, b, rules)
+	assert_true(SimMath.length(a.x, a.y) <= limit + 1e-6, "the inner body stays inside")
+	assert_true(SimMath.length(b.x, b.y) <= limit + 1e-6, "the body separation pushed out is pulled back")
+
+
 func test_the_input_buffer_stays_short() -> void:
 	assert_true(_rules.combatant(0).weapon.buffer_ticks <= WeaponDefinition.BUFFER_TICKS_LIMIT, "authored buffer is within the limit")
 	var over := DuelFixture.rules()

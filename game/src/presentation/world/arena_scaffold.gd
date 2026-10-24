@@ -1,9 +1,12 @@
 class_name ArenaScaffold
 extends Node3D
 
-## The duel space: Compatibility environment, a warm key and a cool rim light
-## (no shadow maps), and the arena floor with its boundary ring, or the arena
-## kit's authored scene. The combat disc is the only presentation collider.
+## The duel space: Compatibility environment, a warm key that may cast one
+## directional shadow map and a cool rim that never does, and the arena floor,
+## or the arena kit's authored scene. The kit's `StagePresentationProfile`
+## says which ground, sky, marks, and shadow policy; nothing here compares a
+## stage name. The only presentation collider is the sword floor, the same
+## outline as the visible ground. It does not hold a fighter.
 ## `arena_floor.glb`, when present, used to replace the visible plug. The
 ## fighting surface is now the sand disc on this scaffold. The brick file
 ## stays on disk. `arena_bowl.glb` carries the arches and the treads. Neither
@@ -11,13 +14,10 @@ extends Node3D
 ##
 ## See also: /docs/concepts/presentation.md
 
-const RING_WIDTH := 0.08
-## The boundary ring is a torus flattened to a painted line.
+## The dark home mark is a torus flattened to a painted line.
 const RING_FLATTEN := 0.15
-## A thick slab, so the cliff reads as a real drop from the gameplay camera.
+## A thick slab, so the missing-scene fallback reads as a drop.
 const FLOOR_THICKNESS := 1.6
-## The visible floor edge IS the physical cliff — no invisible margin.
-const EDGE_STRIP_DROP := 0.02
 const CIRCLE_SEGMENTS := 64
 const CENTER_MARK_RADIUS := 0.3
 ## Home marks sit at each side's spawn, which is what makes the arena's
@@ -34,54 +34,110 @@ const BRAZIER_GLOW := 2.2
 ## Presentation floor slab under the platform top (m).
 const GROUND_THICKNESS := 0.2
 const BOWL_SCENE := "res://assets/generated/arenas/arena_bowl.glb"
+## Metres from the camera the key's orthogonal shadow map covers: the far
+## stone of the bowl from the far end of the 14–18 m duel camera, no further.
+const KEY_SHADOW_DISTANCE := 32.0
 
 var _crowd: CrowdStage
 var _ripple: MeshInstance3D
+## The visible ground in plan (world XZ). The sword floor and a fall's ledge.
+var _outline := PackedVector2Array()
 
 
-static func create(kit: PresentationKit, platform_radius: float, edge_warning_inset: float, spawn_offset: float, crowd_seed: int = 1) -> ArenaScaffold:
+static func create(kit: PresentationKit, platform_radius: float, _edge_warning_inset: float, spawn_offset: float, crowd_seed: int = 1) -> ArenaScaffold:
 	var scaffold := ArenaScaffold.new()
 	scaffold.name = "Arena"
-	scaffold._build_environment()
+	var profile := profile_of(kit)
+	scaffold._build_environment(profile)
+	if profile.ground == StagePresentationProfile.Ground.DECK:
+		## The deck kit's own scene. No sand, no bowl, no crowd. The mesh is not a collider.
+		if kit.scene != null:
+			var stage := kit.scene.instantiate()
+			stage.name = "Deck"
+			scaffold.add_child(stage)
+			_cast(stage, profile.stage_casts)
+		if profile.home_marks:
+			scaffold._build_home_marks(spawn_offset)
+		scaffold._outline = profile.deck_outline()
+		scaffold._build_presentation_ground(scaffold._outline, platform_radius)
+		return scaffold
 	var layout := ArenaSection.load_layout()
-	if kit.scene != null:
-		## The authored arena brings the platform, cliff, and perimeter; the
-		## warning ring and home marks still come from the rules. The sand disc
-		## hides that plug. The brick glb stays the previous surface.
+	if kit != null and kit.scene != null:
+		## The authored arena brings the old plug. The sand floor hides it.
+		## The product pit does not paint a boundary ring.
 		var stage := kit.scene.instantiate()
 		scaffold.add_child(stage)
 		scaffold._hide_stand_in(stage)
 		scaffold._hide_replaced_disc(stage)
-		scaffold.add_child(ArenaSurfaceState.create(platform_radius))
-		var curb := layout.curb_inner_radius if layout.issues().is_empty() else -1.0
-		scaffold._build_ring(platform_radius, edge_warning_inset, curb)
+		scaffold.add_child(ArenaSurfaceState.create(platform_radius, layout))
 	else:
-		scaffold._build_floor(platform_radius, edge_warning_inset)
+		scaffold._build_floor(platform_radius)
 		scaffold._build_perimeter(platform_radius)
-	scaffold._build_home_marks(spawn_offset)
-	scaffold._build_presentation_ground(platform_radius)
-	scaffold._build_bowl()
-	scaffold._crowd = CrowdStage.create(crowd_seed, platform_radius)
-	scaffold.add_child(scaffold._crowd)
+	if profile.home_marks:
+		scaffold._build_home_marks(spawn_offset)
+	if layout.pit and layout.bay_count >= 3 and layout.issues().is_empty():
+		for point: Vector3 in ArenaSurfaceState.rim_points(layout.bay_count, ArenaSurfaceState.face_distance(layout.wall_inner), layout.angular_zero):
+			scaffold._outline.append(Vector2(point.x, point.z))
+	scaffold._build_presentation_ground(scaffold._outline, platform_radius)
+	var bowl := scaffold._build_bowl()
+	if bowl != null:
+		_cast(bowl, profile.stage_casts)
+	if profile.crowd != null:
+		scaffold._crowd = CrowdStage.create(profile.crowd, crowd_seed)
+		scaffold.add_child(scaffold._crowd)
 	return scaffold
 
 
-## The platform top as a presentation-only surface, from the rules' radius on
-## either arena path: a dropped sword lands on it inside the edge and falls past
-## it outside. Nothing authoritative uses it (PresentationPhysicsLayers).
-func _build_presentation_ground(platform_radius: float) -> void:
-	var shape := CylinderShape3D.new()
-	shape.radius = platform_radius
-	shape.height = GROUND_THICKNESS
+## The kit's stage profile. A kit without one is the pit.
+static func profile_of(kit: PresentationKit) -> StagePresentationProfile:
+	if kit != null and kit.stage != null:
+		return kit.stage
+	return StagePresentationProfile.new()
+
+
+## The visible ground in plan (world XZ), convex. Empty on a fallback disc.
+func ground_outline() -> PackedVector2Array:
+	return _outline
+
+
+static func _cast(root: Node, casts: bool) -> void:
+	var setting := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if casts else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if root is GeometryInstance3D:
+		(root as GeometryInstance3D).cast_shadow = setting
+	for child: Node in root.get_children():
+		_cast(child, casts)
+
+
+## A dropped sword lands on this and nothing else. It is the visible ground's
+## outline (the sand polygon, the deck octagon), not the combat radius. A
+## fighter never reads it (PresentationPhysicsLayers). Without an outline it
+## is one disc at the support radius.
+func _build_presentation_ground(outline: PackedVector2Array, platform_radius: float) -> void:
 	var collider := CollisionShape3D.new()
-	collider.shape = shape
+	if outline.size() >= 3:
+		var shape := ConvexPolygonShape3D.new()
+		var prism := PackedVector3Array()
+		for point: Vector2 in outline:
+			prism.append(Vector3(point.x, 0.0, point.y))
+			prism.append(Vector3(point.x, -GROUND_THICKNESS, point.y))
+		shape.points = prism
+		collider.shape = shape
+	else:
+		scaffold_disc(collider, platform_radius)
 	var ground := StaticBody3D.new()
 	ground.name = "PresentationGround"
 	ground.collision_layer = PresentationPhysicsLayers.PRESENTATION_GROUND
 	ground.collision_mask = 0
-	ground.position = Vector3(0.0, -GROUND_THICKNESS * 0.5, 0.0)
 	ground.add_child(collider)
 	add_child(ground)
+
+
+static func scaffold_disc(collider: CollisionShape3D, platform_radius: float) -> void:
+	var shape := CylinderShape3D.new()
+	shape.radius = platform_radius
+	shape.height = GROUND_THICKNESS
+	collider.shape = shape
+	collider.position = Vector3(0.0, -GROUND_THICKNESS * 0.5, 0.0)
 
 
 func presentation_ground() -> StaticBody3D:
@@ -90,6 +146,10 @@ func presentation_ground() -> StaticBody3D:
 
 func crowd() -> CrowdStage:
 	return _crowd
+
+
+func sand() -> ArenaSurfaceState:
+	return get_node_or_null("SandSurface") as ArenaSurfaceState
 
 
 func react(cue: StringName, excitement: float) -> void:
@@ -134,19 +194,20 @@ func ripple_at(at: Vector3) -> void:
 		_ripple.material_override = material
 		add_child(_ripple)
 	_ripple.visible = true
-	_ripple.position = Vector3(at.x, RingOutWater.SURFACE_Y + 0.04, at.z)
+	_ripple.position = Vector3(at.x, at.y + 0.04, at.z)
 	_ripple.scale = Vector3(0.6, 0.15, 0.6)
 
 
-func _build_bowl() -> void:
+func _build_bowl() -> Node:
 	if not ResourceLoader.exists(BOWL_SCENE):
-		return
+		return null
 	var packed := load(BOWL_SCENE) as PackedScene
 	if packed == null:
-		return
+		return null
 	var bowl := packed.instantiate()
 	bowl.name = "Bowl"
 	add_child(bowl)
+	return bowl
 
 
 ## Temporary. These prefixes are the ornamental stand-ins in the disc glb.
@@ -193,20 +254,35 @@ func _hide_replaced_disc(node: Node) -> void:
 			child.queue_free()
 
 
-func _build_environment() -> void:
+func _build_environment(profile: StagePresentationProfile) -> void:
+	var void_sky := profile.backdrop == StagePresentationProfile.Backdrop.VOID
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
 	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = RiposteTheme.SKY_TOP
-	sky_material.sky_horizon_color = RiposteTheme.SKY_HORIZON
-	sky_material.sky_curve = RiposteTheme.SKY_CURVE
-	sky_material.sky_energy_multiplier = RiposteTheme.SKY_ENERGY
-	sky_material.ground_bottom_color = RiposteTheme.SKY_GROUND
-	sky_material.ground_horizon_color = RiposteTheme.SKY_GROUND_HORIZON
-	sky_material.ground_curve = RiposteTheme.SKY_GROUND_CURVE
-	sky_material.ground_energy_multiplier = RiposteTheme.SKY_GROUND_ENERGY
-	sky_material.sun_angle_max = RiposteTheme.SKY_SUN_ANGLE_MAX
-	sky_material.sun_curve = RiposteTheme.SKY_SUN_CURVE
+	if void_sky:
+		## The duel camera looks down, so its void is the lower half: a faint
+		## lift near the horizon, near-black under the deck. No sun disc.
+		sky_material.sky_top_color = RiposteTheme.END_SKY
+		sky_material.sky_horizon_color = RiposteTheme.END_VOID_HORIZON
+		sky_material.sky_curve = RiposteTheme.END_VOID_CURVE
+		sky_material.sky_energy_multiplier = 1.0
+		sky_material.ground_bottom_color = RiposteTheme.END_VOID_DEEP
+		sky_material.ground_horizon_color = RiposteTheme.END_VOID_HORIZON
+		sky_material.ground_curve = RiposteTheme.END_VOID_CURVE
+		sky_material.ground_energy_multiplier = 1.0
+		sky_material.sun_angle_max = 0.0
+		sky_material.sun_curve = 0.0
+	else:
+		sky_material.sky_top_color = RiposteTheme.SKY_TOP
+		sky_material.sky_horizon_color = RiposteTheme.SKY_HORIZON
+		sky_material.sky_curve = RiposteTheme.SKY_CURVE
+		sky_material.sky_energy_multiplier = RiposteTheme.SKY_ENERGY
+		sky_material.ground_bottom_color = RiposteTheme.SKY_GROUND
+		sky_material.ground_horizon_color = RiposteTheme.SKY_GROUND_HORIZON
+		sky_material.ground_curve = RiposteTheme.SKY_GROUND_CURVE
+		sky_material.ground_energy_multiplier = RiposteTheme.SKY_GROUND_ENERGY
+		sky_material.sun_angle_max = RiposteTheme.SKY_SUN_ANGLE_MAX
+		sky_material.sun_curve = RiposteTheme.SKY_SUN_CURVE
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 	environment.sky = sky
@@ -219,7 +295,14 @@ func _build_environment() -> void:
 	add_child(world)
 	## The key owns the sun disc. The rim stays a fill, so the sky has one sun.
 	var key := _light("KeyLight", RiposteTheme.WORLD_KEY, RiposteTheme.WORLD_KEY_ENERGY, RiposteTheme.WORLD_KEY_ROTATION_DEGREES)
-	key.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
+	## The void has no sun. The Arena key still draws the one disc.
+	key.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY if void_sky else DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
+	if profile.key_shadow:
+		## One orthogonal split over the duel camera's view. The atlas size is
+		## the project's `directional_shadow/size`.
+		key.shadow_enabled = true
+		key.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		key.directional_shadow_max_distance = KEY_SHADOW_DISTANCE
 	add_child(key)
 	var rim := _light("RimLight", RiposteTheme.WORLD_RIM, RiposteTheme.WORLD_RIM_ENERGY, RiposteTheme.WORLD_RIM_ROTATION_DEGREES)
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
@@ -236,7 +319,7 @@ static func _light(light_name: String, color: Color, energy: float, rotation_deg
 	return light
 
 
-func _build_floor(platform_radius: float, edge_warning_inset: float) -> void:
+func _build_floor(platform_radius: float) -> void:
 	## The slab: a stone top over a darker cliff face.
 	var floor_mesh := CylinderMesh.new()
 	floor_mesh.top_radius = platform_radius
@@ -250,41 +333,11 @@ func _build_floor(platform_radius: float, edge_warning_inset: float) -> void:
 	top_mesh.height = 0.004
 	top_mesh.radial_segments = CIRCLE_SEGMENTS
 	_add("Floor", top_mesh, RiposteTheme.WORLD_FLOOR, Vector3(0.0, -0.002, 0.0))
-	_build_ring(platform_radius, edge_warning_inset)
 	var mark_mesh := CylinderMesh.new()
 	mark_mesh.top_radius = CENTER_MARK_RADIUS
 	mark_mesh.bottom_radius = CENTER_MARK_RADIUS
 	mark_mesh.height = 0.004
 	_add("CenterMark", mark_mesh, RiposteTheme.WORLD_FLOOR_EDGE, Vector3(0.0, 0.003, 0.0))
-
-
-## Warning ring: an etched, faintly glowing groove, plus the dropped edge
-## strip out to the physical cliff.
-func _build_ring(platform_radius: float, edge_warning_inset: float, curb_inner: float = -1.0) -> void:
-	var warning_radius := platform_radius - edge_warning_inset
-	var ring_mesh := TorusMesh.new()
-	ring_mesh.inner_radius = warning_radius - RING_WIDTH * 0.5
-	ring_mesh.outer_radius = warning_radius + RING_WIDTH * 0.5
-	ring_mesh.rings = CIRCLE_SEGMENTS
-	ring_mesh.ring_segments = 6
-	var ring := _add("BoundaryRing", ring_mesh, RiposteTheme.WORLD_RING, Vector3(0.0, 0.01, 0.0), RiposteTheme.WORLD_RING_EMISSION)
-	ring.scale = Vector3(1.0, RING_FLATTEN, 1.0)
-	## Edge strip: annular disc between warning ring and platform edge.
-	## With the raised curb, it stops at the curb's inner edge and sits on
-	## the paving instead of climbing the lip.
-	if edge_warning_inset > 0.0:
-		var edge_outer := platform_radius
-		var edge_y := -EDGE_STRIP_DROP
-		if curb_inner > 0.0:
-			edge_outer = minf(curb_inner, platform_radius)
-			edge_y = 0.012
-		var edge_mesh := TorusMesh.new()
-		edge_mesh.inner_radius = warning_radius
-		edge_mesh.outer_radius = edge_outer
-		edge_mesh.rings = CIRCLE_SEGMENTS
-		edge_mesh.ring_segments = 4
-		var edge := _add("EdgeStrip", edge_mesh, RiposteTheme.WORLD_FLOOR_EDGE, Vector3(0.0, edge_y, 0.0))
-		edge.scale = Vector3(1.0, RING_FLATTEN, 1.0)
 
 
 ## One mark per end, at the spawn. Light's is a filled disc and Dark's is a

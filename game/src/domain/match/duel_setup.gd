@@ -21,6 +21,8 @@ static func new_state(rules: DuelRules, seed_value: int) -> MatchState:
 	for slot in 2:
 		state.fighters[slot].slot = slot
 		state.fighters[slot].side = DuelSide.Id.LIGHT_SOUTH if slot == light_slot else DuelSide.Id.DARK_NORTH
+	if not rules.structures.is_empty():
+		state.structure_contacts = [StructureContactSet.new(), StructureContactSet.new()]
 	reset_round(state, rules)
 	## Spawn positions must be inside the arena. Validated at content time, not
 	## corrected at runtime — a spawn outside the boundary is authoring error.
@@ -37,6 +39,8 @@ static func reset_round(state: MatchState, rules: DuelRules) -> void:
 	state.blade_contact.reset()
 	for wbc in state.weapon_body_contacts:
 		wbc.reset()
+	for structure_contact in state.structure_contacts:
+		structure_contact.reset()
 	state.body_contact.reset()
 	state.round_ticks = 0
 	state.round_winner = MatchPhase.NO_WINNER

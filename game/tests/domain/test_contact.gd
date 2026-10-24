@@ -59,6 +59,8 @@ func test_a_blade_contact_carries_its_own_geometry() -> void:
 	assert_between(intensity, 0.0, 1.0, "intensity is a fraction")
 	assert_eq(intensity, SwingSemantics.clash_intensity(contact.number(DuelEventKeys.ENERGY), _rules.combat), "of the energy the solve took out, against a strong clash")
 	assert_eq(contact.text(DuelEventKeys.CONTACT_CLASS), String(ContactResolver.CLASS_STRONG), "and the class is still there for audio")
+	assert_eq(contact.text(DuelEventKeys.MATERIAL_0), String(MaterialCatalog.STEEL), "the clash names both steels")
+	assert_eq(contact.text(DuelEventKeys.MATERIAL_1), String(MaterialCatalog.STEEL), "so a new weapon material is a pair, not a new path")
 
 
 ## The canonical parry guard (rad): the defender's blade resting across the
@@ -236,7 +238,7 @@ func test_a_slow_contact_is_inelastic_and_persists_without_a_bind() -> void:
 	defender.weapon.phase = CombatPhase.Id.CHARGING
 	state.blade_contact.set_normal(0.0, -1.0)
 	var closing := _closing_at(state, 1.1, 0.022)
-	assert_between(closing, SimMath.EPSILON, _rules.combatant(0).weapon.restitution_threshold_speed, "precondition: a slow closing contact (%.3f m/s)" % closing)
+	assert_between(closing, SimMath.EPSILON, _rules.combatant(0).weapon.material.restitution_threshold_speed, "precondition: a slow closing contact (%.3f m/s)" % closing)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
 	var contacts := DuelFixture.of_type(events, DuelEventTypes.BLADE_CONTACT)
@@ -255,15 +257,15 @@ func test_a_slow_contact_is_inelastic_and_persists_without_a_bind() -> void:
 ## is inelastic, at or above it the blades leave at e × the closing speed.
 func test_a_fast_contact_still_bounces() -> void:
 	var w := _rules.combatant(0).weapon
-	assert_eq(w.restitution_at(w.restitution_threshold_speed * 0.99), 0.0, "below the threshold: inelastic")
-	assert_eq(w.restitution_at(w.restitution_threshold_speed), w.restitution, "at the threshold: the authored restitution")
+	assert_eq(w.material.restitution_at(w.material.restitution_threshold_speed * 0.99), 0.0, "below the threshold: inelastic")
+	assert_eq(w.material.restitution_at(w.material.restitution_threshold_speed), w.material.restitution, "at the threshold: the authored restitution")
 	var state := _beat_scene()
 	state.blade_contact.set_normal(0.0, -1.0)
 	var closing := _closing_at(state, 1.1, 0.022)
-	assert_true(closing > w.restitution_threshold_speed, "precondition: a fast contact (%.2f m/s)" % closing)
+	assert_true(closing > w.material.restitution_threshold_speed, "precondition: a fast contact (%.2f m/s)" % closing)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.blade_report(state, 1.1, 0.0, 1.1, 0.044), _rules, 1, 0.0, events)
-	assert_near(_closing_at(state, 1.1, 0.022), -w.restitution * closing, SOLVE_RESIDUAL, "the blades separate at e × closing")
+	assert_near(_closing_at(state, 1.1, 0.022), -w.material.restitution * closing, SOLVE_RESIDUAL, "the blades separate at e × closing")
 
 
 ## RIGID-CONTACT-002: one interrupt law for a first impact and a held
@@ -749,7 +751,7 @@ func test_restitution_relation_on_sword_body() -> void:
 	ContactResolver.resolve(state, ContactFixture.body_report(0, 0.9, 0.0), _rules, 1, 0.0, events)
 	## Contact normal points from the contact point to the target center.
 	## Post-contact relative velocity along this normal should be ≈ -e * v_rel_before.
-	var e := _rules.combat.sword_body_restitution
+	var e := _rules.sword_body_pair(0).restitution_override
 	assert_true(v_rel_before > 0.0, "precondition: closing before contact")
 	assert_true(e >= 0.0 and e <= 1.0, "precondition: valid restitution")
 
@@ -857,7 +859,7 @@ func test_contact_never_turns_the_heading_it_changes_what_the_heading_must_do() 
 ## newton-second.
 func test_where_the_blade_is_met_decides_its_response_through_the_lever() -> void:
 	var rules := DuelFixture.revolute_rules()
-	rules.combat.blade_friction = 0.0
+	rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.STEEL, 0.0)
 	var spec := rules.combatant(0)
 	var per_impulse: Array[float] = []
 	for r: float in [0.45, 1.05]:

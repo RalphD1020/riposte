@@ -152,10 +152,28 @@
       "budget_ms": 3000
     },
     {
+      "name": "STRUCTURE",
+      "path": "res://tests/domain/test_structure.gd",
+      "tier": "focused",
+      "budget_ms": 8000
+    },
+    {
       "name": "CONTACT-INTEGRITY",
       "path": "res://tests/domain/test_contact_integrity.gd",
       "tier": "focused",
       "budget_ms": 36000
+    },
+    {
+      "name": "ENTANGLE",
+      "path": "res://tests/domain/test_grip_entanglement.gd",
+      "tier": "focused",
+      "budget_ms": 8000
+    },
+    {
+      "name": "WEDGE",
+      "path": "res://tests/domain/test_parallel_wedge.gd",
+      "tier": "focused",
+      "budget_ms": 20000
     },
     {
       "name": "DAMAGE",
@@ -503,10 +521,16 @@
         "src/domain/combat/structural_coupling.gd",
         "src/domain/combat/strike_result.gd",
         "src/domain/combat/fallen_body_system.gd",
-        "src/domain/combat/fighter_tick_scratch.gd"
+        "src/domain/combat/fighter_tick_scratch.gd",
+        "src/domain/combat/structure_",
+        "src/domain/state/structure_contact_set.gd",
+        "src/domain/rules/contact_",
+        "src/domain/rules/structure_shape.gd",
+        "src/domain/rules/stage_object_def.gd"
       ],
       "suites": [
         "CONTACT",
+        "STRUCTURE",
         "MANIFOLD",
         "FRICTION",
         "GRIP",
@@ -517,6 +541,8 @@
         "DAMAGE",
         "LETHAL",
         "CONTACT-INTEGRITY",
+        "ENTANGLE",
+        "WEDGE",
         "GENERIC",
         "FALLEN"
       ]

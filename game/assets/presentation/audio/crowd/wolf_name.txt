@@ -1,0 +1,9 @@
+source: ElevenLabs text-to-speech
+date: 2026-10-21
+model: eleven_v4
+voice: Harry - Fierce Warrior (SOYHLrjzK2X1ezoPC6cr)
+prompt: [shouting] Wolf! Wolf!
+generation: ARTKNxU4GPGnSq05M7U4
+duration_secs: 1.76
+loop: false
+note: One voice, not a layered crowd. Gap stays 1.5 s until this take is heard in the match mix. Confirm the workspace plan's commercial terms before a paid release.

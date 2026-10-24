@@ -116,7 +116,7 @@ func run() -> int:
 			failed += 1
 		var budget := int(entry(path).get("budget_ms", 0))
 		if budget > 0 and elapsed > budget:
-			print("SLOW  %s took %d ms, over its %d ms budget" % [suite.suite_name, elapsed, budget])
+			print("SLOW  %s suite.run wall-clock %d ms, over its %d ms budget. This is the test file, not a frame time and not a cinematic length." % [suite.suite_name, elapsed, budget])
 			over_budget += 1
 	if executed == 0:
 		print("FAIL  harness ran zero suites (RIPOSTE_SUITE=%s, RIPOSTE_TIER=%s)" % [only, tier])

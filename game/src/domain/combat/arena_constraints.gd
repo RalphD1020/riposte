@@ -1,8 +1,9 @@
 class_name ArenaConstraints
 extends RefCounted
 
-## Open circular arena with deterministic body separation (COMBAT §61). The
-## arena has no hard wall — crossing the edge triggers a ring-out.
+## Circular arena with deterministic body separation (COMBAT §61). An open
+## edge has no wall: crossing it triggers a ring-out. A closed edge holds the
+## centre at the support radius instead.
 ## Fighters never share space; blades never block bodies. Separation is
 ## mass-aware: a heavier fighter absorbs less of the push and less of the
 ## closing velocity (PHYS-005).
@@ -28,8 +29,9 @@ const SEPARATION_PASSES := 2
 const BODY_CONTACT_REST_EPSILON := 1.0e-9
 
 
-## Resolve body separation for two non-falling, alive fighters. No confinement
-## — the arena edge is open and crossing it triggers a ring-out elsewhere.
+## Resolve body separation for two non-falling, alive fighters. An open edge
+## does not confine them. A closed edge pulls any centre the separation
+## pushed past the support radius back onto it.
 static func resolve(a: FighterState, b: FighterState, rules: DuelRules) -> void:
 	if a.is_falling or b.is_falling:
 		return
@@ -37,6 +39,50 @@ static func resolve(a: FighterState, b: FighterState, rules: DuelRules) -> void:
 	var body_b := rules.spec_of(b).fighter
 	for _pass in SEPARATION_PASSES:
 		separate(a, b, body_a.push_radius, body_b.push_radius, body_a.mass, body_b.mass)
+	if rules.is_closed_edge():
+		constrain(a, rules)
+		constrain(b, rules)
+		separate(a, b, body_a.push_radius, body_b.push_radius, body_a.mass, body_b.mass)
+		constrain(a, rules)
+		constrain(b, rules)
+
+
+## Hold a living or settled centre on a closed edge. A standing fighter is
+## inset by `push_radius`. A body is inset by its lying half-length, because
+## the capsule is longer than the standing circle. Outward radial speed is
+## removed only when the centre is on that circle, in the same tick it is
+## pulled back. Inside the circle the movement system owns the velocity.
+## An open edge is left untouched, and a fighter who has already lost
+## support is left on the fall.
+static func support_limit(fighter: FighterState, rules: DuelRules) -> float:
+	var body := rules.spec_of(fighter).fighter
+	var inset := body.push_radius
+	if fighter.fallen.active:
+		inset = maxf(inset, body.lying_half_length)
+	return rules.platform_radius - inset
+
+
+static func constrain(fighter: FighterState, rules: DuelRules) -> void:
+	if not rules.is_closed_edge() or fighter.is_falling:
+		return
+	var limit := support_limit(fighter, rules)
+	if limit <= SimMath.EPSILON:
+		return
+	var dist := SimMath.length(fighter.x, fighter.y)
+	if dist > limit:
+		var scale := limit / dist
+		fighter.x *= scale
+		fighter.y *= scale
+		dist = limit
+	## A wall stops you at the stone. It does not delete a retreat in the middle.
+	if dist + SimMath.EPSILON < limit or dist <= SimMath.EPSILON:
+		return
+	var nx := fighter.x / dist
+	var ny := fighter.y / dist
+	var radial := fighter.vx * nx + fighter.vy * ny
+	if radial > 0.0:
+		fighter.vx -= radial * nx
+		fighter.vy -= radial * ny
 
 
 ## Swept point-circle edge crossing. Given a center that linearly interpolates

@@ -43,6 +43,21 @@ func _hit() -> Dictionary:
 	}
 
 
+func _parry() -> Dictionary:
+	return {
+		DuelEventKeys.X: 0.0, DuelEventKeys.Y: 0.0, DuelEventKeys.MARGIN: CombatFeedbackDirector.PARRY_QUALITY_CEIL,
+		DuelEventKeys.NORMAL_X: 1.0, DuelEventKeys.NORMAL_Y: 0.0, DuelEventKeys.STRIKE_X: 0.0, DuelEventKeys.STRIKE_Y: 1.0,
+	}
+
+
+static func _kinds(frame: FeedbackFrame) -> Array[VfxRequest.Kind]:
+	var kinds: Array[VfxRequest.Kind] = []
+	for request in frame.vfx_requests:
+		if not kinds.has(request.kind):
+			kinds.append(request.kind)
+	return kinds
+
+
 static func _has_flash(frame: FeedbackFrame) -> bool:
 	for request in frame.fighter_requests:
 		if request.kind == FighterCueRequest.Kind.HIT_FLASH or request.kind == FighterCueRequest.Kind.CRITICAL_FLASH:
@@ -60,6 +75,31 @@ func test_a_body_hit_is_seen_and_heard() -> void:
 	var frame := _frame(DuelEventTypes.BODY_HIT, _hit())
 	assert_true(_has_flash(frame), "a body hit is seen on the victim")
 	assert_true(frame.audio_requests.size() > 0, "and heard")
+
+
+## A parry, a steel contact and a body hit are told apart by shape, timing and
+## sound, never by color alone. The parry rings out and throws sparks with no
+## hitstop and a raised pitch; the clash throws sparks and holds a hitstop at
+## the clang's own pitch; the hit marks the victim's body with its own cue.
+## This asserts what is dispatched from each authoritative event; whether it
+## reads at the match camera is a capture.
+func test_parry_steel_and_body_differ_by_shape_timing_and_sound() -> void:
+	var clash := _frame(DuelEventTypes.BLADE_CONTACT, _clash())
+	var parry := _frame(DuelEventTypes.PARRY, _parry())
+	var hit := _frame(DuelEventTypes.BODY_HIT, _hit())
+	assert_true(clash.vfx_requests.size() > 0 and parry.vfx_requests.size() > 0, "fixture: both steel events draw")
+	assert_true(_kinds(parry).has(VfxRequest.Kind.RING), "a parry rings out")
+	assert_false(_kinds(clash).has(VfxRequest.Kind.RING), "a clash does not, so the two differ in shape")
+	assert_true(clash.hitstop_requests.size() > 0, "a clash holds a hitstop")
+	assert_eq(parry.hitstop_requests.size(), 0, "a parry does not, so they differ in timing")
+	assert_true(_has_flash(hit) and not _has_flash(clash) and not _has_flash(parry), "only the hit marks a body")
+	var clash_pitch := clash.audio_requests[0].pitch
+	var parry_pitch := parry.audio_requests[0].pitch
+	assert_true(parry_pitch > CombatFeedbackDirector.CLASH_PITCH_FOIBLE and clash_pitch <= CombatFeedbackDirector.CLASH_PITCH_FOIBLE, "a parry rings above every clang (%.2f vs %.2f)" % [parry_pitch, clash_pitch])
+	var hit_cues: Array[StringName] = []
+	for request in hit.audio_requests:
+		hit_cues.append(request.cue)
+	assert_false(hit_cues.has(clash.audio_requests[0].cue) or hit_cues.has(parry.audio_requests[0].cue), "a hit sounds like flesh, not steel")
 
 
 ## A true whiff is heard as its own hollow follow-through and seen in the

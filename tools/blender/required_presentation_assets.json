@@ -1,0 +1,52 @@
+[
+  {
+    "source": "fighters/wolf.blend",
+    "id": "fighter.wolf",
+    "output": "fighters/wolf.glb"
+  },
+  {
+    "source": "fighters/wolf_training.blend",
+    "id": "fighter.wolf.training",
+    "output": "fighters/wolf_training.glb"
+  },
+  {
+    "source": "crowd/seated.blend",
+    "id": "crowd.seated",
+    "output": "crowd/seated.glb"
+  },
+  {
+    "source": "crowd/cheer.blend",
+    "id": "crowd.cheer",
+    "output": "crowd/cheer.glb"
+  },
+  {
+    "source": "crowd/hair_crop.blend",
+    "id": "crowd.hair_crop",
+    "output": "crowd/hair_crop.glb"
+  },
+  {
+    "source": "crowd/hair_bun.blend",
+    "id": "crowd.hair_bun",
+    "output": "crowd/hair_bun.glb"
+  },
+  {
+    "source": "crowd/hair_fringe.blend",
+    "id": "crowd.hair_fringe",
+    "output": "crowd/hair_fringe.glb"
+  },
+  {
+    "source": "crowd/face.blend",
+    "id": "crowd.face",
+    "output": "crowd/face.glb"
+  },
+  {
+    "source": "arenas/arena_bowl.blend",
+    "id": "arena.bowl",
+    "output": "arenas/arena_bowl.glb"
+  },
+  {
+    "source": "arenas/end_stage.blend",
+    "id": "arena.end",
+    "output": "arenas/end_stage.glb"
+  }
+]

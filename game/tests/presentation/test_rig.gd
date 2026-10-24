@@ -38,6 +38,26 @@ func _proxy(fighter_skin: StringName = &"") -> FighterPresentation3D:
 	return proxy
 
 
+func _scene_triangles(path: String) -> int:
+	var scene := (load(path) as PackedScene).instantiate()
+	var count := _count_triangles(scene)
+	scene.free()
+	return count
+
+
+func _count_triangles(node: Node) -> int:
+	var count := 0
+	if node is MeshInstance3D:
+		var mesh := (node as MeshInstance3D).mesh
+		if mesh != null:
+			for surface: int in mesh.get_surface_count():
+				var indices: PackedInt32Array = mesh.surface_get_arrays(surface)[Mesh.ARRAY_INDEX]
+				count += int(float(indices.size()) / 3.0)
+	for child: Node in node.get_children():
+		count += _count_triangles(child)
+	return count
+
+
 ## The lift field sampled on the authoritative carriage at `angle`, as the
 ## proxy samples it.
 func _lift(field: CombatPresentationField, angle: float, phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL, progress: float = 1.0, charge: float = 0.0, swing_charge: float = 0.0, blade_height: float = 1.0, cut_dir: float = 1.0, committed: bool = false) -> CombatPresentationField:
@@ -593,6 +613,93 @@ func test_only_a_killing_thrust_locks_the_striker() -> void:
 		proxy.queue_free()
 
 
+## The warm key's shadow is the authored body and the authored sword. Taking
+## the sword out of the pass was tried when a 512 map broke its shadow into
+## dots; the sword casts again, and the map stays at 1024. The x-ray overlays
+## are read-through and never cast, or the shadow would double the blade.
+func test_the_authored_body_and_sword_cast_the_key_shadow() -> void:
+	var proxy := _proxy()
+	var body_meshes := _meshes_under(proxy.visual_root().get_child(0))
+	assert_true(body_meshes.size() > 0, "fixture: the authored body has meshes")
+	for mesh: MeshInstance3D in body_meshes:
+		assert_eq(mesh.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "the body mesh %s casts" % mesh.name)
+	assert_true(proxy.weapon_model() != null, "fixture: the authored sword is drawn")
+	var sword_meshes := _meshes_under(proxy.weapon_model())
+	assert_true(sword_meshes.size() > 0, "fixture: the authored sword has meshes")
+	for mesh: MeshInstance3D in sword_meshes:
+		assert_eq(mesh.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "the sword mesh %s casts" % mesh.name)
+	var carriage := proxy.sword_carriage()
+	for overlay_name: String in ["BladeOutline", "Blade"]:
+		var overlay := carriage.get_node_or_null(overlay_name) as GeometryInstance3D
+		assert_true(overlay != null, "fixture: the x-ray %s is under the carriage" % overlay_name)
+		assert_eq(overlay.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the x-ray %s never casts" % overlay_name)
+	assert_eq(_ground_marks(proxy).size(), 0, "nothing is painted on the ground - the key shadow is the only shadow")
+	proxy.queue_free()
+
+
+## The key light's cast shadow is the fighter's only shadow in every state: the
+## body keeps casting while it stands, once it lies on the floor, and while a
+## ring-out carries it over the void, where no floor receives a shadow. No
+## state adds a painted ground mark.
+func test_every_state_keeps_the_real_caster_and_paints_no_ground_mark() -> void:
+	var standing := _proxy()
+	var row := _row(0.0)
+	standing.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 1.0 / 60.0)
+	assert_eq(_ground_marks(standing).size(), 0, "standing: no ground mark")
+	assert_true(_all_cast(standing), "standing: the body casts")
+	row.health = 0.0
+	for _i in 120:
+		standing.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 1.0 / 60.0)
+	assert_true(standing.terminal_influence() < 1.0, "fixture: the dead body has collapsed")
+	assert_eq(_ground_marks(standing).size(), 0, "fallen on the floor: still no ground mark")
+	assert_true(_all_cast(standing), "fallen on the floor: the body still casts its own shadow")
+	standing.queue_free()
+	var falling := _proxy()
+	var fall_row := _row(0.0)
+	falling.begin_fall(FallPresentationRequest.create(0, Vector3.ZERO, Vector3(2.0, 0.0, 0.0), 1))
+	fall_row.is_falling = true
+	var dropped := false
+	for _i in 120:
+		falling.apply_pose(Vector3.ZERO, 0.0, 0.0, fall_row, 0.05)
+		if falling.position.y < -1.0:
+			dropped = true
+			break
+	assert_true(dropped, "fixture: the ring-out fall drops the body off the floor")
+	assert_eq(_ground_marks(falling).size(), 0, "over the void: no ground mark")
+	assert_true(_all_cast(falling), "over the void: the body still casts; with no floor below, nothing receives it")
+	falling.queue_free()
+
+
+## Meshes hung directly on the proxy root sit on the ground plane. The charge
+## ring is the one deliberate ground cue and the elbow overlay is a debug draw;
+## anything else would be a painted shadow.
+func _ground_marks(proxy: FighterPresentation3D) -> Array[MeshInstance3D]:
+	var marks: Array[MeshInstance3D] = []
+	for child: Node in proxy.get_children():
+		if child is MeshInstance3D and not child is ElbowDebugOverlay3D and String(child.name) != "ChargeRing":
+			marks.append(child as MeshInstance3D)
+	return marks
+
+
+func _all_cast(proxy: FighterPresentation3D) -> bool:
+	var meshes := _meshes_under(proxy.visual_root().get_child(0))
+	if meshes.is_empty():
+		return false
+	for mesh: MeshInstance3D in meshes:
+		if mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+			return false
+	return true
+
+
+func _meshes_under(root: Node) -> Array[MeshInstance3D]:
+	var found: Array[MeshInstance3D] = []
+	if root is MeshInstance3D:
+		found.append(root as MeshInstance3D)
+	for child: Node in root.get_children():
+		found.append_array(_meshes_under(child))
+	return found
+
+
 ## Letting go hides the held sword (the authoritative one stays where the
 ## simulation put it);
 ## the prop that falls is a fresh look built from the same kits, never a clone of
@@ -633,8 +740,9 @@ func test_a_dropped_sword_leaves_the_hands_and_returns_next_round() -> void:
 
 
 ## Presentation physics touches only presentation geometry: the dropped sword
-## collides with the presentation floor and nothing on the default layer, and the
-## floor is the platform top at the rules' radius on either arena path.
+## collides with the presentation floor and nothing on the default layer. On
+## the pit that floor is the sand polygon, wider than the combat radius. A
+## sword past those corners falls. A fighter is not held by it.
 func test_presentation_physics_stays_on_its_own_layers() -> void:
 	var body := DroppedWeapon3D.create(Node3D.new(), PhysicalBaseline.SWORD_MASS_KG, 1.0, 0.05, 0.75)
 	assert_near(body.mass, PhysicalBaseline.SWORD_MASS_KG, 1e-6, "the prop weighs what the simulated sword weighs")
@@ -642,14 +750,26 @@ func test_presentation_physics_stays_on_its_own_layers() -> void:
 	assert_eq(body.collision_mask, PresentationPhysicsLayers.PRESENTATION_GROUND, "and meets only the presentation floor")
 	assert_eq(body.collision_mask & 1, 0, "never the default layer")
 	body.free()
+	var look := MeshInstance3D.new()
+	look.mesh = BoxMesh.new()
+	assert_eq(look.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "fixture: a fresh mesh casts by default")
+	var dropped := DroppedWeapon3D.create(look, PhysicalBaseline.SWORD_MASS_KG, 1.0, 0.05, 0.75)
+	assert_eq(look.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "a dropped sword casts, like a held one")
+	dropped.free()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), _rules)
 	var arena := ArenaScaffold.create(kits.arena, _rules.platform_radius, 0.4, 2.0)
 	var ground := arena.presentation_ground()
 	assert_true(ground != null, "the arena carries a presentation floor")
 	assert_eq(ground.collision_layer, PresentationPhysicsLayers.PRESENTATION_GROUND, "on the presentation ground layer")
 	assert_eq(ground.collision_mask, 0, "which reaches for nothing itself")
-	var shape := (ground.get_child(0) as CollisionShape3D).shape as CylinderShape3D
-	assert_near(shape.radius, _rules.platform_radius, 1e-6, "exactly as wide as the platform, so a sword past the edge falls")
+	var shape := (ground.get_child(0) as CollisionShape3D).shape as ConvexPolygonShape3D
+	var reached := 0.0
+	for point: Vector3 in shape.points:
+		reached = maxf(reached, Vector2(point.x, point.z).length())
+	var layout := ArenaSection.load_layout()
+	var corners := ArenaSurfaceState.corner_radius(ArenaSurfaceState.face_distance(layout.wall_inner), layout.bay_count)
+	assert_near(reached, corners, 1e-3, "the sword floor is the sand outline")
+	assert_true(reached > _rules.platform_radius, "that outline is wider than the combat radius")
 	arena.free()
 
 
@@ -671,6 +791,45 @@ func test_a_ring_out_flies_out_along_the_exit_momentum() -> void:
 	proxy.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 0.016)
 	assert_true(proxy.position.is_equal_approx(Vector3.ZERO), "a new round stands the fighter back where the state says")
 	proxy.queue_free()
+
+
+## A stage that requests no basin never holds the body. A stage that requests
+## water holds it at that height. The drawing is still presentation.
+func test_a_stage_without_a_basin_keeps_falling() -> void:
+	var row := _row(0.0)
+	row.is_falling = true
+	var unset_request := FallPresentationRequest.create(0, Vector3.ZERO, Vector3(2.0, 0.0, 0.0), 4)
+	var unset := _proxy()
+	unset.begin_fall(unset_request)
+	unset.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 4.0)
+	assert_true(unset.position.is_equal_approx(unset_request.root_at(4.0)), "a proxy nobody configured has no water: the root falls on (%.2f m)" % unset.position.y)
+	assert_true(unset.position.y < -20.0, "far below any old basin height")
+	assert_true(is_nan(unset.take_water_entry().x), "and it never meets water")
+	unset.queue_free()
+	var request := FallPresentationRequest.create(0, Vector3.ZERO, Vector3(2.0, 0.0, 0.0), 1)
+	var dry := _proxy()
+	dry.set_basin(false, 0.0)
+	dry.begin_fall(request)
+	dry.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 2.0)
+	assert_true(dry.position.is_equal_approx(request.root_at(2.0)), "no basin stays on the ballistic root")
+	assert_true(is_nan(dry.take_water_entry().x), "and it never meets water")
+	dry.queue_free()
+	var unknown := _proxy()
+	unknown.set_basin(true, NAN)
+	unknown.begin_fall(FallPresentationRequest.create(0, Vector3.ZERO, Vector3(2.0, 0.0, 0.0), 3))
+	unknown.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 4.0)
+	assert_true(unknown.position.y < -20.0, "water with no height is no water")
+	unknown.queue_free()
+	var wet := _proxy()
+	var held_request := FallPresentationRequest.create(0, Vector3.ZERO, Vector3(2.0, 0.0, 0.0), 2)
+	wet.set_basin(true, -2.5)
+	wet.begin_fall(held_request)
+	wet.apply_pose(Vector3.ZERO, 0.0, 0.0, row, 3.0)
+	assert_true(wet.position.y > -4.0, "fixture: the requested water holds the body")
+	var held := RingOutWater.shown(held_request, 3.0, false, -2.5)
+	assert_true(wet.position.is_equal_approx(held), "a water stage holds the body at its surface")
+	assert_near(wet.take_water_entry().y, -2.5, 1e-4, "the entry is that surface")
+	wet.queue_free()
 
 
 ## The skeleton as the modifiers leave it this frame (animation, then the
@@ -862,6 +1021,22 @@ func test_skins_swap_the_body_without_touching_the_rig_or_rules() -> void:
 	assert_true(training.rig() != null and training.rig().is_bound(), "the training gear binds the same rig")
 	assert_true(base.find_child("FurCollar", true, false) != null, "precondition: the base look has its fur collar")
 	assert_true(training.find_child("FurCollar", true, false) == null, "the training gear does not")
+	assert_true(base.find_child("Hair", true, false) != null, "the ranger wears the crown cap")
+	assert_true(training.find_child("Hair", true, false) != null, "training wears the same crown cap")
+	for proxy: FighterPresentation3D in [base, training]:
+		for blocked: String in ["FringeMid", "FringeL", "FringeR"]:
+			assert_true(proxy.find_child(blocked, true, false) == null, "no fringe block hangs over the face (%s)" % blocked)
+	assert_true(base.find_child("HairFringe", true, false) != null, "the ranger keeps its short lock above the brow")
+	assert_true(training.find_child("HairFringe", true, false) == null, "training does not")
+	assert_true(base.find_child("HairNape", true, false) != null, "the ranger hair reaches the nape")
+	assert_true(training.find_child("HairNape", true, false) != null, "training hair reaches the nape")
+	assert_true(base.find_child("QuiltA", true, false) == null, "the unread chest bands are gone")
+	var ranger_tris := _scene_triangles("res://assets/generated/fighters/wolf.glb")
+	var training_tris := _scene_triangles("res://assets/generated/fighters/wolf_training.glb")
+	assert_true(ranger_tris > 1000, "the imported ranger has its mesh (%d)" % ranger_tris)
+	assert_true(ranger_tris <= 2400, "ranger stays at the hero cap (%d)" % ranger_tris)
+	assert_true(training_tris <= 2400, "training stays at the hero cap (%d)" % training_tris)
+	assert_true(ranger_tris > training_tris, "the ranger carries more costume than training (%d, %d)" % [ranger_tris, training_tris])
 	assert_eq(training.blade_points()[1], base.blade_points()[1], "and the blade is in exactly the same place")
 	assert_eq(_rules.combatant(0).weapon.tip_radius, StandardDuelRules.create().combatant(0).weapon.tip_radius, "nothing about the rules moved")
 	base.queue_free()

@@ -11,7 +11,7 @@ extends ScreenBase
 func build() -> void:
 	UiKit.title(lead, AppCopy.TITLE)
 	UiKit.body(lead, AppCopy.TAGLINE, true)
-	set_primary(UiKit.button(body, AppCopy.QUICK_PLAY, app.start_quick_play, &"PrimaryButton"))
+	set_primary(UiKit.button(body, AppCopy.QUICK_PLAY, app.go_to.bind(AppScreen.Id.FIGHT_SETUP), &"PrimaryButton"))
 	UiKit.caption(body, AppCopy.DIFFICULTY)
 	UiKit.segmented(body, AppCopy.difficulty_labels(), app.settings.difficulty, app.set_difficulty, AppCopy.DIFFICULTY)
 	var line := UiKit.row(body)

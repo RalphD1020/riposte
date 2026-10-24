@@ -241,7 +241,7 @@ func test_a_line_contact_is_two_rows_from_its_first_impact() -> void:
 ## velocities. Frictionless, both are exactly one block solve.
 func test_a_slow_two_point_impact_is_solved_exactly_like_a_hold() -> void:
 	var rules := DuelFixture.rules()
-	rules.combat.blade_friction = 0.0
+	rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.STEEL, 0.0)
 	var weapon := rules.combatant(0).weapon
 	var impact := _lying_along(rules, 2.0 * weapon.blade_radius - 0.0005)
 	var held := _lying_along(rules, 2.0 * weapon.blade_radius - 0.0005)
@@ -251,7 +251,7 @@ func test_a_slow_two_point_impact_is_solved_exactly_like_a_hold() -> void:
 		var geometry := SwordContactGeometry.new()
 		_measure(state, rules, geometry)
 		_record_touching(state, geometry)
-	assert_true(0.4 < weapon.restitution_threshold_speed, "fixture: closing below the restitution threshold, so the impact is inelastic")
+	assert_true(0.4 < weapon.material.restitution_threshold_speed, "fixture: closing below the restitution threshold, so the impact is inelastic")
 	var events: Array[DuelEvent] = []
 	var report := ContactReport.new()
 	report.blade = true
@@ -368,7 +368,7 @@ func test_a_sliding_two_point_impact_keeps_every_normal_and_its_cone() -> void:
 	for point in 2:
 		var closing := SwordContactSolver.closing_speed(a, b, pose_a, pose_b, manifold.point_x[point], manifold.point_y[point], manifold.point_nx[point], manifold.point_ny[point])
 		assert_true(closing > 0.0, "fixture: point %d closes (%.3f m/s)" % [point, closing])
-		targets[point] = weapon.restitution_at(closing) * closing
+		targets[point] = weapon.material.restitution_at(closing) * closing
 	var held := PackedFloat64Array([0.0, 0.0])
 	ContactMechanics.held_sword(a, pose_a, manifold.point_x[0], manifold.point_y[0], rules.combatant(0), held)
 	var inertia_a := held[0]
@@ -390,7 +390,7 @@ func test_a_sliding_two_point_impact_keeps_every_normal_and_its_cone() -> void:
 	pose_b = WeaponKinematics.pose_of(b, spec, BladePose.new())
 	var saturated := false
 	for point in 2:
-		var mu := rules.combat.blade_friction
+		var mu := rules.blade_pair().friction
 		var separation := -SwordContactSolver.closing_speed(a, b, pose_a, pose_b, manifold.point_x[point], manifold.point_y[point], manifold.point_nx[point], manifold.point_ny[point])
 		assert_true(separation >= targets[point] - 1.0e-9, "point %d meets its restitution target (%.6f ≥ %.6f m/s)" % [point, separation, targets[point]])
 		assert_true(absf(manifold.tangent_impulse[point]) <= mu * manifold.normal_impulse[point] + 1.0e-12, "point %d stays inside its cone (|%.5f| ≤ %.5f)" % [point, manifold.tangent_impulse[point], mu * manifold.normal_impulse[point]])
@@ -406,7 +406,7 @@ func test_a_sliding_two_point_impact_keeps_every_normal_and_its_cone() -> void:
 ## its known exact value.
 func test_a_frictionless_crossing_takes_out_the_closed_form_energy() -> void:
 	var rules := DuelFixture.rules()
-	rules.combat.blade_friction = 0.0
+	rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.STEEL, 0.0)
 	var weapon := rules.combatant(0).weapon
 	var spec := rules.combatant(0)
 	var state := DuelFixture.state(rules)
@@ -440,7 +440,7 @@ func test_a_frictionless_crossing_takes_out_the_closed_form_energy() -> void:
 	assert_eq(contacts.size(), 1, "one blade contact")
 	if contacts.is_empty():
 		return
-	assert_near(contacts[0].number(DuelEventKeys.ENERGY), ContactMechanics.dissipated_energy(closing, k, weapon.restitution_at(closing)), 1e-9, "½(1 − e²)·v_n²/K")
+	assert_near(contacts[0].number(DuelEventKeys.ENERGY), ContactMechanics.dissipated_energy(closing, k, weapon.material.restitution_at(closing)), 1e-9, "½(1 − e²)·v_n²/K")
 
 
 ## `measure` against a brute-force reference over seeded random poses: exact in

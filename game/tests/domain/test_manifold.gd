@@ -65,7 +65,7 @@ func _solve(state: MatchState, friction: float, closing: float, deltas: PackedFl
 	state.blade_contact.set_normal(NX, NY)
 	return SwordContactSolver.solve(
 		state.blade_contact, 0, a, b, poses[0], poses[1], PX, PY, closing,
-		cross_a, cross_b, inertia_a, inertia_b, _rules.combatant(0).weapon.restitution, friction, deltas
+		cross_a, cross_b, inertia_a, inertia_b, _rules.combatant(0).weapon.material.restitution, friction, deltas
 	)
 
 
@@ -86,7 +86,7 @@ func test_a_frictionless_contact_is_the_one_shot_impulse_at_any_iteration_count(
 	var inertia_a := WeaponKinematics.generalized_inertia(_rules.combatant(0), poses[0]) * 1.4
 	var inertia_b := WeaponKinematics.generalized_inertia(_rules.combatant(0), poses[1]) * 1.1
 	var denominator := cross_a * cross_a / inertia_a + cross_b * cross_b / inertia_b
-	var impulse := (1.0 + _rules.combatant(0).weapon.restitution) * closing / denominator
+	var impulse := (1.0 + _rules.combatant(0).weapon.material.restitution) * closing / denominator
 	var speed_a := a.weapon.speed + impulse * cross_a / inertia_a
 	var speed_b := b.weapon.speed + -impulse * cross_b / inertia_b
 	var deltas := PackedFloat64Array([0.0, 0.0])
@@ -97,7 +97,7 @@ func test_a_frictionless_contact_is_the_one_shot_impulse_at_any_iteration_count(
 	assert_eq(deltas[0], impulse * cross_a / inertia_a, "the reported change is the applied change (0)")
 	assert_eq(deltas[1], -impulse * cross_b / inertia_b, "the reported change is the applied change (1)")
 	assert_eq(state.blade_contact.normal_impulse[0], impulse, "the manifold records the normal impulse")
-	assert_near(_relative(state, NX, NY), _rules.combatant(0).weapon.restitution * closing, 1e-9, "the blades leave at e × the closing speed")
+	assert_near(_relative(state, NX, NY), _rules.combatant(0).weapon.material.restitution * closing, 1e-9, "the blades leave at e × the closing speed")
 
 
 ## The swords are held. Near the hands a contact's levers all but vanish, so a
@@ -120,8 +120,8 @@ func test_the_wielders_carry_a_contact_at_the_hands() -> void:
 		var start := [a.weapon.speed, b.weapon.speed, a.vx, a.vy, b.vx, b.vy]
 		state.blade_contact.set_normal(NX, NY)
 		var deltas := PackedFloat64Array([0.0, 0.0])
-		var impulse := SwordContactSolver.solve(state.blade_contact, 0, a, b, poses[0], poses[1], PX, PY, closing, lever, lever, inertia_a, inertia_b, _rules.combatant(0).weapon.restitution, SwordContactSolver.FRICTIONLESS, deltas, bodies, bodies)
-		var expected := (1.0 + _rules.combatant(0).weapon.restitution) * closing / (lever * lever / inertia_a + lever * lever / inertia_b + 2.0 * bodies)
+		var impulse := SwordContactSolver.solve(state.blade_contact, 0, a, b, poses[0], poses[1], PX, PY, closing, lever, lever, inertia_a, inertia_b, _rules.combatant(0).weapon.material.restitution, SwordContactSolver.FRICTIONLESS, deltas, bodies, bodies)
+		var expected := (1.0 + _rules.combatant(0).weapon.material.restitution) * closing / (lever * lever / inertia_a + lever * lever / inertia_b + 2.0 * bodies)
 		return [impulse, expected, deltas, a, b, start]
 	var held: Array = collide.call(inverse_mass)
 	var loose: Array = collide.call(0.0)

@@ -17,6 +17,8 @@ var weapon_skin: WeaponSkinKit
 ## True only in a true visual mirror (same fighter + same skin on both slots),
 ## which is the only time the Dark/North copy uses its ALTERNATE colorway.
 var mirror: bool = false
+## -1 keeps the mirror rule. 0 is Main, 1 is Alternate.
+var palette_override: int = -1
 
 
 static func of(fighter_kit: PresentationKit, weapon_kit: PresentationKit, skin: FighterSkinKit = null, blade_skin: WeaponSkinKit = null) -> CombatantPresentationKit:
@@ -67,4 +69,12 @@ func colorway_overrides(side: DuelSide.Id) -> Dictionary:
 	var profile := colorway()
 	if profile == null:
 		return {}
-	return profile.overrides(ColorwayResolver.variant_for(side, mirror))
+	return profile.overrides(chosen_variant(side))
+
+
+func chosen_variant(side: DuelSide.Id) -> SkinColorwayProfile.Variant:
+	if palette_override == 0:
+		return SkinColorwayProfile.Variant.DEFAULT
+	if palette_override == 1:
+		return SkinColorwayProfile.Variant.ALTERNATE
+	return ColorwayResolver.variant_for(side, mirror)

@@ -54,6 +54,17 @@ func _run(director: VictoryDirector, frames: int) -> void:
 		director.advance(FRAME)
 
 
+## The show is simulated time on the profile. The suite's manifest budget is
+## the wall-clock of this file. They are not the same interval.
+func test_the_show_is_simulated_time_and_not_the_harness_budget() -> void:
+	var director := _director(_combatant())
+	var profile := director.profile()
+	assert_near(profile.interactive_time, 2.2, 1e-6, "the authored show ends at 2.2 s of simulated time")
+	_run(director, ceili(profile.interactive_time / FRAME))
+	assert_true(director.elapsed() + 1e-6 >= profile.interactive_time, "the director was stepped to that time")
+	director.free()
+
+
 func test_every_beat_sounds_exactly_once_over_a_long_showcase() -> void:
 	var combatant := _combatant()
 	var director := _director(combatant)

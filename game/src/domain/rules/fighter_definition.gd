@@ -147,11 +147,15 @@ var burst_speed_lateral: float = 0.0
 ## recovers progressively over this window. Authored tuning, not physics
 ## truth; requires manual playtest (MOVE-002).
 var dash_recovery_ticks: int = 0
+## What a sword or another body meets on this fighter (CONTACT-MATERIAL-001).
+var material: ContactMaterial
 
 
 func is_valid() -> bool:
 	return (
-		height > 0.0
+		material != null
+		and material.is_valid()
+		and height > 0.0
 		and push_radius > 0.0
 		and push_radius < height
 		and hurt_radius > 0.0

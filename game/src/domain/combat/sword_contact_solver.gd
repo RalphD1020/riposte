@@ -139,6 +139,7 @@ static func solve(
 ## and its body — so the solve is passive in one kinetic-energy metric and no
 ## stored point owns it. With one point it is exactly `solve`.
 ##
+## `pair` is the two swords' materials (restitution and μ, resolved at setup).
 ## `inertia_*` / `inverse_mass_*` are that one basis; writes every point's
 ## impulses on the set and each sword's speed change into `deltas`; returns
 ## the total normal impulse. `closing` receives each row's pre-solve closing
@@ -151,9 +152,7 @@ static func solve_points(
 	b: FighterState,
 	pose_a: BladePose,
 	pose_b: BladePose,
-	weapon_a: WeaponDefinition,
-	weapon_b: WeaponDefinition,
-	combat: CombatTuning,
+	pair: ContactPair,
 	inertia_a: float,
 	inertia_b: float,
 	inverse_mass_a: float,
@@ -188,10 +187,10 @@ static func solve_points(
 		tangent_a[i] = WeaponKinematics.lever(a, pose_a, px, py, -ny, nx)
 		tangent_b[i] = WeaponKinematics.lever(b, pose_b, px, py, -ny, nx)
 		tangent_mass[i] = tangent_a[i] * tangent_a[i] / inertia_a + tangent_b[i] * tangent_b[i] / inertia_b + bodies
-		mu[i] = combat.blade_friction
+		mu[i] = pair.friction
 		closing[i] = closing_speed(a, b, pose_a, pose_b, px, py, nx, ny)
 		var approach := maxf(closing[i], 0.0)
-		bias[i] = ContactMechanics.weapon_restitution(weapon_a, weapon_b, approach) * approach
+		bias[i] = pair.restitution_at(approach) * approach
 	var matrix := _zeros(rows * rows)
 	for i in rows:
 		for j in rows:

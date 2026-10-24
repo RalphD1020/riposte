@@ -5,4 +5,4 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/ux.md
 
-enum Id { MAIN_MENU, HOW_TO_PLAY, SETTINGS, MATCH, RESULTS }
+enum Id { MAIN_MENU, FIGHT_SETUP, HOW_TO_PLAY, SETTINGS, MATCH, RESULTS }

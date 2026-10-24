@@ -48,7 +48,6 @@ def validate(data):
     disc = num(data, "expected_disc_radius")
     num(data, "angular_zero")
     foot = num(data, "foot_offset")
-    water = num(data, "water_height")
     bays = data.get("bay_count")
     sections = data.get("section_count")
     if not isinstance(bays, int) or isinstance(bays, bool) or bays < 3:
@@ -59,6 +58,9 @@ def validate(data):
     if foot is not None and not math.isfinite(foot):
         problems.append("foot_offset is not finite")
     floor = data.get("floor")
+    if data.get("kind") == "pit":
+        return _pit(data, problems, num, floor)
+    water = num(data, "water_height")
     inner = data.get("inner_arcade")
     outer = data.get("outer_arcade")
     moat = data.get("moat")
@@ -66,8 +68,8 @@ def validate(data):
     if not isinstance(floor, dict) or not isinstance(inner, dict) or not isinstance(outer, dict) or not isinstance(moat, dict):
         problems.append("floor, arcades, and moat are required")
         return problems
-    if not isinstance(tiers, list) or len(tiers) != 4:
-        problems.append("exactly four treads")
+    if not isinstance(tiers, list) or len(tiers) < 4:
+        problems.append("the colonnade keeps its four treads")
         tiers = []
 
     soffit = num(floor, "soffit")
@@ -178,11 +180,101 @@ def validate(data):
                 problems.append("the first tread starts at the outer arcade")
             if height <= outer_soffit:
                 problems.append("the first tread is above its soffit")
-            last = tiers[-1].get("outer_radius") if isinstance(tiers[-1], dict) else None
-            if isinstance(last, (int, float)) and outer_r + pier_depth > float(last) + 0.02:
+            fourth = tiers[3].get("outer_radius") if len(tiers) > 3 and isinstance(tiers[3], dict) else None
+            if isinstance(fourth, (int, float)) and outer_r + pier_depth > float(fourth) + 0.02:
                 problems.append("the bleachers do not cover the outer arch")
-    if tiers and outer_outer is not None and isinstance(tiers[-1], dict):
-        last = tiers[-1].get("outer_radius")
-        if isinstance(last, (int, float)) and abs(float(last) - outer_outer) > CROWN_TOLERANCE:
-            problems.append("the outer arcade ends at the top tread")
+    if len(tiers) >= 4 and outer_outer is not None and isinstance(tiers[3], dict):
+        fourth = tiers[3].get("outer_radius")
+        if isinstance(fourth, (int, float)) and abs(float(fourth) - outer_outer) > CROWN_TOLERANCE:
+            problems.append("the outer arcade ends at the fourth tread")
+    gallery = data.get("gallery")
+    if len(tiers) > 4:
+        if not isinstance(gallery, dict):
+            problems.append("tiers behind the colonnade need the gallery")
+        else:
+            g_inner = num(gallery, "inner_radius")
+            g_outer = num(gallery, "outer_radius")
+            g_soffit = num(gallery, "soffit")
+            g_spring = num(gallery, "spring")
+            g_arch = num(gallery, "arch_radius")
+            g_voussoir = num(gallery, "voussoir_thickness")
+            if None not in (g_inner, outer_outer) and abs(g_inner - outer_outer) > CROWN_TOLERANCE:
+                problems.append("the gallery starts where the colonnade ends")
+            last = tiers[-1].get("outer_radius") if isinstance(tiers[-1], dict) else None
+            if isinstance(last, (int, float)) and g_outer is not None and abs(float(last) - g_outer) > CROWN_TOLERANCE:
+                problems.append("the gallery ends at the top tread")
+            if None not in (g_soffit, outer_soffit, g_spring, g_arch) and (
+                abs(g_soffit - outer_soffit) > CROWN_TOLERANCE
+                or abs(g_spring - num(outer, "spring")) > CROWN_TOLERANCE
+                or abs(g_arch - num(outer, "arch_radius")) > CROWN_TOLERANCE
+            ):
+                problems.append("the gallery arcade matches the outer arcade height")
+            if None not in (g_spring, g_arch, g_voussoir, g_soffit):
+                crown = g_spring + g_arch + g_voussoir
+                if abs(crown - g_soffit) > CROWN_TOLERANCE:
+                    problems.append("gallery arcade crown meets its soffit")
+            rise = tiers[4].get("inner_radius") if isinstance(tiers[4], dict) else None
+            if isinstance(rise, (int, float)) and outer_outer is not None and abs(float(rise) - outer_outer) > CROWN_TOLERANCE:
+                problems.append("the rising treads start behind the colonnade")
+    return problems
+
+
+def _pit(data, problems, num, floor):
+    """A sand pit: wall at the combat radius, seats on top of that wall, two gates."""
+    disc = num(data, "expected_disc_radius")
+    if not isinstance(floor, dict):
+        problems.append("floor is required")
+        return problems
+    wall = data.get("wall")
+    gates = data.get("gates")
+    tiers = data.get("tiers")
+    if not isinstance(wall, dict) or not isinstance(gates, dict):
+        problems.append("the pit needs a wall and gates")
+        return problems
+    if not isinstance(tiers, list) or len(tiers) < 2:
+        problems.append("the seats start above the wall")
+        tiers = []
+    soffit = num(floor, "soffit")
+    paving = num(floor, "paving_top")
+    curb_h = num(floor, "curb_height")
+    if floor.get("course_axis") != "east_west":
+        problems.append("fighting floor courses run east-west")
+    if None not in (soffit, paving) and not (soffit < paving):
+        problems.append("the floor soffit is below the paving")
+    if curb_h is not None and abs(curb_h) > CROWN_TOLERANCE:
+        problems.append("no floor edge rises above the fighting surface")
+    inner = num(wall, "inner_radius")
+    outer = num(wall, "outer_radius")
+    height = num(wall, "height")
+    if None not in (inner, disc) and abs(inner - disc) > CROWN_TOLERANCE:
+        problems.append("the wall starts at the combat radius")
+    if None not in (inner, outer, height) and not (outer > inner and height > 0.5):
+        problems.append("the wall has thickness and height")
+    width = num(gates, "width")
+    gate_h = num(gates, "height")
+    depth = num(gates, "depth")
+    radius = num(gates, "radius")
+    if None not in (width, gate_h, height, depth) and not (width > 0.5 and gate_h > height and depth > 0.0):
+        problems.append("the gates are doors in the wall")
+    if None not in (radius, disc, outer) and not (disc < radius < outer):
+        problems.append("the gates sit in the wall")
+    previous = outer
+    previous_height = height
+    bays = data.get("bay_count")
+    for index, tier in enumerate(tiers):
+        if not isinstance(tier, dict):
+            problems.append("tier %d" % index)
+            continue
+        tier_inner = num(tier, "inner_radius")
+        tier_outer = num(tier, "outer_radius")
+        tread = num(tier, "tread_height")
+        seats = tier.get("seat_count")
+        if None not in (tier_inner, previous) and abs(tier_inner - previous) > 0.02:
+            problems.append("tier %d leaves a gap in the steps" % index)
+        if None not in (tread, previous_height) and tread <= previous_height:
+            problems.append("tier %d does not rise" % index)
+        if isinstance(bays, int) and bays and isinstance(seats, int) and seats % bays != 0:
+            problems.append("tier %d seats divide into the bays" % index)
+        previous = tier_outer
+        previous_height = tread
     return problems

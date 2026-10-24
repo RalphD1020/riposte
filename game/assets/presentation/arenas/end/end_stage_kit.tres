@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="PresentationKit" format=3]
+
+[ext_resource type="Script" path="res://src/presentation/kit/presentation_kit.gd" id="1_kit"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/round_start_01.mp3" id="1_round"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/round/round_win_01.mp3" id="2_win"]
+[ext_resource type="PackedScene" path="res://assets/presentation/arenas/end/end_stage_wrapper.tscn" id="2_scene"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/music/arena_theme.mp3" id="3_music"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/arena/match_horn_01.mp3" id="4_horn"]
+[ext_resource type="Script" path="res://src/presentation/kit/stage_presentation_profile.gd" id="5_stage"]
+
+[sub_resource type="Resource" id="Resource_deck"]
+script = ExtResource("5_stage")
+ground = 1
+backdrop = 1
+home_marks = false
+stage_casts = false
+deck_sides = 8
+deck_flat = 8.33
+
+[resource]
+script = ExtResource("1_kit")
+id = &"arena.end"
+primitive = &"ARENA"
+scene = ExtResource("2_scene")
+color_targets = PackedStringArray()
+audio_cues = {
+&"match.horn": Array[AudioStream]([ExtResource("4_horn")]),
+&"music": Array[AudioStream]([ExtResource("3_music")]),
+&"round": Array[AudioStream]([ExtResource("1_round")]),
+&"round.win": Array[AudioStream]([ExtResource("2_win")])
+}
+vfx_cues = PackedStringArray()
+stage = SubResource("Resource_deck")

@@ -13,7 +13,14 @@
  * @see ../../docs/reference/tooling.md
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -116,8 +123,16 @@ const TIERS = {
 // (`--import`, or RIPOSTE_IMPORT=1) — import once per session or after adding
 // assets or class_name scripts, not before every run.
 async function runTest({ tier, suites = [], skipImport = false } = TIERS.gate) {
+  const assets = checkPresentationAssets();
+  if (assets.problems.length > 0) {
+    console.error(assets.problems.join("\n"));
+    process.exit(1);
+  }
   const resolved = resolveGodot();
-  if (!skipImport) {
+  if (!skipImport || assets.stale.length > 0) {
+    if (assets.stale.length > 0) {
+      console.log(`Reimporting: ${assets.stale.join(", ")}`);
+    }
     const importResult = spawnGodot(
       ["--headless", "--path", GAME_ROOT, "--import"],
       {
@@ -185,6 +200,70 @@ async function runTest({ tier, suites = [], skipImport = false } = TIERS.gate) {
 const ARGS = process.argv.slice(3);
 const wantsImport = () =>
   ARGS.includes("--import") || process.env.RIPOSTE_IMPORT === "1";
+
+const REPO_ROOT = resolve(GAME_ROOT, "..");
+
+function fileHash(path, algorithm) {
+  return createHash(algorithm).update(readFileSync(path)).digest("hex");
+}
+
+function requiredPresentationAssets() {
+  return JSON.parse(
+    readFileSync(
+      join(REPO_ROOT, "tools", "blender", "required_presentation_assets.json"),
+      "utf8",
+    ),
+  );
+}
+
+function importedSourceMd5(glbBase) {
+  const imported = join(GAME_ROOT, ".godot", "imported");
+  if (!existsSync(imported)) return "";
+  for (const name of readdirSync(imported)) {
+    if (!name.startsWith(`${glbBase}-`) || !name.endsWith(".md5")) continue;
+    const match = readFileSync(join(imported, name), "utf8").match(
+      /source_md5="([0-9a-f]+)"/,
+    );
+    if (match) return match[1];
+  }
+  return "";
+}
+
+// The suite loads these glbs. A Blender save that was not exported fails
+// here. A glb Godot has already imported, byte for byte, does not.
+function checkPresentationAssets() {
+  const problems = [];
+  const stale = [];
+  for (const row of requiredPresentationAssets()) {
+    const source = join(REPO_ROOT, "art-src", "blender", row.source);
+    const output = join(GAME_ROOT, "assets", "generated", row.output);
+    const manifestPath = `${output.slice(0, -".glb".length)}.manifest.json`;
+    if (!existsSync(source)) {
+      problems.push(`${row.output}: missing Blender source ${row.source}`);
+      continue;
+    }
+    if (!existsSync(output) || !existsSync(manifestPath)) {
+      problems.push(`${row.output}: export it before this suite`);
+      continue;
+    }
+    let manifest;
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    } catch {
+      problems.push(`${row.output}: manifest is not readable`);
+      continue;
+    }
+    if (manifest.source_sha256 !== fileHash(source, "sha256")) {
+      problems.push(
+        `${row.output}: Blender source changed after the last export`,
+      );
+      continue;
+    }
+    const base = row.output.split("/").pop();
+    if (importedSourceMd5(base) !== fileHash(output, "md5")) stale.push(base);
+  }
+  return { problems, stale };
+}
 
 function runSelected(suites, what) {
   if (suites.length === 0) {

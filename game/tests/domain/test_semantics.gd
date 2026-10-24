@@ -42,7 +42,7 @@ func test_a_clash_reads_as_hard_as_the_energy_it_dissipated() -> void:
 	assert_near(SwingSemantics.clash_intensity(strong * 0.25, combat), 0.5, 1.0e-12, "a quarter of its energy, half as hard")
 	assert_eq(SwingSemantics.clash_intensity(0.0, combat), 0.0, "nothing taken out, nothing felt")
 	var speed := combat.blade_strong_speed * 0.6
-	var e := rules.combatant(0).weapon.restitution_at(speed)
+	var e := rules.combatant(0).weapon.material.restitution_at(speed)
 	var heavy := ContactMechanics.dissipated_energy(speed, 0.05, e)
 	var light := ContactMechanics.dissipated_energy(speed, 2.0, e)
 	assert_true(SwingSemantics.clash_intensity(heavy, combat) > SwingSemantics.clash_intensity(light, combat), "the same closing speed reads harder where more gives way (%.2f vs %.2f)" % [SwingSemantics.clash_intensity(heavy, combat), SwingSemantics.clash_intensity(light, combat)])

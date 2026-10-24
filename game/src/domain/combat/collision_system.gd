@@ -45,6 +45,11 @@ var _body_hold := PackedFloat64Array([0.0, 0.0])
 ## Each attacker's blade-to-body touch distance: the target's hurt torso plus
 ## the attacker's own blade.
 var _body_touch := PackedFloat64Array([0.0, 0.0])
+## Each sword against the stage's structures (STRUCTURE-CONTACT-001): the
+## narrow phase, the least gap at the previous substep, and the re-hold line.
+var _structures := StructureContactGeometry.new()
+var _previous_structure := PackedFloat64Array([0.0, 0.0])
+var _structure_hold := PackedFloat64Array([0.0, 0.0])
 
 
 ## Substeps so no blade point travels more than `substep_travel`: body travel,
@@ -126,6 +131,11 @@ func detect(
 	var blade_hold := minf(blade_touch - 2.0 * slop, previous_blade - slop)
 	_body_hold[0] = minf(_body_touch[0] - 2.0 * slop, _previous_body[0] - slop)
 	_body_hold[1] = minf(_body_touch[1] - 2.0 * slop, _previous_body[1] - slop)
+	var structured := not state.structure_contacts.is_empty()
+	if structured:
+		for slot in 2:
+			_previous_structure[slot] = _structure_gap(slot, rules)
+			_structure_hold[slot] = minf(-2.0 * slop, _previous_structure[slot] - slop)
 	for k in range(1, steps + 1):
 		var s := float(k) / float(steps)
 		_interpolate(start, finish, s, rules)
@@ -151,7 +161,25 @@ func detect(
 			rehold = REHOLD_BLADE
 			_rehold_travel = blade_before - blade_gap
 			_rehold_line = blade_hold
-		if not report.blade:
+		if structured and not report.blade:
+			for slot in 2:
+				if not can_strike[slot]:
+					continue
+				var contact := state.structure_contacts[slot]
+				var gap := _structure_gap(slot, rules)
+				var retouch := gap <= _structure_hold[slot] and _previous_structure[slot] > _structure_hold[slot]
+				var before := _previous_structure[slot]
+				_previous_structure[slot] = gap
+				if contact.observe(gap, epsilon):
+					report.structure[slot] = true
+					_record_structure_points(contact)
+				elif holds and retouch and contact.is_persisted():
+					report.persistent = true
+					if rehold == NO_REHOLD:
+						rehold = REHOLD_STRUCTURE + slot
+						_rehold_travel = before - gap
+						_rehold_line = _structure_hold[slot]
+		if not report.blade and not report.structure[0] and not report.structure[1]:
 			for attacker in 2:
 				var lifecycle := state.weapon_body_contacts[attacker]
 				var weapon := rules.combatant(attacker).weapon
@@ -168,17 +196,17 @@ func detect(
 						_rehold_travel = body_before - gap
 						_rehold_line = _body_hold[attacker]
 		var apart := _body_distance()
-		if bodies and not report.blade and not report.body[0] and not report.body[1] and apart < body_touch_body:
+		if bodies and not report.blade and not report.structure[0] and not report.structure[1] and not report.body[0] and not report.body[1] and apart < body_touch_body:
 			_body_push_normal(apart, report)
 			report.body_push = true
 			report.body_push_persistent = state.body_contact.is_persistent_contact()
-		if report.blade or report.body[0] or report.body[1] or report.body_push or report.persistent:
+		if report.any():
 			report.fraction = s
 			## A held pair alone is re-held where it crossed its line, not where
 			## the substep happened to end — otherwise a pair driven slowly
 			## through a coarse substep sinks up to a substep of travel past the
 			## line between re-holds (RIGID-CONTACT-001).
-			var only_held := not (report.blade or report.body[0] or report.body[1] or report.body_push)
+			var only_held := not report.any_new()
 			if only_held and rehold != NO_REHOLD:
 				report.fraction = _rehold_crossing(start, finish, float(k - 1) / float(steps), s, rehold, slop, rules)
 				if rehold == REHOLD_BLADE and _blade_distance(rules) <= blade_touch:
@@ -326,6 +354,8 @@ func _body_hit_with_lifecycle(attacker: int, weapon: WeaponDefinition, gap: floa
 ## its attacker's slot, the swords are `REHOLD_BLADE`.
 const NO_REHOLD := -1
 const REHOLD_BLADE := 2
+## Fighter `slot`'s sword held on a structure is `REHOLD_STRUCTURE + slot`.
+const REHOLD_STRUCTURE := 3
 ## The most bisection steps a re-hold is refined by (1/64 of a substep). The
 ## count is derived from how far the pair closed inside the substep — enough
 ## halvings to bring that within one slop — so a slow pair costs none.
@@ -349,13 +379,43 @@ func _rehold_crossing(start: Array[FighterPose], finish: Array[FighterPose], fro
 	for _i in halvings:
 		var middle := (outside + inside) * 0.5
 		_interpolate(start, finish, middle, rules)
-		var gap := _blade_distance(rules) if rehold == REHOLD_BLADE else _body_gap(rehold, rules.combatant(rehold).weapon)
+		var gap := 0.0
+		if rehold == REHOLD_BLADE:
+			gap = _blade_distance(rules)
+		elif rehold >= REHOLD_STRUCTURE:
+			gap = _structure_gap(rehold - REHOLD_STRUCTURE, rules)
+		else:
+			gap = _body_gap(rehold, rules.combatant(rehold).weapon)
 		if gap <= _rehold_line:
 			inside = middle
 		else:
 			outside = middle
 	_interpolate(start, finish, inside, rules)
 	return inside
+
+
+## Fighter `slot`'s interpolated blade against every structure: the least
+## surface gap (≤ 0 touching), the touching features left on `_structures`.
+func _structure_gap(slot: int, rules: DuelRules) -> float:
+	var weapon := rules.combatant(slot).weapon
+	_structures.measure(
+		_blade_x(slot, weapon.blade_base_radius), _blade_y(slot, weapon.blade_base_radius),
+		_blade_x(slot, weapon.tip_radius), _blade_y(slot, weapon.tip_radius),
+		weapon.blade_radius, rules.structures, 0.0
+	)
+	return _structures.least_gap
+
+
+## The touching features of the last `_structure_gap` as this contact's points.
+func _record_structure_points(contact: StructureContactSet) -> void:
+	contact.begin_search()
+	for i in _structures.count:
+		contact.record_point(
+			i, StructureContactSet.feature_of(_structures.structure[i], _structures.shape[i]),
+			_structures.point_x[i], _structures.point_y[i], _structures.normal_x[i], _structures.normal_y[i],
+			_structures.gap[i], _structures.fraction[i]
+		)
+	contact.point_count = _structures.count
 
 
 ## Distance from attacker's blade to the defender's body center.

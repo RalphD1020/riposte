@@ -72,6 +72,8 @@ func _ready() -> void:
 	## move; only this viewer does (SIDE-001).
 	app.camera_rig.look_from(session.state.fighter(config.human_slot).side)
 	presenter = MatchPresenter.create(kits, options, app.camera_rig, config.rules.platform_radius, config.rules.edge_warning_inset, SnapshotProjector.project(session.state, config.rules), app.crowd_seed)
+	presenter.crowd_bed_enabled = config.crowd_bed
+	presenter.set_basin(config.basin == StageDefinition.Basin.WATER, config.basin_height)
 	presenter.hitstop_requested.connect(driver.hold)
 	presenter.slow_motion_requested.connect(driver.slow_motion)
 	app.presentation_mount.add_child(presenter)

@@ -18,6 +18,85 @@ func test_standard_rules_are_valid() -> void:
 	assert_eq(rules.rounds_to_win, 3, "best of five is first to three")
 
 
+## CONTACT-MATERIAL-001. The material table holds today's contact feel exactly
+## (the values that used to be scattered over the weapon and the tuning), mixes
+## only pairs nobody authored, and refuses a broken coefficient.
+func test_the_material_table_keeps_todays_contacts() -> void:
+	var rules := StandardDuelRules.create()
+	var steel := rules.blade_pair()
+	assert_eq(steel.friction, 0.2, "steel on steel grips 0.20")
+	assert_eq(steel.restitution_at(1.4), 0.35, "and rings at 0.35 from 1.4 m/s")
+	assert_eq(steel.restitution_at(1.39), 0.0, "and is inelastic below it")
+	for attacker in 2:
+		var cut := rules.sword_body_pair(attacker)
+		assert_eq(cut.friction, 0.05, "slot %d: a sword on a body grips 0.05" % attacker)
+		assert_eq(cut.restitution_at(0.1), 0.02, "slot %d: and is 0.02 elastic at any speed" % attacker)
+		assert_eq(cut.restitution_at(20.0), 0.02, "slot %d: fast too" % attacker)
+	var bodies := rules.body_pair()
+	assert_eq(bodies.friction, 0.3, "two bodies grip 0.30")
+	assert_eq(bodies.restitution_at(0.5), 0.05, "and are 0.05 elastic")
+	assert_true(rules.blade_pair() == steel, "a second read is the cached pair, not a new lookup")
+	rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.FLESH, 0.0)
+	assert_eq(rules.sword_body_pair(0).friction, 0.0, "a changed table is read again")
+	assert_eq(rules.sword_body_pair(0).restitution_at(5.0), 0.02, "and set_friction keeps the authored restitution")
+	var table := ContactMaterialTable.new()
+	var glass := ContactMaterial.create(&"material.glass", 0.6, 0.5, 0.16)
+	var felt := ContactMaterial.create(&"material.felt", 0.1, 0.5, 0.64)
+	var mixed := table.resolve(glass, felt)
+	assert_near(mixed.friction, 0.32, 1e-12, "an unauthored pair takes √(μa·μb)")
+	assert_eq(mixed.restitution_at(1.0), 0.1, "and the less elastic surface")
+	assert_eq(mixed.restitution_at(0.4), 0.0, "each at its own threshold")
+	assert_eq(table.resolve(glass, glass).friction, 0.16, "a surface on itself is its own μ, exactly")
+	table.define_pair(&"material.glass", &"material.felt", 1.5)
+	assert_ne(table.problem(), "", "a friction above 1 is refused")
+	var broken := StandardDuelRules.create()
+	broken.materials.define_pair(MaterialCatalog.STEEL, MaterialCatalog.STEEL, -0.1)
+	assert_false(broken.is_valid(), "and such rules do not start a duel")
+	var bare := StandardDuelRules.create()
+	bare.combatants[0].weapon.material = null
+	assert_false(bare.is_valid(), "a weapon with no material does not start a duel")
+
+
+## CONTACT-MATERIAL-001. The material configuration is validated before a duel
+## starts, not several ticks in: every used pair resolves, a pair is order-free,
+## authoring a pair twice fails closed, and a malformed structure material
+## refuses the match rather than producing a later simulation fault.
+func test_material_configuration_fails_closed_before_gameplay() -> void:
+	var rules := StandardDuelRules.pit()
+	## Every pair a duel reads resolves to a valid, cached coefficient set.
+	var used: Array[ContactPair] = [rules.blade_pair(), rules.sword_body_pair(0), rules.sword_body_pair(1), rules.body_pair()]
+	for index in rules.structures.size():
+		used.append(rules.structure_pair(0, index))
+		used.append(rules.structure_pair(1, index))
+	for pair: ContactPair in used:
+		assert_true(pair != null, "every used material pair resolves")
+		assert_true(pair.friction >= 0.0 and pair.friction <= 1.0, "to a valid coefficient (%.3f)" % pair.friction)
+	## A pair resolves to the same coefficients whichever way it is looked up.
+	var steel := MaterialCatalog.steel()
+	var flesh := MaterialCatalog.flesh()
+	var forward := rules.materials.resolve(steel, flesh)
+	var backward := rules.materials.resolve(flesh, steel)
+	assert_eq(forward.friction, backward.friction, "steel–flesh grips the same either order")
+	assert_eq(forward.restitution_override, backward.restitution_override, "and rings the same either order")
+	## Authoring the same pair twice is refused with a useful diagnostic — the
+	## second value does not silently win.
+	var doubled := MaterialCatalog.standard_table()
+	doubled.define_pair(MaterialCatalog.STEEL, MaterialCatalog.STEEL, 0.9)
+	assert_true(doubled.problem().contains("more than once"), "a pair defined twice names itself (%s)" % doubled.problem())
+	var double_rules := StandardDuelRules.create()
+	double_rules.materials = doubled
+	assert_false(double_rules.is_valid(), "and such rules do not start a duel")
+	## Updating a pair's friction is an edit, not a redefinition.
+	var edited := MaterialCatalog.standard_table()
+	edited.set_friction(MaterialCatalog.STEEL, MaterialCatalog.FLESH, 0.0)
+	assert_eq(edited.problem(), "", "set_friction updates a pair without tripping the duplicate guard")
+	## A malformed structure material refuses the match before the first tick.
+	var broken := StandardDuelRules.pit()
+	broken.structures[0].material = ContactMaterial.create(&"", 0.3, 1.4, 0.35)
+	assert_false(broken.is_valid(), "a structure with an id-less material is invalid")
+	assert_true(DuelSimulation.create(broken) == null, "and no duel starts on it")
+
+
 func test_bastard_sword_geometry_matches_spec() -> void:
 	var weapon := WeaponCatalog.bastard_sword()
 	assert_near(weapon.length(), 1.22, 1e-12, "1.22 m overall")
@@ -312,6 +391,14 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
 	assert_eq(rules.version, 58, "rules version tracks gameplay-affecting changes (58: mutual hilt start-caps are not steel)")
+	assert_false(rules.is_closed_edge(), "version 58 is the open disc")
+	var pit := StandardDuelRules.pit()
+	assert_eq(pit.version, 60, "the pit is the closed-edge selection with its walls")
+	assert_true(pit.is_closed_edge(), "and it holds the rim")
+	assert_eq(pit.id, rules.id, "it is the same rules id, pinned by version")
+	assert_true(pit.is_valid(), "the pit rules start a duel")
+	pit.edge_policy = &"wall"
+	assert_false(pit.is_valid(), "an unknown edge policy is refused")
 
 
 ## IMPACT-PHYSICS-001 (rules 42): the injury calibration is a named physical
@@ -336,19 +423,19 @@ func test_the_injury_calibration_is_a_named_physical_constant() -> void:
 	## accepted basis is R(φ)·(cos θ, sin θ) (WEAPON-ORBIT-004). On these
 	## same rules-39 knots that identity moves the strike by 1.9019926e-7 J
 	## and 3.696784e-8 N·s. The constants stay; this is the re-measured witness.
-	var rules39_energy := ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat)
-	var rules39_impulse := ContactMechanics.reference_impulse(calibrated.combatant(0), calibrated.combatant(0), calibrated.combat)
+	var rules39_energy := ContactMechanics.reference_severity(calibrated.combatant(0), calibrated.combatant(0), calibrated.sword_body_pair(0))
+	var rules39_impulse := ContactMechanics.reference_impulse(calibrated.combatant(0), calibrated.combatant(0), calibrated.sword_body_pair(0))
 	assert_near(rules39_energy, 72.7078848792913, 1e-9, "on the rules-39 track, through the rotation-matrix basis, the reference strike delivers the re-measured energy")
 	assert_near(rules39_impulse, 14.1317560503968, 1e-9, "and the re-measured stagger impulse")
 	assert_near(rules39_energy - StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, -1.9019926e-7, 1e-12, "the energy gap from the frozen injury constant is that basis, not a recalibration")
 	assert_near(rules39_impulse - StandardDuelRules.REFERENCE_STAGGER_IMPULSE_NS, -3.696784e-8, 1e-12, "and so is the impulse gap")
 	assert_near(StandardDuelRules.REFERENCE_STRIKE_ENERGY_J / rules.combat.reference_severity, StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 1e-12, "and that strike is the pinned number of reference-quality wounds (rules 49)")
-	var witness := ContactMechanics.reference_severity(rules.combatant(0), rules.combatant(0), rules.combat)
+	var witness := ContactMechanics.reference_severity(rules.combatant(0), rules.combatant(0), rules.sword_body_pair(0))
 	assert_ne(witness, StandardDuelRules.REFERENCE_STRIKE_ENERGY_J, "on today's track the strike delivers a little differently")
 	assert_eq(calibrated.combat.reference_severity, rules.combat.reference_severity, "yet the calibration is the same constant")
 	assert_between(witness / rules.combat.reference_severity / StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 0.9, 1.1, "the reference strike on today's mechanics is its witness (%.2f J, a %.2f-severity wound)" % [witness, witness / rules.combat.reference_severity])
-	assert_between(rules.combat.reference_impulse / ContactMechanics.reference_impulse(rules.combatant(0), rules.combatant(0), rules.combat), 0.9, 1.1, "and the stagger impulse's")
-	assert_near(rules.combat.reference_thrust_severity, ContactMechanics.reference_thrust_severity(rules.combatant(0), rules.combatant(0), rules.combat), 1e-6, "a point driven straight in does not see the track at all")
+	assert_between(rules.combat.reference_impulse / ContactMechanics.reference_impulse(rules.combatant(0), rules.combatant(0), rules.sword_body_pair(0)), 0.9, 1.1, "and the stagger impulse's")
+	assert_near(rules.combat.reference_thrust_severity, ContactMechanics.reference_thrust_severity(rules.combatant(0), rules.combatant(0), rules.sword_body_pair(0)), 1e-6, "a point driven straight in does not see the track at all")
 
 
 func test_the_hurt_torso_never_exceeds_the_push_footprint() -> void:

@@ -79,9 +79,9 @@ func _initialize() -> void:
 	var punishing := OS.get_cmdline_user_args().has("--punish")
 	var punish := {}
 	if frictionless:
-		_rules.combat.blade_friction = 0.0
+		_rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.STEEL, 0.0)
 		## A blade on a body may not grip harder than blade on blade.
-		_rules.combat.blade_body_friction = 0.0
+		_rules.materials.set_friction(MaterialCatalog.STEEL, MaterialCatalog.FLESH, 0.0)
 	if not _rules.is_valid():
 		push_error("feel probe: the rules are invalid")
 		quit(1)
@@ -209,7 +209,7 @@ func _initialize() -> void:
 						hold_separating = 0
 					span += 1
 					hold_points = maxi(hold_points, contact.point_count)
-					var reading := _reading(contact, _rules.combat)
+					var reading := _reading(contact, _rules.blade_pair().friction)
 					readings[reading] = int(readings.get(reading, 0)) + 1
 					for i in contact.point_count:
 						if contact.normal_impulse[i] <= 0.0 and absf(contact.tangent_impulse[i]) > 0.0:
@@ -217,7 +217,7 @@ func _initialize() -> void:
 					var pressing := 0.0
 					for i in contact.point_count:
 						pressing += contact.hold_normal[i]
-						var mu := _rules.combat.blade_friction
+						var mu := _rules.blade_pair().friction
 						var jn := contact.normal_impulse[i]
 						if mu > 0.0 and jn > 1.0e-9:
 							var ratio := absf(contact.tangent_impulse[i]) / (mu * jn)
@@ -450,10 +450,9 @@ static func _radial_speed(a: FighterState, b: FighterState) -> float:
 ## What one held tick of the manifold reads as (PLANAR-BIND-001), a
 ## description only: SLIDE — a point sliding at the friction limit; BIND —
 ## normal pressure on the blades; RESTING — touching, nothing pressing.
-static func _reading(contact: SwordContactSet, combat: CombatTuning) -> String:
+static func _reading(contact: SwordContactSet, mu: float) -> String:
 	var pressed := false
 	var sliding := false
-	var mu := combat.blade_friction
 	for i in contact.hold_count():
 		var jn := contact.hold_normal[i]
 		pressed = pressed or jn / SimulationTimebase.TICK_SECONDS >= PRESS_N

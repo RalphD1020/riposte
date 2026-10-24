@@ -15,6 +15,7 @@ const AUTHORED_KIT_PATHS: Dictionary = {
 	ContentIds.FIGHTER_DUELIST: "res://assets/presentation/fighters/duelist/duelist_kit.tres",
 	ContentIds.WEAPON_BASTARD_SWORD: "res://assets/presentation/weapons/bastard_sword/bastard_sword_kit.tres",
 	ContentIds.ARENA_STANDARD: "res://assets/presentation/arenas/standard/standard_arena_kit.tres",
+	ContentIds.ARENA_END: "res://assets/presentation/arenas/end/end_stage_kit.tres",
 }
 
 
@@ -179,12 +180,15 @@ static func duelist_victory() -> FighterVictoryProfile:
 
 static func camera_profile() -> CameraProfile:
 	var profile := CameraProfile.new()
-	profile.pitch_degrees = 56.0
+	## 56° kept the camera inside the wall until distance was about 15 m, which
+	## was the old maximum, so a close fight never saw the stands and the zoom
+	## had nowhere to go. 48° at 14–18 m sits outside the wall at both ends.
+	profile.pitch_degrees = 48.0
 	profile.fov_degrees = 40.0
 	profile.base_distance = 8.0
 	profile.separation_gain = 1.1
-	profile.min_distance = 8.5
-	profile.max_distance = 15.0
+	profile.min_distance = 14.0
+	profile.max_distance = 18.0
 	profile.follow_rate = 6.0
 	profile.zoom_rate = 3.0
 	profile.touch_focus_bias = 1.3

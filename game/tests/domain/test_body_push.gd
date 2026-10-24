@@ -127,7 +127,7 @@ func test_low_restitution_absorbs_energy() -> void:
 	ContactResolver.resolve(state, report, _rules, 0, 0.5, events)
 	var ke_after := 0.5 * _rules.combatant(0).fighter.mass * (a.vx * a.vx + b.vx * b.vx)
 	assert_true(ke_after < ke_before, "low restitution dissipates kinetic energy")
-	assert_true(_rules.combat.body_restitution < 0.5, "precondition: restitution is low")
+	assert_true(_rules.body_pair().restitution_override < 0.5, "precondition: restitution is low")
 
 
 func test_body_push_event_carries_payload() -> void:
@@ -171,7 +171,7 @@ func test_sliding_collision_applies_tangential_impulse() -> void:
 	var report := ContactFixture.body_push_report(1.0, 0.0)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, report, _rules, 0, 0.5, events)
-	assert_true(_rules.combat.body_friction > 0.0, "precondition: friction is enabled")
+	assert_true(_rules.body_pair().friction > 0.0, "precondition: friction is enabled")
 	assert_true(absf(a.vy) < absf(vy_a_before), "fighter 0 lost tangential speed")
 	assert_true(absf(b.vy) > absf(vy_b_before), "fighter 1 gained tangential speed (friction dragged)")
 	var pushes := DuelFixture.of_type(events, DuelEventTypes.BODY_PUSH)
@@ -213,13 +213,13 @@ func test_friction_bounded_by_coulomb_law() -> void:
 	var pushes := DuelFixture.of_type(events, DuelEventTypes.BODY_PUSH)
 	var j_normal: float = pushes[0].data[DuelEventKeys.IMPULSE]
 	var j_tangential: float = pushes[0].data[DuelEventKeys.TANGENTIAL_IMPULSE]
-	assert_near(j_tangential, _rules.combat.body_friction * j_normal, 1e-9, "tangential impulse = μ × normal impulse (Coulomb bound)")
+	assert_near(j_tangential, _rules.body_pair().friction * j_normal, 1e-9, "tangential impulse = μ × normal impulse (Coulomb bound)")
 	assert_true(absf(a.vy) > 0.0, "lateral motion not zeroed — friction merely reduced it")
 
 
 func test_friction_equals_zero_when_coefficient_is_zero() -> void:
 	var rules := DuelFixture.rules()
-	rules.combat.body_friction = 0.0
+	rules.materials.set_friction(MaterialCatalog.FLESH, MaterialCatalog.FLESH, 0.0)
 	var state := DuelFixture.state(rules)
 	var a := state.fighter(0)
 	var b := state.fighter(1)
@@ -445,7 +445,7 @@ func test_new_contact_uses_authored_restitution() -> void:
 	## (fighters separate) but reduced by the low restitution.
 	var post_rel := a.vx - b.vx
 	assert_true(post_rel < 0.0, "new contact: fighters separate after impact (restitution)")
-	var expected_rel := -_rules.combat.body_restitution * 5.0
+	var expected_rel := -_rules.body_pair().restitution_override * 5.0
 	assert_near(post_rel, expected_rel, 0.01, "restitution: v_rel_after ≈ -e × v_rel_before")
 
 
@@ -471,7 +471,7 @@ func test_a_dash_into_a_standing_body_shoves_it_by_momentum() -> void:
 	var momentum_before := _rules.combatant(0).fighter.mass * (a.vx + b.vx)
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, ContactFixture.body_push_report(1.0, 0.0), _rules, 0, 0.5, events)
-	var e := _rules.combat.body_restitution
+	var e := _rules.body_pair().restitution_override
 	assert_near(b.vx, 0.5 * (1.0 + e) * closing, 1e-9, "the struck body leaves at (1 + e)/2 of the closing speed (%.2f m/s)" % b.vx)
 	assert_near(_rules.combatant(0).fighter.mass * (a.vx + b.vx), momentum_before, 1e-9, "momentum is conserved")
 	assert_false(a.gesture.is_bursting(), "and the dash ends on the body it hit")
@@ -584,7 +584,7 @@ func test_restitution_relation_on_new_contact() -> void:
 	var events: Array[DuelEvent] = []
 	ContactResolver.resolve(state, report, _rules, 0, 0.5, events)
 	var v_rel_after := a.vx - b.vx
-	var expected := -_rules.combat.body_restitution * v_rel_before
+	var expected := -_rules.body_pair().restitution_override * v_rel_before
 	assert_near(v_rel_after, expected, 0.01, "v_rel,n_after ≈ -e × v_rel,n_before")
 
 

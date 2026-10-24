@@ -239,6 +239,7 @@ func profile() -> FighterVictoryProfile:
 	return _profile
 
 
+## Simulated seconds since the showcase started. Not the harness wall-clock.
 func elapsed() -> float:
 	return _time
 

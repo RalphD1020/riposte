@@ -25,12 +25,18 @@ const ARENA_SPECS := {
 	PresentationKit.CUE_CROWD_SETPOINT: "crowd:setpoint",
 	PresentationKit.CUE_CROWD_VICTORY: "crowd:victory",
 	PresentationKit.CUE_CROWD_GASP: "crowd:gasp",
-	PresentationKit.CUE_MATCH_HORN: "sfx/arena:match_horn",
+	## `_01` only. `match_horn_02.mp3` is on disk and unheard, so it does not
+	## rotate in until someone has listened to it.
+	PresentationKit.CUE_MATCH_HORN: "sfx/arena:match_horn_01",
 	PresentationKit.CUE_ROUND: "sfx/round:round_start",
 	PresentationKit.CUE_ROUND_WIN: "sfx/round:round_win",
+	PresentationKit.CUE_IMPACT_STEEL_STONE: "sfx/impact:steel_stone",
+	PresentationKit.CUE_IMPACT_STEEL_WOOD: "sfx/impact:steel_wood",
 }
 const CHARACTER_CALL_SPEC := "voice:wolf_howl"
 const CROWD_CHANT_SPEC := "crowd:wolf_chant"
+## Own take. Absent until `crowd/wolf_name.mp3` is authored. Not the shout.
+const NAME_PHRASE_SPEC := "crowd:wolf_name"
 const SPOKEN_NAME_SPEC := "voice/announcer:wolf"
 const WEAPON_FAMILIES := {
 	PresentationKit.CUE_SWING: "sfx/sword/swing",
@@ -79,6 +85,7 @@ static func apply_fighter(kit: PresentationKit, problems: PackedStringArray) -> 
 	_set_stream(kit.voice, "spoken_name", takes_for(SPOKEN_NAME_SPEC, problems))
 	_set_stream(kit, "character_call", takes_for(CHARACTER_CALL_SPEC, problems))
 	_set_stream(kit, "crowd_chant", takes_for(CROWD_CHANT_SPEC, problems))
+	_set_stream(kit, "name_phrase", takes_for(NAME_PHRASE_SPEC, problems))
 
 
 static func apply_victory(profile: FighterVictoryProfile, problems: PackedStringArray) -> void:

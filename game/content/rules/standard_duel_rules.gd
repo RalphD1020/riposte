@@ -55,6 +55,7 @@ static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter
 	rules.version = 58
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
+	rules.materials = MaterialCatalog.standard_table()
 	rules.arena_id = ContentIds.ARENA_STANDARD
 	rules.platform_radius = 8.27
 	rules.edge_warning_inset = 0.27
@@ -76,7 +77,21 @@ static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter
 	## once on the reference duelist with his sword, so the same clash reads
 	## the same whoever is fighting.
 	var reference_spec := LoadoutCatalog.compile(ContentIds.FIGHTER_DUELIST, ContentIds.WEAPON_BASTARD_SWORD)
-	rules.combat.reference_clash_energy = ContactMechanics.reference_clash_energy(reference_spec, reference_spec, rules.combat)
+	rules.combat.reference_clash_energy = ContactMechanics.reference_clash_energy(reference_spec, reference_spec, rules.materials.resolve(reference_spec.weapon.material, reference_spec.weapon.material), rules.combat)
+	return rules
+
+
+## The product pit. Same combat as version 58, with the edge closed. Quick Play
+## stays on `create()` until the pit mesh is the stage it loads. A version-58
+## replay does not become this rules set.
+static func pit() -> DuelRules:
+	var rules := create()
+	## 59: the centre is held at the support radius. Version 58 stays open.
+	## 60: swords meet the stone wall and the wooden gates
+	## (STRUCTURE-CONTACT-001). Bodies are still held by the support circle.
+	rules.version = 60
+	rules.edge_policy = DuelRules.EDGE_CLOSED
+	rules.structures = StageStructures.arena(rules.platform_radius)
 	return rules
 
 
@@ -146,12 +161,10 @@ static func combat_tuning() -> CombatTuning:
 	## contact's drift is always cleared within the tick it happens.
 	combat.contact_slop = 0.002
 	combat.contact_max_correction = 0.04
-	## Coulomb friction (BLADE-FRICTION-001), gameplay calibration seeds for
-	## 7B.8: steel on steel grips enough that a press has consequence and a fast
-	## glance still slides; a blade on cloth and flesh barely grips, so a cut
-	## resting on a torso keeps sliding.
-	combat.blade_friction = 0.2
-	combat.blade_body_friction = 0.05
+	## Coulomb friction (BLADE-FRICTION-001) is the material table's
+	## (`MaterialCatalog.standard_table`): steel on steel grips enough that a
+	## press has consequence and a fast glance still slides; a blade on cloth
+	## and flesh barely grips, so a cut resting on a torso keeps sliding.
 	## Condition (rules 45). Damage alone drives it, linearly: at zero health a
 	## fighter keeps 70 % of their voluntary force, 85 % of their voluntary
 	## speeds and 80 % of their tracking rate (0.85 / 0.925 / 0.90 at half
@@ -214,19 +227,15 @@ static func combat_tuning() -> CombatTuning:
 	combat.commit_turn_torque_curve = 0.35
 	combat.commit_turn_speed_curve = 0.50
 	combat.commit_turn_torque_floor = 0.25
-	combat.commit_turn_speed_floor = 0.40	## Body-body collision: nearly inelastic so fighters don't bounce off each
-	## other. Mass-aware inverse impulse handles the asymmetry (PHYS-005).
-	combat.body_restitution = 0.05
-	## Tangential friction. Bounded by Coulomb's law: a glancing shoulder bump
-	## sheds some lateral speed but cannot halt a side-step. 0.3 keeps the
-	## effect visible without making every bump a wall.
-	combat.body_friction = 0.3
+	combat.commit_turn_speed_floor = 0.40	## Body-body collision is the flesh–flesh pair: nearly inelastic (0.05) so
+	## fighters don't bounce off each other, and a Coulomb 0.3 so a glancing
+	## shoulder bump sheds some lateral speed without halting a side-step
+	## (PHYS-005).
 	## Body-body contact lifecycle (PHYS-009). Gap threshold for transitioning
 	## from CONTACTING back to SEPARATED. Bodies must visibly part.
 	combat.body_contact_separation_epsilon = 0.01
-	## Sword-body bilateral contact (PHYS-010). Very low restitution — this is
-	## sword-into-human-body, not steel-on-steel. Highly inelastic.
-	combat.sword_body_restitution = 0.02
+	## Sword-body bilateral contact (PHYS-010) is the steel–flesh pair: e 0.02,
+	## sword into a human body, highly inelastic.
 	## Fraction of the full rigid blocking impulse applied on lethal point entry
 	## before releasing the nonpenetration constraint (PHYS-010).
 	combat.penetration_resistance_fraction = 0.25

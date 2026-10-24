@@ -74,6 +74,9 @@ static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Arr
 	fallen.yaw = SimMath.wrap_angle(fallen.yaw + fallen.spin * dt)
 	if fallen.over_edge:
 		return
+	if rules.is_closed_edge():
+		ArenaConstraints.constrain(fighter, rules)
+		return
 	var crossing := ArenaConstraints.detect_edge_crossing(start_x, start_y, fighter.x, fighter.y, rules.platform_radius)
 	if crossing >= 0.0:
 		fallen.over_edge = true

@@ -16,6 +16,9 @@ const ATTACK_RELEASED := &"attack_released"
 const ATTACK_CANCELED := &"attack_canceled"
 const ATTACK_WHIFFED := &"attack_whiffed"
 const BLADE_CONTACT := &"blade_collision"
+## A sword struck a stage structure (STRUCTURE-CONTACT-001). Blocking only:
+## never a hit, a parry, or opponent contact.
+const BLADE_STRUCTURE_CONTACT := &"blade_structure_contact"
 const PARRY := &"parry"
 ## Protective steel redirected a cut it did not arrest: the cut carries on and
 ## its remaining sweep no longer reaches the body (DEFLECTION-001). A reading.

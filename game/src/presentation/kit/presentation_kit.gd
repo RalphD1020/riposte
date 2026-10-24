@@ -114,6 +114,10 @@ const CUE_CROWD_VICTORY := &"crowd.victory"
 const CUE_CROWD_GASP := &"crowd.gasp"
 ## The match-ending horn for this stage. Not a fighter's victory call.
 const CUE_MATCH_HORN := &"match.horn"
+## A blade's first impact on a structure, named by the material pair, not by
+## the stage. A kit without the stream stays silent. Presentation only.
+const CUE_IMPACT_STEEL_STONE := &"impact.steel_stone"
+const CUE_IMPACT_STEEL_WOOD := &"impact.steel_wood"
 
 ## VFX cues the presenter may request.
 ## Where a resolved strike's quality saturates the body hitstop band. The
@@ -172,7 +176,10 @@ const VFX_IMPACT := &"impact"
 ## Howl or other nonverbal call. Played under the announcer, not as the horn.
 @export var character_call: AudioStream
 ## Optional crowd name chant. A missing take uses the generic reaction.
+## This is the set-win shout. It is not the repeating match phrase.
 @export var crowd_chant: AudioStream
+## Repeating name. A missing phrase stays silent. It is not `crowd_chant`.
+@export var name_phrase: AudioStream
 ## Fighter kits: how this identity is shown when it wins a set. Optional; a
 ## fighter without one still wins, with the results card alone.
 @export var victory: FighterVictoryProfile
@@ -185,6 +192,9 @@ const VFX_IMPACT := &"impact"
 ## Fighter kits: how a killing blow collapses this fighter. Optional; a kit
 ## without one uses the built-in death spread. Reached only on a killing blow.
 @export var death: DeathPresentationProfile
+## Arena kits: the ground, sky, home marks, and shadow policy around the duel.
+## Optional; null is the pit.
+@export var stage: StagePresentationProfile
 @export var is_placeholder: bool = false
 
 

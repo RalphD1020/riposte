@@ -126,10 +126,10 @@ static func _semantics(weapon: WeaponDefinition) -> void:
 	weapon.hold_torque = 39.6
 	weapon.control_speed = 1.2
 	weapon.tap_commitment = 0.4
-	weapon.restitution = 0.35
-	## The closing speed below which the old scripted bind used to start: a
-	## blade contact that slow is resting, not an impact, so it does not bounce.
-	weapon.restitution_threshold_speed = 1.4
+	## Steel: restitution 0.35. Below 1.4 m/s, the speed the old scripted bind
+	## used to start at, a blade contact is resting, not an impact, so it does
+	## not bounce.
+	weapon.material = MaterialCatalog.steel()
 	weapon.reference_closing_speed = 10.5
 	## Cut efficiency along the blade: what a rigid sword's physics leaves out
 	## — vibration and a poor bite near the hilt and at the very point — as a

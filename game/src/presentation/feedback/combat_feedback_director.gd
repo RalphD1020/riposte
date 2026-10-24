@@ -32,6 +32,10 @@ const IMPULSE_BODY_MAX := 0.09
 const IMPULSE_DEVASTATING_MAX := 0.14
 ## Spark geometry: the normal fan is the smaller half of a clash.
 const SPARK_NORMAL_SHARE := 0.4
+## A wall strike throws one modest fan along the contact normal. Not a clash:
+## no hitstop, no camera shake, no haptic — the wall is not an opponent.
+const WALL_SPARK_COUNT := 6
+const WALL_SPARK_SPEED := 2.4
 ## A blade fraction at or below this is the guard end of a clash. Geometry
 ## writes 0 for a guard-pair contact (`sword_contact_geometry.gd`). Missing
 ## fractions are not treated as the guard.
@@ -137,6 +141,8 @@ static func _classify(event: DuelEvent, snapshot: PresentationSnapshot, weapon_k
 			_on_burst(event, snapshot, flash, particles, palette, frame)
 		DuelEventTypes.BLADE_CONTACT:
 			_on_blade_contact(event, weapon_kit, flash, particles, palette, frame, contact_height)
+		DuelEventTypes.BLADE_STRUCTURE_CONTACT:
+			_on_structure_contact(event, weapon_kit, flash, particles, palette, frame, contact_height)
 		DuelEventTypes.PARRY:
 			_on_parry(event, weapon_kit, flash, particles, palette, frame, contact_height)
 		DuelEventTypes.DEFLECTION:
@@ -172,6 +178,24 @@ static func _on_release(event: DuelEvent, snapshot: PresentationSnapshot, frame:
 		lerpf(SWING_PITCH_TAP, SWING_PITCH_FULL, potential),
 		AudioCueRequest.KitSource.WEAPON, variant_key(event)
 	))
+
+
+## A blade meeting a structure (STRUCTURE-CONTACT-001). One spark along the
+## contact normal, and one impact cue named by the material pair the solver
+## already resolved. The domain emits the event once per episode, so a blade
+## resting on the wall does not clang again. No hitstop and no shake: the
+## structure is not a hit. An unknown pair, or no impulse, stays silent.
+static func _on_structure_contact(event: DuelEvent, weapon_kit: PresentationKit, flash: float, particles: float, palette: VfxStyleKit, frame: FeedbackFrame, contact_height: float = NAN) -> void:
+	var impulse := event.number(DuelEventKeys.IMPULSE)
+	if not ContactAudioResolver.has_impact(impulse):
+		return
+	var world := _contact_world(event, weapon_kit, contact_height)
+	var normal := _direction(event, DuelEventKeys.NORMAL_X, DuelEventKeys.NORMAL_Y)
+	_append_particles(frame, VfxRequest.sparks(world, normal, palette.spark, WALL_SPARK_COUNT, WALL_SPARK_SPEED, flash), particles)
+	var cue := ContactAudioResolver.impact_cue(StringName(event.text(DuelEventKeys.MATERIAL_0)), StringName(event.text(DuelEventKeys.MATERIAL_1)))
+	if cue == &"":
+		return
+	frame.audio_requests.append(AudioCueRequest.create(cue, world, ContactAudioResolver.impact_db(impulse), 1.0, AudioCueRequest.KitSource.ARENA, variant_key(event)))
 
 
 ## A true whiff (COMBAT-READABILITY-001): the cut met nothing and ran on into
@@ -218,7 +242,9 @@ static func _on_blade_contact(event: DuelEvent, weapon_kit: PresentationKit, fla
 	var hot := palette.spark.lerp(palette.spark_hot, intensity)
 	_append_particles(frame, VfxRequest.sparks(world, tangent, hot, roundi(count * (1.0 - SPARK_NORMAL_SHARE)), speed, flash), particles)
 	_append_particles(frame, VfxRequest.sparks(world, normal, hot, roundi(count * SPARK_NORMAL_SHARE), speed, flash), particles)
-	frame.audio_requests.append(AudioCueRequest.create(_clash_cue(event), world, 0.0, clash_pitch(event), AudioCueRequest.KitSource.WEAPON, variant_key(event)))
+	var blade_cue := _blade_cue(event)
+	if blade_cue != &"":
+		frame.audio_requests.append(AudioCueRequest.create(blade_cue, world, 0.0, clash_pitch(event), AudioCueRequest.KitSource.WEAPON, variant_key(event)))
 	frame.hitstop_requests.append(HitstopRequest.create(weapon_kit.hitstop_for_clash(intensity)))
 	frame.camera_requests.append(CameraShakeRequest.create(IMPULSE_BLADE_MAX * shaped * 100.0, normal, CameraShakeRequest.Profile.BLADE))
 	frame.fighter_requests.append(FighterCueRequest.haptic(event.actor, FighterCueRequest.Kind.HAPTIC_BLADE))
@@ -407,14 +433,16 @@ static func _profile_for(event: DuelEvent) -> ImpactPresentationProfile:
 	return ImpactPresentationProfile.slash()
 
 
-static func _clash_cue(event: DuelEvent) -> StringName:
-	match StringName(event.text(DuelEventKeys.CONTACT_CLASS)):
-		ContactResolver.CLASS_STRONG:
-			return PresentationKit.CUE_BLADE_STRONG
-		ContactResolver.CLASS_SOLID:
-			return PresentationKit.CUE_BLADE_SOLID
-		_:
-			return PresentationKit.CUE_BLADE_LIGHT
+## Weapon on weapon is the material pair. A payload that does not name its
+## materials is today's steel on steel, so an older event still clangs. A
+## named pair with no row stays silent.
+static func _blade_cue(event: DuelEvent) -> StringName:
+	var first := event.text(DuelEventKeys.MATERIAL_0)
+	var second := event.text(DuelEventKeys.MATERIAL_1)
+	if first == "" and second == "":
+		first = String(MaterialCatalog.STEEL)
+		second = String(MaterialCatalog.STEEL)
+	return ContactAudioResolver.impact_cue(StringName(first), StringName(second), event.text(DuelEventKeys.CONTACT_CLASS))
 
 
 static func _contact_world(event: DuelEvent, weapon_kit: PresentationKit, height: float = NAN) -> Vector3:

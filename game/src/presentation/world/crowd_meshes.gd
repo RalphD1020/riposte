@@ -1,56 +1,31 @@
 class_name CrowdMeshes
 extends RefCounted
 
-## Authored crowd parts, or a named box when the glb has not been exported.
-## The box is the fallback. It is not a second person built per seat.
+## The crowd's mesh lookup: one named mesh out of an exported figure scene,
+## cached, or a named box when the file is missing. The box is a release
+## fallback, not a look: `CrowdProfile.problem` and PRES-ARENA fail on a
+## missing file. Which files a crowd uses is its `CrowdProfile`.
 ##
 ## See also: /docs/concepts/presentation.md
 
-const SEATED := "res://assets/generated/crowd/seated.glb"
-const CHEER := "res://assets/generated/crowd/cheer.glb"
-const HAIR_CROP := "res://assets/generated/crowd/hair_crop.glb"
-const HAIR_BUN := "res://assets/generated/crowd/hair_bun.glb"
-const FACE := "res://assets/generated/crowd/face.glb"
 const FALLBACK := "fallback"
 
 static var _cache: Dictionary = {}
 
 
-static func part(cheer: bool, slot: String) -> Mesh:
-	var path := CHEER if cheer else SEATED
-	var found := _named(path, slot)
-	if found != null:
-		return found
-	return _fallback("%s.%s" % [FALLBACK, slot])
-
-
-static func face() -> Mesh:
-	var found := _named(FACE, "face")
-	if found != null:
-		return found
-	return _fallback(FALLBACK + ".face")
-
-
-static func hair(bun: bool) -> Mesh:
-	var path := HAIR_BUN if bun else HAIR_CROP
-	var found := _named(path, "hair")
-	if found != null:
-		return found
-	return _fallback(FALLBACK + ".hair")
-
-
-static func pose_scene(cheer: bool) -> PackedScene:
-	var path := CHEER if cheer else SEATED
-	if ResourceLoader.exists(path):
-		return load(path) as PackedScene
-	return null
-
-
-static func _named(path: String, slot: String) -> Mesh:
+static func named(path: String, slot: String) -> Mesh:
 	var key := "%s:%s" % [path, slot]
 	if _cache.has(key):
 		return _cache[key] as Mesh
-	if not ResourceLoader.exists(path):
+	var found := _find(path, slot)
+	if found == null:
+		found = _fallback("%s.%s.%s" % [FALLBACK, path.get_file().get_basename(), slot])
+	_cache[key] = found
+	return found
+
+
+static func _find(path: String, slot: String) -> Mesh:
+	if path.is_empty() or not ResourceLoader.exists(path):
 		return null
 	var packed := load(path) as PackedScene
 	if packed == null:
@@ -66,16 +41,11 @@ static func _named(path: String, slot: String) -> Mesh:
 		for child: Node in node.get_children():
 			stack.append(child)
 	root.free()
-	if found != null:
-		_cache[key] = found
 	return found
 
 
 static func _fallback(fallback_name: String) -> Mesh:
-	if _cache.has(fallback_name):
-		return _cache[fallback_name] as Mesh
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.34, 0.9, 0.28)
 	mesh.resource_name = fallback_name
-	_cache[fallback_name] = mesh
 	return mesh

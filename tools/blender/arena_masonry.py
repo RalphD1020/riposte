@@ -34,6 +34,71 @@ def _drop(obj):
         bpy.data.meshes.remove(mesh)
 
 
+def _aabb(obj):
+    corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+    xs = [corner.x for corner in corners]
+    ys = [corner.y for corner in corners]
+    zs = [corner.z for corner in corners]
+    return (min(xs), max(xs), min(ys), max(ys), min(zs), max(zs))
+
+
+def _overlaps(bounds, box):
+    return (
+        bounds[0] < box[1]
+        and bounds[1] > box[0]
+        and bounds[2] < box[3]
+        and bounds[3] > box[2]
+        and bounds[4] < box[5]
+        and bounds[5] > box[4]
+    )
+
+
+def _inside(bounds, box):
+    return (
+        bounds[0] >= box[0]
+        and bounds[1] <= box[1]
+        and bounds[2] >= box[2]
+        and bounds[3] <= box[3]
+        and bounds[4] >= box[4]
+        and bounds[5] <= box[5]
+    )
+
+
+def _cut_door_recess(obj, box):
+    """Take the door volume out of one wall block. Stone outside that volume stays."""
+    bounds = _aabb(obj)
+    if not _overlaps(bounds, box):
+        return obj
+    if _inside(bounds, box):
+        _drop(obj)
+        return None
+    x0, x1, y0, y1, z0, z1 = box
+    cutter = rb.box(
+        "_DoorRecess",
+        (x1 - x0, y1 - y0, z1 - z0),
+        ((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5),
+        None,
+        parent=obj.parent,
+    )
+    modifier = obj.modifiers.new("DoorRecess", "BOOLEAN")
+    modifier.operation = "DIFFERENCE"
+    modifier.object = cutter
+    modifier.solver = "FLOAT"
+    bpy.context.view_layer.update()
+    evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = bpy.data.meshes.new_from_object(evaluated)
+    previous = obj.data
+    obj.data = mesh
+    obj.modifiers.remove(modifier)
+    _drop(cutter)
+    if previous.users == 0:
+        bpy.data.meshes.remove(previous)
+    if len(obj.data.polygons) == 0:
+        _drop(obj)
+        return None
+    return obj
+
+
 def _half_angle(layout):
     return math.pi / layout["bay_count"] - WEDGE_INSET
 
@@ -128,28 +193,28 @@ def _in_voussoir(center, arcade):
     return dist <= limit and abs(center[1]) <= arcade["opening"] * 0.5 + 0.2
 
 
-def fill(parent, prefix, origin, size, material, mouth, half, index):
+def fill(parent, prefix, origin, size, material, mouth, half, index, course_size=BLOCK):
     """Running-bond courses from `origin` through `size` (x, y, z)."""
     made = []
     z = origin[2]
     course = 0
     while z < origin[2] + size[2] - 1.0e-4:
-        height = min(BLOCK[2], origin[2] + size[2] - z)
+        height = min(course_size[2], origin[2] + size[2] - z)
         if height < 0.04:
             break
-        y_shift = 0.0 if course % 2 == 0 else (BLOCK[1] + GAP[1]) * 0.5
+        y_shift = 0.0 if course % 2 == 0 else (course_size[1] + GAP[1]) * 0.5
         y = origin[1] - y_shift
         limit = origin[1] + size[1] + y_shift
         while y + 0.04 <= limit:
             if y < origin[1] - 1.0e-4:
-                y += BLOCK[1] + GAP[1]
+                y += course_size[1] + GAP[1]
                 continue
-            width = min(BLOCK[1], limit - y)
+            width = min(course_size[1], limit - y)
             if width < 0.08:
                 break
             x = origin[0]
             while x < origin[0] + size[0] - 1.0e-4:
-                depth = min(BLOCK[0], origin[0] + size[0] - x)
+                depth = min(course_size[0], origin[0] + size[0] - x)
                 if depth < 0.08:
                     break
                 center = (x + depth * 0.5, y + width * 0.5, z + height * 0.5)
@@ -198,8 +263,12 @@ def _arch(parent, prefix, arcade, x0, x1, material):
     return made
 
 
-def build_bay(parent, layout):
-    """One radial slice of both arcades and the four treads. No water."""
+def build_bay(parent, layout, cut_gate=False):
+    """One radial slice. A pit is a solid wall and the seats above it.
+    The colonnade path keeps both arcades and the gallery.
+    """
+    if layout.get("kind") == "pit":
+        return _pit_bay(parent, layout, cut_gate)
     half = _half_angle(layout)
     floor = layout["floor"]
     inner = layout["inner_arcade"]
@@ -269,7 +338,141 @@ def build_bay(parent, layout):
                     index,
                 )
                 made.extend(buried)
+    gallery = layout.get("gallery")
+    if gallery is not None and len(tiers) > 4:
+        g_span = gallery["opening"] * 0.5 + gallery["pier_width"] + 0.04
+        g_x1 = gallery["inner_radius"] + gallery["pier_depth"] - 0.01
+        supports, index = fill(
+            parent,
+            "Gallery",
+            (gallery["inner_radius"], -g_span, layout["water_height"]),
+            (g_x1 - gallery["inner_radius"], g_span * 2.0, gallery["soffit"] + CROWN_OVERLAP - layout["water_height"]),
+            stand,
+            gallery,
+            half,
+            index,
+        )
+        made.extend(supports)
+        made.extend(_arch(parent, "GalleryArch", gallery, gallery["inner_radius"], g_x1, stand))
+        gallery_end = gallery["inner_radius"] + gallery["pier_depth"]
+        for tier_index in range(4, len(tiers)):
+            tier = tiers[tier_index]
+            below = tiers[tier_index - 1]["tread_height"]
+            if tier["inner_radius"] < gallery_end and below > gallery["soffit"] + 0.02:
+                cover = min(tier["outer_radius"], gallery_end) - tier["inner_radius"]
+                if cover > 0.05:
+                    buried, index = fill(
+                        parent,
+                        "GalleryCover%d" % tier_index,
+                        (tier["inner_radius"], -g_span, gallery["soffit"]),
+                        (cover, g_span * 2.0, below - gallery["soffit"]),
+                        stand,
+                        None,
+                        half,
+                        index,
+                    )
+                    made.extend(buried)
+        podium = tiers[3]["tread_height"]
+        haunch_x = gallery_end
+        haunch_w = gallery["outer_radius"] - haunch_x
+        if haunch_w > 0.05 and podium > gallery["soffit"] + 0.05:
+            chord = gallery["outer_radius"] * math.sin(math.pi / layout["bay_count"]) + 0.3
+            haunch, index = fill(
+                parent,
+                "GalleryHaunch",
+                (haunch_x, -chord, gallery["soffit"]),
+                (haunch_w, chord * 2.0, podium - gallery["soffit"]),
+                stand,
+                None,
+                half,
+                index,
+                (0.72, 0.52, 0.34),
+            )
+            made.extend(haunch)
     return made
+
+
+COARSE = (0.72, 0.52, 0.34)
+## ArenaSurfaceState.STONE_FACE_OUTSET. The inner face stays outside the
+## combat disc. The sand disc is drawn past this face.
+STONE_FACE_OUTSET = 0.08
+
+
+def _pit_bay(parent, layout, cut_gate):
+    """Solid wall from the combat radius, then the seat treads. A gate bay
+    loses the inner courses so the door can sit in the opening.
+    """
+    half = _half_angle(layout)
+    wall = layout["wall"]
+    gate = layout["gates"]
+    tiers = layout["tiers"]
+    stand = masonry.role("stone_stand")
+    index = 0
+    chord = wall["outer_radius"] * math.sin(math.pi / layout["bay_count"]) + 0.3
+    ## The inner face sits outside the combat disc so a block corner cannot
+    ## enter it. The sand disc tucks under this face.
+    inner = wall["inner_radius"] + STONE_FACE_OUTSET
+    made, index = fill(
+        parent,
+        "Wall",
+        (inner, -chord, 0.0),
+        (wall["outer_radius"] - inner, chord * 2.0, wall["height"]),
+        stand,
+        None,
+        half,
+        index,
+        COARSE,
+    )
+    if cut_gate:
+        ## The door is a thin slab on the inner face. The old cut deleted every
+        ## block whose centre sat in a slot wider than that slab and about a
+        ## metre deep, so the wall stopped beside the door. Keep the stone.
+        ## Remove only the recess the door occupies.
+        recess = (
+            inner,
+            gate["radius"] + gate["depth"] * 0.5,
+            -gate["width"] * 0.5,
+            gate["width"] * 0.5,
+            -0.02,
+            gate["height"],
+        )
+        kept = []
+        for obj in made:
+            cut = _cut_door_recess(obj, recess)
+            if cut is not None:
+                kept.append(cut)
+        made = kept
+    below = wall["height"]
+    for tier_index, tier in enumerate(tiers):
+        band = tier["outer_radius"] - tier["inner_radius"]
+        tread_chord = tier["outer_radius"] * math.sin(math.pi / layout["bay_count"]) + 0.3
+        shell, index = fill(
+            parent,
+            "Tread%d" % tier_index,
+            (tier["inner_radius"], -tread_chord, below),
+            (band, tread_chord * 2.0, tier["tread_height"] - below),
+            stand,
+            None,
+            half,
+            index,
+            COARSE,
+        )
+        made.extend(shell)
+        below = tier["tread_height"]
+    return made
+
+
+def build_gates(parent, layout):
+    """Two wooden doors on the north-south axis. Blender +Y becomes Godot -Z,
+    which is north, so the north door is +Y and the south door is -Y.
+    """
+    gate = layout["gates"]
+    wood = rb.material("wood_gate", (0.42, 0.33, 0.27), roughness=0.72)
+    radius = gate["radius"]
+    size = (gate["width"], gate["depth"], gate["height"])
+    centre = gate["height"] * 0.5
+    rb.box("GateNorth", size, (0.0, radius, centre), wood, parent, bevel=0.01)
+    rb.box("GateSouth", size, (0.0, -radius, centre), wood, parent, bevel=0.01)
 
 
 def build_water(parent, layout):

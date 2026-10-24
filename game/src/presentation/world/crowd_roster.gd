@@ -16,7 +16,7 @@ const STREAM_CLOTH := 5
 ## the leftover tenth so the draw sums to 100 (50 / 20 / 15 / 15).
 const SKIN_WEIGHTS: Array[int] = [9, 9, 12, 12, 12, 12, 10, 10, 7, 7]
 const ROLE_WEIGHTS: Array[int] = [50, 20, 15, 15]
-const HAIR_SHAPES := 2
+const HAIR_SHAPES := 3
 const ROLE_EVERYDAY := 0
 const ROLE_LONG := 1
 const ROLE_TRAVELER := 2

@@ -65,6 +65,7 @@ static func duelist() -> FighterDefinition:
 	fighter.body_inertia_coefficient = 0.5
 	fighter.lying_half_length = LYING_HALF_LENGTH_M
 	fighter.lying_radius = LYING_RADIUS_M
+	fighter.material = MaterialCatalog.flesh()
 	resolve_actuators(fighter, 1.0, 1.0, 1.0)
 	_semantics(fighter)
 	fighter.precompute()
@@ -101,6 +102,7 @@ static func prototype_at(size_scale: float) -> FighterDefinition:
 	fighter.body_inertia_coefficient = 0.5
 	fighter.lying_half_length = LYING_HALF_LENGTH_M * size_scale
 	fighter.lying_radius = LYING_RADIUS_M * size_scale
+	fighter.material = MaterialCatalog.flesh()
 	resolve_actuators(
 		fighter,
 		PhysicalBaseline.torque_scale(1.0, size_scale),

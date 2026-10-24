@@ -13,6 +13,7 @@
 [ext_resource type="Texture2D" path="res://assets/presentation/fighters/duelist/wolf_symbol_alternate.png" id="11_symbol_alt"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/wolf_howl.mp3" id="12_howl"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/wolf_chant.mp3" id="13_chant"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/wolf_name.mp3" id="14_name"]
 
 [sub_resource type="Resource" id="Resource_intro"]
 script = ExtResource("3_intro")
@@ -57,6 +58,7 @@ symbol = ExtResource("10_symbol")
 symbol_alternate = ExtResource("11_symbol_alt")
 character_call = ExtResource("12_howl")
 crowd_chant = ExtResource("13_chant")
+name_phrase = ExtResource("14_name")
 victory = ExtResource("8_victory")
 stance = ExtResource("9_stance")
 colorway = ExtResource("4_colorway")

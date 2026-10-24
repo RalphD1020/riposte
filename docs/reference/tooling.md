@@ -25,7 +25,7 @@ pnpm test:balance:accept # CPU held-out ladder (CPU-ACCEPT), run once after a tu
 pnpm test:contact:ship  # contact ship + development corpora (CONTACT-INTEGRITY-SHIP), audit only
 pnpm test:perf         # frame-cost report, never a gate
 pnpm test:changed      # suites owning the changed files (TEST-TIER-001), no import
-pnpm test:focused <area|SUITE>…  # one area or named suites, no import
+pnpm test:focused <area|SUITE>…  # one area or named suites; imports only when a required glb's bytes changed
 pnpm game:import       # Godot --import: once per session, after new assets or class_name scripts
 pnpm check             # import + lint + typecheck + format + docs/arch + tooling
 pnpm verify            # check then test then test:balance then build
@@ -35,7 +35,7 @@ pnpm format:check
 pnpm docs:generate
 pnpm docs:check
 pnpm arch:check
-pnpm integrity:check
+pnpm integrity:check   # merge markers, case conflicts, 500 KB cap (not arena geometry; see below)
 pnpm security:check
 pnpm kill              # Recovery: free :3000 / :3001 / :8060
 pnpm reinstall         # Clean + frozen lockfile (lockfile kept)
@@ -68,6 +68,10 @@ pnpm --filter @riposte/game godot:test
 ## Report runners
 
 `check`, `build`, and `verify` are synchronous Node runners that share `scripts/reports.mjs` (`runEchoed` spawns with echoed output; `writeReport` writes `latest.json` + `latest.md`). The expected Godot version lives once in `scripts/godot-bin.mjs` (`EXPECTED_GODOT_VERSION`). `parseEngineIssues` reports every `ERROR:` / `SCRIPT ERROR:` / `Parse Error:` line. The Godot **test** wrapper then drops one exact line (`EXPECTED_TEST_ENGINE_ERROR`, `ERROR: RiposteApp: match music is missing`) so the missing-theme case can `push_error` and still pass. That filter is not applied to `pnpm check` or export. `pnpm test:tooling` (`game/scripts/test-exit-propagation.mjs`) is TOOL-TEST-001 (a FAIL harness result is a failure), TOOL-TEST-002 (a SCRIPT ERROR outranks a fake PASS), and TOOL-TEST-003 (the allowlist drops only that diagnostic; any other `ERROR:` still classifies as `HARNESS_FAILURE`; unfiltered `parseEngineIssues` still sees the line).
+
+## Integrity size cap
+
+`pnpm integrity:check` rejects a tracked file over 500 KB. That cap is for source, docs, audio and config, where a file that size is almost always an accidental dump. It does not apply to `art-src/blender/` or `game/assets/generated/`: the arena bowl and floor are one mesh each and are megabytes by construction, and shrinking them to pass the cap would throw away the stage. A large file anywhere else still fails, and the failure names the file and its size. Merge-conflict markers and case-conflicting paths are checked on every tracked file.
 
 ## Reports
 

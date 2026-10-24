@@ -53,14 +53,8 @@ var separation_epsilon: float = 0.0
 ## rather than teleported.
 var contact_slop: float = 0.0
 var contact_max_correction: float = 0.0
-## Coulomb friction between a sword and what it touches (BLADE-FRICTION-001):
-## the tangent impulse at a contact never exceeds μ times its normal impulse.
-## One coefficient per material pair — blade on blade and blade on a living
-## body (only blades are steel, STEEL-TOPOLOGY-001). They are gameplay
-## calibration, not steel tables, and they select no other behaviour: μ = 0 is
-## the frictionless solve.
-var blade_friction: float = 0.0
-var blade_body_friction: float = 0.0
+## Coulomb friction and restitution are per material pair, not tuning
+## (CONTACT-MATERIAL-001): `DuelRules.materials`.
 
 ## A solid reference impact, for consumers that need impulse and severity as
 ## bounded signals rather than raw kg·m/s and joules. The injury calibration:
@@ -91,25 +85,15 @@ var recovery_min_ticks: int = 0
 var substep_travel: float = 0.0
 var max_substeps: int = 0
 
-## Body-body collision (COMBAT-007). Fighters are circles; when they overlap
-## or are about to overlap, the contact loop resolves an inverse-mass impulse
-## so a heavier fighter is barely displaced while a lighter one absorbs the
-## collision. Restitution is deliberately low — bodies absorb, they don't bounce.
-var body_restitution: float = 0.0
-## Coulomb friction coefficient for body-body tangential contact (PHYS-005).
-## Bounded: tangential impulse ≤ friction × normal impulse. Two fighters
-## sliding past each other lose tangential speed proportionally; the bound
-## prevents a glancing bump from halting all lateral motion.
-var body_friction: float = 0.0
+## Body-body collision (COMBAT-007, PHYS-005): the bodies' material pair gives
+## the restitution and the Coulomb bound.
 
 ## Gap threshold beyond which a CONTACTING body pair transitions back to
 ## SEPARATED (PHYS-009). Bodies must genuinely part before contact can
 ## re-arm. Reuses the same hysteresis philosophy as blade separation.
 var body_contact_separation_epsilon: float = 0.0
 
-## Sword-body bilateral contact (PHYS-010). Very low restitution — this is
-## sword-into-human-body, not steel-on-steel. Highly inelastic.
-var sword_body_restitution: float = 0.0
+## Sword-body bilateral contact (PHYS-010): the steel–flesh material pair.
 ## Fraction of the full rigid blocking impulse applied on lethal point entry
 ## before releasing the nonpenetration constraint. The blade transfers this
 ## much momentum bilaterally, then continues through.
@@ -232,10 +216,6 @@ func is_valid() -> bool:
 		and contact_slop > 0.0
 		and contact_max_correction > contact_slop
 		and ArenaConstraints.BODY_CONTACT_REST_EPSILON < contact_slop
-		and blade_friction >= 0.0
-		and blade_body_friction >= 0.0
-		and blade_body_friction <= blade_friction
-		and blade_friction <= 1.0
 		and condition_force_floor >= 0.5
 		and condition_force_floor <= 1.0
 		and condition_speed_floor >= 0.5
@@ -277,13 +257,7 @@ func is_valid() -> bool:
 		and commit_turn_speed_floor > 0.0
 		and commit_turn_speed_curve >= commit_turn_speed_floor
 		and commit_turn_speed_curve <= 1.0
-		and body_restitution >= 0.0
-		and body_restitution <= 1.0
-		and body_friction >= 0.0
-		and body_friction <= 1.0
 		and body_contact_separation_epsilon > 0.0
-		and sword_body_restitution >= 0.0
-		and sword_body_restitution <= 1.0
 		and penetration_resistance_fraction >= 0.0
 		and penetration_resistance_fraction <= 1.0
 		and point_strike_alignment >= 0.0
@@ -313,14 +287,12 @@ func _all_finite() -> bool:
 		and is_finite(coupling_floor)
 		and is_finite(separation_epsilon)
 		and is_finite(contact_slop) and is_finite(contact_max_correction)
-		and is_finite(blade_friction) and is_finite(blade_body_friction)
 		and is_finite(reference_impulse) and is_finite(reference_thrust_severity)
 		and is_finite(reference_severity) and is_finite(blade_solid_speed)
 		and is_finite(blade_strong_speed)
 		and is_finite(substep_travel)
-		and is_finite(body_restitution)
-		and is_finite(body_friction) and is_finite(body_contact_separation_epsilon)
-		and is_finite(sword_body_restitution) and is_finite(penetration_resistance_fraction)
+		and is_finite(body_contact_separation_epsilon)
+		and is_finite(penetration_resistance_fraction)
 		and is_finite(point_strike_alignment)
 		and is_finite(point_strike_incidence) and is_finite(point_strike_severity)
 		and is_finite(graze_quality) and is_finite(thrust_burst_alignment)

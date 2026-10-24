@@ -44,6 +44,15 @@ const FRACTION_1 := "fraction_1"
 const STEEL_PAIR := "steel_pair"
 ## How many manifold points a sword contact was solved on.
 const POINT_COUNT := "point_count"
+## A structure contact: which structure (index in `DuelRules.structures`) and
+## which feature of it (`StructureContactSet.feature_of`) took the most impulse.
+const STRUCTURE := "structure"
+const FEATURE := "feature"
+## The two surfaces of a structure contact, the materials the solver already
+## resolved (`ContactPair`). Order is not meaningful: audio sorts them. These
+## name the surfaces; they are not a sound.
+const MATERIAL_0 := "material_0"
+const MATERIAL_1 := "material_1"
 ## ContactResolver.CLASS_LIGHT / CLASS_SOLID / CLASS_STRONG.
 const CONTACT_CLASS := "class"
 ## Whether each side's cut was arrested by the contact (RIGID-CONTACT-002).

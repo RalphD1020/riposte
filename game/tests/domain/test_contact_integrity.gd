@@ -443,7 +443,7 @@ func test_a_contact_that_reverses_a_cut_ends_it() -> void:
 	if clash == null:
 		return
 	assert_true(clash.number(DuelEventKeys.IMPULSE) > 0.1 * _rules.combat.reference_impulse, "fixture: a real impact, not a graze (%.2f N·s)" % clash.number(DuelEventKeys.IMPULSE))
-	assert_true(clash.number(DuelEventKeys.CLOSING_SPEED) >= _rules.combatant(0).weapon.restitution_threshold_speed, "fixture: fast enough to rebound (%.2f m/s)" % clash.number(DuelEventKeys.CLOSING_SPEED))
+	assert_true(clash.number(DuelEventKeys.CLOSING_SPEED) >= _rules.combatant(0).weapon.material.restitution_threshold_speed, "fixture: fast enough to rebound (%.2f m/s)" % clash.number(DuelEventKeys.CLOSING_SPEED))
 	var at := -1
 	for i in rows.size():
 		if int(rows[i][0]) > 0:
@@ -924,6 +924,67 @@ func test_a_separated_blade_contact_keeps_nothing() -> void:
 	assert_eq(fork.state.blade_contact.hold_count(), 0, "nor any held row (%.4f N·s were held)" % held)
 	assert_eq(fork.state.blade_contact.phase == SwordContactSet.Phase.CONTACTING, false, "and the contact is no longer touching")
 	assert_true(fork.is_sound(), "every tick legal")
+
+
+## WEAPON-ORBIT getting-unstuck: the handle and the hands ride the attack
+## track (`WeaponAttackPath`) as a pure function of the weapon angle, the
+## heading and the body. They are not combat geometry — nothing holds them — so
+## a hand or a handle can only be "stuck in the hand ring" if the weapon angle
+## and the body are stuck. When a bind releases, the hands and the handle come
+## free with the blades: two fighters bind, both retreat, the blades part
+## (BLADE-ESCAPE-001), and the grip points separate with them, never re-trapping
+## in the opponent's hand ring, every tick a legal pose on the fighter's own
+## track. Deterministic, so the recovery is replay-stable.
+func test_the_hands_and_handle_come_free_when_a_bind_releases() -> void:
+	var bind := _bind(1.0)
+	assert_true(bind.state.blade_contact.hold_count() > 0, "fixture: the blades are held in a bind")
+	var held_grip := _min_grip_distance(bind.state)
+	var fork := StateFork.of(bind)
+	var parted := -1
+	var min_after := INF
+	for t in 40:
+		fork.push(_bind_command("back", fork.state.tick, t), _bind_command("back", fork.state.tick, t))
+		assert_true(fork.is_sound(), "tick %d: a legal pose on the track" % t)
+		if fork.state.blade_contact.phase == SwordContactSet.Phase.SEPARATED:
+			if parted < 0:
+				parted = t + 1
+			min_after = minf(min_after, _min_grip_distance(fork.state))
+	assert_true(parted > 0, "the bind releases as both fighters retreat (tick %d)" % parted)
+	assert_eq(fork.state.blade_contact.hold_count() + fork.state.blade_contact.point_count, 0, "nothing is held once the blades are apart")
+	var freed_grip := _min_grip_distance(fork.state)
+	assert_true(freed_grip > held_grip, "the hands and the handle separate with the blades (%.3f -> %.3f m)" % [held_grip, freed_grip])
+	assert_true(min_after > _rules.combat.separation_epsilon, "and never re-trap in the opponent's hand ring after release (min %.3f m)" % min_after)
+	## The same bind retreated the same way ends in the same state: the recovery
+	## of the hands and handle is deterministic, not a drifting unstick.
+	var twin := StateFork.of(_bind(1.0))
+	for t in 40:
+		twin.push(_bind_command("back", twin.state.tick, t), _bind_command("back", twin.state.tick, t))
+	assert_eq(StateHasher.hash_state(twin.state), StateHasher.hash_state(fork.state), "the press-and-retreat is replay-stable")
+
+
+## The closest any of one fighter's grip points (the pommel, the carriage grip
+## centre, and each hand on the grip) comes to any of the other's — the hand
+## ring separation, measured off the live pose, never a stored value.
+func _min_grip_distance(state: MatchState) -> float:
+	var a := _grips(state, 0)
+	var b := _grips(state, 1)
+	var best := INF
+	for pa: Vector2 in a:
+		for pb: Vector2 in b:
+			best = minf(best, pa.distance_to(pb))
+	return best
+
+
+func _grips(state: MatchState, slot: int) -> Array:
+	var spec := _rules.combatant(slot)
+	var weapon := spec.weapon
+	var pose := WeaponKinematics.pose_of(state.fighter(slot), spec, BladePose.new())
+	return [
+		Vector2(pose.origin_x, pose.origin_y),
+		Vector2(pose.carriage_x, pose.carriage_y),
+		Vector2(pose.point_x(weapon.offhand_grip_radius), pose.point_y(weapon.offhand_grip_radius)),
+		Vector2(pose.point_x(weapon.dominant_grip_radius), pose.point_y(weapon.dominant_grip_radius)),
+	]
 
 
 static func _bind_command(kind: String, tick: int, t: int) -> PlayerCommand:

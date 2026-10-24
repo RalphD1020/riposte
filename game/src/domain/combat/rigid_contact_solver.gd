@@ -92,9 +92,11 @@ const HOLDS_PER_TICK := 4
 ##                          set's canonical order (TWO-POINT-001)
 ## 6        ROW_BODY        fighter 0's sword on fighter 1's torso
 ## 7        ROW_BODY + 1    fighter 1's sword on fighter 0's torso
-## 8        ROW_BODIES      the two push circles
-## 9        ROW_STOP        fighter 0's sword against its guard stop
-## 10       ROW_STOP + 1    fighter 1's
+## 8 .. 11  ROW_STRUCTURE   each sword on stage structures, two points a sword
+##                          (fighter 0 first), b the WORLD side
+## 12       ROW_BODIES      the two push circles
+## 13       ROW_STOP        fighter 0's sword against its guard stop
+## 14       ROW_STOP + 1    fighter 1's
 ## ```
 ##
 ## The body row joins the *position* stage only: a sword correction resting on
@@ -105,7 +107,9 @@ const HOLDS_PER_TICK := 4
 const ROW_BLADE := 0
 const BLADE_ROWS := SwordContactSet.CAPACITY
 const ROW_BODY := ROW_BLADE + BLADE_ROWS
-const ROW_BODIES := ROW_BODY + 2
+const ROW_STRUCTURE := ROW_BODY + 2
+const STRUCTURE_ROWS := 2 * StructureContactSet.CAPACITY
+const ROW_BODIES := ROW_STRUCTURE + STRUCTURE_ROWS
 const ROW_STOP := ROW_BODIES + 1
 const ROWS := ROW_STOP + 2
 ## A sword this close to its guard stop (rad) brings a stop row into a solve
@@ -117,14 +121,31 @@ const REGULARIZATION := 1.0e-6
 ## Complementarity slack accepted for a row left out of the pushing set.
 const TOLERANCE := ContactLcp.TOLERANCE
 
+## What a row's b side is (CONTACT-SIDE-001): how an impulse along −n there
+## reaches the simulation's coordinates. WEAPON is a held sword — its
+## wielder's body through the body's mass and the weapon angle through its
+## lever over the held inertia. BODY is a body only (a struck torso, the other
+## push circle). WORLD does not move: zero inverse mass, no lever, zero
+## velocity, so the row's effective mass is side a's alone. Side a of a sword
+## row is always a held sword.
+enum Side { WEAPON, BODY, WORLD }
+## The b index of a WORLD side: no fighter.
+const WORLD := -1
+
 ## Per row: `a` is the side pushed along +n, `b` the side pushed along −n.
-## Blade rows: a = fighter 0, b = fighter 1. Sword-on-body row: a = the sword's
-## wielder, b = the struck body (no weapon term on b). Body row: a = fighter 0,
-## b = fighter 1, bodies only. Stop row: its own fighter on both sides, the
+## Blade rows: a = fighter 0, b = fighter 1, both WEAPON. Sword-on-body row:
+## a = the sword's wielder, b = the struck body (BODY). Body row: a = fighter
+## 0, b = fighter 1, bodies only. Stop row: its own fighter on both sides, the
 ## sword's angle only (no body term).
 var _active := PackedByteArray()
 var _a := PackedInt32Array()
 var _b := PackedInt32Array()
+var _b_side := PackedInt32Array()
+## Each sword row's Coulomb coefficient, from its material pair at build.
+var _row_mu := PackedFloat64Array()
+## Each structure row's feature (CONTACT-IDENTITY-001), for its warm start.
+var _row_feature := PackedInt32Array()
+var _structure_geometry := StructureContactGeometry.new()
 var _nx := PackedFloat64Array()
 var _ny := PackedFloat64Array()
 var _px := PackedFloat64Array()
@@ -239,6 +260,16 @@ func _init() -> void:
 	_b[ROW_BODY + 1] = 0
 	_b[ROW_STOP] = 0
 	_a[ROW_STOP + 1] = 1
+	_b_side = _ints(ROWS, Side.BODY)
+	for k in BLADE_ROWS:
+		_b_side[ROW_BLADE + k] = Side.WEAPON
+	for k in STRUCTURE_ROWS:
+		var row := ROW_STRUCTURE + k
+		_a[row] = 0 if k < StructureContactSet.CAPACITY else 1
+		_b[row] = WORLD
+		_b_side[row] = Side.WORLD
+	_row_mu = _floats(ROWS, 0.0)
+	_row_feature = _ints(ROWS, StructureContactSet.NO_FEATURE)
 	_blade_pair = _ints(BLADE_ROWS, SwordContactSet.PAIR_BLADES)
 	_blade_fraction_a = _floats(BLADE_ROWS, 0.0)
 	_blade_fraction_b = _floats(BLADE_ROWS, 0.0)
@@ -297,7 +328,7 @@ func solve_velocity(state: MatchState, rules: DuelRules, warm: bool = false) -> 
 		if warm:
 			_clear_holds(state)
 		return 0.0
-	_build_tangents(rules)
+	_build_tangents()
 	for k in _count:
 		_jn[_rows[k]] = 0.0
 		_jt[_rows[k]] = 0.0
@@ -322,9 +353,10 @@ func solve_velocity(state: MatchState, rules: DuelRules, warm: bool = false) -> 
 		var row := _rows[k]
 		if _is_sword_row(row):
 			total += _jn[row]
-			if _jn[row] > 0.0:
+			## The world is not the opponent: a sword held on a wall met nothing.
+			if _jn[row] > 0.0 and _b_side[row] != Side.WORLD:
 				opponent_contact[_a[row]] = 1
-				if _is_blade_row(row):
+				if _b_turns(row):
 					opponent_contact[_b[row]] = 1
 	return total
 
@@ -421,8 +453,14 @@ static func _is_sword_row(row: int) -> bool:
 	return row < ROW_BODIES
 
 
-static func _is_blade_row(row: int) -> bool:
-	return row < ROW_BODY
+## Whether the row's b side has a weapon angle the row turns.
+func _b_turns(row: int) -> bool:
+	return _b_side[row] == Side.WEAPON
+
+
+## Whether the row's b side is a body the row moves.
+func _b_moves(row: int) -> bool:
+	return _b_side[row] != Side.WORLD
 
 
 static func _is_stop_row(row: int) -> bool:
@@ -432,8 +470,7 @@ static func _is_stop_row(row: int) -> bool:
 ## Each sword row's tangent levers, tangent effective mass (in the shared
 ## metric) and friction coefficient. A sword resting on its stop has left the
 ## row, along the tangent as well as the normal.
-func _build_tangents(rules: DuelRules) -> void:
-	var combat := rules.combat
+func _build_tangents() -> void:
 	for k in _count:
 		var row := _rows[k]
 		_tangent_a[row] = 0.0
@@ -445,13 +482,13 @@ func _build_tangents(rules: DuelRules) -> void:
 		var tx := -_ny[row]
 		var ty := _nx[row]
 		_tangent_a[row] = WeaponKinematics.lever(_fighters[_a[row]], _poses[_a[row]], _px[row], _py[row], tx, ty)
-		if _is_blade_row(row):
+		if _b_turns(row):
 			_tangent_b[row] = WeaponKinematics.lever(_fighters[_b[row]], _poses[_b[row]], _px[row], _py[row], tx, ty)
 		var turn := _tangent_a[row] * _tangent_a[row] / _inertia_a[row]
-		if _is_blade_row(row):
+		if _b_turns(row):
 			turn += _tangent_b[row] * _tangent_b[row] / _inertia_b[row]
 		_tangent_mass[row] = _inverse_mass_a[row] + _inverse_mass_b[row] + turn
-		_mu[row] = combat.blade_friction if _is_blade_row(row) else combat.blade_body_friction
+		_mu[row] = _row_mu[row]
 	_friction_count = 0
 	for k in _count:
 		if _has_friction(_rows[k]):
@@ -504,7 +541,7 @@ func _tangent_coupling(fi: int, fj: int) -> float:
 func _tangent_turn(row: int, fighter: int) -> float:
 	if _a[row] == fighter:
 		return _tangent_a[row]
-	if _is_blade_row(row) and _b[row] == fighter:
+	if _b_turns(row) and _b[row] == fighter:
 		return -_tangent_b[row]
 	return 0.0
 
@@ -533,6 +570,16 @@ func _warm_start(state: MatchState) -> void:
 		var lifecycle := state.weapon_body_contacts[attacker]
 		if _active[ROW_BODY + attacker] == 1 and lifecycle.hold_active:
 			_warm_row(state, ROW_BODY + attacker, lifecycle.hold_normal, lifecycle.hold_tangent)
+	## A structure row warm-starts from the same feature only.
+	for slot in state.structure_contacts.size():
+		var contact := state.structure_contacts[slot]
+		for k in StructureContactSet.CAPACITY:
+			var row := ROW_STRUCTURE + slot * StructureContactSet.CAPACITY + k
+			if _active[row] == 0:
+				continue
+			var prior := contact.hold_of(_row_feature[row])
+			if prior >= 0:
+				_warm_row(state, row, contact.hold_normal[prior], contact.hold_tangent[prior])
 
 
 func _warm_row(state: MatchState, row: int, normal: float, tangent: float) -> void:
@@ -591,6 +638,35 @@ func _record(state: MatchState, first: bool) -> void:
 			lifecycle.tangent_impulse += _jt[row]
 		elif first:
 			lifecycle.clear_hold()
+	for slot in state.structure_contacts.size():
+		_record_structure(state.structure_contacts[slot], slot, first)
+
+
+## A sword's structure rows into its hold record, keyed by feature. The first
+## solve of a tick replaces the record; a mid-tick re-hold of the same feature
+## adds to it.
+func _record_structure(contact: StructureContactSet, slot: int, first: bool) -> void:
+	var count := 0
+	var features := PackedInt32Array([StructureContactSet.NO_FEATURE, StructureContactSet.NO_FEATURE])
+	var normals := PackedFloat64Array([0.0, 0.0])
+	var tangents := PackedFloat64Array([0.0, 0.0])
+	for k in StructureContactSet.CAPACITY:
+		var row := ROW_STRUCTURE + slot * StructureContactSet.CAPACITY + k
+		if _active[row] == 0:
+			continue
+		var prior := -1 if first else contact.hold_of(_row_feature[row])
+		features[count] = _row_feature[row]
+		normals[count] = (contact.hold_normal[prior] if prior >= 0 else 0.0) + _jn[row]
+		tangents[count] = (contact.hold_tangent[prior] if prior >= 0 else 0.0) + _jt[row]
+		count += 1
+	if count == 0 and not first:
+		return
+	contact.clear_holds()
+	for i in count:
+		contact.hold_feature[i] = features[i]
+		contact.hold_normal[i] = normals[i]
+		contact.hold_tangent[i] = tangents[i]
+	contact.hold_count = count
 
 
 func _clear_holds(state: MatchState) -> void:
@@ -598,6 +674,8 @@ func _clear_holds(state: MatchState) -> void:
 		state.blade_contact.clear_hold(point)
 	for lifecycle in state.weapon_body_contacts:
 		lifecycle.clear_hold()
+	for contact in state.structure_contacts:
+		contact.clear_holds()
 
 
 ## Push every persisted contact's overlap back to `contact_slop`, moving
@@ -673,6 +751,15 @@ func _build(state: MatchState, rules: DuelRules, reach: float, bodies: bool) -> 
 		if _build_body(row, wielder, target, rules) <= reach:
 			_active[row] = 1
 			mask |= 1 << row
+	for slot in state.structure_contacts.size():
+		var wielder := state.fighter(slot)
+		if not wielder.is_alive() or wielder.is_falling or not state.structure_contacts[slot].is_persisted():
+			continue
+		var built := _build_structures(slot, wielder, rules, reach)
+		for k in built:
+			var row := ROW_STRUCTURE + slot * StructureContactSet.CAPACITY + k
+			_active[row] = 1
+			mask |= 1 << row
 	## The bodies join only a solve the swords already need: on their own they
 	## are separated where each remainder is carried (COMBAT-007).
 	if bodies and mask != 0 and not a.is_falling and not b.is_falling and _build_bodies(a, b, rules) <= reach:
@@ -736,11 +823,11 @@ func _share_masses() -> void:
 			continue
 		if _body_inverse[_a[row]] == 0.0:
 			_body_inverse[_a[row]] = _inverse_mass_a[row]
-		if _body_inverse[_b[row]] == 0.0:
+		if _b_moves(row) and _body_inverse[_b[row]] == 0.0:
 			_body_inverse[_b[row]] = _inverse_mass_b[row]
 		if _is_sword_row(row) and _sword_inertia[_a[row]] == 0.0:
 			_sword_inertia[_a[row]] = _inertia_a[row]
-		if _is_blade_row(row) and _sword_inertia[_b[row]] == 0.0:
+		if _b_turns(row) and _sword_inertia[_b[row]] == 0.0:
 			_sword_inertia[_b[row]] = _inertia_b[row]
 	for row in ROWS:
 		if _active[row] == 0:
@@ -750,12 +837,12 @@ func _share_masses() -> void:
 			_inertia_b[row] = _inertia_a[row]
 			continue
 		_inverse_mass_a[row] = _body_inverse[_a[row]]
-		_inverse_mass_b[row] = _body_inverse[_b[row]]
+		_inverse_mass_b[row] = _body_inverse[_b[row]] if _b_moves(row) else 0.0
 		## The body row turns no sword (its levers are zero); it keeps its
 		## placeholder inertia so the turn terms stay finite.
 		if _is_sword_row(row):
 			_inertia_a[row] = _sword_inertia[_a[row]]
-		if _is_blade_row(row):
+		if _b_turns(row):
 			_inertia_b[row] = _sword_inertia[_b[row]]
 
 
@@ -799,6 +886,7 @@ func _build_blades(a: FighterState, b: FighterState, rules: DuelRules, reach: fl
 		ContactMechanics.held_sword(b, pose_b, px, py, rules.combatant(1), _held)
 		_inertia_b[row] = _held[0]
 		_inverse_mass_b[row] = _held[1]
+		_row_mu[row] = rules.blade_pair().friction
 		built += 1
 	return built
 
@@ -837,8 +925,37 @@ func _build_body(row: int, wielder: FighterState, target: FighterState, rules: D
 	_inverse_mass_a[row] = ContactMechanics.body_inverse_mass(wielding)
 	_inertia_b[row] = 1.0
 	_inverse_mass_b[row] = ContactMechanics.body_inverse_mass(struck)
+	_row_mu[row] = rules.sword_body_pair(wielder.slot).friction
 	_gap[row] = distance - struck.fighter.hurt_radius - weapon.blade_radius
 	return _gap[row]
+
+
+## Fighter `slot`'s sword against the structures, at most two rows (its
+## deepest features within `reach`), each a held sword against the WORLD side.
+## Returns how many were built.
+func _build_structures(slot: int, wielder: FighterState, rules: DuelRules, reach: float) -> int:
+	var spec := rules.combatant(slot)
+	var weapon := spec.weapon
+	var pose := _poses[slot]
+	_structure_geometry.measure(pose.point_x(weapon.blade_base_radius), pose.point_y(weapon.blade_base_radius), pose.point_x(weapon.tip_radius), pose.point_y(weapon.tip_radius), weapon.blade_radius, rules.structures, reach)
+	for k in _structure_geometry.count:
+		var row := ROW_STRUCTURE + slot * StructureContactSet.CAPACITY + k
+		var px := _structure_geometry.point_x[k]
+		var py := _structure_geometry.point_y[k]
+		var nx := _structure_geometry.normal_x[k]
+		var ny := _structure_geometry.normal_y[k]
+		_set_point(row, px, py, nx, ny)
+		_gap[row] = _structure_geometry.gap[k]
+		_lever_a[row] = WeaponKinematics.lever(wielder, pose, px, py, nx, ny)
+		_lever_b[row] = 0.0
+		ContactMechanics.held_sword(wielder, pose, px, py, spec, _held)
+		_inertia_a[row] = _held[0]
+		_inverse_mass_a[row] = _held[1]
+		_inertia_b[row] = 1.0
+		_inverse_mass_b[row] = 0.0
+		_row_mu[row] = rules.structure_pair(slot, _structure_geometry.structure[k]).friction
+		_row_feature[row] = StructureContactSet.feature_of(_structure_geometry.structure[k], _structure_geometry.shape[k])
+	return _structure_geometry.count
 
 
 ## The body row: the two push circles, fighter 0 pushed along +n (from fighter
@@ -912,7 +1029,7 @@ func _turn(row: int, fighter: int) -> float:
 		return -_stop_side[fighter] if _a[row] == fighter else 0.0
 	if _a[row] == fighter:
 		return _lever_a[row]
-	if _is_blade_row(row) and _b[row] == fighter:
+	if _b_turns(row) and _b[row] == fighter:
 		return -_lever_b[row]
 	return 0.0
 
@@ -968,16 +1085,20 @@ func _sliding(state: MatchState, row: int) -> float:
 ## combat heading's turn, θ̇ and the attack track's `C′(θ)`.
 func _relative(state: MatchState, row: int, dx: float, dy: float) -> float:
 	var a := state.fighter(_a[row])
-	var b := state.fighter(_b[row])
 	var pose_a := _poses[a.slot]
 	WeaponKinematics.velocity_into(a, pose_a, _px[row], _py[row])
-	var bvx := b.vx
-	var bvy := b.vy
-	if _is_blade_row(row):
+	var bvx := 0.0
+	var bvy := 0.0
+	if _b_turns(row):
+		var b := state.fighter(_b[row])
 		var pose_b := _poses[b.slot]
 		WeaponKinematics.velocity_into(b, pose_b, _px[row], _py[row])
 		bvx = pose_b.vx
 		bvy = pose_b.vy
+	elif _b_moves(row):
+		var body := state.fighter(_b[row])
+		bvx = body.vx
+		bvy = body.vy
 	return (pose_a.vx - bvx) * dx + (pose_a.vy - bvy) * dy
 
 
@@ -999,7 +1120,6 @@ func _apply_tangent(state: MatchState, row: int, impulse: float) -> void:
 ## each side's body mass and, on a sword, its lever over its held inertia.
 func _apply_impulse(state: MatchState, row: int, impulse: float, dx: float, dy: float, lever_a: float, lever_b: float) -> void:
 	var a := state.fighter(_a[row])
-	var b := state.fighter(_b[row])
 	var jx := impulse * dx
 	var jy := impulse * dy
 	a.vx += jx * _inverse_mass_a[row]
@@ -1007,9 +1127,12 @@ func _apply_impulse(state: MatchState, row: int, impulse: float, dx: float, dy: 
 	var turn_a := impulse * lever_a / _inertia_a[row]
 	a.weapon.speed += turn_a
 	weapon_delta[a.slot] += turn_a
+	if not _b_moves(row):
+		return
+	var b := state.fighter(_b[row])
 	b.vx -= jx * _inverse_mass_b[row]
 	b.vy -= jy * _inverse_mass_b[row]
-	if _is_blade_row(row):
+	if _b_turns(row):
 		var turn_b := impulse * lever_b / _inertia_b[row]
 		b.weapon.speed -= turn_b
 		weapon_delta[b.slot] -= turn_b
@@ -1022,13 +1145,15 @@ func _apply_position(state: MatchState, row: int, pseudo: float) -> void:
 		sword.angle = clampf(sword.angle - _stop_side[fighter] * pseudo / _sword_inertia[fighter], -_guard_limit[fighter], _guard_limit[fighter])
 		return
 	var a := state.fighter(_a[row])
-	var b := state.fighter(_b[row])
 	var jx := pseudo * _nx[row]
 	var jy := pseudo * _ny[row]
 	a.x += jx * _inverse_mass_a[row]
 	a.y += jy * _inverse_mass_a[row]
 	a.weapon.angle = clampf(a.weapon.angle + pseudo * _lever_a[row] / _inertia_a[row], -_guard_limit[_a[row]], _guard_limit[_a[row]])
+	if not _b_moves(row):
+		return
+	var b := state.fighter(_b[row])
 	b.x -= jx * _inverse_mass_b[row]
 	b.y -= jy * _inverse_mass_b[row]
-	if _is_blade_row(row):
+	if _b_turns(row):
 		b.weapon.angle = clampf(b.weapon.angle - pseudo * _lever_b[row] / _inertia_b[row], -_guard_limit[_b[row]], _guard_limit[_b[row]])

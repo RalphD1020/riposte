@@ -1,0 +1,29 @@
+{
+  "asset_id": "crowd.hair_fringe",
+  "kind": "crowd",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.1521,
+      -0.1245,
+      1.255
+    ],
+    "max": [
+      0.1521,
+      0.1505,
+      1.34
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "hair_fringe"
+  ],
+  "material_slots": [
+    "hair"
+  ],
+  "triangle_count": 100,
+  "color_targets": [],
+  "source": "crowd/hair_fringe.blend",
+  "source_sha256": "517f77d2b97e1509246ceef6ee64130f491791534c2c2849c11d364fb9765fa7"
+}

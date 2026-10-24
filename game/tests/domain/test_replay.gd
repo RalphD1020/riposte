@@ -28,6 +28,21 @@ func test_identical_commands_reproduce_identical_duels() -> void:
 	assert_eq(first.hashes, second.hashes, "every tick hash matches")
 
 
+func test_a_pit_recording_is_version_59_and_refused_on_the_open_disc() -> void:
+	var pit := StandardDuelRules.pit()
+	var runner := SimRunner.create(DuelFixture.mirror(pit), 3)
+	runner.idle(20)
+	runner.seal()
+	assert_eq(runner.record.rules_version, 60, "the pit records version 60")
+	assert_true(runner.record.matches_rules(pit), "and matches those rules")
+	assert_false(runner.record.matches_rules(StandardDuelRules.create()), "version 58 is a different rules set")
+	assert_eq(ReplayVerifier.verify(runner.record, pit), ReplayVerifier.VERIFIED, "it replays on the pit")
+	assert_eq(ReplayVerifier.verify(runner.record, StandardDuelRules.create()), ReplayVerifier.RULES_MISMATCH, "and is refused on the open disc")
+	var open := _played(5)
+	assert_eq(open.record.rules_version, 58, "fixture: the golden path is still version 58")
+	assert_false(open.record.matches_rules(pit), "a version-58 recording is not the pit")
+
+
 func test_different_seeds_diverge() -> void:
 	assert_ne(_played(5).record.final_hash, _played(6).record.final_hash, "different inputs, different duels")
 

@@ -577,6 +577,21 @@ func test_cpu_play_is_reproducible_and_well_formed() -> void:
 ## ──────────────────────── TACTICAL ASSESSMENT ─────────────────────────────
 
 
+func test_a_closed_edge_does_not_score_the_rim_as_a_cliff() -> void:
+	var rules := StandardDuelRules.pit()
+	var state := DuelFixture.state(rules)
+	var me := state.fighter(0)
+	me.x = rules.platform_radius - 0.2
+	me.vx = 5.0
+	var seen := CpuObservation.observe(state, 0, rules)
+	var reach := rules.combatant(0).weapon.tip_radius + rules.combatant(0).fighter.push_radius
+	var assessment := TacticalAssessment.evaluate(seen, me, 1.5, reach, rules, CpuProfile.medium())
+	assert_eq(assessment.arena_pressure, 0.0, "a closed edge has no arena pressure")
+	assert_near(assessment.edge_clearance, rules.platform_radius, 1e-6, "clearance is the whole disc")
+	assert_eq(assessment.outward_radial_speed, 0.0, "outward speed is not a survival signal")
+	assert_eq(assessment.edge_position_advantage, 0.0, "and there is no cliff to exploit")
+
+
 func test_assessment_is_pure_and_compact() -> void:
 	var rules := DuelFixture.rules()
 	var state := DuelFixture.state(rules)

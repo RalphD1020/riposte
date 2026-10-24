@@ -32,5 +32,7 @@
     "steel_training"
   ],
   "triangle_count": 182,
-  "color_targets": []
+  "color_targets": [],
+  "source": "weapons/bastard_sword_training.blend",
+  "source_sha256": "f7f1fcd866ecd98ca5bd3cddf06116f3152e8c2dc65d6438cb6ce8c8e8e88dde"
 }

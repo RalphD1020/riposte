@@ -825,7 +825,9 @@ func _steer(me: FighterState) -> PackedFloat64Array:
 				y = tx * _orbit_sign * BAIT_DRIFT
 	var radius := SimMath.length(me.x, me.y)
 	var edge := _rules.platform_radius - EDGE_MARGIN
-	if radius > edge:
+	## A closed edge has no cliff. Pulling toward the centre here would be
+	## ring-out avoidance on a stage that cannot ring out.
+	if radius > edge and not _rules.is_closed_edge():
 		var pull := SimMath.clamp01((radius - edge) / EDGE_RAMP)
 		x = SimMath.mix(x, -me.x / radius, pull)
 		y = SimMath.mix(y, -me.y / radius, pull)

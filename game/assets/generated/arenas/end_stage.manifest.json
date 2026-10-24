@@ -1,0 +1,32 @@
+{
+  "asset_id": "arena.end",
+  "kind": "deck",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -8.33,
+      -8.33,
+      -3.05
+    ],
+    "max": [
+      8.33,
+      8.33,
+      0.0
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "EndRoot"
+  ],
+  "material_slots": [
+    "deck",
+    "edge",
+    "orb",
+    "underside"
+  ],
+  "triangle_count": 536,
+  "color_targets": [],
+  "source": "arenas/end_stage.blend",
+  "source_sha256": "4b3fd54d3366366b3ee55e1448dd29340e25d9883792096df7b5737f623e689b"
+}

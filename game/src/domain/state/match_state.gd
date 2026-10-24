@@ -28,6 +28,10 @@ var weapon_body_contacts: Array[WeaponBodyContact] = [WeaponBodyContact.new(), W
 ## Lifecycle of the body-body pair (PHYS-009). Distinguishes a new-contact
 ## impact (restitution) from persistent contact (nonpenetration constraint).
 var body_contact := BodyContactState.new()
+## Each fighter's sword against the stage's structures (STRUCTURE-CONTACT-001),
+## indexed by slot. Empty when the rules have no structures, so a stage without
+## them hashes exactly as before.
+var structure_contacts: Array[StructureContactSet] = []
 
 
 func fighter(slot: int) -> FighterState:

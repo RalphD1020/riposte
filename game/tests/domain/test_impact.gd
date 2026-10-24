@@ -143,7 +143,7 @@ func _crossing(fraction_a: float, fraction_b: float) -> PackedFloat64Array:
 		sides.append_array([WeaponKinematics.lever(fighter, pose, px, py, nx, ny), ContactMechanics.weapon_inertia(pose, _rules.combatant(0)), ContactMechanics.body_inverse_mass(_rules.combatant(0))])
 	state.blade_contact.set_normal(nx, ny)
 	var deltas := PackedFloat64Array([0.0, 0.0])
-	SwordContactSolver.solve(state.blade_contact, 0, a, b, pose_a, pose_b, px, py, 8.0, sides[0], sides[3], sides[1], sides[4], weapon.restitution, SwordContactSolver.FRICTIONLESS, deltas, sides[2], sides[5])
+	SwordContactSolver.solve(state.blade_contact, 0, a, b, pose_a, pose_b, px, py, 8.0, sides[0], sides[3], sides[1], sides[4], weapon.material.restitution, SwordContactSolver.FRICTIONLESS, deltas, sides[2], sides[5])
 	return PackedFloat64Array([absf(sides[0]), absf(sides[3]), absf(deltas[0]), absf(deltas[1])])
 
 
@@ -212,12 +212,12 @@ func test_a_blade_contact_takes_out_exactly_the_dissipated_energy() -> void:
 	var before: float = energy.call()
 	state.blade_contact.set_normal(nx, ny)
 	var deltas := PackedFloat64Array([0.0, 0.0])
-	SwordContactSolver.solve(state.blade_contact, 0, a, b, pose_a, pose_b, px, py, closing, cross_a, cross_b, inertia_a, inertia_b, _rules.combatant(0).weapon.restitution, SwordContactSolver.FRICTIONLESS, deltas, inverse_a, inverse_b)
+	SwordContactSolver.solve(state.blade_contact, 0, a, b, pose_a, pose_b, px, py, closing, cross_a, cross_b, inertia_a, inertia_b, _rules.combatant(0).weapon.material.restitution, SwordContactSolver.FRICTIONLESS, deltas, inverse_a, inverse_b)
 	var k := cross_a * cross_a / inertia_a + cross_b * cross_b / inertia_b + inverse_a + inverse_b
 	var lost := before - float(energy.call())
-	assert_near(lost, ContactMechanics.dissipated_energy(closing, k, _rules.combatant(0).weapon.restitution), 1e-9, "the motion loses exactly the dissipated energy (%.4f J)" % lost)
+	assert_near(lost, ContactMechanics.dissipated_energy(closing, k, _rules.combatant(0).weapon.material.restitution), 1e-9, "the motion loses exactly the dissipated energy (%.4f J)" % lost)
 	assert_true(lost >= 0.0, "and never gains any")
-	assert_true(ContactMechanics.dissipated_energy(closing, k, _rules.combatant(0).weapon.restitution) <= ContactMechanics.available_energy(closing, k), "dissipated never exceeds available")
+	assert_true(ContactMechanics.dissipated_energy(closing, k, _rules.combatant(0).weapon.material.restitution) <= ContactMechanics.available_energy(closing, k), "dissipated never exceeds available")
 
 
 ## IMPACT-GRADIENT-001. Sample the sword-body response along the blade.
@@ -271,7 +271,7 @@ func test_the_sword_contact_gradient_is_the_mechanics() -> void:
 	## The injury calibration is a pinned physical constant (rules 42, re-seeded
 	## at 49), and the reference strike measured on today's mechanics is its
 	## witness: it stays close to the pinned number of reference-quality wounds.
-	var witness := ContactMechanics.reference_severity(_rules.combatant(0), _rules.combatant(0), _rules.combat)
+	var witness := ContactMechanics.reference_severity(_rules.combatant(0), _rules.combatant(0), _rules.sword_body_pair(0))
 	assert_between(witness / _rules.combat.reference_severity / StandardDuelRules.REFERENCE_STRIKE_SEVERITY, 0.9, 1.1, "and the reference strike on these mechanics is its witness (%.2f J against a %.2f J wound)" % [witness, _rules.combat.reference_severity])
 
 
@@ -427,7 +427,7 @@ func test_repeated_contacts_with_no_drive_never_add_energy() -> void:
 		var deltas := PackedFloat64Array([0.0, 0.0])
 		var cross_a := WeaponKinematics.lever(a, pose_a, px, py, nx, ny)
 		var cross_b := WeaponKinematics.lever(b, pose_b, px, py, nx, ny)
-		var restitution := _rules.combatant(0).weapon.restitution if solved == 0 else 0.0
+		var restitution := _rules.combatant(0).weapon.material.restitution if solved == 0 else 0.0
 		SwordContactSolver.solve(state.blade_contact, 0, a, b, pose_a, pose_b, px, py, closing, cross_a, cross_b, inertia_a, inertia_b, restitution, 0.3, deltas, inverse_a, inverse_b)
 		worst_gain = maxf(worst_gain, float(energy.call()) - before)
 		if absf(state.blade_contact.tangent_impulse[0]) > 0.0:

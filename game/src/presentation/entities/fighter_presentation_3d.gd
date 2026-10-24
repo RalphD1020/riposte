@@ -10,9 +10,10 @@ extends Node3D
 ## scene; WeaponOrigin (the authoritative planar sword: the domain's pommel on
 ## the blade plane, yaw θ — a reference, never drawn); SwordCarriage (the
 ## displayed sword: the same carriage `C(θ)` and yaw, lifted by
-## `CombatPresentationField`) → blade + guard + grip targets; Shadow and
-## ChargeRing stay on the ground outside VisualRoot. The blade ignores depth so
-## its position is always readable (UX §18).
+## `CombatPresentationField`) → blade + guard + grip targets; the ChargeRing
+## stays on the ground outside VisualRoot. Standing or fallen, the fighter's
+## only shadow is the key light's cast shadow; no mark is painted on the
+## ground. The blade ignores depth so its position is always readable (UX §18).
 ##
 ## Both sword nodes are posed from `WeaponKinematics` at the interpolated
 ## weapon angle, so every drawn pose lies on the orbit (WEAPON-ORBIT-005).
@@ -20,7 +21,6 @@ extends Node3D
 ## Implements: /spec/invariants.md#weapon-orbit-005
 ## See also: /docs/concepts/presentation.md
 
-const SHADOW_HEIGHT := 0.012
 const RING_HEIGHT := 0.02
 const RING_GAP := 0.14
 const RING_WIDTH := 0.06
@@ -143,6 +143,9 @@ var _death_style: StringName = DeathPresentationProfile.STYLE_DEAD_DROP
 var _fall_offset: float = 0.0
 var _is_falling: bool = false
 var _fall_request: FallPresentationRequest
+## No basin unless the stage asks for one. The fall stays on root_at.
+var _has_basin: bool = false
+var _basin_y: float = NAN
 var _reduced_motion: bool = false
 var _water_sent: bool = false
 var _fall_time: float = 0.0
@@ -219,7 +222,7 @@ func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: Present
 		## Authority stopped at the ledge; the fall owns the root from here,
 		## carrying the real exit momentum outward under presentation gravity.
 		_fall_time += delta
-		position = RingOutWater.shown(_fall_request, _fall_time, _reduced_motion)
+		position = RingOutWater.shown(_fall_request, _fall_time, _reduced_motion, _basin_y) if _has_basin else _fall_request.root_at(_fall_time)
 		_fall_offset = _fall_request.exit_position.y - position.y
 	else:
 		_fall_offset += FALL_SPEED * delta
@@ -564,7 +567,9 @@ func is_weapon_dropped() -> bool:
 ## this, so it leaves the hand moving with the body that held it.
 func root_velocity() -> Vector3:
 	if _is_falling and _fall_request != null:
-		return RingOutWater.velocity(_fall_request, _fall_time, _reduced_motion)
+		if not _has_basin:
+			return _fall_request.velocity_at(_fall_time)
+		return RingOutWater.velocity(_fall_request, _fall_time, _reduced_motion, _basin_y)
 	return Vector3.ZERO
 
 
@@ -583,13 +588,20 @@ func set_reduced_motion(on: bool) -> void:
 	_reduced_motion = on
 
 
+## WATER holds the fall at `height`. NONE, or a height that is not a number,
+## leaves it on the ballistic root.
+func set_basin(enabled: bool, height: float) -> void:
+	_has_basin = enabled and is_finite(height)
+	_basin_y = height if _has_basin else NAN
+
+
 ## The basin entry, once, when a living fall reaches the water. Empty until then.
 func take_water_entry() -> Vector3:
-	if _water_sent or _fall_request == null or not RingOutWater.entered(_fall_request, _fall_time):
+	if not _has_basin or _water_sent or _fall_request == null or not RingOutWater.entered(_fall_request, _fall_time, _basin_y):
 		return Vector3(NAN, NAN, NAN)
 	_water_sent = true
-	var at := _fall_request.root_at(RingOutWater.entry_time(_fall_request))
-	return Vector3(at.x, RingOutWater.SURFACE_Y, at.z)
+	var at := _fall_request.root_at(RingOutWater.entry_time(_fall_request, _basin_y))
+	return Vector3(at.x, _basin_y, at.z)
 
 
 func begin_fall(request: FallPresentationRequest) -> void:
@@ -700,6 +712,9 @@ func _present_face(alive: bool) -> void:
 func _build_scene() -> void:
 	var model := CombatantVisuals.body_model(_combatant, side)
 	_visual_root.add_child(model)
+	## The authored body casts the key-light shadow. The x-ray blade overlay
+	## stays off — it is a read-through marker, not a solid form.
+	set_shadow_casting(model, true)
 	_rig = model as SwordRig3D
 	_animation = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _animation != null:
@@ -755,6 +770,10 @@ func _build_sword() -> void:
 	_weapon_model = CombatantVisuals.weapon_model(_combatant, side)
 	if _weapon_model != null:
 		_carriage_node.add_child(_weapon_model)
+		## The sword casts too. At 512 its shadow broke into dots, and taking it
+		## out of the pass was tried; that trade was not accepted, so the real
+		## caster stays and the map stays at 1024 where the blade still reads.
+		set_shadow_casting(_weapon_model, true)
 	var outline_mesh := BoxMesh.new()
 	outline_mesh.size = Vector3(_weapon_kit.blade_width + 0.03, 0.03, length + 0.03)
 	_blade_edge = _material(RiposteTheme.BLADE_OUTLINE, true)
@@ -782,15 +801,9 @@ func _build_sword() -> void:
 		_rig.apply_stance(_fighter_kit.stance)
 
 
+## No ground disc, standing or fallen: the warm key casts the fighter's only
+## shadow, and a ring-out over the void has no floor to receive one.
 func _build_ground(push_radius: float) -> void:
-	var shadow_mesh := CylinderMesh.new()
-	shadow_mesh.top_radius = push_radius * 1.2
-	shadow_mesh.bottom_radius = push_radius * 1.2
-	shadow_mesh.height = 0.002
-	shadow_mesh.radial_segments = RADIAL_SEGMENTS
-	var shadow := _material(RiposteTheme.SHADOW, true)
-	shadow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_add_mesh(self, "Shadow", shadow_mesh, shadow, Vector3(0.0, SHADOW_HEIGHT, 0.0))
 	_charge_mesh = ImmediateMesh.new()
 	_charge_ring = MeshInstance3D.new()
 	_charge_ring.name = "ChargeRing"
@@ -947,6 +960,18 @@ static func _material(color: Color, unshaded: bool) -> StandardMaterial3D:
 static func _x_ray(material: StandardMaterial3D, priority: int) -> void:
 	material.no_depth_test = true
 	material.render_priority = priority
+
+
+## Sets every mesh under `root` to cast the key-light shadow or not. The body
+## casts. A sword does not: thinner than a shadow texel, it lands as a broken
+## dotted line, and the drawn blade already shows its line. The x-ray overlays
+## are added through `_add_mesh`, which keeps them off, so they are never
+## reached here.
+static func set_shadow_casting(root: Node, casts: bool) -> void:
+	if root is GeometryInstance3D:
+		(root as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if casts else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child: Node in root.get_children():
+		set_shadow_casting(child, casts)
 
 
 static func _add_mesh(parent: Node3D, mesh_name: String, mesh: Mesh, material: Material, offset: Vector3) -> MeshInstance3D:

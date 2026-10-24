@@ -29,5 +29,7 @@
     "stone_terracotta"
   ],
   "triangle_count": 1436,
-  "color_targets": []
+  "color_targets": [],
+  "source": "arenas/masonry_board.blend",
+  "source_sha256": "79700993279e724db1b689ca0050cc16550004766bb477e09db1f770dcc005ce"
 }

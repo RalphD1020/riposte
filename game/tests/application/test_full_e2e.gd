@@ -92,12 +92,48 @@ func _init() -> void:
 ## colorways), every round transition clean, the set resolved by the solver,
 ## the winner shown once from authority, results interactive only after it,
 ## the replay intact, then a Rematch that is a fresh set and a clean exit.
+## Menu to a live Arena, then the keys: holding forward moves the authoritative
+## fighter, holding and releasing attack charges and swings. A timeout is a
+## failure, not a skip. Results, rematch and the stage switch are their own
+## cases; this one is the input the others assume.
+func test_a_menu_match_moves_and_attacks_from_the_keys() -> void:
+	var driver := AppDriver.boot(7)
+	await await_frames(1)
+	var app := driver.app
+	assert_true(driver.press(app.current_screen(), "QUICK PLAY"), "Quick Play is on the menu")
+	await await_frames(1)
+	assert_true(driver.press(app.current_screen(), AppCopy.START_MATCH), "Start launches the Arena")
+	await await_frames(1)
+	var screen := driver.match_screen()
+	assert_eq(screen.session.config.stage_id, ContentIds.ARENA_STANDARD, "the default stage is the Arena")
+	assert_true(screen.presenter.crowd() != null, "and it seats its crowd")
+	driver.tap_attack()
+	var frames := driver.run_until(screen, func() -> bool: return screen.session.state.phase == MatchPhase.Id.ROUND_ACTIVE, 600)
+	assert_eq(screen.session.state.phase, MatchPhase.Id.ROUND_ACTIVE, "the round went live (%d frames)" % frames)
+	var home := screen.session.state.fighter(0).y
+	driver.hold_move(0.0, 1.0)
+	frames = driver.run_until(screen, func() -> bool: return absf(screen.session.state.fighter(0).y - home) > 0.4, 300)
+	driver.release_all()
+	assert_true(absf(screen.session.state.fighter(0).y - home) > 0.4, "holding forward moved the fighter (%.2f m, %d frames)" % [absf(screen.session.state.fighter(0).y - home), frames])
+	driver.key(KEY_SPACE, true)
+	frames = driver.run_until(screen, func() -> bool: return screen.session.state.fighter(0).weapon.phase == CombatPhase.Id.CHARGING, 120)
+	assert_eq(screen.session.state.fighter(0).weapon.phase, CombatPhase.Id.CHARGING, "holding attack charges (%d frames)" % frames)
+	driver.key(KEY_SPACE, false)
+	frames = driver.run_until(screen, func() -> bool: return _first(screen, DuelEventTypes.ATTACK_RELEASED, 0) != null, 180)
+	assert_true(_first(screen, DuelEventTypes.ATTACK_RELEASED, 0) != null, "releasing attack swung (%d frames)" % frames)
+	driver.shutdown()
+	await await_frames(2)
+
+
 func test_a_full_set_against_the_cpu_resolves_showcases_and_rematches_clean() -> void:
 	var driver := AppDriver.boot(7)
 	await await_frames(1)
 	var app := driver.app
 	var difficulty := app.settings.difficulty
 	assert_true(driver.press(app.current_screen(), "QUICK PLAY"), "Quick Play is on the menu")
+	await await_frames(1)
+	assert_eq(app.router.current_id, AppScreen.Id.FIGHT_SETUP, "Quick Play opens the setup card")
+	assert_true(driver.press(app.current_screen(), AppCopy.START_MATCH), "Start launches the match")
 	await await_frames(1)
 	var screen := driver.match_screen()
 	var first_set := app.current_set.set_id
@@ -297,6 +333,7 @@ func test_a_slash_kill_cuts_down_drops_one_sword_and_resolves_the_round() -> voi
 	screen.advance_frame(AppDriver.FRAME)
 	_assert_dead_face(victim, "the corpse a frame later")
 	assert_false(victim.has_fall_request(), "a death on the platform is not a fall")
+	_assert_light_shadow_only(screen, victim, "the body lying on the sand")
 	assert_eq(screen.session.state.end_reason, MatchPhase.REASON_KILL, "the round resolved as a kill")
 	assert_eq(screen.session.state.scores, PackedInt32Array([1, 0]), "and scored")
 	## Next round: every terminal latch is gone and the swords are back.
@@ -444,7 +481,7 @@ func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 	var screen := await _scenario(driver, cpu, DEFENSE_SEED)
 	var state := screen.session.state
 	## ARRANGE
-	assert_eq(screen.session.simulation.rules.version, rules.version, "fixture: Quick Play plays the standard rules")
+	assert_eq(screen.session.simulation.rules.version, rules.version, "fixture: the open-edge journey uses version 58")
 	## ACT
 	var parry: DuelEvent = null
 	var riposte: DuelEvent = null
@@ -942,8 +979,37 @@ func test_a_walk_off_falls_close_to_the_edge_and_lets_go_a_beat_later() -> void:
 	var drift := Vector2(proxy.position.x - edge.x, proxy.position.z - edge.z).length()
 	assert_true(drift < 1.5, "a slow step off drops close to the lip (%.2f m out)" % drift)
 	assert_eq(screen.session.state.end_reason, MatchPhase.REASON_RING_OUT, "authority reads a ring-out")
+	assert_true(proxy.position.y < 0.0, "fixture: the body has gone over the lip (y %.2f)" % proxy.position.y)
+	_assert_light_shadow_only(screen, proxy, "the body over the void")
 	driver.shutdown()
 	await await_frames(2)
+
+
+## The key light's cast shadow is the only shadow, whatever the body is doing:
+## nothing is painted on the ground under it, the body keeps casting, and a
+## dropped sword stays out of the shadow pass. Whether that shadow reads on the
+## sand is a capture, not this assertion.
+func _assert_light_shadow_only(screen: MatchScreen, proxy: FighterPresentation3D, label: String) -> void:
+	for child: Node in proxy.get_children():
+		if child is MeshInstance3D and not child is ElbowDebugOverlay3D:
+			assert_eq(String(child.name), "ChargeRing", "%s: nothing painted on the ground but the charge ring (%s)" % [label, child.name])
+	var body := proxy.visual_root().get_child(0)
+	var casting := 0
+	var stack: Array[Node] = [body]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is GeometryInstance3D:
+			assert_eq((node as GeometryInstance3D).cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "%s: %s casts" % [label, node.name])
+			casting += 1
+		stack.append_array(node.get_children())
+	assert_true(casting > 0, "%s: fixture: the body has meshes" % label)
+	for dropped: DroppedWeapon3D in screen.presenter.dropped_weapons():
+		var parts: Array[Node] = [dropped]
+		while not parts.is_empty():
+			var part: Node = parts.pop_back()
+			if part is GeometryInstance3D:
+				assert_eq((part as GeometryInstance3D).cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "%s: the dropped sword's %s casts" % [label, part.name])
+			parts.append_array(part.get_children())
 
 
 ## A shove off the edge by a real body collision: the exit momentum the solver
@@ -1028,14 +1094,14 @@ func app_screen(driver: AppDriver) -> AppScreen.Id:
 	return driver.app.router.current_id
 
 
-## Quick Play against `opponent` on `seed_value`, intro skipped, stepped to
-## the first fighting tick.
+## The open-edge fixture against `opponent` on `seed_value`, intro skipped,
+## stepped to the first fighting tick. Not the product Quick Play path.
 func _scenario(driver: AppDriver, opponent: FighterController, seed_value: int = SCENARIO_SEED) -> MatchScreen:
 	driver.app.compose_session = func(config: MatchConfig, human: HumanController, sink: TelemetrySink) -> MatchSession:
 		config.seed_value = seed_value
 		var controllers: Array[FighterController] = [human, opponent]
 		return MatchSession.create(config, controllers, sink)
-	driver.app.start_quick_play()
+	driver.app.start_open_edge()
 	await await_frames(1)
 	var screen := driver.match_screen()
 	screen.skip_intro()

@@ -187,8 +187,8 @@ func test_wolf_versus_wolf_mirror_colours_only_the_dark_body() -> void:
 	assert_false(kits.combatant(1).colorway_overrides(DuelSide.Id.DARK_NORTH).is_empty(), "Dark Wolf takes the alternate palette")
 	## The Dark body actually repaints the fabric, and SideAccent still wins.
 	var dark := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, kits.combatant(1), rules.combatant(0).fighter.push_radius, rules.combatant(0))
-	var torso := dark.find_child("TorsoCore", true, false) as MeshInstance3D
-	assert_true(torso != null and torso.get_surface_override_material(0) != null, "the alternate colorway repainted the dark Wolf's fabric")
+	var shell := dark.find_child("GambesonShell", true, false) as MeshInstance3D
+	assert_true(shell != null and shell.get_surface_override_material(0) != null, "the alternate colorway repainted the dark Wolf's fabric")
 	var accent := dark.find_child("SideAccentSash", true, false) as MeshInstance3D
 	assert_eq((accent.material_override as StandardMaterial3D).albedo_color, RiposteTheme.accent_for(DuelSide.Id.DARK_NORTH), "and the side accent still reads over the colorway")
 	dark.queue_free()

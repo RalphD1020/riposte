@@ -182,6 +182,51 @@ func test_director_classifies_blade_contact_into_typed_requests() -> void:
 	assert_eq(frame.camera_requests[0].profile, CameraShakeRequest.Profile.BLADE, "blade shake profile")
 
 
+## A structure strike is one spark and one cue named by the material pair, not
+## by the stage. Stone and wood differ. The pair is symmetric. No impulse, an
+## unknown pair, and a tick with no event all stay silent of a clang. Nothing
+## reads as a hit: no hitstop, no camera shake.
+func test_a_structure_strike_sounds_by_its_material_pair() -> void:
+	var rules := StandardDuelRules.create()
+	var snapshot := SnapshotProjector.project(DuelSetup.new_state(rules, 1), rules)
+	var kit := PresentationKit.missing(PresentationKit.PRIMITIVE_BLADE)
+	var stone := _structure_event(MaterialCatalog.STEEL, MaterialCatalog.STONE, 4.0)
+	var frame := CombatFeedbackDirector.process(snapshot, [stone], kit, 1.0)
+	assert_eq(frame.vfx_requests.size(), 1, "one spark")
+	assert_eq(frame.audio_requests.size(), 1, "one impact")
+	assert_eq(frame.audio_requests[0].cue, PresentationKit.CUE_IMPACT_STEEL_STONE, "steel on stone")
+	assert_eq(frame.audio_requests[0].kit_source, AudioCueRequest.KitSource.ARENA, "the stage kit holds the take")
+	assert_eq(frame.hitstop_requests.size(), 0, "a structure is not a hit: no hitstop")
+	assert_eq(frame.camera_requests.size(), 0, "and no camera shake")
+	var wood := CombatFeedbackDirector.process(snapshot, [_structure_event(MaterialCatalog.STEEL, MaterialCatalog.WOOD, 4.0)], kit, 1.0)
+	assert_eq(wood.audio_requests[0].cue, PresentationKit.CUE_IMPACT_STEEL_WOOD, "steel on wood is its own cue")
+	var flipped := ContactAudioResolver.impact_cue(MaterialCatalog.STONE, MaterialCatalog.STEEL)
+	assert_eq(flipped, PresentationKit.CUE_IMPACT_STEEL_STONE, "the pair is the same either order")
+	assert_eq(ContactAudioResolver.impact_cue(MaterialCatalog.STEEL, MaterialCatalog.STEEL, ContactResolver.CLASS_STRONG), PresentationKit.CUE_BLADE_STRONG, "weapon on weapon, steel on steel, is the strong take")
+	assert_eq(ContactAudioResolver.impact_cue(MaterialCatalog.STEEL, MaterialCatalog.STEEL, ContactResolver.CLASS_SOLID), PresentationKit.CUE_BLADE_SOLID, "the solid take")
+	assert_eq(ContactAudioResolver.impact_cue(MaterialCatalog.STEEL, MaterialCatalog.STEEL, ContactResolver.CLASS_LIGHT), PresentationKit.CUE_BLADE_LIGHT, "and the light take")
+	assert_eq(ContactAudioResolver.impact_cue(&"material.bronze", &"material.bronze", ContactResolver.CLASS_STRONG), &"", "a weapon material with no row is silence, not a steel clang")
+	assert_eq(ContactAudioResolver.impact_cue(MaterialCatalog.FLESH, MaterialCatalog.STONE), &"", "an unprofiled pair is silence")
+	var none := CombatFeedbackDirector.process(snapshot, [_structure_event(MaterialCatalog.STEEL, MaterialCatalog.STONE, 0.0)], kit, 1.0)
+	assert_false(none.has_requests(), "no impulse is no impact and no spark")
+	var quiet := CombatFeedbackDirector.process(snapshot, [], kit, 1.0)
+	assert_false(quiet.has_requests(), "a tick with no new event adds nothing")
+	assert_true(ContactAudioResolver.impact_db(16.0) > ContactAudioResolver.impact_db(2.0), "a harder impulse is louder")
+	assert_true(ContactAudioResolver.impact_db(16.0) - ContactAudioResolver.impact_db(8.0) < ContactAudioResolver.impact_db(8.0) - ContactAudioResolver.impact_db(2.0), "and not linearly so")
+
+
+func _structure_event(first: StringName, second: StringName, impulse: float) -> DuelEvent:
+	return DuelEvent.create(DuelEventTypes.BLADE_STRUCTURE_CONTACT, 10, 0, DuelEvent.NONE, {
+		DuelEventKeys.X: 8.2,
+		DuelEventKeys.Y: 0.0,
+		DuelEventKeys.NORMAL_X: -1.0,
+		DuelEventKeys.NORMAL_Y: 0.0,
+		DuelEventKeys.IMPULSE: impulse,
+		DuelEventKeys.MATERIAL_0: String(first),
+		DuelEventKeys.MATERIAL_1: String(second),
+	})
+
+
 func test_director_classifies_body_hit_with_correct_audio_tier() -> void:
 	var rules := StandardDuelRules.create()
 	var state := DuelSetup.new_state(rules, 1)

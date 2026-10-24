@@ -12,6 +12,18 @@
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/victory.mp3" id="9_roar"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/gasp.mp3" id="10_gasp"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/arena/match_horn_01.mp3" id="11_horn"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/impact/steel_stone_01.mp3" id="12_d0dxf"]
+[ext_resource type="Script" path="res://src/presentation/kit/stage_presentation_profile.gd" id="12_stage"]
+[ext_resource type="Resource" path="res://assets/presentation/arenas/standard/roman_crowd.tres" id="13_crowd"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/impact/steel_stone_02.mp3" id="13_t2134"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/impact/steel_stone_03.mp3" id="14_w2dxa"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/impact/steel_stone_04.mp3" id="15_drnjx"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/impact/steel_wood_01.mp3" id="16_7eki5"]
+[ext_resource type="AudioStream" path="res://assets/presentation/audio/sfx/impact/steel_wood_02.mp3" id="17_xipqj"]
+
+[sub_resource type="Resource" id="Resource_pit"]
+script = ExtResource("12_stage")
+crowd = ExtResource("13_crowd")
 
 [resource]
 script = ExtResource("1_kit")
@@ -22,13 +34,16 @@ color_targets = PackedStringArray()
 audio_cues = {
 &"crowd.bed": Array[AudioStream]([ExtResource("4_bed")]),
 &"crowd.cheer": Array[AudioStream]([ExtResource("6_cheer")]),
+&"crowd.gasp": Array[AudioStream]([ExtResource("10_gasp")]),
 &"crowd.setpoint": Array[AudioStream]([ExtResource("8_point")]),
 &"crowd.strong": Array[AudioStream]([ExtResource("7_strong")]),
 &"crowd.victory": Array[AudioStream]([ExtResource("9_roar")]),
-&"crowd.gasp": Array[AudioStream]([ExtResource("10_gasp")]),
+&"impact.steel_stone": Array[AudioStream]([ExtResource("12_d0dxf"), ExtResource("13_t2134"), ExtResource("14_w2dxa"), ExtResource("15_drnjx")]),
+&"impact.steel_wood": Array[AudioStream]([ExtResource("16_7eki5"), ExtResource("17_xipqj")]),
 &"match.horn": Array[AudioStream]([ExtResource("11_horn")]),
 &"music": Array[AudioStream]([ExtResource("3_p88kq")]),
 &"round": Array[AudioStream]([ExtResource("1_p88kq")]),
 &"round.win": Array[AudioStream]([ExtResource("2_2fgvd")])
 }
 vfx_cues = PackedStringArray()
+stage = SubResource("Resource_pit")

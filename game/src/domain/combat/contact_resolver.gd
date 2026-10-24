@@ -44,6 +44,18 @@ static func resolve(
 	if report.blade:
 		_resolve_blades(state, rules, tick, events, lcp if lcp != null else ContactLcp.new(), scratches)
 		return
+	if report.structure[0] or report.structure[1]:
+		for slot in 2:
+			if report.structure[slot]:
+				_resolve_structure(state, rules, slot, tick, toi, events, lcp if lcp != null else ContactLcp.new(), scratches)
+		return
+	if report.structure[0] or report.structure[1]:
+		## The two swords share no coordinate with each other here, so the
+		## order of the two solves changes nothing.
+		for slot in 2:
+			if report.structure[slot]:
+				_resolve_structure(state, rules, slot, tick, toi, events, lcp if lcp != null else ContactLcp.new(), scratches)
+		return
 	if report.body_push:
 		_resolve_body_push(state, report, rules, tick, toi, events)
 		return
@@ -108,8 +120,9 @@ static func _resolve_body_push(
 	var inv_total := 1.0 / mass_a + 1.0 / mass_b
 	if inv_total <= SimMath.EPSILON:
 		return
-	## New contact: authored restitution. Persistent: zero restitution (constraint only).
-	var restitution := rules.combat.body_restitution if not report.body_push_persistent else 0.0
+	## New contact: the bodies' pair restitution. Persistent: zero (constraint only).
+	var flesh := rules.body_pair()
+	var restitution := flesh.restitution_at(closing) if not report.body_push_persistent else 0.0
 	var impulse := (1.0 + restitution) * closing / inv_total
 	## Expose the solved impulse for CPU observation (CPU-007).
 	state.body_contact.last_constraint_impulse = impulse
@@ -122,14 +135,14 @@ static func _resolve_body_push(
 	## Tangential friction (PHYS-005). The tangent is perpendicular to the
 	## contact normal; friction impulse is bounded by Coulomb's law so it
 	## never exceeds what would zero out the sliding, and never exceeds
-	## `body_friction × normal_impulse`.
+	## `μ × normal_impulse` for the bodies' pair.
 	var tx := -ny
 	var ty := nx
 	var sliding := (a.vx - b.vx) * tx + (a.vy - b.vy) * ty
 	var friction_impulse := 0.0
-	if absf(sliding) > SimMath.EPSILON and rules.combat.body_friction > 0.0:
+	if absf(sliding) > SimMath.EPSILON and flesh.friction > 0.0:
 		var stop_impulse := absf(sliding) / inv_total
-		friction_impulse = minf(rules.combat.body_friction * impulse, stop_impulse)
+		friction_impulse = minf(flesh.friction * impulse, stop_impulse)
 		var sign_s := signf(sliding)
 		a.vx -= (friction_impulse / mass_a) * tx * sign_s
 		a.vy -= (friction_impulse / mass_a) * ty * sign_s
@@ -243,13 +256,13 @@ static func _resolve_blades(
 		if denominator <= SimMath.EPSILON:
 			return
 		manifold.set_normal(nx1, ny1)
-		var restitution := ContactMechanics.weapon_restitution(spec_a.weapon, spec_b.weapon, closing)
+		var steel := rules.blade_pair()
 		impulse = SwordContactSolver.solve(
 			manifold, 0, a, b, pose_a, pose_b, px, py, closing, cross_a, cross_b, inertia_a, inertia_b,
-			restitution, rules.combat.blade_friction, deltas, inverse_mass_a, inverse_mass_b
+			steel.restitution_at(closing), steel.friction, deltas, inverse_mass_a, inverse_mass_b
 		)
 	else:
-		impulse = SwordContactSolver.solve_points(manifold, a, b, pose_a, pose_b, spec_a.weapon, spec_b.weapon, rules.combat, inertia_a, inertia_b, inverse_mass_a, inverse_mass_b, deltas, closing_rows, separation_rows, lcp)
+		impulse = SwordContactSolver.solve_points(manifold, a, b, pose_a, pose_b, rules.blade_pair(), inertia_a, inertia_b, inverse_mass_a, inverse_mass_b, deltas, closing_rows, separation_rows, lcp)
 		## Named by the point that took clearly the most of the impulse; an
 		## even split (a line contact) by the earlier point, so a scene and its
 		## mirror agree.
@@ -309,6 +322,8 @@ static func _resolve_blades(
 		DuelEventKeys.POINT_COUNT: points,
 		DuelEventKeys.INTENSITY: SwingSemantics.clash_intensity(energy, rules.combat),
 		DuelEventKeys.CONTACT_CLASS: String(classify(closing, rules)),
+		DuelEventKeys.MATERIAL_0: String(spec_a.weapon.material.id),
+		DuelEventKeys.MATERIAL_1: String(spec_b.weapon.material.id),
 		## The geometry of the clash, carried: the normal the blades met along
 		## and the direction the striking point was travelling. Without these a
 		## consumer has to rebuild the contact from fighter positions, which is
@@ -355,6 +370,82 @@ static func _resolve_blades(
 	events.append(DuelEvent.create(DuelEventTypes.PARRY, tick, defender.slot, striker.slot, {DuelEventKeys.MARGIN: advantage, DuelEventKeys.X: px, DuelEventKeys.Y: py}))
 
 
+## A sword's first impact on stage structures (STRUCTURE-CONTACT-001), solved
+## on the points the sweep recorded at its time of impact. It blocks: the
+## impulse goes through the sword's lever and the wielder's body only, a swing
+## it actually stops ends by the one arrest law, and the sword's impact
+## authority dips from its own Δθ̇ like any hard impact (IMPACT-AUTHORITY-001).
+## It is never a hit, never a parry, and never opponent contact.
+static func _resolve_structure(
+	state: MatchState,
+	rules: DuelRules,
+	slot: int,
+	tick: int,
+	toi: float,
+	events: Array[DuelEvent],
+	lcp: ContactLcp,
+	scratches: Array[FighterTickScratch]
+) -> void:
+	var fighter := state.fighter(slot)
+	var spec := rules.combatant(slot)
+	var contact := state.structure_contacts[slot]
+	var points := contact.point_count
+	if points == 0:
+		return
+	var pose := WeaponKinematics.pose_of(fighter, spec, BladePose.new())
+	var closing_rows := PackedFloat64Array()
+	closing_rows.resize(points)
+	var pairs: Array[ContactPair] = []
+	var closing := -INF
+	for i in points:
+		pairs.append(rules.structure_pair(slot, StructureContactSet.structure_of(contact.feature[i])))
+		closing = maxf(closing, StructureContactSolver.closing_speed(fighter, pose, contact.point_x[i], contact.point_y[i], contact.point_nx[i], contact.point_ny[i]))
+	if closing <= 0.0:
+		return
+	var inertia := ContactMechanics.weapon_inertia(pose, spec)
+	var inverse_mass := ContactMechanics.body_inverse_mass(spec)
+	var swinging := CombatPhase.is_swinging(fighter.weapon.phase)
+	var progress_before := fighter.weapon.speed * fighter.weapon.swing_dir
+	var energy_before := StructureContactSolver.kinetic_energy(fighter, inertia, inverse_mass)
+	var delta := PackedFloat64Array([0.0])
+	var impulse := StructureContactSolver.solve(contact, fighter, pose, pairs, inertia, inverse_mass, delta, closing_rows, lcp)
+	var energy := maxf(energy_before - StructureContactSolver.kinetic_energy(fighter, inertia, inverse_mass), 0.0)
+	var primary := 0
+	for i in range(1, points):
+		if contact.normal_impulse[i] - contact.normal_impulse[primary] > EVEN_SPLIT * impulse:
+			primary = i
+	if impulse > 0.0:
+		var next := ImpactAuthority.after_episode(fighter.impact_authority, delta[0], spec.weapon.swing_speed_full, rules.combat.impact_authority_floor)
+		if next < fighter.impact_authority and slot < scratches.size():
+			scratches[slot].authority_dipped = true
+		fighter.impact_authority = next
+	var arrested := false
+	if swinging:
+		arrested = _interrupt_if_arrested(state, slot, rules, delta[0], scratches)
+	events.append(DuelEvent.create(DuelEventTypes.BLADE_STRUCTURE_CONTACT, tick, slot, DuelEvent.NONE, {
+		DuelEventKeys.X: contact.point_x[primary],
+		DuelEventKeys.Y: contact.point_y[primary],
+		DuelEventKeys.NORMAL_X: contact.point_nx[primary],
+		DuelEventKeys.NORMAL_Y: contact.point_ny[primary],
+		DuelEventKeys.CLOSING_SPEED: closing,
+		DuelEventKeys.IMPULSE: impulse,
+		DuelEventKeys.TANGENTIAL_IMPULSE: contact.tangent_impulse[primary],
+		DuelEventKeys.ENERGY: energy,
+		DuelEventKeys.FRACTION_0: contact.fraction[primary],
+		DuelEventKeys.POINT_COUNT: points,
+		DuelEventKeys.STRUCTURE: StructureContactSet.structure_of(contact.feature[primary]),
+		DuelEventKeys.FEATURE: contact.feature[primary],
+		DuelEventKeys.MATERIAL_0: String(pairs[primary].a.id),
+		DuelEventKeys.MATERIAL_1: String(pairs[primary].b.id),
+		DuelEventKeys.CONTACT_CLASS: String(classify(closing, rules)),
+		DuelEventKeys.ARRESTED_0: arrested,
+		DuelEventKeys.DELTA_0: delta[0],
+		DuelEventKeys.PROGRESS_BEFORE: progress_before,
+		DuelEventKeys.PROGRESS_AFTER: fighter.weapon.speed * fighter.weapon.swing_dir,
+		DuelEventKeys.TOI: toi,
+	}))
+
+
 ## Whether a contact of `pair` was on the guard of sword `defender`.
 static func _on_defenders_guard(pair: int, defender: int) -> bool:
 	return (pair == SwordContactSet.PAIR_BLADE_ON_GUARD and defender == 1) or (pair == SwordContactSet.PAIR_GUARD_ON_BLADE and defender == 0)
@@ -395,7 +486,7 @@ static func _read_outcome(
 		## The tangent is the normal turned +90° (`SwordContactSolver`).
 		outcome.impulse_x += jn * nx - jt * ny
 		outcome.impulse_y += jn * ny + jt * nx
-		var mu := rules.combat.blade_friction
+		var mu := rules.blade_pair().friction
 		if mu > 0.0 and jn > 0.0:
 			outcome.friction_saturation = maxf(outcome.friction_saturation, absf(jt) / (mu * jn))
 		outcome.closing_after = maxf(outcome.closing_after, SwordContactSolver.closing_speed(a, b, pose_a, pose_b, manifold.point_x[i], manifold.point_y[i], nx, ny))

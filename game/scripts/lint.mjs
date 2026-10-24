@@ -514,7 +514,10 @@ walk(join(GAME_ROOT, "scripts"), (full, name) => {
 
 const artCheck = spawnSync(
   "python",
-  ["-c", "import character_art; character_art.load()"],
+  [
+    "-c",
+    "import character_art; character_art.load(); character_art.clearance_self_check()",
+  ],
   {
     cwd: join(GAME_ROOT, "..", "tools", "blender"),
     encoding: "utf8",

@@ -4,12 +4,12 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.3552,
-      -0.275,
+      -0.365,
+      -0.3,
       -0.0
     ],
     "max": [
-      0.3603,
+      0.3694,
       0.185,
       1.77
     ]
@@ -66,6 +66,7 @@
   ],
   "attachment_names": [],
   "material_slots": [
+    "cloth",
     "fabric",
     "hair",
     "leather",
@@ -73,11 +74,13 @@
     "side_accent",
     "skin"
   ],
-  "triangle_count": 1316,
+  "triangle_count": 1744,
   "color_targets": [
     "SideAccentBracer.L",
     "SideAccentBracer.R",
     "SideAccentMark",
     "SideAccentSash"
-  ]
+  ],
+  "source": "fighters/wolf_training.blend",
+  "source_sha256": "50732a91e9f05ab8e66ee06d9cc71b2f80128e6415ab6e1de7bd6afdfd83ec26"
 }

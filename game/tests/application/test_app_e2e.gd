@@ -135,10 +135,16 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_eq(app.telemetry.count_product(ProductEvents.GAME_LOADED), 1, "load recorded once")
 	assert_true(_press(app.current_screen(), "QUICK PLAY"), "Quick Play is on the menu")
 	await await_frames(2)
+	assert_eq(app.router.current_id, AppScreen.Id.FIGHT_SETUP, "Quick Play opens the setup card")
+	assert_true(_press(app.current_screen(), AppCopy.START_MATCH), "Start launches the match")
+	await await_frames(2)
 	var first := _match(booted)
 	assert_true(first != null, "Quick Play opens the duel")
 	assert_eq(app.presentation_mount.get_child_count(), 1, "one presenter mounted")
 	assert_eq(first.session.config.mode, MatchConfig.Mode.QUICK_PLAY_CPU, "against the CPU")
+	assert_true(first.session.config.rules.is_closed_edge(), "The Arena closes the edge")
+	assert_eq(first.session.config.rules.version, 60, "and records version 60")
+	assert_eq(first.session.config.palette_slot, PackedInt32Array([0, 1]), "Main versus Alternate reaches the match")
 	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "the match replaces the menu loop")
 	assert_true(app.is_loop_playing(), "the arena loop is the one that is playing")
 	assert_eq(_looping_players(first.presenter.audio()), 0, "the match director does not start a second loop")
@@ -209,10 +215,12 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	var second := _match(booted)
 	assert_true(second != null and second.session != first_session, "rematch composes a fresh session")
 	assert_ne(second.session.config.seed_value, first_session.config.seed_value, "with a fresh seed")
+	assert_true(second.session.config.rules.is_closed_edge(), "rematch keeps the closed edge")
+	assert_eq(second.session.config.palette_slot, PackedInt32Array([0, 1]), "and the palettes")
 	assert_eq(app.presentation_mount.get_child_count(), 1, "still exactly one presenter")
 	assert_eq(app.loop_stream().resource_path.get_file(), "arena_theme.mp3", "rematch selects the arena theme again")
 	assert_true(app.is_loop_playing(), "and it is playing")
-	assert_near(second.presenter.audio().crowd_bed_volume_db(), -18.0, 0.01, "a new match starts the bed at ambient")
+	assert_near(second.presenter.audio().crowd_bed_volume_db(), MatchPresenter.CROWD_BED_AMBIENT_DB, 0.01, "a new match starts the bed at ambient")
 	assert_false(second.presenter.audio().is_crowd_chant_playing(), "rematch starts without a name")
 	assert_eq(second._crowd.chant_slot, -1, "rematch has no favorite")
 	assert_eq(second.presenter.crowd().standing_sections(), 0, "rematch starts seated")
@@ -246,6 +254,83 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 ## A missing arena cue is a fault: MATCH stops the loop instead of keeping the
 ## menu theme. The stopped player is the observable failure. The selector also
 ## `push_error`s that exact diagnostic (`FAULT_MATCH_MUSIC_MISSING`).
+## The two-stage journey (STAGE-IDENTITY): Fight Setup starts The Arena by
+## default; the keyboard reaches The End's stage segment and selects it (a
+## selected state that is a pressed toggle plus a marker glyph, never colour
+## alone); starting carries the stage id into the match; The End is version 58,
+## open-edge, no crowd, no wall structures, and basin NONE; a rematch stays The
+## End because the stage id is preserved, not inferred from the edge; and a
+## fresh Arena afterwards carries no stale End state.
+func test_two_stage_the_arena_and_the_end_by_keyboard() -> void:
+	var booted := await _boot_ready()
+	var app := booted.app
+	assert_true(_press(app.current_screen(), AppCopy.QUICK_PLAY), "Quick Play opens the setup card")
+	await await_frames(2)
+	assert_eq(app.router.current_id, AppScreen.Id.FIGHT_SETUP, "Fight Setup is up")
+	var setup := app.current_screen()
+	var arena_option := _button(setup, "The Arena")
+	var end_option := _button(setup, "The End")
+	assert_true(arena_option != null and end_option != null, "both stages are listed")
+	assert_true(arena_option.button_pressed, "The Arena is the default selection")
+	assert_false(end_option.button_pressed, "The End starts unselected")
+	## Keyboard navigation (Tab cycles every focusable and wraps) reaches The End.
+	var reached := await _step_focus(booted, "The End", _key(KEY_TAB, true))
+	assert_true(reached, "the keyboard reaches The End's segment")
+	_push(_key(KEY_ENTER, true))
+	_push(_key(KEY_ENTER, false))
+	await await_frames(1)
+	assert_true(end_option.button_pressed, "Enter selects The End")
+	assert_true(end_option.icon != null, "the selection carries a marker glyph, not colour alone")
+	assert_false(arena_option.button_pressed, "and the group deselects The Arena")
+	assert_true(_press(setup, AppCopy.START_MATCH), "Start launches the selected stage")
+	await await_frames(2)
+	var end_match := _match(booted)
+	assert_true(end_match != null, "The End opens a duel")
+	var end_config := end_match.session.config
+	assert_eq(end_config.stage_id, ContentIds.ARENA_END, "the selected stage id reached the match")
+	assert_eq(end_config.rules.version, 58, "The End is version 58")
+	assert_false(end_config.rules.is_closed_edge(), "with an open edge")
+	assert_true(end_config.rules.structures.is_empty(), "and no wall structures")
+	assert_false(end_config.stage.has_crowd, "The End has no crowd")
+	assert_true(end_match.presenter.crowd() == null, "and the presenter seats nobody")
+	assert_eq(end_config.basin, StageDefinition.Basin.NONE, "and a ballistic ring-out, no basin")
+	assert_eq(_crowd_beds(booted.main), 0, "no crowd bed plays on The End")
+	assert_true(app.is_loop_playing(), "its music loop is playing")
+	## Finish the match and rematch: the stage stays The End.
+	var frames := _run_until(end_match, end_match.is_finished)
+	assert_true(end_match.is_finished(), "The End reaches a result (%d frames)" % frames)
+	await await_frames(1)
+	var results := app.current_screen() as ResultsScreen
+	results.set_process(false)
+	if results.is_victory():
+		results.skip_victory()
+	assert_true(_press(results, "REMATCH"), "Rematch offered")
+	await await_frames(2)
+	var rematch := _match(booted)
+	assert_eq(rematch.session.config.stage_id, ContentIds.ARENA_END, "rematch stays The End by its stage id")
+	assert_false(rematch.session.config.rules.is_closed_edge(), "still open-edge")
+	assert_false(rematch.session.config.stage.has_crowd, "still no crowd")
+	assert_true(rematch.presenter.crowd() == null, "and the rematch's presenter seats nobody")
+	rematch.quit_to_menu()
+	await await_frames(2)
+	assert_eq(app.router.current_id, AppScreen.Id.MAIN_MENU, "quit returns to the menu")
+	## A fresh Arena match carries no stale End state.
+	assert_true(_press(app.current_screen(), AppCopy.QUICK_PLAY), "Quick Play again")
+	await await_frames(2)
+	assert_true(_press(app.current_screen(), AppCopy.START_MATCH), "Start the default Arena")
+	await await_frames(2)
+	var arena_match := _match(booted)
+	assert_eq(arena_match.session.config.stage_id, ContentIds.ARENA_STANDARD, "the default is The Arena again")
+	assert_eq(arena_match.session.config.rules.version, 60, "version 60")
+	assert_true(arena_match.session.config.rules.is_closed_edge(), "closed edge")
+	assert_true(arena_match.session.config.stage.has_crowd, "crowd back")
+	var seated := arena_match.presenter.crowd()
+	assert_true(seated != null and seated.instance_count() > 0, "the presenter seats the Arena's crowd again")
+	assert_eq(seated.profile().problem() if seated != null else "missing", "", "with every scene its profile names")
+	assert_false(arena_match.session.config.rules.structures.is_empty(), "and its wall structures, with no End state leaked")
+	await _shutdown(booted)
+
+
 func test_a_live_round_keeps_the_crowd_seated() -> void:
 	var booted := await _boot_ready()
 	var screen := await _active_duel(booted)

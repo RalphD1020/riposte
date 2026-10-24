@@ -12,7 +12,16 @@ import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const MAX_BYTES = 500 * 1024;
+// Authored arena geometry. A bowl and a floor are one mesh each and run to
+// megabytes; the 500 KB cap is for catching an accidental dump in source,
+// docs, audio and config, not for those binaries. Narrow on purpose: a new
+// large file anywhere else still fails.
+const SIZE_EXEMPT = ["art-src/blender/", "game/assets/generated/"];
 const errors = [];
+
+function sizeExempt(file) {
+  return SIZE_EXEMPT.some((prefix) => file.startsWith(prefix));
+}
 
 const tracked = spawnSync("git", ["ls-files", "-z"], {
   cwd: ROOT,
@@ -42,7 +51,7 @@ for (const file of files) {
   } catch {
     continue;
   }
-  if (stats.size > MAX_BYTES) {
+  if (stats.size > MAX_BYTES && !sizeExempt(file)) {
     errors.push(
       `large-file (${Math.ceil(stats.size / 1024)} KB > 500 KB): ${file}`,
     );

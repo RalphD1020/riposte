@@ -132,11 +132,10 @@ var tap_commitment: float = 0.0
 ## is back under `control_speed`, arrested by this weapon's own brake torque.
 ## How long that takes is the weapon's physics, not a table.
 
-## Blade contact (COMBAT §40, §45). `restitution` applies to a new contact
-## closing at least `restitution_threshold_speed` (m/s); a slower one is
-## inelastic, so slow and resting contacts never bounce (RIGID-CONTACT-002).
-var restitution: float = 0.0
-var restitution_threshold_speed: float = 0.0
+## Blade contact (COMBAT §40, §45). What the steel is made of: its restitution,
+## the speed below which it does not bounce, and its own grip
+## (CONTACT-MATERIAL-001). How it meets another surface is the rules' table.
+var material: ContactMaterial
 
 ## Body strike quality (COMBAT §34–§39, §51).
 var reference_closing_speed: float = 0.0
@@ -196,9 +195,9 @@ func is_valid() -> bool:
 		and windup_speed > 0.0
 		and windup_torque > 0.0
 		and hold_torque > 0.0
-		and restitution >= 0.0
-		and restitution <= 1.0
-		and restitution_threshold_speed > 0.0
+		and material != null
+		and material.is_valid()
+		and material.restitution_threshold_speed > 0.0
 		and reference_closing_speed > 0.0
 		and stagger_impulse > 0.0
 		and efficiency_fractions.size() == efficiency_values.size()
@@ -262,10 +261,6 @@ func apply_mass_profile(profile: WeaponMassProfile) -> void:
 func precompute() -> void:
 	pass
 
-
-## Restitution of a new blade contact closing at `closing` (m/s).
-func restitution_at(closing: float) -> float:
-	return restitution if closing >= restitution_threshold_speed else 0.0
 
 
 ## Distance (m) from the origin down the blade to the middle of the two hands:

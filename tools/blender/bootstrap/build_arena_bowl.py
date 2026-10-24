@@ -32,12 +32,21 @@ def build():
     count = layout["bay_count"]
     for i in range(count):
         bay = rb.empty("Bay%02d" % i, (0.0, 0.0, 0.0), parent=root, size=0.2)
-        am.build_bay(bay, layout)
+        heading = -(layout["angular_zero"] + math.tau * i / count)
+
+        def _near(angle, target):
+            return abs((angle - target + math.pi) % math.tau - math.pi) < 0.05
+
+        cut_gate = _near(heading, math.pi * 0.5) or _near(heading, -math.pi * 0.5)
+        am.build_bay(bay, layout, cut_gate=cut_gate)
         am.assert_inside_wedge([child for child in bay.children if child.type == "MESH"], layout)
-        bay.rotation_euler.z = -(layout["angular_zero"] + math.tau * i / count)
+        bay.rotation_euler.z = heading
         am.join_children(bay)
-        print("RIPOSTE_BAY_JOINED", i)
-    am.build_water(root, layout)
+        print("RIPOSTE_BAY_JOINED", i, flush=True)
+    if layout.get("kind") == "pit":
+        am.build_gates(root, layout)
+    else:
+        am.build_water(root, layout)
     return root
 
 

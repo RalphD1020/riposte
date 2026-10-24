@@ -27,6 +27,10 @@ Strict CSP (no `unsafe-eval`, `frame-src 'none'`, `frame-ancestors 'none'`, `obj
 - **Commands** are sanitized by the simulation (CMD-001); **settings files** are sanitized on load and failures fall back to defaults.
 - **Community links** in the game open only `https://` URLs.
 
+## Repository integrity
+
+`pnpm integrity:check` (`scripts/check-integrity.mjs`) rejects merge-conflict markers, case-conflicting paths, and tracked files over 500 KB. The size cap skips only `art-src/blender/` and `game/assets/generated/` — authored arena geometry that is megabytes per mesh. It is not a general exemption, and it is not raised: a large file in source, docs, audio or config still fails and names itself. See [docs/reference/tooling.md](../reference/tooling.md).
+
 ## Trust boundaries
 
 - The browser and every client are untrusted. MVP-0 results are local and unverified; trusted outcomes (ranked, ELO) require server re-simulation of commands with hash comparison (`ReplayVerifier`).

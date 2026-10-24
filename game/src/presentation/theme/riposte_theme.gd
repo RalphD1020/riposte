@@ -101,9 +101,11 @@ const BANNER_SLASH_DISTANCE := 48.0
 const WORLD_BACKGROUND := Color("16161d")
 const WORLD_FLOOR := Color("8a7f6c")
 const WORLD_FLOOR_EDGE := Color("5e5648")
-## Sand on the fighting disc. Between the pale white and the original mid sand.
-## The wooden side is `WOOD`. The contrast token for clothing stays `WORLD_FLOOR`.
-const SAND := Color("c2baaa")
+## The fighting floor. A muted, slightly warm stone-gray: a quiet backdrop, so
+## the blades, the fighters and the impacts are what the eye finds first.
+## `WOOD` is the worn-wood token. The floor does not use it. The contrast
+## token for clothing stays `WORLD_FLOOR`.
+const SAND := Color("a7a49a")
 const WOOD := Color("6b5344")
 ## The platform's visible cliff face, under the disc. Also the recessed
 ## masonry role: soffits, bay interiors, and the dark joint.
@@ -142,6 +144,17 @@ const SKY_GROUND_ENERGY := 0.55
 ## Degrees. A tight disc from the key light, not a glow across the bowl.
 const SKY_SUN_ANGLE_MAX := 10.0
 const SKY_SUN_CURVE := 0.45
+## The End. Near-black violet above and below. The Arena sky tokens stay as they are.
+const END_SKY := Color("100c18")
+## The void the duel camera sees is below the horizon: a low blue-violet lift
+## at the top of the frame, near-black under the deck. No stars.
+const END_VOID_HORIZON := Color("2a2044")
+const END_VOID_DEEP := Color("06040b")
+const END_VOID_CURVE := 0.32
+const END_DECK := Color("1c1630")
+const END_EDGE := Color("5c4578")
+const END_UNDERSIDE := Color("120e1c")
+const END_ORB := Color("6e5a90")
 const WORLD_KEY := Color("fff0d0")
 const WORLD_KEY_ENERGY := 1.3
 const WORLD_KEY_ROTATION_DEGREES := Vector3(-58.0, -32.0, 0.0)
@@ -151,8 +164,6 @@ const WORLD_RIM_ENERGY := 0.35
 const WORLD_RIM_ROTATION_DEGREES := Vector3(-28.0, 150.0, 0.0)
 ## Perimeter braziers: emission only, never fire particles.
 const WORLD_BRAZIER := Color("ff9a3c")
-const SHADOW := Color(0.04, 0.03, 0.02, 0.5)
-
 ## Combatant styles (UX §13): hue + outline + HUD side + label, never color alone.
 ## Colors follow the arena side (LIGHT_SOUTH / DARK_NORTH) so the character's
 ## visual identity matches the HUD label. "Light" is always the lighter body;
@@ -167,7 +178,6 @@ const BLADE_OUTLINE := Color("15181a")
 const BLADE_HIGH_CONTRAST_CORE := Color("ffffff")
 ## Combat-critical world reads; each must meet 3:1 against the floor (UX §44).
 const WORLD_READS: Array[Color] = [LIGHT_BODY, DARK_BODY, LIGHT_BLADE, DARK_BLADE, BLADE_OUTLINE]
-
 ## Feedback (UX §19–§22). Reduced Flash scales intensity down.
 const SPARK := Color("ffe7a8")
 ## A clash's sparks heat towards this as intensity rises.

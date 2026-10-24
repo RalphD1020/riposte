@@ -1,11 +1,11 @@
 """Seated and cheer block figures at Wolf's head proportion.
 
 Blender faces the figure along +Y, which the glTF export turns into Godot -Z,
-so a node that looks at the arena centre is facing the fight. Wolf faces -Y,
-so his face numbers are mirrored in Y and shifted down onto this shorter body.
+so a node that looks at the arena centre is facing the fight. Wolf faces -Y.
 Skin, cloth, hair, and the face are separate meshes so a MultiMesh can tint
-each one. The hair is the same pentagon as the head. The eyes and the brow
-bar are Wolf's, on that face.
+each one, and every one shares the figure's origin. The hair is the same
+pentagon as the head. The eyes and the brow bar are Wolf's, placed by the
+same fractions of this head (ART-HEAD-001), on its front faces.
 
 Run: blender --background --factory-startup --python tools/blender/bootstrap/build_crowd.py
 """
@@ -17,34 +17,42 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import bpy  # noqa: E402
+from mathutils import Matrix, Vector  # noqa: E402
 
 import riposte_blocks as rb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-## Wolf's HeadSkin in game/content/characters/wolf.character.json, moved from
-## z 1.50 onto this figure's neck. The point faces +Y here and -Y on Wolf.
-HEAD_RADIUS = 0.125
-HEAD_Z0 = 0.98
-HEAD_Z1 = 1.23
+## The head is Wolf's pentagon. Its height stays the 0.38 m it was authored at;
+## matching Wolf's height-to-radius ratio shortened it to 0.31 m, and that
+## proportion change is not part of the offset fix. It starts inside the neck
+## so it sits on it. The point faces +Y here and -Y on Wolf.
+HEAD_RADIUS = 0.155
+HEAD_HEIGHT = 0.38
+HEAD_Z0 = 0.92
+HEAD_Z1 = HEAD_Z0 + HEAD_HEIGHT
 HEAD_DEPTH = 0.95
 HEAD_SPIN = math.pi * 0.5
 HEAD_BEVEL = 0.008
-WOLF_HEAD_Z0 = 1.5
-## Wolf's Eye and Brow, same file. Y is mirrored because he faces the other way.
-EYE_SIZE = (0.035, 0.012, 0.02)
-EYE_Z = 1.635 + (HEAD_Z0 - WOLF_HEAD_Z0)
-EYE_Y = 0.093
-EYE_X = 0.04
-BROW_SIZE = (0.12, 0.02, 0.022)
-## Wolf's bar sits just inside the point. This one is a few millimetres prouder
-## so the bar still reads once the head is a few metres from the match camera.
-BROW_AT = (0.0, 0.100, 1.668 + (HEAD_Z0 - WOLF_HEAD_Z0))
+## Wolf's face as fractions of his head (ART-HEAD-001): eyes at 0.54 of its
+## height, the brow at 0.672, sizes and spacing scaled by the head's radius.
+## Never his world coordinates: copying those put the marks at mouth height.
+WOLF_HEAD_RADIUS = 0.125
+FACE_SCALE = HEAD_RADIUS / WOLF_HEAD_RADIUS
+EYE_SIZE = (0.035 * FACE_SCALE, 0.012, 0.02 * FACE_SCALE)
+EYE_X = 0.04 * FACE_SCALE
+EYE_Z = HEAD_Z0 + 0.54 * HEAD_HEIGHT
+BROW_SIZE = (0.12 * FACE_SCALE, 0.02, 0.022 * FACE_SCALE)
+BROW_Z = HEAD_Z0 + 0.672 * HEAD_HEIGHT
+## How far an eye's centre stands in front of the face, as on Wolf.
+EYE_PROUD = 0.002
 ## The crown overhangs the head the way Wolf's hair slab overhangs his prism.
-HAIR_RADIUS = 0.128
-HAIR_OVERLAP = 0.015
-CROP_THICK = 0.032
+HAIR_RADIUS = 0.162
+HAIR_OVERLAP = 0.02
+CROP_THICK = 0.06
 BUN_THICK = 0.05
+## The bun sits on the back edge at this share of the head's height.
+BUN_HEIGHT = 0.42
 
 
 def _mat(name, hex_code, roughness=0.8):
@@ -56,21 +64,76 @@ def _mat(name, hex_code, roughness=0.8):
     return rb.material(name, linear, roughness=roughness)
 
 
+def _segment(name, a, b, width, depth, mat, parent):
+    """A block from a to b. Local +Y points at the sand once the seat looks inward."""
+    start = Vector(a)
+    end = Vector(b)
+    span = end - start
+    length = span.length
+    if length < 1.0e-4:
+        return None
+    obj = rb.box(name, (width, depth, length), (0.0, 0.0, 0.0), mat, parent=parent, bevel=0.004)
+    obj.location = (start + end) * 0.5
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = Vector((0.0, 0.0, 1.0)).rotation_difference(span.normalized())
+    return obj
+
+
+def _limb(name, a, b, width, depth, skin, cloth, parent):
+    """Skin segment, then a slightly larger cloth shell on the same line."""
+    _segment(name, a, b, width, depth, skin, parent)
+    _segment(name + "Cloth", a, b, width + 0.018, depth + 0.018, cloth, parent)
+
+
 def _figure(parent, cheer):
     skin = _mat("skin", "c8b09a")
-    cloth = _mat("fabric", "8a6748")
-    rb.box("Pelvis", (0.28, 0.22, 0.16), (0.0, 0.02, 0.48), cloth, parent=parent)
-    rb.box("Torso", (0.32, 0.2, 0.34), (0.0, 0.0, 0.72), cloth, parent=parent)
-    rb.box("Thigh.L", (0.1, 0.28, 0.1), (-0.08, 0.16, 0.4), cloth, parent=parent)
-    rb.box("Thigh.R", (0.1, 0.28, 0.1), (0.08, 0.16, 0.4), cloth, parent=parent)
-    rb.box("Shin.L", (0.09, 0.1, 0.22), (-0.08, 0.28, 0.2), skin, parent=parent)
-    rb.box("Shin.R", (0.09, 0.1, 0.22), (0.08, 0.28, 0.2), skin, parent=parent)
-    if cheer:
-        rb.box("Arm.L", (0.08, 0.08, 0.28), (-0.22, 0.0, 1.05), skin, parent=parent)
-        rb.box("Arm.R", (0.08, 0.08, 0.28), (0.22, 0.0, 1.05), skin, parent=parent)
-    else:
-        rb.box("Arm.L", (0.08, 0.22, 0.08), (-0.2, 0.16, 0.62), skin, parent=parent)
-        rb.box("Arm.R", (0.08, 0.22, 0.08), (0.2, 0.16, 0.62), skin, parent=parent)
+    cloth = _mat("fabric", "8a5a3c")
+    leather = _mat("leather", "6b4226", 0.7)
+    rb.box("Pelvis", (0.22, 0.16, 0.14), (0.0, 0.0, 0.48), skin, parent=parent)
+    rb.box("Torso", (0.26, 0.16, 0.28), (0.0, 0.0, 0.7), skin, parent=parent)
+    rb.box("Tunic", (0.32, 0.2, 0.28), (0.0, 0.02, 0.72), cloth, parent=parent)
+    rb.box("Hem", (0.34, 0.22, 0.06), (0.0, 0.03, 0.56), cloth, parent=parent)
+    rb.box("Panel", (0.16, 0.04, 0.16), (0.0, 0.12, 0.5), cloth, parent=parent)
+    rb.box("Collar", (0.18, 0.12, 0.05), (0.0, 0.02, 0.86), cloth, parent=parent)
+    rb.box("Belt", (0.34, 0.22, 0.05), (0.0, 0.03, 0.6), leather, parent=parent)
+    rb.box("Neck", (0.08, 0.08, 0.08), (0.0, 0.0, 0.9), skin, parent=parent)
+    for side, sign in (("L", -1.0), ("R", 1.0)):
+        hip = (0.09 * sign, 0.02, 0.46)
+        knee = (0.09 * sign, 0.30, 0.42)
+        ankle = (0.09 * sign, 0.38, 0.16)
+        _limb("Thigh." + side, hip, knee, 0.09, 0.1, skin, cloth, parent)
+        _limb("Shin." + side, knee, ankle, 0.07, 0.08, skin, cloth, parent)
+        rb.box(
+            "Boot." + side, (0.1, 0.16, 0.08),
+            (0.09 * sign, 0.44, 0.1), leather, parent=parent, bevel=0.004,
+        )
+        rb.box(
+            "Cuff." + side, (0.11, 0.1, 0.04),
+            (0.09 * sign, 0.36, 0.16), leather, parent=parent, bevel=0.003,
+        )
+        shoulder = (0.18 * sign, 0.0, 0.82)
+        if cheer:
+            elbow = (0.22 * sign, 0.02, 1.05)
+            wrist = (0.16 * sign, 0.0, 1.26)
+        else:
+            elbow = (0.2 * sign, 0.14, 0.62)
+            wrist = (0.08 * sign, 0.22, 0.5)
+        _limb("UpperArm." + side, shoulder, elbow, 0.06, 0.06, skin, cloth, parent)
+        _limb("Forearm." + side, elbow, wrist, 0.05, 0.05, skin, cloth, parent)
+        _segment(
+            "Bracer." + side,
+            (
+                elbow[0] * 0.35 + wrist[0] * 0.65,
+                elbow[1] * 0.35 + wrist[1] * 0.65,
+                elbow[2] * 0.35 + wrist[2] * 0.65,
+            ),
+            wrist, 0.062, 0.062, leather, parent,
+        )
+        rb.box(
+            "Hand." + side, (0.05, 0.04, 0.06),
+            (wrist[0], wrist[1] + (0.0 if cheer else 0.03), wrist[2]),
+            skin, parent=parent, bevel=0.003,
+        )
 
 
 def _head(parent, material):
@@ -80,11 +143,25 @@ def _head(parent, material):
     )
 
 
+def _face_y(x):
+    """The front of the pentagon at `x` across: the point, falling back along
+    the two front faces toward the neighbouring corners."""
+    step = math.tau / 5.0
+    point = HEAD_RADIUS * HEAD_DEPTH
+    corner_x = abs(math.cos(HEAD_SPIN + step)) * HEAD_RADIUS
+    corner_y = math.sin(HEAD_SPIN + step) * HEAD_RADIUS * HEAD_DEPTH
+    return point - abs(x) * (point - corner_y) / corner_x
+
+
 def _face(parent, material):
-    ## The same dark marks as Wolf: two eyes and one brow bar, on the point.
-    rb.box("Eye.L", EYE_SIZE, (EYE_X, EYE_Y, EYE_Z), material, parent=parent)
-    rb.box("Eye.R", EYE_SIZE, (-EYE_X, EYE_Y, EYE_Z), material, parent=parent)
-    rb.box("Brow", BROW_SIZE, BROW_AT, material, parent=parent)
+    ## The same dark marks as Wolf: two eyes and one brow bar across the point.
+    ## Each eye sits on its front face. The bar rests on the faces at its ends
+    ## and the point comes through its middle, as on Wolf.
+    eye_y = _face_y(EYE_X) + EYE_PROUD
+    rb.box("Eye.L", EYE_SIZE, (EYE_X, eye_y, EYE_Z), material, parent=parent)
+    rb.box("Eye.R", EYE_SIZE, (-EYE_X, eye_y, EYE_Z), material, parent=parent)
+    brow_y = _face_y(BROW_SIZE[0] * 0.5) + BROW_SIZE[1] * 0.5
+    rb.box("Brow", BROW_SIZE, (0.0, brow_y, BROW_Z), material, parent=parent)
 
 
 def _cap(parent, material, thick):
@@ -111,17 +188,22 @@ def _bun(parent, material):
     edge_y = _back_edge_y()
     rb.box(
         "HairBun", (0.12, 0.06, 0.1),
-        (0.0, edge_y - 0.01, HEAD_Z0 + 0.16),
+        (0.0, edge_y - 0.01, HEAD_Z0 + BUN_HEIGHT * HEAD_HEIGHT),
         material, parent=parent, bevel=0.006,
     )
 
 
 def _join_materials():
+    ## Bake every piece into the figure's frame first. A join keeps the active
+    ## object's origin, and the game takes only the mesh, not its node, so an
+    ## unbaked origin would draw the whole layer away from the others.
     bpy.context.view_layer.update()
     groups = {}
     for obj in list(bpy.data.objects):
         if obj.type != "MESH" or not obj.data.materials:
             continue
+        obj.data.transform(obj.matrix_world)
+        obj.matrix_world = Matrix.Identity(4)
         groups.setdefault(obj.data.materials[0].name, []).append(obj)
     for name, objs in groups.items():
         bpy.ops.object.select_all(action="DESELECT")
@@ -171,11 +253,22 @@ def _build_face(root):
     _face(root, _mat("face", "08080c", 0.6))
 
 
+def _build_fringe(root):
+    hair = _mat("hair", "2a2420", 0.9)
+    _cap(root, hair, CROP_THICK)
+    rb.box(
+        "HairFringe", (0.1, 0.04, 0.05),
+        (0.0, HEAD_RADIUS * 0.72, HEAD_Z1 - 0.02),
+        hair, parent=root, bevel=0.004,
+    )
+
+
 def main():
     _save("seated", False)
     _save("cheer", True)
     _save_part("hair_crop", _build_crop)
     _save_part("hair_bun", _build_bun)
+    _save_part("hair_fringe", _build_fringe)
     _save_part("face", _build_face)
 
 

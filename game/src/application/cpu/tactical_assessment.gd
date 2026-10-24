@@ -108,6 +108,10 @@ static func _assess_line(assessment: TacticalAssessment, seen: CpuObservation, m
 
 
 static func _assess_arena(assessment: TacticalAssessment, seen: CpuObservation, me: FighterState, rules: DuelRules) -> void:
+	if rules.is_closed_edge():
+		assessment.edge_clearance = rules.platform_radius
+		assessment.opponent_edge_clearance = rules.platform_radius
+		return
 	if rules.platform_radius <= SimMath.EPSILON:
 		return
 	var my_dist := SimMath.length(me.x, me.y)
@@ -209,6 +213,8 @@ static func _evaluate_bursts(
 
 ## Estimated edge risk if the fighter moved `delta` along the duel forward axis.
 static func _edge_risk_axial(me: FighterState, delta: float, rules: DuelRules) -> float:
+	if rules.is_closed_edge():
+		return 0.0
 	var post_x := me.x + me.duel_forward_x * delta
 	var post_y := me.y + me.duel_forward_y * delta
 	var edge_dist := rules.platform_radius - SimMath.length(post_x, post_y)
@@ -217,6 +223,8 @@ static func _edge_risk_axial(me: FighterState, delta: float, rules: DuelRules) -
 
 ## Estimated edge risk for a lateral step. `delta` positive = to the right.
 static func _edge_risk_lateral(me: FighterState, delta: float, rules: DuelRules) -> float:
+	if rules.is_closed_edge():
+		return 0.0
 	var right_x := me.duel_forward_y
 	var right_y := -me.duel_forward_x
 	var post_x := me.x + right_x * delta

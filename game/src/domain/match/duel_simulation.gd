@@ -32,14 +32,15 @@ extends RefCounted
 ##      a. persisted sword contacts touching at the start remove their
 ##         closing speed (RigidContactSolver velocity stage), then the tick
 ##         is carried again
-##      b. unified chronological contact loop (blade↔blade, blade→body,
-##         body↔body, persisted pairs re-touching; body separation resolved
+##      b. unified chronological contact loop (blade↔blade, blade↔structure,
+##         blade→body, body↔body, persisted pairs re-touching — inside one
+##         substep in that order; body separation resolved
 ##         inside the same TOI chronology;
 ##         once the re-hold budget is spent the remainder is carried in sweep
 ##         substeps with overlap pushed out after each, CONTACT-FALLBACK-001)
 ##      c. persisted overlap beyond contact_slop pushed out (position stage,
 ##         bodies kept apart in the same block)
-##  13. contact lifecycle upkeep (blade manifold + weapon-body)
+##  13. contact lifecycle upkeep (blade manifold + weapon-body + structures)
 ##  14. impact authority recovers toward 1, except a sword this tick's steel
 ##      episode dipped (IMPACT-AUTHORITY-001)
 ##  15. settle stamina once from the motors' own work over the tick (measured
@@ -219,7 +220,9 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 	for slot in 2:
 		WeaponSystem.step(state.fighter(slot), rules, tick, events, _scratch[slot].condition, _scratch[slot], _guard_return_scale(state, slot), diagnostics)
 		_measure_blade_work(state.fighter(slot), slot)
-	## Step 10: edge crossing detection. The arena is open — no confinement.
+	## Step 10: support. An open edge rings out at `platform_radius`. A closed
+	## edge holds the centre on the support circle and removes outward speed
+	## only there.
 	## Body separation shares the TOI chronology (COMBAT-007) rather than
 	## running before sword contacts, because a separation pass can move a
 	## fighter away from a sword tip and erase a stab that chronologically
@@ -227,26 +230,31 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 	for slot in 2:
 		var fighter := state.fighter(slot)
 		if fighter.is_alive() and not fighter.is_falling:
-			var crossing := ArenaConstraints.detect_edge_crossing(
-				_start[slot].x, _start[slot].y, fighter.x, fighter.y, rules.platform_radius
-			)
-			if crossing >= 0.0:
-				fighter.lose_support(crossing)
-				events.append(DuelEvent.create(
-					DuelEventTypes.RING_OUT, tick, slot, DuelEvent.NONE,
-					{
-						DuelEventKeys.POSITION_X: fighter.x,
-						DuelEventKeys.POSITION_Y: fighter.y,
-						DuelEventKeys.VELOCITY_X: fighter.vx,
-						DuelEventKeys.VELOCITY_Y: fighter.vy,
-						DuelEventKeys.TOI: crossing,
-					}
-				))
+			if rules.is_closed_edge():
+				ArenaConstraints.constrain(fighter, rules)
+			else:
+				var crossing := ArenaConstraints.detect_edge_crossing(
+					_start[slot].x, _start[slot].y, fighter.x, fighter.y, rules.platform_radius
+				)
+				if crossing >= 0.0:
+					fighter.lose_support(crossing)
+					events.append(DuelEvent.create(
+						DuelEventTypes.RING_OUT, tick, slot, DuelEvent.NONE,
+						{
+							DuelEventKeys.POSITION_X: fighter.x,
+							DuelEventKeys.POSITION_Y: fighter.y,
+							DuelEventKeys.VELOCITY_X: fighter.vx,
+							DuelEventKeys.VELOCITY_Y: fighter.vy,
+							DuelEventKeys.TOI: crossing,
+						}
+					))
 	_finish[0].write(a, rules.combatant(0))
 	_finish[1].write(b, rules.combatant(1))
 	_resolve_contacts(state, tick, events)
 	state.blade_contact.tick()
 	state.body_contact.tick()
+	for structure_contact in state.structure_contacts:
+		structure_contact.tick()
 	_recover_impact_authority(state)
 	_settle_stamina(state)
 	_check_round_end(state, events)
@@ -350,7 +358,7 @@ func _resolve_contacts(state: MatchState, tick: int, events: Array[DuelEvent]) -
 			_update_body_contact_separation(state, had_body_push)
 			_settle_overlap(state, tick, events)
 			return
-		var held := not (_report.blade or _report.body[0] or _report.body[1] or _report.body_push)
+		var held := not _report.any_new()
 		if not held:
 			resolved += 1
 		else:
@@ -452,6 +460,9 @@ func _check_support(state: MatchState, tick: int, events: Array[DuelEvent], from
 	for slot in 2:
 		var fighter := state.fighter(slot)
 		if fighter.is_alive() and not fighter.is_falling:
+			if rules.is_closed_edge():
+				ArenaConstraints.constrain(fighter, rules)
+				continue
 			if SimMath.length(fighter.x, fighter.y) >= rules.platform_radius:
 				fighter.lose_support(remainder_crossing(from[slot], fighter, toi, rules.platform_radius))
 				events.append(DuelEvent.create(
@@ -614,14 +625,18 @@ func _step_decided(state: MatchState, command_0: PlayerCommand, command_1: Playe
 			MovementSystem.step_in_frame(fighter, frame_x, frame_y, cmd.axis_x(), cmd.axis_y(), tick, body, condition, cmd.dash_modifier)
 			WeaponSystem.step(fighter, rules, tick, events, condition, null, _guard_return_scale(state, slot), diagnostics)
 			## Winner follow-over-edge easter egg: emit presentation event, no score change.
-			var crossing := ArenaConstraints.detect_edge_crossing(
-				fighter.x - fighter.vx * SimulationTimebase.TICK_SECONDS,
-				fighter.y - fighter.vy * SimulationTimebase.TICK_SECONDS,
-				fighter.x, fighter.y, rules.platform_radius
-			)
-			if crossing >= 0.0:
-				fighter.lose_support(crossing)
-				events.append(DuelEvent.create(DuelEventTypes.POST_ROUND_FALL, tick, slot))
+			## A closed edge holds the winner instead of playing that fall.
+			if rules.is_closed_edge():
+				ArenaConstraints.constrain(fighter, rules)
+			else:
+				var crossing := ArenaConstraints.detect_edge_crossing(
+					fighter.x - fighter.vx * SimulationTimebase.TICK_SECONDS,
+					fighter.y - fighter.vy * SimulationTimebase.TICK_SECONDS,
+					fighter.x, fighter.y, rules.platform_radius
+				)
+				if crossing >= 0.0:
+					fighter.lose_support(crossing)
+					events.append(DuelEvent.create(DuelEventTypes.POST_ROUND_FALL, tick, slot))
 		else:
 			if fighter.fallen.active:
 				FallenBodySystem.step(fighter, rules, tick, events)

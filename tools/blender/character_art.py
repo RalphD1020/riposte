@@ -9,7 +9,7 @@ import os
 
 SCHEMA = "riposte.character_art"
 SCHEMA_VERSION = 1
-SLOTS = ("skin", "hair", "fabric", "leather", "metal", "side_accent")
+SLOTS = ("skin", "hair", "fabric", "cloth", "fur", "leather", "metal", "side_accent")
 WEARS = ("person", "hair", "clothes")
 KINDS = ("prism", "box", "segment")
 FACES = ("alive", "dead")
@@ -121,6 +121,8 @@ def validate(data):
                 problems.append("%s is listed as a side accent but uses another slot" % piece)
     if rig:
         problems.extend(_chains(rig, [part for part in parts if isinstance(part, dict)]))
+    if not problems:
+        problems.extend(face_problems(data))
     alive = [part.get("name") for part in parts if isinstance(part, dict) and part.get("face", "alive") == "alive" and str(part.get("name", "")).startswith("Eye")]
     dead = [part.get("name") for part in parts if isinstance(part, dict) and part.get("face") == "dead"]
     if "Brow" not in names:
@@ -133,6 +135,125 @@ def validate(data):
     ## face plane (X right, Z up). Rotation around Z lays the bars in the
     ## ground plane and they read as eyebrow slashes.
     return problems
+
+
+## Face clearance (ART-HEAD-002). The protected region is authored per
+## character as fractions of its own head: `band` is the eye/brow band as a
+## share of the head's height, `width` its half-width as a share of the head's
+## radius, and `reach` how far in metres it extends in front of the nose. It
+## spans from the head's centre forward, along the frame's forward axis (-Y).
+## Hair and clothes may frame the face (temples, sides, the back) but no part
+## of either may enter that region, in any variant.
+FEATURES = ("Eye.L", "Eye.R", "Brow")
+COVERING = ("hair", "clothes")
+
+
+def face_region(data):
+    clearance = data["face_clearance"]
+    head = next(part for part in data["parts"] if part.get("name") == clearance["head"])
+    center = head.get("center", [0.0, 0.0])
+    radius = float(head["radius"])
+    height = float(head["z1"]) - float(head["z0"])
+    half = float(clearance["width"]) * radius
+    nose = radius * float(head.get("depth_scale", 1.0))
+    return (
+        (center[0] - half, center[0] + half),
+        (center[1] - nose - float(clearance["reach"]), center[1]),
+        (float(head["z0"]) + float(clearance["band"][0]) * height, float(head["z0"]) + float(clearance["band"][1]) * height),
+    )
+
+
+def face_problems(data):
+    clearance = data.get("face_clearance")
+    if not isinstance(clearance, dict):
+        return ["face_clearance is missing"]
+    problems = []
+    head = next((part for part in data["parts"] if part.get("name") == clearance.get("head")), None)
+    if head is None or head.get("kind") != "prism":
+        problems.append("face_clearance.head must name the prism head")
+    band = clearance.get("band")
+    if not (isinstance(band, list) and len(band) == 2 and all(isinstance(item, (int, float)) for item in band) and 0.0 <= band[0] < band[1] <= 1.0):
+        problems.append("face_clearance.band must be two head-height fractions, low then high")
+    width = clearance.get("width")
+    if not isinstance(width, (int, float)) or not 0.0 < width <= 1.0:
+        problems.append("face_clearance.width must be a head-radius fraction in (0, 1]")
+    reach = clearance.get("reach")
+    if not isinstance(reach, (int, float)) or not math.isfinite(reach) or reach <= 0.0:
+        problems.append("face_clearance.reach must be a positive distance")
+    if problems:
+        return problems
+    region = face_region(data)
+    for name in FEATURES:
+        feature = next((part for part in data["parts"] if part.get("name") == name), None)
+        if feature is None or feature.get("kind") != "box" or not _inside(feature["at"], region):
+            problems.append("face_clearance does not hold %s" % name)
+    for variant in ("ranger", "training"):
+        for part in data["parts"]:
+            if part.get("wear") in COVERING and visible(part, variant) and _overlaps(_bounds(data, part, variant), region):
+                problems.append("%s covers the face in %s" % (part["name"], variant))
+    return problems
+
+
+def clearance_self_check(path=WOLF_PATH):
+    """The validator must reject a face-crossing fringe and accept temple hair."""
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if face_problems(data):
+        raise ValueError("the shipped character fails its own face clearance")
+    lo, hi = face_region(data)[2]
+    fringe = {"name": "SelfCheckFringe", "wear": "hair", "kind": "box", "bone": "Head", "slot": "hair", "size": [0.12, 0.05, 0.08], "at": [0.0, -0.11, (lo + hi) * 0.5]}
+    temple = {"name": "SelfCheckTemple", "wear": "hair", "kind": "box", "bone": "Head", "slot": "hair", "size": [0.04, 0.06, 0.1], "at": [0.13, -0.02, (lo + hi) * 0.5]}
+    data["parts"].append(fringe)
+    if "SelfCheckFringe covers the face in ranger" not in face_problems(data):
+        raise ValueError("a fringe over the eyes was not rejected")
+    ## In front of the nose, inside the reach: depth, not just height.
+    ahead = {"name": "SelfCheckAhead", "wear": "hair", "kind": "box", "bone": "Head", "slot": "hair", "size": [0.04, 0.02, 0.04], "at": [0.0, -0.14, (lo + hi) * 0.5]}
+    data["parts"][-1] = ahead
+    if "SelfCheckAhead covers the face in ranger" not in face_problems(data):
+        raise ValueError("hair in front of the nose was not rejected")
+    data["parts"][-1] = temple
+    if face_problems(data):
+        raise ValueError("temple hair beside the face was rejected")
+
+
+def _inside(point, region):
+    return all(region[axis][0] <= float(point[axis]) <= region[axis][1] for axis in range(3))
+
+
+def _overlaps(bounds, region):
+    return all(bounds[axis][0] < region[axis][1] - 1e-9 and bounds[axis][1] > region[axis][0] + 1e-9 for axis in range(3))
+
+
+def _bounds(data, part, variant):
+    """Axis-aligned bounds in the armature frame, conservative for rotations."""
+    kind = part["kind"]
+    if kind == "box":
+        size = part_value(data, part, variant, "size")
+        at = part["at"]
+        rx, ry, rz = part.get("rotation", [0.0, 0.0, 0.0])
+        corners = []
+        for sx in (-0.5, 0.5):
+            for sy in (-0.5, 0.5):
+                for sz in (-0.5, 0.5):
+                    corner = _rotate((sx * size[0], sy * size[1], sz * size[2]), rx, ry, rz)
+                    corners.append(tuple(corner[axis] + at[axis] for axis in range(3)))
+        return tuple((min(c[axis] for c in corners), max(c[axis] for c in corners)) for axis in range(3))
+    if kind == "prism":
+        center = part.get("center", [0.0, 0.0])
+        reach = float(part["radius"]) * max(1.0, float(part.get("top_scale", 1.0)))
+        depth = reach * float(part.get("depth_scale", 1.0))
+        return ((center[0] - reach, center[0] + reach), (center[1] - depth, center[1] + depth), (float(part["z0"]), float(part["z1"])))
+    pad = max(float(part["width"]), float(part["depth"])) * 0.5
+    return tuple((min(part["a"][axis], part["b"][axis]) - pad, max(part["a"][axis], part["b"][axis]) + pad) for axis in range(3))
+
+
+def _rotate(vector, rx, ry, rz):
+    ## Same order as riposte_blocks.box: X @ Y @ Z applied to the vector.
+    x, y, z = vector
+    x, y = x * math.cos(rz) - y * math.sin(rz), x * math.sin(rz) + y * math.cos(rz)
+    x, z = x * math.cos(ry) + z * math.sin(ry), -x * math.sin(ry) + z * math.cos(ry)
+    y, z = y * math.cos(rx) - z * math.sin(rx), y * math.sin(rx) + z * math.cos(rx)
+    return (x, y, z)
 
 
 def palette_for(data, variant):

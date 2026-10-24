@@ -9,13 +9,16 @@ extends RefCounted
 ## The header pins the immutable context the commands were recorded against
 ## (LOADOUT-001): per slot, the character, weapon and handling ids plus a
 ## fingerprint of the resolved physical content, and the content schema
-## version, and the state-hash layout. A recording therefore never runs silently against different
+## version, the state-hash layout, and the world the swords meet (the material
+## table and the stage's structures, `DuelRules.world_fingerprint`). A
+## recording therefore never runs silently against different
 ## content under the same ids — old Wolf against a retuned Wolf is refused, not
 ## reinterpreted. The per-tick state hash stays dynamic state only.
 ##
 ## See also: /docs/concepts/simulation.md
 
-const FORMAT_VERSION := 2
+## 3: the world fingerprint.
+const FORMAT_VERSION := 3
 const KEY_FORMAT := "format"
 const KEY_RULES_ID := "rules_id"
 const KEY_RULES_VERSION := "rules_version"
@@ -30,6 +33,7 @@ const KEY_SEED := "seed"
 const KEY_COMMANDS_0 := "commands_0"
 const KEY_COMMANDS_1 := "commands_1"
 const KEY_FINAL_HASH := "final_hash"
+const KEY_WORLD := "world"
 
 var rules_id: StringName = &""
 var rules_version: int = 0
@@ -37,6 +41,8 @@ var content_schema_version: int = 0
 var state_layout_version: int = 0
 ## Per slot: [fighter id, weapon id, handling id, content fingerprint].
 var combatants: Array[PackedStringArray] = []
+## Materials and structures (STRUCTURE-CONTACT-001).
+var world_fingerprint: String = ""
 var seed_value: int = 0
 var commands_0: PackedInt32Array = PackedInt32Array()
 var commands_1: PackedInt32Array = PackedInt32Array()
@@ -50,6 +56,7 @@ static func begin(rules: DuelRules, match_seed: int) -> ReplayRecord:
 	record.content_schema_version = CombatantPhysicsSpec.CONTENT_SCHEMA_VERSION
 	record.state_layout_version = StateHasher.LAYOUT_VERSION
 	record.combatants = loadouts_of(rules)
+	record.world_fingerprint = rules.world_fingerprint()
 	record.seed_value = match_seed
 	return record
 
@@ -84,7 +91,7 @@ func matches_rules(rules: DuelRules) -> bool:
 		return false
 	if content_schema_version != CombatantPhysicsSpec.CONTENT_SCHEMA_VERSION or state_layout_version != StateHasher.LAYOUT_VERSION:
 		return false
-	return loadouts_of(rules) == combatants
+	return loadouts_of(rules) == combatants and rules.world_fingerprint() == world_fingerprint
 
 
 func to_dictionary() -> Dictionary:
@@ -103,6 +110,7 @@ func to_dictionary() -> Dictionary:
 		KEY_CONTENT_SCHEMA: content_schema_version,
 		KEY_STATE_LAYOUT: state_layout_version,
 		KEY_COMBATANTS: loadouts,
+		KEY_WORLD: world_fingerprint,
 		KEY_SEED: seed_value,
 		KEY_COMMANDS_0: Array(commands_0),
 		KEY_COMMANDS_1: Array(commands_1),
@@ -137,6 +145,7 @@ static func from_dictionary(data: Dictionary) -> ReplayRecord:
 	record.rules_version = int(data.get(KEY_RULES_VERSION, 0))
 	record.content_schema_version = int(data.get(KEY_CONTENT_SCHEMA, 0))
 	record.state_layout_version = int(data.get(KEY_STATE_LAYOUT, 0))
+	record.world_fingerprint = str(data.get(KEY_WORLD, ""))
 	record.seed_value = int(data.get(KEY_SEED, 0))
 	record.commands_0 = first
 	record.commands_1 = second

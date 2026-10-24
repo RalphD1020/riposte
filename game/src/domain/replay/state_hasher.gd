@@ -20,7 +20,9 @@ extends RefCounted
 ## GUARD-PROTECTION-001.) (7: a fighter's stamina, STAMINA-004.)
 ## (8: `grip_struck` left the hash. Rules 55: the torso circle is the only
 ## damage target.) (9: a fighter's impact authority, IMPACT-AUTHORITY-001.)
-const LAYOUT_VERSION := 9
+## (10: each sword's structure contact, when the rules have structures —
+## absent otherwise, so a structure-free duel's bytes are unchanged.)
+const LAYOUT_VERSION := 10
 
 
 static func hash_state(state: MatchState) -> String:
@@ -61,6 +63,14 @@ static func hash_state(state: MatchState) -> String:
 	for lifecycle in state.weapon_body_contacts:
 		ints.append(int(lifecycle.hold_active))
 		floats.append_array(PackedFloat64Array([lifecycle.hold_normal, lifecycle.hold_tangent]))
+	## Present only when the rules have structures (STRUCTURE-CONTACT-001).
+	for structure_contact in state.structure_contacts:
+		ints.append_array(PackedInt64Array([structure_contact.phase, structure_contact.phase_ticks, structure_contact.point_count, structure_contact.hold_count]))
+		for i in structure_contact.point_count:
+			ints.append(structure_contact.feature[i])
+		for i in structure_contact.hold_count:
+			ints.append(structure_contact.hold_feature[i])
+			floats.append_array(PackedFloat64Array([structure_contact.hold_normal[i], structure_contact.hold_tangent[i]]))
 	for fighter in state.fighters:
 		var weapon := fighter.weapon
 		floats.append_array(PackedFloat64Array([

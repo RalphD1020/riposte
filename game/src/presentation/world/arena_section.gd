@@ -1,15 +1,18 @@
 class_name ArenaSection
 extends RefCounted
 
-## Presentation layout for the floor, the two arcades, the moat, and the four
-## treads. Combat still uses the rules' platform radius. This file does not
-## write it. A disagreement is reported and ignored.
+## Presentation layout for the pit: a sand disc, a solid wall at the combat
+## radius, and seat treads that start at the top of that wall. Combat still
+## uses the rules' platform radius. This file does not write it. A disagreement
+## is reported and ignored.
 ##
 ## See also: /docs/concepts/presentation.md
 ## Source: game/content/presentation/arena_section.json
 
 const PATH := "res://content/presentation/arena_section.json"
 const CROWN_TOLERANCE := 0.001
+## Treads that sit on the outer colonnade. Tiers after this rise behind it.
+const ARCADE_TREADS := 4
 
 var expected_disc_radius: float = 0.0
 var angular_zero: float = 0.0
@@ -17,6 +20,14 @@ var bay_count: int = 0
 var section_count: int = 0
 var foot_offset: float = 0.0
 var water_height: float = 0.0
+var pit: bool = false
+var wall_inner: float = 0.0
+var wall_outer: float = 0.0
+var wall_height: float = 0.0
+var gate_width: float = 0.0
+var gate_height: float = 0.0
+var gate_depth: float = 0.0
+var gate_radius: float = 0.0
 var floor_soffit: float = 0.0
 var paving_top: float = 0.0
 var curb_height: float = 0.0
@@ -43,6 +54,15 @@ var outer_soffit: float = 0.0
 var outer_spring: float = 0.0
 var outer_arch_radius: float = 0.0
 var outer_voussoir: float = 0.0
+var gallery_inner: float = 0.0
+var gallery_outer: float = 0.0
+var gallery_opening: float = 0.0
+var gallery_pier_width: float = 0.0
+var gallery_pier_depth: float = 0.0
+var gallery_soffit: float = 0.0
+var gallery_spring: float = 0.0
+var gallery_arch_radius: float = 0.0
+var gallery_voussoir: float = 0.0
 var moat_inner: float = 0.0
 var moat_outer: float = 0.0
 var tier_inner := PackedFloat32Array()
@@ -103,6 +123,9 @@ func issues() -> PackedStringArray:
 		found.append("no floor edge rises above the fighting surface")
 	if curb_inner_radius >= curb_mid_radius or curb_mid_radius >= expected_disc_radius:
 		found.append("the curb is a ring inside the combat radius")
+	if pit:
+		_pit_issues(found)
+		return found
 	_crown(inner_spring, inner_arch_radius, inner_voussoir, floor_soffit, "inner arcade", found)
 	_crown(outer_spring, outer_arch_radius, outer_voussoir, outer_soffit, "outer arcade", found)
 	_opening(inner_opening, inner_arch_radius, "inner arcade", found)
@@ -119,8 +142,8 @@ func issues() -> PackedStringArray:
 		found.append("the moat has width")
 	if absf(moat_inner - inner_outer_radius) > CROWN_TOLERANCE or absf(moat_outer - outer_inner_radius) > CROWN_TOLERANCE:
 		found.append("the moat is the open gap between the arcades")
-	if tier_count() != 4:
-		found.append("exactly four treads")
+	if tier_count() < ARCADE_TREADS:
+		found.append("the colonnade keeps its four treads")
 	var previous_outer := -1.0
 	var previous_height := -INF
 	for index: int in tier_count():
@@ -144,10 +167,21 @@ func issues() -> PackedStringArray:
 			found.append("the first tread starts at the outer arcade")
 		if tier_height[0] <= outer_soffit:
 			found.append("the first tread is above its soffit")
-		if outer_inner_radius + outer_pier_depth > tier_outer[tier_count() - 1] + 0.02:
+	if tier_count() >= ARCADE_TREADS:
+		if outer_inner_radius + outer_pier_depth > tier_outer[ARCADE_TREADS - 1] + 0.02:
 			found.append("the bleachers do not cover the outer arch")
-		if absf(tier_outer[tier_count() - 1] - outer_outer_radius) > CROWN_TOLERANCE:
-			found.append("the outer arcade ends at the top tread")
+		if absf(tier_outer[ARCADE_TREADS - 1] - outer_outer_radius) > CROWN_TOLERANCE:
+			found.append("the outer arcade ends at the fourth tread")
+	if tier_count() > ARCADE_TREADS:
+		if absf(tier_inner[ARCADE_TREADS] - outer_outer_radius) > CROWN_TOLERANCE:
+			found.append("the rising treads start behind the colonnade")
+		if absf(tier_outer[tier_count() - 1] - gallery_outer) > CROWN_TOLERANCE:
+			found.append("the gallery ends at the top tread")
+		if absf(gallery_inner - outer_outer_radius) > CROWN_TOLERANCE:
+			found.append("the gallery starts where the colonnade ends")
+		if absf(gallery_soffit - outer_soffit) > CROWN_TOLERANCE or absf(gallery_spring - outer_spring) > CROWN_TOLERANCE or absf(gallery_arch_radius - outer_arch_radius) > CROWN_TOLERANCE:
+			found.append("the gallery arcade matches the outer arcade height")
+		_crown(gallery_spring, gallery_arch_radius, gallery_voussoir, gallery_soffit, "gallery arcade", found)
 	return found
 
 
@@ -158,6 +192,8 @@ func slots_in_bay(tier: int) -> int:
 
 
 func seats_clear_piers() -> bool:
+	if pit:
+		return true
 	var jamb := outer_opening * 0.5
 	for tier: int in tier_count():
 		for slot: int in slots_in_bay(tier):
@@ -237,7 +273,9 @@ func _read(data: Dictionary) -> void:
 	bay_count = _int(data, "bay_count")
 	section_count = _int(data, "section_count")
 	foot_offset = _float(data, "foot_offset")
-	water_height = _float(data, "water_height")
+	pit = str(data.get("kind", "")) == "pit"
+	if not pit:
+		water_height = _float(data, "water_height")
 	var floor_data := _dict(data, "floor")
 	floor_soffit = _float(floor_data, "soffit")
 	paving_top = _float(floor_data, "paving_top")
@@ -249,6 +287,18 @@ func _read(data: Dictionary) -> void:
 	brick_stagger = _float(floor_data, "stagger")
 	brick_joint = _float(floor_data, "joint")
 	course_axis = str(floor_data.get("course_axis", ""))
+	if pit:
+		var wall: Dictionary = _dict(data, "wall")
+		wall_inner = _float(wall, "inner_radius")
+		wall_outer = _float(wall, "outer_radius")
+		wall_height = _float(wall, "height")
+		var gates: Dictionary = _dict(data, "gates")
+		gate_width = _float(gates, "width")
+		gate_height = _float(gates, "height")
+		gate_depth = _float(gates, "depth")
+		gate_radius = _float(gates, "radius")
+		_read_tiers(data)
+		return
 	var inner := _dict(data, "inner_arcade")
 	inner_radius = _float(inner, "inner_radius")
 	inner_outer_radius = _float(inner, "outer_radius")
@@ -267,12 +317,26 @@ func _read(data: Dictionary) -> void:
 	outer_spring = _float(outer, "spring")
 	outer_arch_radius = _float(outer, "arch_radius")
 	outer_voussoir = _float(outer, "voussoir_thickness")
+	var gallery := _dict(data, "gallery")
+	gallery_inner = _float(gallery, "inner_radius")
+	gallery_outer = _float(gallery, "outer_radius")
+	gallery_opening = _float(gallery, "opening")
+	gallery_pier_width = _float(gallery, "pier_width")
+	gallery_pier_depth = _float(gallery, "pier_depth")
+	gallery_soffit = _float(gallery, "soffit")
+	gallery_spring = _float(gallery, "spring")
+	gallery_arch_radius = _float(gallery, "arch_radius")
+	gallery_voussoir = _float(gallery, "voussoir_thickness")
 	var moat := _dict(data, "moat")
 	moat_inner = _float(moat, "inner_radius")
 	moat_outer = _float(moat, "outer_radius")
+	_read_tiers(data)
+
+
+func _read_tiers(data: Dictionary) -> void:
 	var rows: Variant = data.get("tiers", [])
 	if typeof(rows) != TYPE_ARRAY:
-		_parse_problems.append("exactly four treads")
+		_parse_problems.append("the seats keep their treads")
 		return
 	var list: Array = rows
 	for row: Variant in list:
@@ -285,6 +349,34 @@ func _read(data: Dictionary) -> void:
 		tier_height.append(_float(tier, "tread_height"))
 		tier_seat_radius.append(_float(tier, "seat_radius"))
 		tier_seat_count.append(_int(tier, "seat_count"))
+
+
+func _pit_issues(found: PackedStringArray) -> void:
+	if absf(wall_inner - expected_disc_radius) > CROWN_TOLERANCE:
+		found.append("the wall starts at the combat radius")
+	if wall_outer <= wall_inner or wall_height <= 0.5:
+		found.append("the wall has thickness and height")
+	if gate_width <= 0.5 or gate_height <= wall_height or gate_depth <= 0.0:
+		found.append("the gates are doors in the wall")
+	if gate_radius <= expected_disc_radius or gate_radius >= wall_outer:
+		found.append("the gates sit in the wall")
+	if tier_count() < 2:
+		found.append("the seats start above the wall")
+	var previous_outer := wall_outer
+	var previous_height := wall_height
+	for index: int in tier_count():
+		if tier_outer[index] <= tier_inner[index]:
+			found.append("tier %d moves outward" % index)
+		if tier_seat_radius[index] <= tier_inner[index] or tier_seat_radius[index] >= tier_outer[index]:
+			found.append("tier %d seat sits on its tread" % index)
+		if bay_count > 0 and tier_seat_count[index] % bay_count != 0:
+			found.append("tier %d seats divide into the bays" % index)
+		if absf(tier_inner[index] - previous_outer) > 0.02:
+			found.append("tier %d leaves a gap in the steps" % index)
+		if tier_height[index] <= previous_height:
+			found.append("tier %d does not rise" % index)
+		previous_outer = tier_outer[index]
+		previous_height = tier_height[index]
 
 
 func _dict(data: Dictionary, key: String) -> Dictionary:

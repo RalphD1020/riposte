@@ -90,6 +90,13 @@ var _crowd_bed: AudioStreamPlayer
 var _crowd_shot: AudioStreamPlayer
 var _crowd_chant: AudioStreamPlayer
 var _chant_source: AudioStream
+## A non-looping name phrase. The director plays it again after the gap.
+## `wolf_chant.mp3` is not marked loop; this is how it repeats.
+const PHRASE_GAP_SECONDS := 1.5
+var _phrase_open: bool = false
+var _phrase_stream: AudioStream
+var _phrase_left: float = 0.0
+var _phrase_gap: float = 0.0
 var _chant_fade_from: float = -8.0
 var _chant_fade_left: float = 0.0
 var _chant_fade_seconds: float = 0.0
@@ -279,6 +286,12 @@ func release_crowd_chant(seconds: float) -> void:
 		_chant_fade_left = 0.0
 		return
 	if seconds <= 0.0:
+		_phrase_open = false
+		_phrase_stream = null
+		_phrase_left = 0.0
+		_phrase_gap = 0.0
+		return
+	if seconds <= 0.0:
 		stop_crowd_chant()
 		return
 	if _chant_fade_left > 0.0:
@@ -288,15 +301,54 @@ func release_crowd_chant(seconds: float) -> void:
 	_chant_fade_left = seconds
 
 
+## One play of a non-looping name. The same open phrase does not stack.
+## After it ends, `advance_crowd_chant` waits `PHRASE_GAP_SECONDS` and plays it again.
+## Phrase length and the gap are both frame-delta seconds. `CrowdDirector.CHANT_HOLD_TICKS`
+## is a separate simulation-tick hold. It does not time this gap.
+## A stream with no length does not open a phrase, so a bad import cannot restart forever.
+func play_name_phrase(stream: AudioStream) -> bool:
+	if stream == null or stream.get_length() <= 0.0:
+		return false
+	if _phrase_open and _phrase_stream == stream:
+		return false
+	_phrase_open = true
+	_phrase_stream = stream
+	_phrase_gap = 0.0
+	return _begin_phrase()
+
+
+func _begin_phrase() -> bool:
+	var playing := _phrase_stream.duplicate() as AudioStream
+	var length := playing.get_length() if playing != null else 0.0
+	if length <= 0.0:
+		_phrase_open = false
+		_phrase_stream = null
+		return false
+	_chant_source = _phrase_stream
+	_start(_crowd_chant, playing, CHANT_TRIM_DB)
+	_phrase_left = length
+	return true
+
+
 func advance_crowd_chant(delta: float) -> void:
-	if _chant_fade_left <= 0.0:
-		return
-	_chant_fade_left = maxf(_chant_fade_left - maxf(delta, 0.0), 0.0)
-	var span := _chant_fade_seconds if _chant_fade_seconds > 0.0 else 1.0
-	var along := 1.0 - _chant_fade_left / span
-	_crowd_chant.volume_db = lerpf(_chant_fade_from, CHANT_FADE_FLOOR_DB, clampf(along, 0.0, 1.0))
-	if _chant_fade_left <= 0.0:
-		stop_crowd_chant()
+	var step := maxf(delta, 0.0)
+	if _phrase_open and _phrase_stream != null and _chant_fade_left <= 0.0:
+		if _crowd_chant.playing:
+			_phrase_left = maxf(_phrase_left - step, 0.0)
+			if _phrase_left <= 0.0:
+				_crowd_chant.stop()
+				_crowd_chant.volume_db = CHANT_TRIM_DB
+				_phrase_gap = PHRASE_GAP_SECONDS
+		elif _phrase_gap > 0.0:
+			_phrase_gap = maxf(_phrase_gap - step, 0.0)
+			if _phrase_gap <= 0.0:
+				_begin_phrase()
+	if _chant_fade_seconds > 0.0:
+		_chant_fade_left = maxf(_chant_fade_left - step, 0.0)
+		var along := 1.0 - _chant_fade_left / _chant_fade_seconds
+		_crowd_chant.volume_db = lerpf(_chant_fade_from, CHANT_FADE_FLOOR_DB, clampf(along, 0.0, 1.0))
+		if _chant_fade_left <= 0.0:
+			stop_crowd_chant()
 
 
 func stop_crowd_chant() -> void:
@@ -304,6 +356,10 @@ func stop_crowd_chant() -> void:
 	_chant_fade_left = 0.0
 	_crowd_chant.stop()
 	_crowd_chant.volume_db = CHANT_TRIM_DB
+	_phrase_open = false
+	_phrase_stream = null
+	_phrase_left = 0.0
+	_phrase_gap = 0.0
 
 
 func is_crowd_chant_playing() -> bool:

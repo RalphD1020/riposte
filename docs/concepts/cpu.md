@@ -110,7 +110,7 @@ The CPU avoids voluntary self-ring-outs through a two-layer system:
 
 Walk safety only activates when the fighter is within `push_radius` of the platform edge — further out, the edge steering in `_steer()` handles avoidance. Burst safety is the hard filter: any burst whose predicted trajectory crosses the platform is suppressed. If no safe candidate exists, the CPU chooses maximum `min_clearance` (survival), never an invisible wall or idle clamp.
 
-The CPU remains fully vulnerable to forced ring-outs from combat physics. The safety layer prevents voluntary walks and dashes off the cliff; it cannot prevent a knockback impulse or body separation from pushing the fighter past `platform_radius`.
+The CPU remains fully vulnerable to forced ring-outs from combat physics on an open edge. The safety layer prevents voluntary walks and dashes off the cliff; it cannot prevent a knockback impulse or body separation from pushing the fighter past `platform_radius`. A closed edge (`DuelRules.EDGE_CLOSED`) has no ring-out, so Layer A reports the candidate safe, Layer B does not score the rim as a cliff, and `_steer` does not pull footwork back toward the centre.
 
 ## Decision traces
 
