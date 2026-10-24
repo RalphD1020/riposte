@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.0744,
-      0.0959,
-      1.1128
+      -0.06,
+      0.0773,
+      1.045
     ],
     "max": [
-      0.0744,
-      0.121,
-      1.189
+      0.06,
+      0.0991,
+      1.099
     ]
   },
   "bone_names": [],
@@ -25,5 +25,5 @@
   "triangle_count": 36,
   "color_targets": [],
   "source": "crowd/face.blend",
-  "source_sha256": "e051f619c4e9356700f970dd2730859c04391ad7b97551d35fdc029dcc9c9fde"
+  "source_sha256": "c058ee4af978a4b3697dd143c927d9860bcf3e3cfa4d1f383c7f66717f466f88"
 }

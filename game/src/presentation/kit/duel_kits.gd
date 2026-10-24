@@ -38,9 +38,8 @@ static func resolve(
 	kits.fighter = fighter_kits[0]
 	kits.weapon = weapon_kits[0]
 	kits.arena = catalog.resolve(rules.arena_id, PresentationKit.PRIMITIVE_ARENA)
-	## A true visual mirror is the same fighter identity and the same selected
-	## skin on both slots; only then does the Dark side take its alternate
-	## colorway (COLORWAY). The weapon skin rides the fighter skin's choice.
+	## A true visual mirror is the same fighter and the same costume. Side does
+	## not repaint that costume. The weapon skin rides the fighter skin.
 	var fighter_ids: Array = [rules.combatant(0).character_id(), rules.combatant(1).character_id()]
 	var slot_skins: Array = [
 		fighter_skins[0] if fighter_skins.size() > 0 else &"",

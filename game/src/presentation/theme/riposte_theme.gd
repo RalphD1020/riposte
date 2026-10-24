@@ -101,21 +101,23 @@ const BANNER_SLASH_DISTANCE := 48.0
 const WORLD_BACKGROUND := Color("16161d")
 const WORLD_FLOOR := Color("8a7f6c")
 const WORLD_FLOOR_EDGE := Color("5e5648")
-## The fighting floor. A muted, slightly warm stone-gray: a quiet backdrop, so
-## the blades, the fighters and the impacts are what the eye finds first.
+## The fighting floor. Neutral muted stone-grey. The warm key lifts it; on
+## this desk the same token drew near #8c857b. That pixel is a review target,
+## not a second constant. Lights, exposure, and tonemap stay as they are.
 ## `WOOD` is the worn-wood token. The floor does not use it. The contrast
 ## token for clothing stays `WORLD_FLOOR`.
-const SAND := Color("a7a49a")
+const SAND := Color("585650")
 const WOOD := Color("6b5344")
 ## The platform's visible cliff face, under the disc. Also the recessed
 ## masonry role: soffits, bay interiors, and the dark joint.
-const WORLD_CLIFF := Color("3a352d")
-## Bowl stone, locked for the masonry board under the match key and rim.
-## The combat floor stays `WORLD_FLOOR`. These roles are the shared materials,
-## not a texture that draws the blocks.
-const STONE_TRAVERTINE := Color("d4c4a8")
-const STONE_LIMESTONE := Color("a89880")
-const STONE_TERRACOTTA := Color("8a5344")
+const WORLD_CLIFF := Color("34312d")
+## Bowl accents under the same key. The floor is `SAND`. Lighter courses and
+## a warm note stay limited; they do not recolor the pit.
+## The inner fighting wall. Darker than the lit sand so the pit has an edge.
+const STONE_INNER := Color("49463f")
+const STONE_TRAVERTINE := Color("afa28a")
+const STONE_LIMESTONE := Color("918675")
+const STONE_TERRACOTTA := Color("805044")
 const STONE_BRONZE := Color("8a6a3a")
 const STONE_BASIN := Color("1a3a40")
 ## Warning ring: an etched gold groove, emissive so it reads as a boundary

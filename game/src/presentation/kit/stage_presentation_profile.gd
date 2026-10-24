@@ -18,6 +18,8 @@ enum Backdrop { OUTDOOR, VOID }
 ## The audience this stage seats in the pit's bowl, or none. The Arena seats
 ## its Roman crowd; The End seats nobody. A deck never seats one.
 @export var crowd: CrowdProfile
+## Surfaces a fighter can be seen against. The check does not name a stage.
+@export var readability_surfaces: PackedStringArray = PackedStringArray(["floor", "inner_wall", "shadow_band"])
 ## Spawn discs. Side is also told by the fighters, their facing, and the HUD (SIDE-001).
 @export var home_marks: bool = true
 ## The warm key casts one directional shadow map. The rim never does.
@@ -61,6 +63,8 @@ func deck_outline() -> PackedVector2Array:
 
 
 func problem() -> String:
+	if readability_surfaces.is_empty():
+		return "a stage names the surfaces behind a fighter"
 	if ground == Ground.DECK and deck_outline().size() < 3:
 		return "a deck needs an outline"
 	if crowd != null and ground == Ground.DECK:

@@ -292,10 +292,15 @@ func rematch() -> void:
 	_start(match_config.rematch(_seeds.randi()))
 
 
-## The match's presentation kits, resolved once for the duel and again for its
-## results: rules decide identity, settings decide the local player's skin.
+## The match's presentation kits, resolved once. A Fight Setup palette is the
+## costume for each slot. Settings dress only a match that did not choose.
 func resolve_kits(config: MatchConfig) -> DuelKits:
-	var kits := DuelKits.resolve(kit_catalog, config.rules, fighter_skins(), weapon_skins(), null, config.palette_slot)
+	var fighters := fighter_skins()
+	var weapons := weapon_skins()
+	if RiposteKits.costumes_chosen(config.palette_slot):
+		fighters = RiposteKits.costume_fighter_skins(config.palette_slot)
+		weapons = RiposteKits.costume_weapon_skins(config.palette_slot)
+	var kits := DuelKits.resolve(kit_catalog, config.rules, fighters, weapons)
 	if kits.is_complete():
 		kits.match_loadout = RiposteKits.match_loadout(kits.arena)
 	return kits

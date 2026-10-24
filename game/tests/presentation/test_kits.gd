@@ -177,25 +177,44 @@ func test_colorway_is_a_mirror_discriminator_not_a_team_identity() -> void:
 	assert_eq(ColorwayResolver.variant_for(DuelSide.Id.DARK_NORTH, false), SkinColorwayProfile.Variant.DEFAULT, "no mirror, no alternate — side never forces a colorway")
 
 
-func test_wolf_versus_wolf_mirror_colours_only_the_dark_body() -> void:
+func test_wolf_versus_wolf_keeps_both_costumes_and_the_side_accent() -> void:
 	var rules := StandardDuelRules.create()
 	var catalog := RiposteKits.build_catalog()
 	var kits := DuelKits.resolve(catalog, rules)
 	assert_true(kits.combatant(0).mirror, "base Wolf vs base Wolf is a mirror")
-	assert_true(kits.combatant(0).colorway() != null and kits.combatant(0).colorway().has_alternate(), "and base Wolf ships an alternate colorway")
-	assert_true(kits.combatant(0).colorway_overrides(DuelSide.Id.LIGHT_SOUTH).is_empty(), "Light Wolf keeps its own palette")
-	assert_false(kits.combatant(1).colorway_overrides(DuelSide.Id.DARK_NORTH).is_empty(), "Dark Wolf takes the alternate palette")
-	## The Dark body actually repaints the fabric, and SideAccent still wins.
+	assert_true(kits.combatant(0).colorway_overrides(DuelSide.Id.LIGHT_SOUTH).is_empty(), "Light keeps the costume palette")
+	assert_true(kits.combatant(1).colorway_overrides(DuelSide.Id.DARK_NORTH).is_empty(), "Dark keeps the same costume palette")
 	var dark := FighterPresentation3D.create(1, DuelSide.Id.DARK_NORTH, kits.combatant(1), rules.combatant(0).fighter.push_radius, rules.combatant(0))
 	var shell := dark.find_child("GambesonShell", true, false) as MeshInstance3D
-	assert_true(shell != null and shell.get_surface_override_material(0) != null, "the alternate colorway repainted the dark Wolf's fabric")
+	assert_true(shell != null and shell.get_surface_override_material(0) == null, "side did not repaint the costume")
 	var accent := dark.find_child("SideAccentSash", true, false) as MeshInstance3D
-	assert_eq((accent.material_override as StandardMaterial3D).albedo_color, RiposteTheme.accent_for(DuelSide.Id.DARK_NORTH), "and the side accent still reads over the colorway")
+	assert_eq((accent.material_override as StandardMaterial3D).albedo_color, RiposteTheme.accent_for(DuelSide.Id.DARK_NORTH), "the side accent still marks the fighter")
 	dark.queue_free()
 	## A non-mirror (training skin on only one slot) leaves both on default.
 	var mixed := DuelKits.resolve(catalog, rules, [&"", RiposteKits.SKIN_DUELIST_TRAINING] as Array[StringName])
 	assert_false(mixed.combatant(0).mirror, "different skins are not a mirror")
 	assert_true(mixed.combatant(1).colorway_overrides(DuelSide.Id.DARK_NORTH).is_empty(), "so the Dark side keeps its own palette")
+
+
+func test_main_and_alternate_select_the_mesh_for_either_slot() -> void:
+	var rules := StandardDuelRules.create()
+	var catalog := RiposteKits.build_catalog()
+	var palette := PackedInt32Array([0, 1])
+	assert_true(RiposteKits.costumes_chosen(palette), "Fight Setup chose both costumes")
+	var fighters := RiposteKits.costume_fighter_skins(palette)
+	var weapons := RiposteKits.costume_weapon_skins(palette)
+	assert_eq(fighters[0], &"", "Main is the ranger mesh")
+	assert_eq(fighters[1], RiposteKits.SKIN_DUELIST_TRAINING, "Alternate is the training mesh")
+	assert_eq(weapons[1], RiposteKits.SKIN_BASTARD_SWORD_TRAINING, "Alternate keeps the training sword")
+	var kits := DuelKits.resolve(catalog, rules, fighters, weapons)
+	assert_true(kits.combatant(0).fighter_skin == null, "Main wears the base body")
+	assert_eq(kits.combatant(1).fighter_skin.skin_id, RiposteKits.SKIN_DUELIST_TRAINING, "Alternate wears the training body")
+	assert_eq(kits.combatant(1).weapon_skin.skin_id, RiposteKits.SKIN_BASTARD_SWORD_TRAINING, "and its sword")
+	assert_true(kits.combatant(0).colorway_overrides(DuelSide.Id.DARK_NORTH).is_empty(), "a side does not recolor Main")
+	assert_true(kits.combatant(1).colorway_overrides(DuelSide.Id.LIGHT_SOUTH).is_empty(), "a side does not recolor Alternate")
+	var swapped := RiposteKits.costume_fighter_skins(PackedInt32Array([1, 0]))
+	assert_eq(swapped[0], RiposteKits.SKIN_DUELIST_TRAINING, "either slot can wear Alternate")
+	assert_eq(swapped[1], &"", "and either slot can wear Main")
 
 
 func test_mapped_clips_stay_inside_the_semantics_the_proxy_asks_for() -> void:

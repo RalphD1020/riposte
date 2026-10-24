@@ -769,7 +769,7 @@ Hair and clothes frame the face; they never cover the eyes and brow. Each charac
 
 ### ART-LAYER-001
 
-Painted base, modeled outer layer. A character is a LEGO-like block body and pentagonal head (the base) with modeled voxel pieces on top — hair volume and locks, collars, hems, cuffs, belts, bracers, armour — where depth or silhouette reads at the match camera. Detail too thin to model (a hairline, light scruff, weave, stitching) belongs painted on the base once the UV pipeline is proven end to end; until then the base stays flat materials and vertex colors. Paint MUST NOT stand in for a missing surface or a broken mesh, and a modeled piece MUST sit on the surface it belongs to, never fight the layer beneath it.
+Painted base, modeled outer layer. A character is a LEGO-like block body and pentagonal head (the base) with modeled voxel pieces on top — hair volume and locks, collars, hems, cuffs, belts, bracers, armour — where depth or silhouette reads at the match camera. Detail too thin to model (a hairline, light scruff, weave, stitching) belongs painted on the base once the UV pipeline is proven end to end; until then the base stays flat materials and vertex colors. Paint MUST NOT stand in for a missing surface or a broken mesh, and a modeled piece MUST sit on the surface it belongs to, never fight the layer beneath it. Wolf's two costumes share one body, one weapon, and the side-accent pieces. The ranger look is the dark wool and the training look is the lighter slate. Side color stays on the accent pieces. Mail, where it is shown, is a few broad bands, not a field of rings. A fringe or mantle that enters `face_clearance` is rejected. Docs: [docs/concepts/character-art.md](../docs/concepts/character-art.md).
 
 ### ART-CROWD-001
 

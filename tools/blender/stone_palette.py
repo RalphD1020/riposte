@@ -6,12 +6,12 @@ way `build_arena.py` does.
 """
 
 ROLES = {
-    "stone_pillar": "d4c4a8",
-    "stone_edge": "a89880",
-    "stone_stand": "6e6558",
+    "stone_pillar": "afa28a",
+    "stone_edge": "918675",
+    "stone_stand": "49463f",
     "stone_floor": "8a7f6c",
-    "stone_terracotta": "8a5344",
-    "stone_cliff": "3a352d",
+    "stone_terracotta": "805044",
+    "stone_cliff": "34312d",
     "gold_trim": "8a6a3a",
     "basin_water": "1a3a40",
     "basin_glint": "c4a050",

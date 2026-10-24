@@ -10,13 +10,13 @@ Riposte's people are built, not sculpted: a LEGO-like block body and a pentagona
 
 The head is a five-sided prism. One vertex points along the art frame's forward axis (`coordinate_frame.forward`, −Y in Blender), and that vertex is the face's centreline: the implicit nose. The eyes and brow sit across it as small dark voxel blocks, and death swaps the eyes for an X while the brow stays.
 
-Wolf's numbers belong to Wolf. His head runs from 1.50 m to 1.75 m with a 0.125 m radius; his eyes sit at 1.635 m and his brow at 1.668 m. Another character with a taller or shorter head authors its own placement against its own head. No character copies another's world coordinates, which is what produced the crowd's low "mustache" faces.
+Wolf's numbers belong to Wolf. His head runs from 1.50 m to 1.75 m with a 0.125 m radius; his eyes sit at 1.635 m and his brow at 1.668 m. The jaw ring stays at that radius and the crown ring is `top_scale` 0.82, so the jaw is the wider ring. The nose vertex is still the forward point on both rings, and the eye and brow boxes stay where they are. That taper is on Wolf's head only. The crowd head does not use it. Another character with a taller or shorter head authors its own placement against its own head. No character copies another's world coordinates, which is what produced the crowd's low "mustache" faces.
 
 A modeled nose or mouth is optional. It is never the fix for eyes or a brow in the wrong place.
 
 ## Hair frames the face, it never covers it (ART-HEAD-002)
 
-Hair is a crown cap plus locks: a thin cap on the head, temples and side locks beside the face, a nape and rear masses behind it, and at most a short lock above the brow. None of it hangs in front of the eyes.
+Hair is one hairstyle, not a loose pile of blocks: a crown cap, a swept mass from the crown toward the nape, side locks that step from the temple to the back, and one forelock above the brow. The ranger forelock and the training forelock are different parts. None of it hangs in front of the eyes.
 
 Each character authors where its face is, in terms of its own head:
 
@@ -40,11 +40,15 @@ Two layers share one coordinate frame:
 - **Base** — the block body and the head. Detail too thin to model belongs painted here: a hairline under the modeled cap, light scruff, cloth weave, stitching.
 - **Modeled** — anything whose depth or silhouette reads at the match camera: hair volume and locks, collars, hems, cuffs, belts, bracers, armour.
 
-Today the base is flat materials and vertex colors. The block helpers in `tools/blender/riposte_blocks.py` generate no UVs, so painted detail waits until one painted feature has gone through Blender, the GLB export, Godot import and a gameplay capture. Until then nothing is painted, and paint never stands in for a missing surface.
+Today the base is flat materials and vertex colors. The block helpers in `tools/blender/riposte_blocks.py` generate no UVs, so painted detail waits until one painted feature has gone through Blender, the GLB export, Godot import and a gameplay capture. Until then nothing is painted, and paint never stands in for a missing surface. Mail is a few broad bands, not a field of rings.
+
+## Two costumes, one Wolf
+
+The ranger and the training variant share the body, the belt, the boots, the weapon, and the small side-accent pieces. Side color stays on those pieces. Main is the ranger mesh: wool `#202428`, lower cloth `#303438`, leather `#3B3935`, steel `#73777A`, and one fur collar. Alternate is the training mesh: slate `#29343F`, blue-grey `#414E5A`, leather `#51483F`, and a pale trim `#A7A69E`. Neither wears a cloak or a mantle. Fight Setup chooses the mesh. Side does not recolor it. The JSON stores sRGB. `character_art.linear_color` is the only conversion into the linear material. Ranger hair is `#25282B`. Training hair is `#30343A`. Skin stays the sRGB of the face that was already shipping. Costume metal is the material `costume_metal`. The blade stays `steel`. A green contrast check is not a picture of the fight.
 
 ## The crowd (ART-CROWD-001, ART-CROWD-002)
 
-Spectators are the same people with less detail: a block body, a pentagonal head on its neck at Wolf's height-to-radius ratio, a hair cap, and eyes and brow at the same head fractions as Wolf's, seated on the head's front faces. `tools/blender/bootstrap/build_crowd.py` builds them. Every layer it exports shares the figure's origin, because the game draws each layer's bare mesh in a `MultiMesh`; a layer with its own origin drew every head inside its tunic once, leaving the eyes and hair floating. Which audience a stage seats is a `CrowdProfile` on its stage profile: The Arena's is the Roman crowd, and The End has none.
+Spectators are the same people with less detail: a block body, a pentagonal head near 0.125 m across and 0.25 m tall, on a simpler body than Wolf's, a hair cap, and eyes and brow at the same head fractions as Wolf's, seated on the head's front faces. `tools/blender/bootstrap/build_crowd.py` builds them. Every layer it exports shares the figure's origin, because the game draws each layer's bare mesh in a `MultiMesh`; a layer with its own origin drew every head inside its tunic once, leaving the eyes and hair floating. Which audience a stage seats is a `CrowdProfile` on its stage profile: The Arena's is the Roman crowd, and The End has none.
 
 ## The build
 

@@ -18,6 +18,18 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 WOLF_PATH = os.path.join(ROOT, "game", "content", "characters", "wolf.character.json")
 
 
+def linear_channel(value):
+    """sRGB 0-1 to the linear base color the builder writes. One conversion."""
+    value = float(value)
+    if value <= 0.04045:
+        return value / 12.92
+    return ((value + 0.055) / 1.055) ** 2.4
+
+
+def linear_color(color):
+    return tuple(linear_channel(channel) for channel in color)
+
+
 def load(path=WOLF_PATH):
     with open(path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
@@ -214,6 +226,9 @@ def clearance_self_check(path=WOLF_PATH):
     data["parts"][-1] = temple
     if face_problems(data):
         raise ValueError("temple hair beside the face was rejected")
+    wool = linear_color([32.0 / 255.0, 36.0 / 255.0, 40.0 / 255.0])
+    if abs(wool[0] - 0.01444) > 1.0e-4 or abs(wool[2] - 0.02122) > 1.0e-4:
+        raise ValueError("sRGB #202428 did not linearize through the one helper")
 
 
 def _inside(point, region):

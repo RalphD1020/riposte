@@ -5,13 +5,13 @@
   "bounds": {
     "min": [
       -0.2462,
-      -0.1191,
+      -0.0961,
       0.06
     ],
     "max": [
       0.2462,
       0.52,
-      1.3
+      1.17
     ]
   },
   "bone_names": [],
@@ -27,5 +27,5 @@
   "triangle_count": 1208,
   "color_targets": [],
   "source": "crowd/seated.blend",
-  "source_sha256": "0dbe145e4fde9dde93e04a1b8783c8d7449d32057465863e7030fa5215edb7d3"
+  "source_sha256": "5789378745391f5e48c8bd52285f750aaedc21fa90a81f5affdfd710dbd56f94"
 }

@@ -1059,8 +1059,7 @@ func test_a_shove_off_the_edge_flies_out_along_the_exit_momentum() -> void:
 	await await_frames(2)
 
 
-## Wolf vs Wolf on default skins is a true mirror: the Dark/North copy wears
-## the ALTERNATE colorway on body and weapon, the Light/South copy its own.
+## Wolf vs Wolf on the same costume stays that costume. Side is the accent.
 func test_a_mirror_match_tells_the_two_wolves_apart() -> void:
 	var driver := AppDriver.boot(7)
 	await await_frames(1)
@@ -1069,10 +1068,11 @@ func test_a_mirror_match_tells_the_two_wolves_apart() -> void:
 		var proxy := screen.presenter.fighter_proxy(slot)
 		var combatant := proxy.combatant_kit()
 		assert_true(combatant.mirror, "fixture: slot %d is in a mirror" % slot)
-		var alternate := proxy.side == DuelSide.Id.DARK_NORTH
-		assert_eq(_wears_alternate(proxy.visual_root(), combatant), alternate, "slot %d body wears %s" % [slot, "ALTERNATE" if alternate else "DEFAULT"])
+		assert_false(_wears_alternate(proxy.visual_root(), combatant), "slot %d keeps its costume" % slot)
 		if proxy.weapon_model() != null:
-			assert_eq(_wears_alternate(proxy.weapon_model(), combatant), alternate, "slot %d weapon follows the fighter's colorway" % slot)
+			assert_false(_wears_alternate(proxy.weapon_model(), combatant), "slot %d sword is not a costume recolor" % slot)
+		var sash := proxy.visual_root().find_child("SideAccentSash", true, false) as MeshInstance3D
+		assert_eq((sash.material_override as StandardMaterial3D).albedo_color, RiposteTheme.accent_for(proxy.side), "slot %d is marked by its side accent" % slot)
 	driver.shutdown()
 	await await_frames(2)
 

@@ -24,6 +24,7 @@
 [sub_resource type="Resource" id="Resource_pit"]
 script = ExtResource("12_stage")
 crowd = ExtResource("13_crowd")
+readability_surfaces = PackedStringArray("floor", "inner_wall", "shadow_band")
 
 [resource]
 script = ExtResource("1_kit")

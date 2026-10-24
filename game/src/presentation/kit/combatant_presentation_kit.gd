@@ -17,7 +17,8 @@ var weapon_skin: WeaponSkinKit
 ## True only in a true visual mirror (same fighter + same skin on both slots),
 ## which is the only time the Dark/North copy uses its ALTERNATE colorway.
 var mirror: bool = false
-## -1 keeps the mirror rule. 0 is Main, 1 is Alternate.
+## Kept so an old caller can still record a slot. It does not recolor the body.
+## Main and Alternate select the mesh, upstream of this kit.
 var palette_override: int = -1
 
 
@@ -62,19 +63,11 @@ func colorway() -> SkinColorwayProfile:
 	return fighter.colorway if fighter != null else null
 
 
-## The material overrides to paint for a fighter on `side`. DEFAULT (every
-## ordinary matchup, and the Light side of a mirror) is empty. The weapon
-## follows the fighter, so these may name body and weapon materials together.
-func colorway_overrides(side: DuelSide.Id) -> Dictionary:
-	var profile := colorway()
-	if profile == null:
-		return {}
-	return profile.overrides(chosen_variant(side))
+## Body materials stay the costume's. Side does not swap them. The accent
+## pieces and the HUD carry side. The sword is not in this dictionary.
+func colorway_overrides(_side: DuelSide.Id) -> Dictionary:
+	return {}
 
 
-func chosen_variant(side: DuelSide.Id) -> SkinColorwayProfile.Variant:
-	if palette_override == 0:
-		return SkinColorwayProfile.Variant.DEFAULT
-	if palette_override == 1:
-		return SkinColorwayProfile.Variant.ALTERNATE
-	return ColorwayResolver.variant_for(side, mirror)
+func chosen_variant(_side: DuelSide.Id) -> SkinColorwayProfile.Variant:
+	return SkinColorwayProfile.Variant.DEFAULT

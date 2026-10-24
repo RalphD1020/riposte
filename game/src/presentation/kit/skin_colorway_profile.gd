@@ -1,13 +1,10 @@
 class_name SkinColorwayProfile
 extends Resource
 
-## Two material sets for one look: DEFAULT (the character's own palette) and
-## ALTERNATE. This is a **mirror-match discriminator, not a team identity** —
-## in an ordinary matchup every character wears its default regardless of
-## side; only in a true visual mirror (same fighter identity AND the same
-## selected skin on both slots) does the Dark/North copy switch to ALTERNATE
-## so the two are told apart. Side readability still comes from the separate
-## SideAccent channel, applied afterward, so this is redundant on top of it.
+## DEFAULT is the costume's own materials. Product matches do not apply
+## ALTERNATE: Main and Alternate are meshes, and side is the accent channel.
+## The stored dictionary remains so a test can still name those materials.
+## It must not recolor a body or a blade.
 ##
 ## DEFAULT is implied by the model's own authored materials, so only the
 ## ALTERNATE overrides are stored (material resource name → Material), applied

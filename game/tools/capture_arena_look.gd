@@ -224,14 +224,17 @@ func _hair_views(viewport: SubViewport, world: Node3D, out: String) -> void:
 		world.add_child(proxy)
 		var state := DuelSetup.new_state(rules, 1)
 		var row := SnapshotProjector.project(state, rules).fighter(0)
-		proxy.apply_pose(Vector3.ZERO, 0.0, row.weapon_angle, row, 1.0 / 60.0)
 		var shots: Array[Dictionary] = [
 			{"name": "front", "at": Vector3(0.0, 1.55, 2.4)},
 			{"name": "side", "at": Vector3(2.4, 1.55, 0.15)},
+			{"name": "three_quarter", "at": Vector3(1.7, 1.55, 1.7)},
+			{"name": "turn", "at": Vector3(1.7, 1.55, 1.7), "angle": 0.9},
 			{"name": "rear", "at": Vector3(0.0, 1.55, -2.4)},
 			{"name": "gameplay", "at": Vector3(0.0, 10.4, 12.6)},
 		]
 		for shot: Dictionary in shots:
+			var angle := float(shot.get("angle", row.weapon_angle))
+			proxy.apply_pose(Vector3.ZERO, 0.0, angle, row, 1.0 / 60.0)
 			camera.position = shot["at"]
 			camera.look_at(head if String(shot["name"]) != "gameplay" else Vector3(0.0, 0.8, 0.0), Vector3.UP)
 			await process_frame

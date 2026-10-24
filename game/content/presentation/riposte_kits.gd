@@ -19,9 +19,29 @@ const AUTHORED_KIT_PATHS: Dictionary = {
 }
 
 
-## Cosmetic skin ids the settings can pick. Ids, not paths, are what persist.
+## Cosmetic skin ids. Ids, not paths, are what persist.
 const SKIN_DUELIST_TRAINING := &"skin.duelist.training"
 const SKIN_BASTARD_SWORD_TRAINING := &"skin.bastard_sword.training"
+## Fight Setup. 0 is Main (the ranger mesh and its palette). 1 is Alternate
+## (the training mesh and its palette). Side is not a costume.
+
+
+static func costumes_chosen(palette: PackedInt32Array) -> bool:
+	return palette.size() >= 2 and palette[0] >= 0 and palette[1] >= 0
+
+
+static func costume_fighter_skins(palette: PackedInt32Array) -> Array[StringName]:
+	var skins: Array[StringName] = []
+	for choice in palette:
+		skins.append(SKIN_DUELIST_TRAINING if int(choice) == 1 else &"")
+	return skins
+
+
+static func costume_weapon_skins(palette: PackedInt32Array) -> Array[StringName]:
+	var skins: Array[StringName] = []
+	for choice in palette:
+		skins.append(SKIN_BASTARD_SWORD_TRAINING if int(choice) == 1 else &"")
+	return skins
 
 ## Match-wide and cosmetic layers. All optional: a missing file is the default.
 const ANNOUNCER_PATH := "res://assets/presentation/voice/announcer/announcer_kit.tres"

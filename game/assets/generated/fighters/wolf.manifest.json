@@ -10,7 +10,7 @@
     ],
     "max": [
       0.3694,
-      0.185,
+      0.1961,
       1.825
     ]
   },
@@ -67,15 +67,15 @@
   "attachment_names": [],
   "material_slots": [
     "cloth",
+    "costume_metal",
     "fabric",
     "fur",
     "hair",
     "leather",
-    "metal",
     "side_accent",
     "skin"
   ],
-  "triangle_count": 2136,
+  "triangle_count": 2172,
   "color_targets": [
     "SideAccentBracer.L",
     "SideAccentBracer.R",
@@ -83,5 +83,5 @@
     "SideAccentSash"
   ],
   "source": "fighters/wolf.blend",
-  "source_sha256": "51270ebefecc6b008819a5fb79e68b3e18fcbc4024f12ba59a40078d1be51999"
+  "source_sha256": "b64ab063b4369b4f1e9bd6bc02ffa4e1b01f6ab6ee7fd3091decb98b3bc41515"
 }

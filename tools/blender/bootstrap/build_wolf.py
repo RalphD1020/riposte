@@ -1,8 +1,8 @@
 """Bootstrap Wolf, the baseline duelist (art-src/blender/fighters/wolf.blend).
 
 Wolf is built in layers, never painted: a cylindrical core torso, a separate
-gambeson shell, a physical belt, a fur collar, block boots, bracers, block
-hair, and cloth panels. Every piece is its own low-poly solid bound rigidly
+gambeson shell, a chest layer, a cloak or mantle, a physical belt, a fur
+collar, block boots, bracers, block hair, and cloth panels. Every piece is its own low-poly solid bound rigidly
 to exactly one bone, so joints read as construction joints and nothing
 deforms organically.
 
@@ -250,15 +250,16 @@ def build_body(rig, training):
     colors = character_art.palette_for(ART, variant)
     m = {}
     for slot, body in colors.items():
-        color = tuple(body["color"])
+        color = character_art.linear_color(body["color"])
         extra = {}
+        material_name = "costume_metal" if slot == "metal" else slot
         if slot == "metal":
-            extra = {"metallic": body.get("metallic", 0.0), "emission": (0.35, 0.22, 0.08), "emission_strength": 0.08}
+            extra = {"metallic": body.get("metallic", 0.0)}
         elif "metallic" in body:
             extra = {"metallic": body["metallic"]}
-        m[slot] = rb.material(slot, color, roughness=body.get("roughness", 0.8), **extra)
+        m[slot] = rb.material(material_name, color, roughness=body.get("roughness", 0.8), **extra)
     accent = ART["side_accent"]
-    m["side_accent"] = rb.material("side_accent", tuple(accent["preview"]), roughness=accent.get("roughness", 0.7))
+    m["side_accent"] = rb.material("side_accent", character_art.linear_color(accent["preview"]), roughness=accent.get("roughness", 0.7))
 
     def solid(obj, bone_name):
         return bind(obj, rig, bone_name)

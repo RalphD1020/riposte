@@ -10,6 +10,7 @@
 
 [sub_resource type="Resource" id="Resource_deck"]
 script = ExtResource("5_stage")
+readability_surfaces = PackedStringArray("deck")
 ground = 1
 backdrop = 1
 home_marks = false

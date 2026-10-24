@@ -23,12 +23,11 @@ import riposte_blocks as rb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-## The head is Wolf's pentagon. Its height stays the 0.38 m it was authored at;
-## matching Wolf's height-to-radius ratio shortened it to 0.31 m, and that
-## proportion change is not part of the offset fix. It starts inside the neck
-## so it sits on it. The point faces +Y here and -Y on Wolf.
-HEAD_RADIUS = 0.155
-HEAD_HEIGHT = 0.38
+## A default person's head, near Wolf's 0.125 m radius and 0.25 m height.
+## The body below stays the simple tunic, not Wolf's armor. It starts inside
+## the neck so it sits on it. The point faces +Y here and -Y on Wolf.
+HEAD_RADIUS = 0.125
+HEAD_HEIGHT = 0.25
 HEAD_Z0 = 0.92
 HEAD_Z1 = HEAD_Z0 + HEAD_HEIGHT
 HEAD_DEPTH = 0.95
@@ -47,7 +46,7 @@ BROW_Z = HEAD_Z0 + 0.672 * HEAD_HEIGHT
 ## How far an eye's centre stands in front of the face, as on Wolf.
 EYE_PROUD = 0.002
 ## The crown overhangs the head the way Wolf's hair slab overhangs his prism.
-HAIR_RADIUS = 0.162
+HAIR_RADIUS = 0.131
 HAIR_OVERLAP = 0.02
 CROP_THICK = 0.06
 BUN_THICK = 0.05

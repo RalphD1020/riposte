@@ -60,7 +60,17 @@ func test_each_stage_seats_the_crowd_its_profile_names() -> void:
 	again.free()
 	for stage: StageDefinition in [StageCatalog.arena(), StageCatalog.the_end(), StageCatalog.open_disc()]:
 		var kits := _kits_for(stage.kit_id)
-		assert_eq(ArenaScaffold.profile_of(kits.arena).crowd != null, stage.has_crowd, "%s: the stage list and the kit agree on a crowd" % stage.display_name)
+		var profile := ArenaScaffold.profile_of(kits.arena)
+		assert_eq(profile.crowd != null, stage.has_crowd, "%s: the stage list and the kit agree on a crowd" % stage.display_name)
+		assert_false(profile.readability_surfaces.is_empty(), "%s: the stage names the surfaces behind a fighter" % stage.display_name)
+	var arena_profile := ArenaScaffold.profile_of(arena_kits.arena)
+	assert_true(arena_profile.readability_surfaces.has("floor"), "the Arena names its floor")
+	assert_true(arena_profile.readability_surfaces.has("inner_wall"), "and its inner wall")
+	assert_true(arena_profile.readability_surfaces.has("shadow_band"), "and the shadow band")
+	var blank := StagePresentationProfile.new()
+	blank.readability_surfaces = PackedStringArray()
+	blank.ground = StagePresentationProfile.Ground.PIT
+	assert_eq(blank.problem(), "a stage names the surfaces behind a fighter", "an unnamed background fails closed")
 	var deck_profile := ArenaScaffold.profile_of(end_kits.arena).duplicate() as StagePresentationProfile
 	assert_eq(deck_profile.problem(), "", "fixture: The End's profile is valid")
 	deck_profile.crowd = roman
@@ -128,8 +138,8 @@ func test_the_same_seed_seats_the_same_people() -> void:
 	assert_true(top > 1.1, "the skull clears the collar (top %.3f)" % top)
 	var skin_drawn := _roman().part(false, "skin").get_aabb()
 	var drawn_top := skin_drawn.position.y + skin_drawn.size.y
-	## The authored head is 0.38 m, and the marks sit at Wolf's fraction of it.
-	var head_height := 0.38
+	## The authored head is 0.25 m, and the marks sit at Wolf's fraction of it.
+	var head_height := 0.25
 	assert_true(face_box.position.y > drawn_top - head_height and face_box.end.y < drawn_top, "the eyes and brow sit on the drawn head (face %.3f..%.3f, head top %.3f)" % [face_box.position.y, face_box.end.y, drawn_top])
 	var face_share := (face_box.position.y - (drawn_top - head_height)) / head_height
 	assert_true(face_share > 0.45, "the marks sit in the upper half of the head, not at the mouth (%.2f)" % face_share)
@@ -141,7 +151,7 @@ func test_the_same_seed_seats_the_same_people() -> void:
 		samples += 1
 		reach = maxf(reach, Vector2(point.x, point.z).length())
 	assert_true(samples > 8, "the top of the figure is a skull, not one vertex")
-	assert_true(reach > 0.12 and reach < 0.22, "that skull is wider than the neck and narrower than the shoulders (%.3f)" % reach)
+	assert_true(reach > 0.10 and reach < 0.18, "that skull is wider than the neck and narrower than the shoulders (%.3f)" % reach)
 	var face_mesh := _roman().face()
 	assert_false(String(face_mesh.resource_name).begins_with("fallback"), "the face is the exported mesh")
 	var hair_top := crop.get_aabb().position.y + crop.get_aabb().size.y
@@ -229,8 +239,18 @@ func test_the_scaffold_adds_no_collider_and_a_missing_part_is_named() -> void:
 	assert_eq(missing.resource_name, "fallback.seated.absent", "a missing part uses the named fallback")
 	var text := FileAccess.get_file_as_string("res://content/characters/wolf.character.json")
 	assert_true(text.contains("\"skin\""), "fixture: Wolf's palette is in the file")
-	assert_true(text.contains("0.87") and text.contains("0.71") and text.contains("0.6"), "Wolf's palette.skin is unchanged")
+	assert_true(text.contains("0.94052"), "Wolf's skin is the sRGB of the face that was already shipping")
 	var parsed: Variant = JSON.parse_string(text)
+	var palette: Dictionary = (parsed as Dictionary)["palette"]
+	var wool: Array = ((palette["fabric"] as Dictionary)["color"] as Array)
+	assert_near(float(wool[0]), 0.12549, 0.0002, "ranger wool is sRGB #202428")
+	var skin: Array = ((palette["skin"] as Dictionary)["color"] as Array)
+	assert_near(float(skin[0]), 0.94052, 0.0002, "skin is the sRGB of the previous linear face")
+	var training_colors: Dictionary = ((((parsed as Dictionary)["variants"] as Dictionary)["training"] as Dictionary)["palette_overrides"] as Dictionary)
+	var slate: Array = ((training_colors["fabric"] as Dictionary)["color"] as Array)
+	assert_near(float(slate[0]), 0.16078, 0.0002, "training wool is sRGB #29343F")
+	var pale: Array = ((training_colors["fur"] as Dictionary)["color"] as Array)
+	assert_near(float(pale[0]), 0.6549, 0.0002, "training fur trim is sRGB #A7A69E")
 	var swatches: Dictionary = (parsed as Dictionary)["skin_swatches"]
 	var crowd_skin := _roman().skin
 	assert_eq(crowd_skin.size(), swatches.size(), "the crowd uses every authored swatch")
@@ -600,7 +620,12 @@ func test_the_layout_puts_feet_on_four_treads_and_leaves_the_disc_alone() -> voi
 	assert_eq(key.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY, "the key draws the one sun")
 	assert_eq(rim.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_ONLY, "the rim does not add a second sun")
 	assert_true(key.light_energy > rim.light_energy, "the key stays stronger than the cool fill")
-	assert_eq(RiposteTheme.SAND, Color("a7a49a"), "the visible disc is the neutral stone-gray sand token")
+	assert_eq(RiposteTheme.SAND, Color("585650"), "the fighting floor is the neutral stone-grey token")
+	assert_eq(RiposteTheme.STONE_INNER, Color("49463f"), "the inner wall is the darker stone candidate")
+	assert_eq(RiposteTheme.STONE_TRAVERTINE, Color("afa28a"), "travertine stays a limited light course")
+	assert_eq(RiposteTheme.STONE_LIMESTONE, Color("918675"), "limestone stays a lighter course accent")
+	assert_eq(RiposteTheme.STONE_TERRACOTTA, Color("805044"), "terracotta stays a limited warm accent")
+	assert_eq(RiposteTheme.WORLD_CLIFF, Color("34312d"), "the recess is the deep stone")
 	assert_eq(RiposteTheme.WORLD_FLOOR, Color("8a7f6c"), "the clothing token stays the mid stone")
 	var paving := arena.get_node_or_null("SandSurface")
 	var bowl := arena.get_node_or_null("Bowl")
