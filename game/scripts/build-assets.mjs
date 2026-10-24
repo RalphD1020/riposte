@@ -55,6 +55,7 @@ if (process.argv.includes("--bootstrap")) {
     ["build_sword.py", [[], ["--variant", "training"]]],
     ["build_wolf.py", [[], ["--variant", "training"]]],
     ["build_arena.py", [[]]],
+    ["build_crowd.py", [[]]],
   ]) {
     for (const variant of variants) {
       run(blender, join(tools, "bootstrap", script), variant);

@@ -24,8 +24,8 @@
     "leather",
     "skin"
   ],
-  "triangle_count": 1208,
+  "triangle_count": 1193,
   "color_targets": [],
   "source": "crowd/cheer.blend",
-  "source_sha256": "d0731be62d200854d7d2180524ffe5eafb952a616c15a15c5e341b76b39f0f37"
+  "source_sha256": "f699680eb4ea798316d3c5413f8265a3e8fe1f1e560ec153384978ca36186a86"
 }

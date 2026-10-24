@@ -72,14 +72,7 @@
           "roughness": 0.9
         }
       },
-      "part_overrides": {
-        "Hair": {
-          "size": [0.23, 0.21, 0.03]
-        },
-        "HairBack": {
-          "size": [0.2, 0.08, 0.16]
-        }
-      }
+      "part_overrides": {}
     }
   },
   "skin_swatches": {
@@ -193,9 +186,27 @@
       "z1": 1.75,
       "depth_scale": 0.95,
       "spin": -1.5707963267948966,
-      "bevel": 0.008,
+      "bevel": 0.0,
       "top_scale": 0.82,
       "nose_vertex": 0
+    },
+    {
+      "name": "HeadCrown",
+      "wear": "person",
+      "kind": "dome",
+      "bone": "Head",
+      "slot": "skin",
+      "sides": 5,
+      "radius": 0.125,
+      "depth_scale": 0.95,
+      "spin": -1.5707963267948966,
+      "rings": [
+        [1.746, 0.84, 0.0, 0.0],
+        [1.772, 0.7, 0.0, 0.006],
+        [1.798, 0.52, 0.0, 0.012],
+        [1.82, 0.32, 0.0, 0.018]
+      ],
+      "apex": [0.0, 0.022, 1.838]
     },
     {
       "name": "Eye.L",
@@ -227,121 +238,181 @@
       "at": [0.0, -0.088, 1.668]
     },
     {
-      "name": "Hair",
+      "name": "HairCap",
       "wear": "hair",
-      "kind": "box",
+      "kind": "dome",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.25, 0.23, 0.05],
-      "at": [0.0, 0.01, 1.755]
+      "sides": 5,
+      "radius": 0.125,
+      "depth_scale": 0.95,
+      "spin": -1.5707963267948966,
+      "rings": [
+        [1.752, 0.9, 0.0, 0.002],
+        [1.778, 0.74, 0.0, 0.008],
+        [1.804, 0.54, 0.0, 0.014],
+        [1.826, 0.32, 0.0, 0.02]
+      ],
+      "apex": [0.0, 0.024, 1.844],
+      "when": ["ranger"]
     },
     {
-      "name": "HairNape",
+      "name": "HairCropCap",
       "wear": "hair",
-      "kind": "box",
+      "kind": "dome",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.18, 0.1, 0.18],
-      "at": [0.0, 0.12, 1.56]
+      "sides": 5,
+      "radius": 0.125,
+      "depth_scale": 0.95,
+      "spin": -1.5707963267948966,
+      "rings": [
+        [1.758, 0.8, 0.0, 0.0],
+        [1.782, 0.58, 0.0, 0.004],
+        [1.804, 0.34, 0.0, 0.006]
+      ],
+      "apex": [0.0, 0.008, 1.822],
+      "when": ["training"]
     },
     {
-      "name": "HairTemple.L",
+      "name": "HairFlow",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.05, 0.08, 0.14],
-      "at": [0.12, -0.02, 1.62]
+      "points": [
+        [0.0, 0.08, 1.78],
+        [0.0, 0.12, 1.66],
+        [0.0, 0.145, 1.54]
+      ],
+      "width": [0.08, 0.06, 0.035],
+      "depth": [0.04, 0.035, 0.025],
+      "when": ["ranger"]
     },
     {
-      "name": "HairTemple.R",
+      "name": "HairSide.L",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.045, 0.07, 0.12],
-      "at": [-0.11, 0.0, 1.58]
+      "points": [
+        [0.045, 0.07, 1.76],
+        [0.035, 0.11, 1.64],
+        [0.02, 0.13, 1.54]
+      ],
+      "width": [0.05, 0.045, 0.03],
+      "depth": [0.04, 0.04, 0.03],
+      "when": ["ranger"]
     },
     {
-      "name": "HairBack",
+      "name": "HairSide.R",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.26, 0.12, 0.22],
-      "at": [0.0, 0.13, 1.66],
-      "bevel": 0.01
-    },
-    {
-      "name": "HairFringe",
-      "wear": "hair",
-      "kind": "box",
-      "bone": "Head",
-      "slot": "hair",
-      "size": [0.12, 0.05, 0.04],
-      "at": [-0.04, -0.08, 1.732],
-      "rotation": [0.0, 0.2, 0.0],
+      "points": [
+        [-0.04, 0.075, 1.75],
+        [-0.03, 0.11, 1.64],
+        [-0.015, 0.125, 1.56]
+      ],
+      "width": [0.04, 0.04, 0.025],
+      "depth": [0.035, 0.035, 0.025],
       "when": ["ranger"]
     },
     {
       "name": "HairForelock",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.1, 0.04, 0.035],
-      "at": [0.035, -0.07, 1.74],
+      "points": [
+        [0.0, 0.0, 1.8],
+        [-0.01, -0.03, 1.76]
+      ],
+      "width": [0.06, 0.038],
+      "depth": [0.028, 0.02],
+      "when": ["ranger"]
+    },
+    {
+      "name": "HairCrop",
+      "wear": "hair",
+      "kind": "clump",
+      "bone": "Head",
+      "slot": "hair",
+      "points": [
+        [0.0, 0.04, 1.8],
+        [0.0, 0.08, 1.68]
+      ],
+      "width": [0.08, 0.04],
+      "depth": [0.04, 0.03],
       "when": ["training"]
     },
     {
-      "name": "HairSide",
+      "name": "HairCropLock",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.04, 0.12, 0.12],
-      "at": [0.12, 0.02, 1.68],
-      "when": ["ranger"]
+      "points": [
+        [0.02, 0.01, 1.808],
+        [0.025, -0.025, 1.755]
+      ],
+      "width": [0.045, 0.028],
+      "depth": [0.025, 0.018],
+      "when": ["training"]
     },
     {
-      "name": "HairCrown",
+      "name": "BeardMustache",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.16, 0.14, 0.05],
-      "at": [0.0, -0.02, 1.8],
-      "when": ["ranger"]
+      "points": [
+        [-0.03, -0.09, 1.57],
+        [0.03, -0.09, 1.57]
+      ],
+      "width": [0.028, 0.028],
+      "depth": [0.018, 0.018]
     },
     {
-      "name": "HairLock.L",
+      "name": "BeardJaw",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.055, 0.06, 0.18],
-      "at": [0.11, 0.09, 1.56],
-      "when": ["ranger"]
+      "points": [
+        [0.0, -0.07, 1.55],
+        [0.0, -0.075, 1.5],
+        [0.0, -0.05, 1.46]
+      ],
+      "width": [0.09, 0.07, 0.035],
+      "depth": [0.035, 0.035, 0.025]
     },
     {
-      "name": "HairLock.R",
+      "name": "BeardCheek.L",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.045, 0.055, 0.12],
-      "at": [-0.09, 0.07, 1.62],
-      "when": ["ranger"]
+      "points": [
+        [0.055, -0.05, 1.57],
+        [0.065, -0.06, 1.52]
+      ],
+      "width": [0.035, 0.03],
+      "depth": [0.025, 0.022]
     },
     {
-      "name": "HairRear",
+      "name": "BeardCheek.R",
       "wear": "hair",
-      "kind": "box",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.1, 0.06, 0.18],
-      "at": [0.0, 0.14, 1.52],
-      "when": ["ranger"]
+      "points": [
+        [-0.05, -0.045, 1.56],
+        [-0.055, -0.055, 1.515]
+      ],
+      "width": [0.03, 0.025],
+      "depth": [0.022, 0.02]
     },
     {
       "name": "GambesonShell",
@@ -444,8 +515,8 @@
       "kind": "box",
       "bone": "Chest",
       "slot": "leather",
-      "size": [0.22, 0.02, 0.24],
-      "at": [0.0, -0.225, 1.2]
+      "size": [0.22, 0.04, 0.24],
+      "at": [0.0, -0.235, 1.2]
     },
     {
       "name": "ChestBand",

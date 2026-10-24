@@ -24,8 +24,8 @@
     "leather",
     "skin"
   ],
-  "triangle_count": 1208,
+  "triangle_count": 1193,
   "color_targets": [],
   "source": "crowd/seated.blend",
-  "source_sha256": "5789378745391f5e48c8bd52285f750aaedc21fa90a81f5affdfd710dbd56f94"
+  "source_sha256": "a6c8733d2178cf27315f6bf7c063d93f6aa4f57b549e2993a36004f15ffc9bb2"
 }

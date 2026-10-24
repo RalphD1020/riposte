@@ -76,6 +76,88 @@ def box(name, size, location, mat, parent=None, bevel=0.0, rotation=(0.0, 0.0, 0
     return _object(name, mesh, mat, parent)
 
 
+def clump(name, points, widths, depths, mat, parent=None, bevel=0.0):
+    """A faceted solid along a centerline. Each station is a rectangle of
+    `widths` by `depths` in the plane across the path. The result tapers with
+    those sizes. It is not a tube and not a box dropped on each point."""
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    stations = [Vector(point) for point in points]
+    tangents = []
+    for index, point in enumerate(stations):
+        if index == 0:
+            tangent = stations[1] - stations[0]
+        elif index == len(stations) - 1:
+            tangent = stations[-1] - stations[-2]
+        else:
+            tangent = stations[index + 1] - stations[index - 1]
+        tangents.append(tangent.normalized() if tangent.length > 1e-8 else Vector((0.0, 0.0, 1.0)))
+    rings = []
+    up = Vector((0.0, 0.0, 1.0))
+    for index, point in enumerate(stations):
+        tangent = tangents[index]
+        side = tangent.cross(up)
+        if side.length < 1e-6:
+            side = tangent.cross(Vector((0.0, 1.0, 0.0)))
+        side.normalize()
+        lift = side.cross(tangent).normalized()
+        half_w = float(widths[index]) * 0.5
+        half_d = float(depths[index]) * 0.5
+        ring = []
+        for sx, sy in ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)):
+            ring.append(bm.verts.new(point + side * (sx * half_w) + lift * (sy * half_d)))
+        rings.append(ring)
+    bm.faces.new(rings[0][::-1])
+    bm.faces.new(rings[-1])
+    for index in range(len(rings) - 1):
+        start, end = rings[index], rings[index + 1]
+        for corner in range(4):
+            nxt = (corner + 1) % 4
+            bm.faces.new((start[corner], start[nxt], end[nxt], end[corner]))
+    _finish(bm, mesh, bevel)
+    return _object(name, mesh, mat, parent)
+
+
+def dome(name, sides, radius, rings, apex, mat, parent=None, center=(0.0, 0.0), depth_scale=1.0, spin=0.0, bevel=0.0):
+    """A faceted crown: the same polygon as the face, in shrinking rings, closed
+    by a small apex. Flat faces. Open at the bottom so it can sit on a prism.
+    Not a smooth sphere and not a flat lid."""
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    built = []
+    for ring in rings:
+        z = float(ring[0])
+        scale = float(ring[1])
+        ox = float(ring[2]) if len(ring) > 2 else 0.0
+        oy = float(ring[3]) if len(ring) > 3 else 0.0
+        loop = []
+        for index in range(int(sides)):
+            angle = spin + math.tau * index / int(sides)
+            x = center[0] + ox + math.cos(angle) * radius * scale
+            y = center[1] + oy + math.sin(angle) * radius * scale * depth_scale
+            loop.append(bm.verts.new((x, y, z)))
+        built.append(loop)
+    tip = bm.verts.new((float(apex[0]), float(apex[1]), float(apex[2])))
+    bottom = bm.faces.new(built[0][::-1])
+    for lower, upper in zip(built, built[1:]):
+        for index in range(int(sides)):
+            nxt = (index + 1) % int(sides)
+            bm.faces.new((lower[index], lower[nxt], upper[nxt], upper[index]))
+    last = built[-1]
+    for index in range(int(sides)):
+        nxt = (index + 1) % int(sides)
+        bm.faces.new((last[index], last[nxt], tip))
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    bm.faces.remove(bottom)
+    if bevel > 0.0:
+        bmesh.ops.bevel(bm, geom=list(bm.edges), offset=bevel, segments=1, affect="EDGES", clamp_overlap=True)
+    bm.to_mesh(mesh)
+    bm.free()
+    for poly in mesh.polygons:
+        poly.use_smooth = False
+    return _object(name, mesh, mat, parent)
+
+
 def prism(name, sides, radius, z0, z1, mat, parent=None, center=(0.0, 0.0), depth_scale=1.0, top_scale=1.0, spin=0.0, bevel=0.0, axis="Z"):
     """A vertical n-gon prism from z0 to z1 (or along -Y when axis == "Y").
 

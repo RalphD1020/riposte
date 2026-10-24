@@ -29,7 +29,7 @@ Strict CSP (no `unsafe-eval`, `frame-src 'none'`, `frame-ancestors 'none'`, `obj
 
 ## Repository integrity
 
-`pnpm integrity:check` (`scripts/check-integrity.mjs`) rejects merge-conflict markers, case-conflicting paths, and tracked files over 500 KB. The size cap skips only `art-src/blender/` and `game/assets/generated/` — authored arena geometry that is megabytes per mesh. It is not a general exemption, and it is not raised: a large file in source, docs, audio or config still fails and names itself. See [docs/reference/tooling.md](../reference/tooling.md).
+`pnpm integrity:check` (`scripts/check-integrity.mjs`) rejects merge-conflict markers, case-conflicting paths, and tracked files over 500 KB. The size cap and the marker scan skip only `art-src/blender/` and `game/assets/generated/` — authored arena geometry that is megabytes per mesh, and compressed blends that can contain the marker bytes by chance. It is not a general exemption, and it is not raised: a large file in source, docs, audio or config still fails and names itself. See [docs/reference/tooling.md](../reference/tooling.md).
 
 ## Trust boundaries
 

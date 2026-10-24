@@ -3,8 +3,9 @@
 Blender faces the figure along +Y, which the glTF export turns into Godot -Z,
 so a node that looks at the arena centre is facing the fight. Wolf faces -Y.
 Skin, cloth, hair, and the face are separate meshes so a MultiMesh can tint
-each one, and every one shares the figure's origin. The hair is the same
-pentagon as the head. The eyes and the brow bar are Wolf's, placed by the
+each one, and every one shares the figure's origin. The face is the pentagon;
+the crown and the hair are shrinking rings of that same polygon. The eyes and
+the brow bar are Wolf's, placed by the
 same fractions of this head (ART-HEAD-001), on its front faces.
 
 Run: blender --background --factory-startup --python tools/blender/bootstrap/build_crowd.py
@@ -32,7 +33,6 @@ HEAD_Z0 = 0.92
 HEAD_Z1 = HEAD_Z0 + HEAD_HEIGHT
 HEAD_DEPTH = 0.95
 HEAD_SPIN = math.pi * 0.5
-HEAD_BEVEL = 0.008
 ## Wolf's face as fractions of his head (ART-HEAD-001): eyes at 0.54 of its
 ## height, the brow at 0.672, sizes and spacing scaled by the head's radius.
 ## Never his world coordinates: copying those put the marks at mouth height.
@@ -45,11 +45,11 @@ BROW_SIZE = (0.12 * FACE_SCALE, 0.02, 0.022 * FACE_SCALE)
 BROW_Z = HEAD_Z0 + 0.672 * HEAD_HEIGHT
 ## How far an eye's centre stands in front of the face, as on Wolf.
 EYE_PROUD = 0.002
-## The crown overhangs the head the way Wolf's hair slab overhangs his prism.
+## Hair is a thin dome just outside the skull, not a slab on a flat lid.
 HAIR_RADIUS = 0.131
-HAIR_OVERLAP = 0.02
-CROP_THICK = 0.06
-BUN_THICK = 0.05
+## The face prism ends just above the brow. The crown uses the rest of the
+## 0.25 m head, so the seated height stays put and the lid is no longer flat.
+FACE_FRACTION = 0.74
 ## The bun sits on the back edge at this share of the head's height.
 BUN_HEIGHT = 0.42
 
@@ -136,9 +136,20 @@ def _figure(parent, cheer):
 
 
 def _head(parent, material):
+    face_top = HEAD_Z0 + FACE_FRACTION * HEAD_HEIGHT
     rb.prism(
-        "HeadSkin", 5, HEAD_RADIUS, HEAD_Z0, HEAD_Z1, material,
-        parent=parent, depth_scale=HEAD_DEPTH, spin=HEAD_SPIN, bevel=HEAD_BEVEL,
+        "HeadSkin", 5, HEAD_RADIUS, HEAD_Z0, face_top, material,
+        parent=parent, depth_scale=HEAD_DEPTH, top_scale=0.9, spin=HEAD_SPIN, bevel=0.0,
+    )
+    rb.dome(
+        "HeadCrown", 5, HEAD_RADIUS,
+        (
+            (face_top - 0.002, 0.92, 0.0, 0.0),
+            (face_top + 0.022, 0.68, 0.0, 0.004),
+            (face_top + 0.042, 0.42, 0.0, 0.008),
+        ),
+        (0.0, 0.01, HEAD_Z1),
+        material, parent=parent, depth_scale=HEAD_DEPTH, spin=HEAD_SPIN,
     )
 
 
@@ -163,11 +174,18 @@ def _face(parent, material):
     rb.box("Brow", BROW_SIZE, (0.0, brow_y, BROW_Z), material, parent=parent)
 
 
-def _cap(parent, material, thick):
-    z0 = HEAD_Z1 - HAIR_OVERLAP
-    rb.prism(
-        "HairCap", 5, HAIR_RADIUS, z0, z0 + thick, material,
-        parent=parent, depth_scale=HEAD_DEPTH, spin=HEAD_SPIN, bevel=0.006,
+def _cap(parent, material):
+    face_top = HEAD_Z0 + FACE_FRACTION * HEAD_HEIGHT
+    z0 = face_top - 0.01
+    rb.dome(
+        "HairCap", 5, HAIR_RADIUS,
+        (
+            (z0, 0.98, 0.0, 0.0),
+            (z0 + 0.028, 0.7, 0.0, 0.004),
+            (z0 + 0.048, 0.4, 0.0, 0.008),
+        ),
+        (0.0, 0.012, HEAD_Z1 + 0.01),
+        material, parent=parent, depth_scale=HEAD_DEPTH, spin=HEAD_SPIN,
     )
 
 
@@ -239,12 +257,12 @@ def _save_part(name, build):
 
 
 def _build_crop(root):
-    _cap(root, _mat("hair", "2a2420", 0.9), CROP_THICK)
+    _cap(root, _mat("hair", "2a2420", 0.9))
 
 
 def _build_bun(root):
     hair = _mat("hair", "2a2420", 0.9)
-    _cap(root, hair, BUN_THICK)
+    _cap(root, hair)
     _bun(root, hair)
 
 
@@ -254,7 +272,7 @@ def _build_face(root):
 
 def _build_fringe(root):
     hair = _mat("hair", "2a2420", 0.9)
-    _cap(root, hair, CROP_THICK)
+    _cap(root, hair)
     rb.box(
         "HairFringe", (0.1, 0.04, 0.05),
         (0.0, HEAD_RADIUS * 0.72, HEAD_Z1 - 0.02),

@@ -11,7 +11,7 @@ SCHEMA = "riposte.character_art"
 SCHEMA_VERSION = 1
 SLOTS = ("skin", "hair", "fabric", "cloth", "fur", "leather", "metal", "side_accent")
 WEARS = ("person", "hair", "clothes")
-KINDS = ("prism", "box", "segment")
+KINDS = ("prism", "box", "segment", "clump", "dome")
 FACES = ("alive", "dead")
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -201,7 +201,7 @@ def face_problems(data):
             problems.append("face_clearance does not hold %s" % name)
     for variant in ("ranger", "training"):
         for part in data["parts"]:
-            if part.get("wear") in COVERING and visible(part, variant) and _overlaps(_bounds(data, part, variant), region):
+            if part.get("wear") in COVERING and visible(part, variant) and _covers(data, part, variant, region):
                 problems.append("%s covers the face in %s" % (part["name"], variant))
     return problems
 
@@ -235,6 +235,41 @@ def _inside(point, region):
     return all(region[axis][0] <= float(point[axis]) <= region[axis][1] for axis in range(3))
 
 
+def _covers(data, part, variant, region):
+    if part.get("kind") == "dome":
+        for ring in part["rings"]:
+            if _overlaps(_dome_ring_bounds(part, ring), region):
+                return True
+        apex = part["apex"]
+        return _overlaps(((apex[0], apex[0]), (apex[1], apex[1]), (apex[2], apex[2])), region)
+    if part.get("kind") != "clump":
+        return _overlaps(_bounds(data, part, variant), region)
+    points = part_value(data, part, variant, "points")
+    widths = part_value(data, part, variant, "width")
+    depths = part_value(data, part, variant, "depth")
+    for point, width, depth in zip(points, widths, depths):
+        pad = 0.5 * max(float(width), float(depth))
+        station = (
+            (float(point[0]) - pad, float(point[0]) + pad),
+            (float(point[1]) - pad, float(point[1]) + pad),
+            (float(point[2]) - pad, float(point[2]) + pad),
+        )
+        if _overlaps(station, region):
+            return True
+    return False
+
+
+def _dome_ring_bounds(part, ring):
+    scale = float(ring[1])
+    reach = float(part["radius"]) * scale
+    depth = reach * float(part.get("depth_scale", 1.0))
+    ox = float(ring[2]) if len(ring) > 2 else 0.0
+    oy = float(ring[3]) if len(ring) > 3 else 0.0
+    center = part.get("center", [0.0, 0.0])
+    z = float(ring[0])
+    return ((center[0] + ox - reach, center[0] + ox + reach), (center[1] + oy - depth, center[1] + oy + depth), (z, z))
+
+
 def _overlaps(bounds, region):
     return all(bounds[axis][0] < region[axis][1] - 1e-9 and bounds[axis][1] > region[axis][0] + 1e-9 for axis in range(3))
 
@@ -253,6 +288,22 @@ def _bounds(data, part, variant):
                     corner = _rotate((sx * size[0], sy * size[1], sz * size[2]), rx, ry, rz)
                     corners.append(tuple(corner[axis] + at[axis] for axis in range(3)))
         return tuple((min(c[axis] for c in corners), max(c[axis] for c in corners)) for axis in range(3))
+    if kind == "clump":
+        points = part_value(data, part, variant, "points")
+        widths = part_value(data, part, variant, "width")
+        depths = part_value(data, part, variant, "depth")
+        xs, ys, zs = [], [], []
+        for point, width, depth in zip(points, widths, depths):
+            pad = 0.5 * max(float(width), float(depth))
+            xs.extend((float(point[0]) - pad, float(point[0]) + pad))
+            ys.extend((float(point[1]) - pad, float(point[1]) + pad))
+            zs.extend((float(point[2]) - pad, float(point[2]) + pad))
+        return ((min(xs), max(xs)), (min(ys), max(ys)), (min(zs), max(zs)))
+    if kind == "dome":
+        boxes = [_dome_ring_bounds(part, ring) for ring in part["rings"]]
+        apex = part["apex"]
+        boxes.append(((apex[0], apex[0]), (apex[1], apex[1]), (apex[2], apex[2])))
+        return tuple((min(box[axis][0] for box in boxes), max(box[axis][1] for box in boxes)) for axis in range(3))
     if kind == "prism":
         center = part.get("center", [0.0, 0.0])
         reach = float(part["radius"]) * max(1.0, float(part.get("top_scale", 1.0)))
@@ -328,6 +379,33 @@ def _geometry(part, problems):
             problems.append("%s segment needs endpoints a and b" % name)
         if not isinstance(part.get("width"), (int, float)) or not isinstance(part.get("depth"), (int, float)):
             problems.append("%s segment needs width and depth" % name)
+    elif kind == "clump":
+        points = part.get("points")
+        widths = part.get("width")
+        depths = part.get("depth")
+        if not isinstance(points, list) or len(points) < 2 or not all(_vec3(point) for point in points):
+            problems.append("%s clump needs at least two points" % name)
+        elif not isinstance(widths, list) or not isinstance(depths, list) or len(widths) != len(points) or len(depths) != len(points):
+            problems.append("%s clump width and depth must match its points" % name)
+        elif any(not isinstance(item, (int, float)) or item <= 0.0 for item in list(widths) + list(depths)):
+            problems.append("%s clump sizes must be positive" % name)
+    elif kind == "dome":
+        rings = part.get("rings")
+        if not isinstance(part.get("sides"), (int, float)) or part.get("sides", 0) < 3:
+            problems.append("%s dome needs at least 3 sides" % name)
+        if not isinstance(part.get("radius"), (int, float)) or float(part.get("radius") or 0) <= 0.0:
+            problems.append("%s dome needs a radius" % name)
+        if not isinstance(rings, list) or len(rings) < 2:
+            problems.append("%s dome needs at least two rings" % name)
+        elif any(
+            not isinstance(ring, list) or len(ring) < 2 or not all(isinstance(item, (int, float)) and math.isfinite(item) for item in ring)
+            for ring in rings
+        ):
+            problems.append("%s dome rings are z, scale, and an optional offset" % name)
+        elif any(float(ring[1]) <= 0.0 for ring in rings):
+            problems.append("%s dome scales must be positive" % name)
+        if not _vec3(part.get("apex")):
+            problems.append("%s dome needs an apex" % name)
 
 
 def _vec3(value):

@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.1226,
+      -0.1221,
       -0.1361,
       0.975
     ],
     "max": [
-      0.1226,
-      0.121,
-      1.2
+      0.1221,
+      0.122,
+      1.18
     ]
   },
   "bone_names": [],
@@ -22,8 +22,8 @@
   "material_slots": [
     "hair"
   ],
-  "triangle_count": 100,
+  "triangle_count": 69,
   "color_targets": [],
   "source": "crowd/hair_bun.blend",
-  "source_sha256": "b1a23f766ad236681287dc263cc07c1ba892a8ca051c75cda8e726e2e6f97cb7"
+  "source_sha256": "788d8160fb5443ce800b6d91a11eb03343251758e26839e42b752c155d0be6c3"
 }

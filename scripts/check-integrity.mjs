@@ -12,10 +12,11 @@ import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const MAX_BYTES = 500 * 1024;
-// Authored arena geometry. A bowl and a floor are one mesh each and run to
-// megabytes; the 500 KB cap is for catching an accidental dump in source,
-// docs, audio and config, not for those binaries. Narrow on purpose: a new
-// large file anywhere else still fails.
+// Authored arena geometry and generated blends. A bowl and a floor are one
+// mesh each and run to megabytes; a compressed blend can also contain the
+// bytes of a conflict marker by chance. The 500 KB cap and the marker scan
+// are for source, docs, audio and config. Narrow on purpose: a new large
+// file anywhere else still fails.
 const SIZE_EXEMPT = ["art-src/blender/", "game/assets/generated/"];
 const errors = [];
 
@@ -57,7 +58,8 @@ for (const file of files) {
     );
   }
 
-  if (stats.size === 0 || stats.size > 5 * 1024 * 1024) continue;
+  if (stats.size === 0 || stats.size > 5 * 1024 * 1024 || sizeExempt(file))
+    continue;
   const content = readFileSync(resolve(ROOT, file), "utf-8");
   const startMarker = `<${"<<<<<<"}`;
   const endMarker = `>${">>>>>>"}`;

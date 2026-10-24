@@ -71,7 +71,7 @@ pnpm --filter @riposte/game godot:test
 
 ## Integrity size cap
 
-`pnpm integrity:check` rejects a tracked file over 500 KB. That cap is for source, docs, audio and config, where a file that size is almost always an accidental dump. It does not apply to `art-src/blender/` or `game/assets/generated/`: the arena bowl and floor are one mesh each and are megabytes by construction, and shrinking them to pass the cap would throw away the stage. A large file anywhere else still fails, and the failure names the file and its size. Merge-conflict markers and case-conflicting paths are checked on every tracked file.
+`pnpm integrity:check` rejects a tracked file over 500 KB. That cap is for source, docs, audio and config, where a file that size is almost always an accidental dump. It does not apply to `art-src/blender/` or `game/assets/generated/`: the arena bowl and floor are one mesh each and are megabytes by construction, and shrinking them to pass the cap would throw away the stage. A large file anywhere else still fails, and the failure names the file and its size. The marker scan skips those same two trees: a compressed blend can contain the marker bytes by chance. Case-conflicting paths are still checked on every tracked file.
 
 ## Reports
 

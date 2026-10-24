@@ -4,7 +4,7 @@
 > See also: [docs/concepts/ux.md](./ux.md), [docs/concepts/simulation.md](./simulation.md), [docs/concepts/combat.md](./combat.md)
 > See also: [docs/reference/godot.md](../reference/godot.md) — the rig and animation contract for authored scenes
 > See also: [docs/reference/assets.md](../reference/assets.md) — the Blender and ElevenLabs asset pipeline
-> See also: [docs/concepts/character-art.md](./character-art.md) — the block body, the pentagonal head, face clearance, art layers
+> See also: [docs/concepts/character-art.md](./character-art.md) — the block body, the pentagonal face and faceted crown, face clearance, art layers
 > Source: `game/src/presentation/`, `game/content/presentation/`
 
 Presentation turns authoritative facts into pictures, sound, and feel. It never decides them (PRES-001).

@@ -280,6 +280,19 @@ def build_body(rig, training):
                 part["name"], tuple(character_art.part_value(ART, part, variant, "size")), tuple(part["at"]), mat,
                 bevel=part.get("bevel", 0.0), rotation=tuple(part.get("rotation", (0.0, 0.0, 0.0))),
             ), part["bone"])
+        elif kind == "dome":
+            solid(rb.dome(
+                part["name"], int(part["sides"]), part["radius"], part["rings"], tuple(part["apex"]), mat,
+                depth_scale=part.get("depth_scale", 1.0), spin=part.get("spin", 0.0), bevel=part.get("bevel", 0.0),
+            ), part["bone"])
+        elif kind == "clump":
+            solid(rb.clump(
+                part["name"],
+                character_art.part_value(ART, part, variant, "points"),
+                character_art.part_value(ART, part, variant, "width"),
+                character_art.part_value(ART, part, variant, "depth"),
+                mat, bevel=part.get("bevel", 0.0),
+            ), part["bone"])
         else:
             segment(
                 part["name"], tuple(part["a"]), tuple(part["b"]), part["width"], part["depth"],

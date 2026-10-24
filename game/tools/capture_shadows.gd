@@ -9,7 +9,7 @@ extends SceneTree
 ##
 ##   godot --path game --rendering-method gl_compatibility -s res://tools/capture_shadows.gd -- --label=base
 ##
-## One override per run: `--size=512` (directional atlas), `--blur=1.5` (key
+## One override per run: `--size=512` (directional shadow map), `--blur=1.5` (key
 ## `shadow_blur`), `--filter=0` (directional soft-shadow filter quality, 0 is
 ## hard), `--distance=20` (key `directional_shadow_max_distance`),
 ## `--sword-casts=false` (the authored sword leaves the shadow pass).
@@ -143,7 +143,7 @@ func _report(label: String, key: DirectionalLight3D, camera: Camera3D) -> void:
 	var span := maxf(hi.x - lo.x, hi.y - lo.y)
 	var used := _atlas_override()
 	var size := used if used > 0 else atlas
-	print("RIPOSTE_SHADOW_SETTINGS label %s method %s project_atlas %d used_atlas %d project_filter %d mode %d max_distance %.1f blur %.2f bias %.3f normal_bias %.3f pancake %.1f msaa %d" % [
+	print("RIPOSTE_SHADOW_SETTINGS label %s method %s directional_map %d used_directional_map %d project_filter %d mode %d max_distance %.1f blur %.2f bias %.3f normal_bias %.3f pancake %.1f msaa %d" % [
 		label, RenderingServer.get_current_rendering_method(), atlas, size,
 		int(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality")), key.directional_shadow_mode,
 		key.directional_shadow_max_distance, key.shadow_blur, key.shadow_bias, key.shadow_normal_bias, key.directional_shadow_pancake_size,
