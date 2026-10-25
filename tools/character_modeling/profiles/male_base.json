@@ -1,0 +1,32 @@
+{
+  "schema": "riposte.character_model",
+  "version": 1,
+  "id": "male-base",
+  "label": "M",
+  "title": "Male baseline, front-view study",
+  "status": "pending",
+  "pose": "relaxed-a-pose",
+  "sliders": {
+    "shoulder_breadth": 3.0,
+    "chest_mass": 1.52,
+    "chest_depth": 0.75,
+    "waist_taper": 0.88,
+    "hip_breadth": 1.34,
+    "neck": 0.56,
+    "upper_arm": 0.66,
+    "upper_arm_end": 0.5,
+    "forearm": 0.5,
+    "forearm_end": 0.36,
+    "thigh": 0.78,
+    "thigh_end": 0.56,
+    "calf_knee": 0.54,
+    "calf_belly": 0.66,
+    "calf_ankle": 0.48,
+    "hand_size": 1.08,
+    "boot_volume": 0.5,
+    "boot_shaft": 0.15,
+    "head_width": 1.0,
+    "crown_fullness": 1.0,
+    "side_blend": 0.66
+  }
+}

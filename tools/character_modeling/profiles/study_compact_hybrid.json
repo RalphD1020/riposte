@@ -1,0 +1,32 @@
+{
+  "schema": "riposte.character_model",
+  "version": 1,
+  "id": "study-compact-hybrid",
+  "label": "C",
+  "title": "C  compact hybrid",
+  "status": "study",
+  "pose": "relaxed-a-pose",
+  "sliders": {
+    "shoulder_breadth": 3.025,
+    "chest_mass": 1.69,
+    "chest_depth": 0.75,
+    "waist_taper": 0.89,
+    "hip_breadth": 1.5,
+    "neck": 0.58,
+    "upper_arm": 0.7,
+    "upper_arm_end": 0.54,
+    "forearm": 0.53,
+    "forearm_end": 0.39,
+    "thigh": 0.82,
+    "thigh_end": 0.62,
+    "calf_knee": 0.56,
+    "calf_belly": 0.7,
+    "calf_ankle": 0.5,
+    "hand_size": 1.13,
+    "boot_volume": 0.54,
+    "boot_shaft": 0.145,
+    "head_width": 1.0,
+    "crown_fullness": 1.0,
+    "side_blend": 0.66
+  }
+}

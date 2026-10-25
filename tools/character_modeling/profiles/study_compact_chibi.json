@@ -1,0 +1,32 @@
+{
+  "schema": "riposte.character_model",
+  "version": 1,
+  "id": "study-compact-chibi",
+  "label": "B",
+  "title": "B  compact chibi",
+  "status": "study",
+  "pose": "relaxed-a-pose",
+  "sliders": {
+    "shoulder_breadth": 3.05,
+    "chest_mass": 1.86,
+    "chest_depth": 0.75,
+    "waist_taper": 0.9,
+    "hip_breadth": 1.67,
+    "neck": 0.6,
+    "upper_arm": 0.74,
+    "upper_arm_end": 0.58,
+    "forearm": 0.56,
+    "forearm_end": 0.42,
+    "thigh": 0.86,
+    "thigh_end": 0.68,
+    "calf_knee": 0.58,
+    "calf_belly": 0.74,
+    "calf_ankle": 0.52,
+    "hand_size": 1.18,
+    "boot_volume": 0.58,
+    "boot_shaft": 0.14,
+    "head_width": 1.076923,
+    "crown_fullness": 1.04,
+    "side_blend": 0.55
+  }
+}

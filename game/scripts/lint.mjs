@@ -529,6 +529,20 @@ if (artCheck.status !== 0) {
   );
 }
 
+const modelCheck = spawnSync(
+  "python",
+  ["-c", "import character_modeling; character_modeling.self_check()"],
+  {
+    cwd: join(GAME_ROOT, "..", "tools", "character_modeling"),
+    encoding: "utf8",
+  },
+);
+if (modelCheck.status !== 0) {
+  fail(
+    `character model profiles failed validation\n${modelCheck.stderr || modelCheck.stdout || modelCheck.error || ""}`,
+  );
+}
+
 if (errors.length > 0) {
   console.error(`${errors.length} game lint issue(s):`);
   for (const error of errors) console.error(`  - ${error}`);

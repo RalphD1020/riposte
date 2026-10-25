@@ -90,3 +90,5 @@ The blockout ships until a person accepts a gameplay-camera capture of an author
 | Capture the face         | `godot --path game -s res://tools/capture_arena_look.gd -- --hair`                                              |
 
 That table is the blockout. An accepted authored fighter is a separate blend on `WolfRig`, exported by the same check, and it does not replace this table until a gameplay capture says so.
+
+Proportion studies and a future creator read [character-modeling.md](./character-modeling.md). Those profiles do not move this rig, and they do not replace the blockout.
