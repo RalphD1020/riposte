@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.365,
-      -0.3,
+      -0.4519,
+      -0.33,
       -0.0
     ],
     "max": [
-      0.3694,
-      0.1961,
-      1.844
+      0.4551,
+      0.2868,
+      1.8223
     ]
   },
   "bone_names": [
@@ -75,7 +75,7 @@
     "side_accent",
     "skin"
   ],
-  "triangle_count": 2166,
+  "triangle_count": 2020,
   "color_targets": [
     "SideAccentBracer.L",
     "SideAccentBracer.R",
@@ -83,5 +83,5 @@
     "SideAccentSash"
   ],
   "source": "fighters/wolf.blend",
-  "source_sha256": "757648c053f87917f0d4b0ecbf10fae100d1b2e159eec178a27e85d898c219a6"
+  "source_sha256": "eac846645c750837dc053d29ee7d1318f9dad5dfa006099b7a9b18d1c9cbff84"
 }

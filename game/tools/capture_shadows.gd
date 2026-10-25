@@ -12,7 +12,9 @@ extends SceneTree
 ## One override per run: `--size=512` (directional shadow map), `--blur=1.5` (key
 ## `shadow_blur`), `--filter=0` (directional soft-shadow filter quality, 0 is
 ## hard), `--distance=20` (key `directional_shadow_max_distance`),
-## `--sword-casts=false` (the authored sword leaves the shadow pass).
+## `--normal-bias=0.2` (key `shadow_normal_bias`), `--pitch=-40` and `--yaw=180`
+## (key rotation, degrees), `--sword-casts=false` (the authored sword leaves
+## the shadow pass).
 
 const SIZE := Vector2i(1280, 720)
 const CROP := Rect2i(448, 200, 384, 260)
@@ -34,6 +36,9 @@ func _run() -> void:
 	var atlas := -1
 	var blur := -1.0
 	var distance := -1.0
+	var normal_bias := -1.0
+	var pitch := -1000.0
+	var yaw := -1000.0
 	var filter := -1
 	var sword_casts := true
 	for argument: String in OS.get_cmdline_user_args():
@@ -49,6 +54,12 @@ func _run() -> void:
 			blur = float(argument.trim_prefix("--blur="))
 		elif argument.begins_with("--distance="):
 			distance = float(argument.trim_prefix("--distance="))
+		elif argument.begins_with("--normal-bias="):
+			normal_bias = float(argument.trim_prefix("--normal-bias="))
+		elif argument.begins_with("--pitch="):
+			pitch = float(argument.trim_prefix("--pitch="))
+		elif argument.begins_with("--yaw="):
+			yaw = float(argument.trim_prefix("--yaw="))
 	_out = ProjectSettings.globalize_path("res://../.reports/shadows/%s" % label)
 	DirAccess.make_dir_recursive_absolute(_out)
 	if atlas > 0:
@@ -72,6 +83,15 @@ func _run() -> void:
 		key.shadow_blur = blur
 	if distance > 0.0:
 		key.directional_shadow_max_distance = distance
+	if normal_bias >= 0.0:
+		key.shadow_normal_bias = normal_bias
+	if pitch > -900.0 or yaw > -900.0:
+		var rotation := key.rotation_degrees
+		if pitch > -900.0:
+			rotation.x = pitch
+		if yaw > -900.0:
+			rotation.y = yaw
+		key.rotation_degrees = rotation
 	var state := DuelSetup.new_state(rules, 1)
 	var snap := SnapshotProjector.project(state, rules)
 	var standing := _proxy(world, rules, kits, snap, 0)

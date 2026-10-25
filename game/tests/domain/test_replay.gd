@@ -202,12 +202,24 @@ func _replay_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2,
 ## (3). Seeds 3, 5 and 9 changed round flow because that missing chip damage
 ## changed who was alive. Blade contacts rose where a cut that used to spend
 ## itself on a hand met steel.
+## A hold that is still down when a swing ends now starts a charge. Wander
+## holds that used to die in the four-tick buffer become attacks. The four
+## seeds below are that input change and nothing else: no radius, torque, or
+## solver retune.
+##
+## A released tap now belongs to the action that blocked it, not to a
+## three-second clock. Seeds 3 and 17 do not move. Seed 9 loses one attack
+## (46 → 45) and gains two blade contacts (33 → 35); the kill, the ring-out,
+## and the body hits stay. Seed 5 does not stay a representative fight:
+## attacks 47 → 66, blade contacts 30 → 59, body hits 13 → 3, kills 2 → 0,
+## rounds 2 → 0. The hash is the regression signal for this queue. It is not
+## a claim that seed 5 got better.
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
-		3: "63692944d8ae2e9b721914589ead052d195dfe4f706efe876301015f0ebc380d",
-		5: "879e861ab4ed7a25717e4401f5f119d10a725ca58909d0f1ccb0c255f4c54dd7",
-		9: "57159087f754ce6615f779fdbde85423e41b05c1dd209552775d7ac9a544646c",
-		17: "842046ff6a553d8ef65d4333e06a49d232fb01575b1cfd937cd0873f00b6236e",
+		3: "f59b4d492a0adc52215ec19a1fcc8b4036298f432b40c2f76d398911fb99af42",
+		5: "1dedce5d877be11401994f524c3e2e0f40ca392a5611ea5f46a9ad928ebf93f3",
+		9: "09d37c1613e1b0a97346d8f08b0e30e1b3656a640ac8a9563108531291f6f509",
+		17: "593e0a09500c412119a030f5a40ef5d32c063dadfb88ff2e87d2718af13746a4",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -822,10 +834,10 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## stays; it was not narrowed to recover the old hashes.
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
-		3: {"attack_released": 26, "blade_collision": 19, "parry": 4, "deflection": 0, "body_hit": 22, "body_poke": 4, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
-		5: {"attack_released": 36, "blade_collision": 33, "parry": 7, "deflection": 0, "body_hit": 17, "body_poke": 2, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		9: {"attack_released": 31, "blade_collision": 33, "parry": 2, "deflection": 1, "body_hit": 7, "body_poke": 1, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
-		17: {"attack_released": 31, "blade_collision": 40, "parry": 8, "deflection": 1, "body_hit": 17, "body_poke": 1, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 0, "round_ended": 1},
+		3: {"attack_released": 27, "blade_collision": 1, "parry": 0, "deflection": 0, "body_hit": 16, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 4, "ring_out": 0, "round_ended": 4},
+		5: {"attack_released": 66, "blade_collision": 59, "parry": 17, "deflection": 1, "body_hit": 3, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 0, "ring_out": 0, "round_ended": 0},
+		9: {"attack_released": 45, "blade_collision": 35, "parry": 8, "deflection": 1, "body_hit": 11, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 1, "round_ended": 2},
+		17: {"attack_released": 32, "blade_collision": 13, "parry": 4, "deflection": 0, "body_hit": 21, "body_poke": 3, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
 		var runner := _played(seed_value)

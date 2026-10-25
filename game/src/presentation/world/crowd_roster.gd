@@ -12,6 +12,11 @@ const STREAM_ROLE := 2
 const STREAM_HAIR := 3
 const STREAM_HAIR_COLOR := 4
 const STREAM_CLOTH := 5
+## Independent of hair, tint, and role. A bald seat shows the ringed crown.
+const STREAM_BALD := 6
+const BALD_WEIGHT := 20
+## A modeled beard, chosen apart from the scalp. 0 wears none.
+const STREAM_BEARD := 7
 ## `skin_01`–`skin_10` in pairs: 18, 24, 24, 20, 14. The everyday role takes
 ## the leftover tenth so the draw sums to 100 (50 / 20 / 15 / 15).
 const SKIN_WEIGHTS: Array[int] = [9, 9, 12, 12, 12, 12, 10, 10, 7, 7]
@@ -27,6 +32,8 @@ var role: int = 0
 var hair: int = 0
 var hair_color: int = 0
 var cloth: int = 0
+var bald: bool = false
+var beard: int = 0
 
 
 static func assign(seed_value: int, seat: int, previous: CrowdRoster = null) -> CrowdRoster:
@@ -36,6 +43,8 @@ static func assign(seed_value: int, seat: int, previous: CrowdRoster = null) -> 
 	row.hair = _mix(seed_value, seat, STREAM_HAIR) % HAIR_SHAPES
 	row.hair_color = _mix(seed_value, seat, STREAM_HAIR_COLOR) % 4
 	row.cloth = _mix(seed_value, seat, STREAM_CLOTH) % 5
+	row.bald = _mix(seed_value, seat, STREAM_BALD) % 100 < BALD_WEIGHT
+	row.beard = _mix(seed_value, seat, STREAM_BEARD) % 2
 	if previous != null and previous.skin == row.skin and previous.role == row.role and previous.hair == row.hair:
 		row.hair = (row.hair + 1) % HAIR_SHAPES
 	return row

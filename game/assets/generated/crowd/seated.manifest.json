@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.2462,
-      -0.0961,
+      -0.2323,
+      -0.1668,
       0.06
     ],
     "max": [
-      0.2462,
+      0.2323,
       0.52,
-      1.17
+      1.15
     ]
   },
   "bone_names": [],
@@ -21,11 +21,12 @@
   ],
   "material_slots": [
     "fabric",
+    "face",
     "leather",
     "skin"
   ],
-  "triangle_count": 1193,
+  "triangle_count": 1520,
   "color_targets": [],
   "source": "crowd/seated.blend",
-  "source_sha256": "a6c8733d2178cf27315f6bf7c063d93f6aa4f57b549e2993a36004f15ffc9bb2"
+  "source_sha256": "cf5710e1533a56b0466b9c52d700e0b4c44f1d423f8cc53bdcd441800dee12d3"
 }

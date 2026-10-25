@@ -14,8 +14,9 @@ extends Resource
 ## The eyes and brow, one mesh named `face`.
 @export_file("*.glb") var face_scene: String = ""
 ## One scene per hairstyle, each with its own `hair` mesh. No style wears
-## another's.
+## another's. A full beard is the same kind of layer, chosen apart from the scalp.
 @export var hair_scenes: PackedStringArray = PackedStringArray()
+@export var beard_scenes: PackedStringArray = PackedStringArray()
 @export var skin: PackedColorArray = PackedColorArray()
 @export var cloth: PackedColorArray = PackedColorArray()
 @export var leather: PackedColorArray = PackedColorArray()
@@ -36,6 +37,10 @@ func hair_style(index: int) -> Mesh:
 	return CrowdMeshes.named(hair_scenes[wrapi(index, 0, hair_scenes.size())], "hair")
 
 
+func beard_style(index: int) -> Mesh:
+	return CrowdMeshes.named(beard_scenes[wrapi(index, 0, beard_scenes.size())], "hair")
+
+
 func pose_scene(cheer: bool) -> PackedScene:
 	var path := cheer_scene if cheer else seated_scene
 	return load(path) as PackedScene if ResourceLoader.exists(path) else null
@@ -49,6 +54,8 @@ func problem() -> String:
 			return "a crowd scene is missing: %s" % path
 	if hair_scenes.is_empty():
 		return "a crowd needs at least one hairstyle"
+	if beard_scenes.is_empty():
+		return "a crowd needs at least one beard"
 	var seen := {}
 	for path: String in hair_scenes:
 		if not ResourceLoader.exists(path):
@@ -56,6 +63,13 @@ func problem() -> String:
 		if seen.has(path):
 			return "a hairstyle is listed twice: %s" % path
 		seen[path] = true
+	var beards := {}
+	for path: String in beard_scenes:
+		if not ResourceLoader.exists(path):
+			return "a beard is missing: %s" % path
+		if beards.has(path) or seen.has(path):
+			return "a beard is listed twice: %s" % path
+		beards[path] = true
 	if skin.is_empty() or cloth.is_empty() or leather.is_empty() or hair.is_empty():
 		return "a crowd needs a skin, cloth, leather and hair palette"
 	return ""

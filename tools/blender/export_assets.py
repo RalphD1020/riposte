@@ -88,7 +88,9 @@ def _export_kwargs(path, kind):
         "export_optimize_animation_size": True,
         "export_def_bones": False,
         "export_reset_pose_bones": True,
-        "export_image_format": "NONE",
+        ## Fighters embed the face paint. Everything else stays untextured so a
+        ## stone mesh does not grow an image it does not use.
+        "export_image_format": "AUTO" if kind == "fighter" else "NONE",
     }
     ## Stone blocks carry a per-block Color multiplier, and the deck top a
     ## faint lift toward its rim. The default material mode skips it when

@@ -1,6 +1,6 @@
 {
   "schema": "riposte.character_art",
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "character.wolf",
   "display_name": "Wolf",
   "fighter_id": "fighter.duelist",
@@ -41,7 +41,7 @@
     },
     "metal": {
       "color": [0.45098, 0.46667, 0.47843],
-      "roughness": 0.55,
+      "roughness": 0.4,
       "metallic": 0.4
     }
   },
@@ -94,20 +94,46 @@
       "SideAccentSash",
       "SideAccentMark",
       "SideAccentBracer.L",
-      "SideAccentBracer.R",
-      "ShoulderEmblem"
+      "SideAccentBracer.R"
     ]
   },
   "face_clearance": {
     "head": "HeadSkin",
-    "band": [0.46, 0.75],
+    "band": [0.4, 0.74],
     "width": 0.65,
     "reach": 0.04
   },
+  "body": {
+    "head_z": 1.505,
+    "head_top": 1.8,
+    "head_radius": 0.165,
+    "neck_z": 1.41,
+    "chest_z": 1.18,
+    "chest_top": 1.39,
+    "spine_z": 1.03,
+    "spine_top": 1.18,
+    "hips_z": 0.89,
+    "hips_top": 1.03,
+    "root_tail": 0.15,
+    "shoulder": [0.265, 0.05, 1.37],
+    "collar_share": 0.3,
+    "hip_x": 0.12,
+    "hip_z": 0.89,
+    "knee_z": 0.4,
+    "knee_y_bias": -0.03,
+    "hip_y_share": 0.5,
+    "ankle_z": 0.09,
+    "shin_z": 0.17,
+    "toe_z": 0.04,
+    "toe_y_bias": -0.15,
+    "bracer_t": 0.35,
+    "accent_bracer_t": 0.92,
+    "boot_y_bias": -0.05,
+    "boot_z": 0.07
+  },
   "rig": {
-    "shoulder": [0.2, 0.0, 1.37],
-    "arm_segment": 0.3,
-    "hand_length": 0.06,
+    "arm_segment": 0.358,
+    "hand_length": 0.09,
     "grip_dominant": 0.225,
     "grip_offhand": 0.15,
     "blade_height": 1.0,
@@ -137,6 +163,44 @@
       "Foot.R"
     ]
   },
+  "silhouette": {
+    "head_share": 0.18,
+    "masses": {
+      "chest": {
+        "radius": 0.175,
+        "top_scale": 1.38,
+        "depth_scale": 0.78
+      },
+      "pelvis": {
+        "radius": 0.2,
+        "top_scale": 0.86,
+        "depth_scale": 0.82
+      },
+      "neck": {
+        "radius": 0.11,
+        "depth_scale": 0.9
+      },
+      "gambeson": {
+        "radius": 0.2,
+        "top_scale": 1.32,
+        "depth_scale": 0.8
+      },
+      "skirt": {
+        "radius": 0.23,
+        "top_scale": 0.84,
+        "depth_scale": 0.84
+      },
+      "hand": {
+        "width": 0.13,
+        "depth": 0.1,
+        "width_to": 0.1,
+        "depth_to": 0.08
+      },
+      "boot": {
+        "size": [0.22, 0.36, 0.14]
+      }
+    }
+  },
   "parts": [
     {
       "name": "TorsoLower",
@@ -145,10 +209,9 @@
       "bone": "Spine",
       "slot": "skin",
       "sides": 10,
-      "radius": 0.16,
+      "mass": "pelvis",
       "z0": 0.95,
-      "z1": 1.19,
-      "depth_scale": 0.8
+      "z1": 1.18
     },
     {
       "name": "TorsoCore",
@@ -157,11 +220,9 @@
       "bone": "Chest",
       "slot": "skin",
       "sides": 10,
-      "radius": 0.165,
-      "z0": 1.18,
-      "z1": 1.45,
-      "depth_scale": 0.8,
-      "top_scale": 1.04
+      "mass": "chest",
+      "z0": 1.17,
+      "z1": 1.41
     },
     {
       "name": "NeckSkin",
@@ -170,7 +231,7 @@
       "bone": "Neck",
       "slot": "skin",
       "sides": 6,
-      "radius": 0.055,
+      "mass": "neck",
       "z0": 1.42,
       "z1": 1.52
     },
@@ -181,32 +242,15 @@
       "bone": "Head",
       "slot": "skin",
       "sides": 5,
-      "radius": 0.125,
-      "z0": 1.5,
-      "z1": 1.75,
-      "depth_scale": 0.95,
+      "z0": -0.03,
+      "z1": 0.15,
+      "depth_scale": 1.0,
       "spin": -1.5707963267948966,
-      "bevel": 0.0,
-      "top_scale": 0.82,
-      "nose_vertex": 0
-    },
-    {
-      "name": "HeadCrown",
-      "wear": "person",
-      "kind": "dome",
-      "bone": "Head",
-      "slot": "skin",
-      "sides": 5,
-      "radius": 0.125,
-      "depth_scale": 0.95,
-      "spin": -1.5707963267948966,
-      "rings": [
-        [1.746, 0.84, 0.0, 0.0],
-        [1.772, 0.7, 0.0, 0.006],
-        [1.798, 0.52, 0.0, 0.012],
-        [1.82, 0.32, 0.0, 0.018]
-      ],
-      "apex": [0.0, 0.022, 1.838]
+      "bevel": 0.01,
+      "top_scale": 1.0,
+      "nose_vertex": 0,
+      "on": "head.base",
+      "radius_source": "head"
     },
     {
       "name": "Eye.L",
@@ -214,9 +258,10 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.035, 0.012, 0.02],
-      "at": [0.04, -0.093, 1.635],
-      "face": "alive"
+      "size": [0.042, 0.016, 0.018],
+      "at": [0.046, -0.14, 0.06],
+      "face": "alive",
+      "on": "head.base"
     },
     {
       "name": "Eye.R",
@@ -224,9 +269,10 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.035, 0.012, 0.02],
-      "at": [-0.04, -0.093, 1.635],
-      "face": "alive"
+      "size": [0.042, 0.016, 0.018],
+      "at": [-0.046, -0.14, 0.06],
+      "face": "alive",
+      "on": "head.base"
     },
     {
       "name": "Brow",
@@ -234,185 +280,172 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.12, 0.02, 0.022],
-      "at": [0.0, -0.088, 1.668]
+      "size": [0.13, 0.022, 0.014],
+      "at": [0.0, -0.138, 0.09],
+      "on": "head.base"
     },
     {
-      "name": "HairCap",
+      "name": "ScalpDome",
       "wear": "hair",
       "kind": "dome",
       "bone": "Head",
       "slot": "hair",
-      "sides": 5,
-      "radius": 0.125,
-      "depth_scale": 0.95,
+      "sides": 12,
+      "depth_scale": 1.0,
       "spin": -1.5707963267948966,
+      "closure": "face",
+      "radius_source": "head",
       "rings": [
-        [1.752, 0.9, 0.0, 0.002],
-        [1.778, 0.74, 0.0, 0.008],
-        [1.804, 0.54, 0.0, 0.014],
-        [1.826, 0.32, 0.0, 0.02]
+        [0.125, 1.08, 0.0, 0.008],
+        [0.17, 1.14, 0.0, 0.012],
+        [0.22, 1.02, 0.0, 0.016],
+        [0.26, 0.72, 0.0, 0.012],
+        [0.3, 0.42, 0.0, 0.006]
       ],
-      "apex": [0.0, 0.024, 1.844],
+      "on": "head.base"
+    },
+    {
+      "name": "HairCrown",
+      "wear": "hair",
+      "kind": "clump",
+      "bone": "Head",
+      "slot": "hair",
+      "profile": "gem",
+      "points": [
+        [0.0, -0.06, 0.26],
+        [0.0, 0.04, 0.28],
+        [0.0, 0.16, 0.22]
+      ],
+      "width": [0.15, 0.18, 0.15],
+      "depth": [0.07, 0.08, 0.07],
+      "bevel": 0.004,
+      "on": "head.base",
       "when": ["ranger"]
     },
     {
-      "name": "HairCropCap",
+      "name": "HairBun",
       "wear": "hair",
-      "kind": "dome",
+      "kind": "clump",
       "bone": "Head",
       "slot": "hair",
-      "sides": 5,
-      "radius": 0.125,
-      "depth_scale": 0.95,
-      "spin": -1.5707963267948966,
-      "rings": [
-        [1.758, 0.8, 0.0, 0.0],
-        [1.782, 0.58, 0.0, 0.004],
-        [1.804, 0.34, 0.0, 0.006]
+      "profile": "gem",
+      "points": [
+        [0.0, 0.1, 0.24],
+        [0.0, 0.2, 0.18],
+        [0.0, 0.26, 0.08]
       ],
-      "apex": [0.0, 0.008, 1.822],
+      "width": [0.12, 0.14, 0.11],
+      "depth": [0.08, 0.09, 0.07],
+      "bevel": 0.004,
+      "on": "head.base",
+      "when": ["ranger"]
+    },
+    {
+      "name": "HairTemple.L",
+      "wear": "hair",
+      "kind": "clump",
+      "bone": "Head",
+      "slot": "hair",
+      "profile": "gem",
+      "points": [
+        [0.14, -0.02, 0.26],
+        [0.16, 0.04, 0.2],
+        [0.14, 0.06, -0.02]
+      ],
+      "width": [0.08, 0.09, 0.07],
+      "depth": [0.05, 0.05, 0.04],
+      "bevel": 0.004,
+      "on": "head.base",
+      "when": ["ranger"]
+    },
+    {
+      "name": "HairTemple.R",
+      "wear": "hair",
+      "kind": "clump",
+      "bone": "Head",
+      "slot": "hair",
+      "profile": "gem",
+      "points": [
+        [-0.14, -0.02, 0.26],
+        [-0.16, 0.04, 0.2],
+        [-0.14, 0.06, -0.02]
+      ],
+      "width": [0.08, 0.09, 0.07],
+      "depth": [0.05, 0.05, 0.04],
+      "bevel": 0.004,
+      "on": "head.base",
+      "when": ["ranger"]
+    },
+    {
+      "name": "HairFront",
+      "wear": "hair",
+      "kind": "clump",
+      "bone": "Head",
+      "slot": "hair",
+      "profile": "gem",
+      "points": [
+        [0.0, -0.04, 0.28],
+        [0.0, -0.1, 0.22]
+      ],
+      "width": [0.13, 0.11],
+      "depth": [0.05, 0.045],
+      "bevel": 0.004,
+      "on": "head.base",
       "when": ["training"]
     },
     {
-      "name": "HairFlow",
+      "name": "HairLock.L",
       "wear": "hair",
       "kind": "clump",
       "bone": "Head",
       "slot": "hair",
+      "profile": "gem",
       "points": [
-        [0.0, 0.08, 1.78],
-        [0.0, 0.12, 1.66],
-        [0.0, 0.145, 1.54]
+        [0.14, 0.04, 0.26],
+        [0.16, 0.04, -0.02],
+        [0.14, 0.02, -0.16]
       ],
-      "width": [0.08, 0.06, 0.035],
-      "depth": [0.04, 0.035, 0.025],
-      "when": ["ranger"]
-    },
-    {
-      "name": "HairSide.L",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [0.045, 0.07, 1.76],
-        [0.035, 0.11, 1.64],
-        [0.02, 0.13, 1.54]
-      ],
-      "width": [0.05, 0.045, 0.03],
-      "depth": [0.04, 0.04, 0.03],
-      "when": ["ranger"]
-    },
-    {
-      "name": "HairSide.R",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [-0.04, 0.075, 1.75],
-        [-0.03, 0.11, 1.64],
-        [-0.015, 0.125, 1.56]
-      ],
-      "width": [0.04, 0.04, 0.025],
-      "depth": [0.035, 0.035, 0.025],
-      "when": ["ranger"]
-    },
-    {
-      "name": "HairForelock",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [0.0, 0.0, 1.8],
-        [-0.01, -0.03, 1.76]
-      ],
-      "width": [0.06, 0.038],
-      "depth": [0.028, 0.02],
-      "when": ["ranger"]
-    },
-    {
-      "name": "HairCrop",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [0.0, 0.04, 1.8],
-        [0.0, 0.08, 1.68]
-      ],
-      "width": [0.08, 0.04],
-      "depth": [0.04, 0.03],
+      "width": [0.1, 0.12, 0.09],
+      "depth": [0.06, 0.07, 0.05],
+      "bevel": 0.004,
+      "on": "head.base",
       "when": ["training"]
     },
     {
-      "name": "HairCropLock",
+      "name": "HairLock.R",
       "wear": "hair",
       "kind": "clump",
       "bone": "Head",
       "slot": "hair",
+      "profile": "gem",
       "points": [
-        [0.02, 0.01, 1.808],
-        [0.025, -0.025, 1.755]
+        [-0.14, 0.04, 0.26],
+        [-0.16, 0.04, -0.02],
+        [-0.14, 0.02, -0.16]
       ],
-      "width": [0.045, 0.028],
-      "depth": [0.025, 0.018],
+      "width": [0.1, 0.12, 0.09],
+      "depth": [0.06, 0.07, 0.05],
+      "bevel": 0.004,
+      "on": "head.base",
       "when": ["training"]
     },
     {
-      "name": "BeardMustache",
+      "name": "HairRear",
       "wear": "hair",
       "kind": "clump",
       "bone": "Head",
       "slot": "hair",
+      "profile": "gem",
       "points": [
-        [-0.03, -0.09, 1.57],
-        [0.03, -0.09, 1.57]
+        [0.0, 0.1, 0.28],
+        [0.0, 0.16, 0.06],
+        [0.0, 0.14, -0.18]
       ],
-      "width": [0.028, 0.028],
-      "depth": [0.018, 0.018]
-    },
-    {
-      "name": "BeardJaw",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [0.0, -0.07, 1.55],
-        [0.0, -0.075, 1.5],
-        [0.0, -0.05, 1.46]
-      ],
-      "width": [0.09, 0.07, 0.035],
-      "depth": [0.035, 0.035, 0.025]
-    },
-    {
-      "name": "BeardCheek.L",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [0.055, -0.05, 1.57],
-        [0.065, -0.06, 1.52]
-      ],
-      "width": [0.035, 0.03],
-      "depth": [0.025, 0.022]
-    },
-    {
-      "name": "BeardCheek.R",
-      "wear": "hair",
-      "kind": "clump",
-      "bone": "Head",
-      "slot": "hair",
-      "points": [
-        [-0.05, -0.045, 1.56],
-        [-0.055, -0.055, 1.515]
-      ],
-      "width": [0.03, 0.025],
-      "depth": [0.022, 0.02]
+      "width": [0.16, 0.16, 0.12],
+      "depth": [0.07, 0.07, 0.05],
+      "bevel": 0.004,
+      "on": "head.base",
+      "when": ["training"]
     },
     {
       "name": "GambesonShell",
@@ -421,10 +454,9 @@
       "bone": "Chest",
       "slot": "fabric",
       "sides": 8,
-      "radius": 0.2,
-      "z0": 1.1,
+      "mass": "gambeson",
+      "z0": 1.19,
       "z1": 1.43,
-      "depth_scale": 0.82,
       "spin": 0.39269908169872414,
       "bevel": 0.01
     },
@@ -435,12 +467,10 @@
       "bone": "Spine",
       "slot": "cloth",
       "sides": 8,
-      "radius": 0.205,
-      "z0": 0.84,
-      "z1": 1.12,
-      "depth_scale": 0.84,
-      "spin": 0.39269908169872414,
-      "top_scale": 0.97
+      "mass": "skirt",
+      "z0": 0.95,
+      "z1": 1.21,
+      "spin": 0.39269908169872414
     },
     {
       "name": "Belt",
@@ -449,9 +479,9 @@
       "bone": "Hips",
       "slot": "leather",
       "sides": 10,
-      "radius": 0.215,
-      "z0": 0.93,
-      "z1": 0.99,
+      "radius": 0.2,
+      "z0": 0.95,
+      "z1": 1.03,
       "depth_scale": 0.84
     },
     {
@@ -461,7 +491,7 @@
       "bone": "Hips",
       "slot": "metal",
       "size": [0.06, 0.02, 0.05],
-      "at": [0.0, -0.185, 0.96],
+      "at": [0.0, -0.185, 1.09],
       "bevel": 0.004
     },
     {
@@ -471,7 +501,7 @@
       "bone": "Hips",
       "slot": "side_accent",
       "size": [0.07, 0.03, 0.26],
-      "at": [0.13, -0.155, 0.82],
+      "at": [0.13, -0.155, 0.95],
       "rotation": [0.0, 0.18, 0.0]
     },
     {
@@ -481,7 +511,7 @@
       "bone": "Hips",
       "slot": "fabric",
       "size": [0.22, 0.03, 0.26],
-      "at": [0.0, -0.17, 0.74],
+      "at": [0.0, -0.17, 0.87],
       "bevel": 0.004
     },
     {
@@ -491,7 +521,7 @@
       "bone": "Hips",
       "slot": "fabric",
       "size": [0.26, 0.03, 0.3],
-      "at": [0.0, 0.17, 0.72],
+      "at": [0.0, 0.17, 0.85],
       "bevel": 0.004
     },
     {
@@ -501,52 +531,25 @@
       "bone": "Chest",
       "slot": "fur",
       "sides": 10,
-      "radius": 0.26,
-      "z0": 1.34,
-      "z1": 1.5,
+      "radius": 0.27,
+      "z0": 1.35,
+      "z1": 1.51,
       "depth_scale": 0.8,
       "top_scale": 0.88,
-      "bevel": 0.012,
-      "when": ["ranger"]
+      "bevel": 0.012
     },
     {
       "name": "ChestLayer",
       "wear": "clothes",
-      "kind": "box",
+      "kind": "prism",
       "bone": "Chest",
       "slot": "leather",
-      "size": [0.22, 0.04, 0.24],
-      "at": [0.0, -0.235, 1.2]
-    },
-    {
-      "name": "ChestBand",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Chest",
-      "slot": "metal",
-      "size": [0.2, 0.016, 0.045],
-      "at": [0.0, -0.236, 1.28],
-      "when": ["ranger"]
-    },
-    {
-      "name": "ChestBandLow",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Chest",
-      "slot": "metal",
-      "size": [0.18, 0.016, 0.04],
-      "at": [0.0, -0.234, 1.12],
-      "when": ["ranger"]
-    },
-    {
-      "name": "FurLining",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Chest",
-      "slot": "fur",
-      "size": [0.28, 0.03, 0.05],
-      "at": [0.0, -0.06, 1.47],
-      "when": ["training"]
+      "sides": 8,
+      "radius": 0.24,
+      "z0": 1.21,
+      "z1": 1.49,
+      "depth_scale": 0.72,
+      "spin": 0.39269908169872414
     },
     {
       "name": "WaistPanel",
@@ -554,8 +557,8 @@
       "kind": "box",
       "bone": "Hips",
       "slot": "leather",
-      "size": [0.26, 0.018, 0.1],
-      "at": [0.0, -0.2, 0.88]
+      "size": [0.24, 0.04, 0.1],
+      "at": [0.0, -0.21, 1.01]
     },
     {
       "name": "WaistCloth",
@@ -564,7 +567,7 @@
       "bone": "Hips",
       "slot": "cloth",
       "size": [0.18, 0.016, 0.14],
-      "at": [0.05, -0.208, 0.76]
+      "at": [0.05, -0.208, 0.89]
     },
     {
       "name": "ChestBib",
@@ -573,28 +576,7 @@
       "bone": "Chest",
       "slot": "cloth",
       "size": [0.14, 0.04, 0.22],
-      "at": [0.0, -0.2, 1.26]
-    },
-    {
-      "name": "Harness",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Chest",
-      "slot": "leather",
-      "size": [0.04, 0.03, 0.34],
-      "at": [0.04, -0.2, 1.22],
-      "rotation": [0.35, 0.0, 0.55],
-      "when": ["ranger"]
-    },
-    {
-      "name": "HarnessPlate",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Chest",
-      "slot": "metal",
-      "size": [0.05, 0.02, 0.04],
-      "at": [0.02, -0.22, 1.16],
-      "when": ["ranger"]
+      "at": [0.0, -0.2, 1.39]
     },
     {
       "name": "Pouch",
@@ -603,49 +585,7 @@
       "bone": "Hips",
       "slot": "leather",
       "size": [0.06, 0.04, 0.07],
-      "at": [-0.12, -0.18, 0.9]
-    },
-    {
-      "name": "ShoulderPiece.L",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Shoulder.L",
-      "slot": "leather",
-      "size": [0.13, 0.17, 0.07],
-      "at": [0.215, 0.0, 1.41],
-      "bevel": 0.01,
-      "when": ["ranger"]
-    },
-    {
-      "name": "Pauldron.L",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Shoulder.L",
-      "slot": "leather",
-      "size": [0.16, 0.1, 0.04],
-      "at": [0.23, -0.04, 1.46],
-      "when": ["ranger"]
-    },
-    {
-      "name": "ShoulderEmblem",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Shoulder.L",
-      "slot": "side_accent",
-      "size": [0.045, 0.02, 0.045],
-      "at": [0.24, -0.08, 1.49],
-      "when": ["ranger"]
-    },
-    {
-      "name": "ShoulderPiece.R",
-      "wear": "clothes",
-      "kind": "box",
-      "bone": "Shoulder.R",
-      "slot": "leather",
-      "size": [0.13, 0.17, 0.07],
-      "at": [-0.215, 0.0, 1.41],
-      "bevel": 0.01,
-      "when": ["ranger"]
+      "at": [-0.12, -0.18, 1.03]
     },
     {
       "name": "SideAccentMark",
@@ -654,7 +594,30 @@
       "bone": "Shoulder.L",
       "slot": "side_accent",
       "size": [0.012, 0.07, 0.07],
-      "at": [0.265, 0.0, 1.36]
+      "at": [0.0, 0.0, 0.04],
+      "on": "shoulder.L"
+    },
+    {
+      "name": "ShoulderMass.L",
+      "wear": "clothes",
+      "kind": "box",
+      "bone": "Shoulder.L",
+      "slot": "leather",
+      "size": [0.2, 0.14, 0.09],
+      "at": [0.0, -0.02, 0.03],
+      "on": "shoulder.L",
+      "bevel": 0.008
+    },
+    {
+      "name": "ShoulderMass.R",
+      "wear": "clothes",
+      "kind": "box",
+      "bone": "Shoulder.R",
+      "slot": "leather",
+      "size": [0.2, 0.14, 0.09],
+      "at": [0.0, -0.02, 0.03],
+      "on": "shoulder.R",
+      "bevel": 0.008
     },
     {
       "name": "UpperArm.L",
@@ -662,10 +625,16 @@
       "kind": "segment",
       "bone": "UpperArm.L",
       "slot": "skin",
-      "a": [0.2, 0.0, 1.37],
-      "b": [0.313176536, -0.151013102, 1.136791693],
-      "width": 0.085,
-      "depth": 0.085
+      "width": 0.112,
+      "depth": 0.1,
+      "width_to": 0.08,
+      "depth_to": 0.074,
+      "from": "shoulder.L",
+      "to": "elbow.L",
+      "joint_overlap": {
+        "from": 0.028,
+        "to": 0.028
+      }
     },
     {
       "name": "Forearm.L",
@@ -673,10 +642,16 @@
       "kind": "segment",
       "bone": "Forearm.L",
       "slot": "skin",
-      "a": [0.313176536, -0.151013102, 1.136791693],
-      "b": [0.026873156, -0.129845133, 1.049715338],
-      "width": 0.075,
-      "depth": 0.075
+      "width": 0.086,
+      "depth": 0.08,
+      "width_to": 0.064,
+      "depth_to": 0.058,
+      "from": "elbow.L",
+      "to": "wrist.L",
+      "joint_overlap": {
+        "from": 0.026,
+        "to": 0.026
+      }
     },
     {
       "name": "SleeveUpper.L",
@@ -684,10 +659,16 @@
       "kind": "segment",
       "bone": "UpperArm.L",
       "slot": "cloth",
-      "a": [0.2, 0.0, 1.37],
-      "b": [0.313176536, -0.151013102, 1.136791693],
-      "width": 0.1,
-      "depth": 0.1
+      "width": 0.14,
+      "depth": 0.13,
+      "width_to": 0.1,
+      "depth_to": 0.092,
+      "from": "shoulder.L",
+      "to": "elbow.L",
+      "joint_overlap": {
+        "from": 0.034,
+        "to": 0.034
+      }
     },
     {
       "name": "SleeveFore.L",
@@ -695,10 +676,16 @@
       "kind": "segment",
       "bone": "Forearm.L",
       "slot": "cloth",
-      "a": [0.313176536, -0.151013102, 1.136791693],
-      "b": [0.026873156, -0.129845133, 1.049715338],
-      "width": 0.088,
-      "depth": 0.088
+      "width": 0.112,
+      "depth": 0.104,
+      "width_to": 0.086,
+      "depth_to": 0.078,
+      "from": "elbow.L",
+      "to": "wrist.L",
+      "joint_overlap": {
+        "from": 0.03,
+        "to": 0.03
+      }
     },
     {
       "name": "Bracer.L",
@@ -706,10 +693,14 @@
       "kind": "segment",
       "bone": "Forearm.L",
       "slot": "leather",
-      "a": [0.212970353, -0.143604313, 1.106314969],
-      "b": [0.026873156, -0.129845133, 1.049715338],
-      "width": 0.092,
-      "depth": 0.092
+      "width": 0.11,
+      "depth": 0.11,
+      "from": "bracer.L",
+      "to": "wrist.L",
+      "joint_overlap": {
+        "from": 0.012,
+        "to": 0.018
+      }
     },
     {
       "name": "SideAccentBracer.L",
@@ -717,11 +708,15 @@
       "kind": "segment",
       "bone": "Forearm.L",
       "slot": "side_accent",
-      "a": [0.049777426, -0.131538571, 1.056681446],
-      "b": [0.026873156, -0.129845133, 1.049715338],
-      "width": 0.098,
-      "depth": 0.098,
-      "bevel": 0.0
+      "width": 0.118,
+      "depth": 0.118,
+      "bevel": 0.0,
+      "from": "accent.L",
+      "to": "wrist.L",
+      "joint_overlap": {
+        "from": 0.008,
+        "to": 0.015
+      }
     },
     {
       "name": "Hand.L",
@@ -729,10 +724,13 @@
       "kind": "segment",
       "bone": "Hand.L",
       "slot": "skin",
-      "a": [0.026873156, -0.129845133, 1.049715338],
-      "b": [0.0, -0.15, 1.0],
-      "width": 0.07,
-      "depth": 0.06
+      "mass": "hand",
+      "from": "wrist.L",
+      "to": "grip.L",
+      "joint_overlap": {
+        "from": 0.018,
+        "to": 0.0
+      }
     },
     {
       "name": "UpperLeg.L",
@@ -740,10 +738,16 @@
       "kind": "segment",
       "bone": "UpperLeg.L",
       "slot": "skin",
-      "a": [0.1, 0.04, 0.88],
-      "b": [0.1, 0.05, 0.47],
-      "width": 0.12,
-      "depth": 0.13
+      "width": 0.16,
+      "depth": 0.16,
+      "width_to": 0.12,
+      "depth_to": 0.12,
+      "from": "hip.L",
+      "to": "knee.L",
+      "joint_overlap": {
+        "from": 0.028,
+        "to": 0.028
+      }
     },
     {
       "name": "LowerLeg.L",
@@ -751,10 +755,16 @@
       "kind": "segment",
       "bone": "LowerLeg.L",
       "slot": "skin",
-      "a": [0.1, 0.05, 0.47],
-      "b": [0.1, 0.08, 0.17],
-      "width": 0.105,
-      "depth": 0.115
+      "width": 0.128,
+      "depth": 0.13,
+      "width_to": 0.092,
+      "depth_to": 0.096,
+      "from": "knee.L",
+      "to": "shin.L",
+      "joint_overlap": {
+        "from": 0.03,
+        "to": 0.05
+      }
     },
     {
       "name": "TrouserUpper.L",
@@ -762,10 +772,16 @@
       "kind": "segment",
       "bone": "UpperLeg.L",
       "slot": "cloth",
-      "a": [0.1, 0.04, 0.88],
-      "b": [0.1, 0.05, 0.47],
-      "width": 0.145,
-      "depth": 0.155
+      "width": 0.19,
+      "depth": 0.19,
+      "width_to": 0.145,
+      "depth_to": 0.145,
+      "from": "hip.L",
+      "to": "knee.L",
+      "joint_overlap": {
+        "from": 0.032,
+        "to": 0.032
+      }
     },
     {
       "name": "TrouserLower.L",
@@ -773,10 +789,16 @@
       "kind": "segment",
       "bone": "LowerLeg.L",
       "slot": "cloth",
-      "a": [0.1, 0.05, 0.47],
-      "b": [0.1, 0.08, 0.17],
-      "width": 0.125,
-      "depth": 0.135
+      "width": 0.155,
+      "depth": 0.16,
+      "width_to": 0.12,
+      "depth_to": 0.12,
+      "from": "knee.L",
+      "to": "shin.L",
+      "joint_overlap": {
+        "from": 0.034,
+        "to": 0.055
+      }
     },
     {
       "name": "Boot.L",
@@ -784,9 +806,10 @@
       "kind": "box",
       "bone": "Foot.L",
       "slot": "leather",
-      "size": [0.13, 0.25, 0.14],
-      "at": [0.1, 0.03, 0.07],
-      "bevel": 0.012
+      "mass": "boot",
+      "at": [0.0, 0.0, 0.0],
+      "bevel": 0.012,
+      "on": "foot.L"
     },
     {
       "name": "BootToe.L",
@@ -794,8 +817,9 @@
       "kind": "box",
       "bone": "Foot.L",
       "slot": "leather",
-      "size": [0.1, 0.08, 0.05],
-      "at": [0.1, -0.08, 0.05]
+      "size": [0.16, 0.12, 0.06],
+      "at": [0.0, -0.11, -0.02],
+      "on": "foot.L"
     },
     {
       "name": "KneeCap.L",
@@ -804,7 +828,8 @@
       "bone": "LowerLeg.L",
       "slot": "leather",
       "size": [0.09, 0.04, 0.06],
-      "at": [0.1, -0.02, 0.48]
+      "at": [0.0, -0.03, 0.0],
+      "on": "knee.L"
     },
     {
       "name": "BootCuff.L",
@@ -812,9 +837,10 @@
       "kind": "box",
       "bone": "LowerLeg.L",
       "slot": "leather",
-      "size": [0.135, 0.135, 0.06],
-      "at": [0.1, 0.08, 0.17],
-      "bevel": 0.006
+      "size": [0.16, 0.16, 0.07],
+      "at": [0.0, 0.0, 0.0],
+      "bevel": 0.006,
+      "on": "shin.L"
     },
     {
       "name": "DeadEye.L.A",
@@ -822,10 +848,11 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.04, 0.008, 0.008],
-      "at": [0.04, -0.093, 1.635],
+      "size": [0.028, 0.007, 0.007],
+      "at": [0.046, -0.14, 0.06],
       "rotation": [0.0, 0.7, 0.0],
-      "face": "dead"
+      "face": "dead",
+      "on": "head.base"
     },
     {
       "name": "DeadEye.L.B",
@@ -833,10 +860,11 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.04, 0.008, 0.008],
-      "at": [0.04, -0.093, 1.635],
+      "size": [0.028, 0.007, 0.007],
+      "at": [0.046, -0.14, 0.06],
       "rotation": [0.0, -0.7, 0.0],
-      "face": "dead"
+      "face": "dead",
+      "on": "head.base"
     },
     {
       "name": "UpperArm.R",
@@ -844,10 +872,16 @@
       "kind": "segment",
       "bone": "UpperArm.R",
       "slot": "skin",
-      "a": [-0.2, 0.0, 1.37],
-      "b": [-0.304933818, -0.179064668, 1.153378813],
-      "width": 0.085,
-      "depth": 0.085
+      "width": 0.112,
+      "depth": 0.1,
+      "width_to": 0.08,
+      "depth_to": 0.074,
+      "from": "shoulder.R",
+      "to": "elbow.R",
+      "joint_overlap": {
+        "from": 0.028,
+        "to": 0.028
+      }
     },
     {
       "name": "Forearm.R",
@@ -855,10 +889,16 @@
       "kind": "segment",
       "bone": "Forearm.R",
       "slot": "skin",
-      "a": [-0.304933818, -0.179064668, 1.153378813],
-      "b": [-0.025157454, -0.196697864, 1.04654129],
-      "width": 0.075,
-      "depth": 0.075
+      "width": 0.086,
+      "depth": 0.08,
+      "width_to": 0.064,
+      "depth_to": 0.058,
+      "from": "elbow.R",
+      "to": "wrist.R",
+      "joint_overlap": {
+        "from": 0.026,
+        "to": 0.026
+      }
     },
     {
       "name": "SleeveUpper.R",
@@ -866,10 +906,16 @@
       "kind": "segment",
       "bone": "UpperArm.R",
       "slot": "cloth",
-      "a": [-0.2, 0.0, 1.37],
-      "b": [-0.304933818, -0.179064668, 1.153378813],
-      "width": 0.1,
-      "depth": 0.1
+      "width": 0.14,
+      "depth": 0.13,
+      "width_to": 0.1,
+      "depth_to": 0.092,
+      "from": "shoulder.R",
+      "to": "elbow.R",
+      "joint_overlap": {
+        "from": 0.034,
+        "to": 0.034
+      }
     },
     {
       "name": "SleeveFore.R",
@@ -877,10 +923,16 @@
       "kind": "segment",
       "bone": "Forearm.R",
       "slot": "cloth",
-      "a": [-0.304933818, -0.179064668, 1.153378813],
-      "b": [-0.025157454, -0.196697864, 1.04654129],
-      "width": 0.088,
-      "depth": 0.088
+      "width": 0.112,
+      "depth": 0.104,
+      "width_to": 0.086,
+      "depth_to": 0.078,
+      "from": "elbow.R",
+      "to": "wrist.R",
+      "joint_overlap": {
+        "from": 0.03,
+        "to": 0.03
+      }
     },
     {
       "name": "Bracer.R",
@@ -888,10 +940,14 @@
       "kind": "segment",
       "bone": "Forearm.R",
       "slot": "leather",
-      "a": [-0.207012091, -0.185236286, 1.11598568],
-      "b": [-0.025157454, -0.196697864, 1.04654129],
-      "width": 0.092,
-      "depth": 0.092
+      "width": 0.11,
+      "depth": 0.11,
+      "from": "bracer.R",
+      "to": "wrist.R",
+      "joint_overlap": {
+        "from": 0.012,
+        "to": 0.018
+      }
     },
     {
       "name": "SideAccentBracer.R",
@@ -899,11 +955,15 @@
       "kind": "segment",
       "bone": "Forearm.R",
       "slot": "side_accent",
-      "a": [-0.047539563, -0.195287209, 1.055088291],
-      "b": [-0.025157454, -0.196697864, 1.04654129],
-      "width": 0.098,
-      "depth": 0.098,
-      "bevel": 0.0
+      "width": 0.118,
+      "depth": 0.118,
+      "bevel": 0.0,
+      "from": "accent.R",
+      "to": "wrist.R",
+      "joint_overlap": {
+        "from": 0.008,
+        "to": 0.015
+      }
     },
     {
       "name": "Hand.R",
@@ -911,10 +971,13 @@
       "kind": "segment",
       "bone": "Hand.R",
       "slot": "skin",
-      "a": [-0.025157454, -0.196697864, 1.04654129],
-      "b": [0.0, -0.225, 1.0],
-      "width": 0.07,
-      "depth": 0.06
+      "mass": "hand",
+      "from": "wrist.R",
+      "to": "grip.R",
+      "joint_overlap": {
+        "from": 0.018,
+        "to": 0.0
+      }
     },
     {
       "name": "UpperLeg.R",
@@ -922,10 +985,16 @@
       "kind": "segment",
       "bone": "UpperLeg.R",
       "slot": "skin",
-      "a": [-0.1, -0.05, 0.88],
-      "b": [-0.1, -0.13, 0.47],
-      "width": 0.12,
-      "depth": 0.13
+      "width": 0.16,
+      "depth": 0.16,
+      "width_to": 0.12,
+      "depth_to": 0.12,
+      "from": "hip.R",
+      "to": "knee.R",
+      "joint_overlap": {
+        "from": 0.028,
+        "to": 0.028
+      }
     },
     {
       "name": "LowerLeg.R",
@@ -933,10 +1002,16 @@
       "kind": "segment",
       "bone": "LowerLeg.R",
       "slot": "skin",
-      "a": [-0.1, -0.13, 0.47],
-      "b": [-0.1, -0.1, 0.17],
-      "width": 0.105,
-      "depth": 0.115
+      "width": 0.128,
+      "depth": 0.13,
+      "width_to": 0.092,
+      "depth_to": 0.096,
+      "from": "knee.R",
+      "to": "shin.R",
+      "joint_overlap": {
+        "from": 0.03,
+        "to": 0.05
+      }
     },
     {
       "name": "TrouserUpper.R",
@@ -944,10 +1019,16 @@
       "kind": "segment",
       "bone": "UpperLeg.R",
       "slot": "cloth",
-      "a": [-0.1, -0.05, 0.88],
-      "b": [-0.1, -0.13, 0.47],
-      "width": 0.145,
-      "depth": 0.155
+      "width": 0.19,
+      "depth": 0.19,
+      "width_to": 0.145,
+      "depth_to": 0.145,
+      "from": "hip.R",
+      "to": "knee.R",
+      "joint_overlap": {
+        "from": 0.032,
+        "to": 0.032
+      }
     },
     {
       "name": "TrouserLower.R",
@@ -955,10 +1036,16 @@
       "kind": "segment",
       "bone": "LowerLeg.R",
       "slot": "cloth",
-      "a": [-0.1, -0.13, 0.47],
-      "b": [-0.1, -0.1, 0.17],
-      "width": 0.125,
-      "depth": 0.135
+      "width": 0.155,
+      "depth": 0.16,
+      "width_to": 0.12,
+      "depth_to": 0.12,
+      "from": "knee.R",
+      "to": "shin.R",
+      "joint_overlap": {
+        "from": 0.034,
+        "to": 0.055
+      }
     },
     {
       "name": "Boot.R",
@@ -966,9 +1053,10 @@
       "kind": "box",
       "bone": "Foot.R",
       "slot": "leather",
-      "size": [0.13, 0.25, 0.14],
-      "at": [-0.1, -0.15000000000000002, 0.07],
-      "bevel": 0.012
+      "mass": "boot",
+      "at": [0.0, 0.0, 0.0],
+      "bevel": 0.012,
+      "on": "foot.R"
     },
     {
       "name": "BootToe.R",
@@ -976,8 +1064,9 @@
       "kind": "box",
       "bone": "Foot.R",
       "slot": "leather",
-      "size": [0.1, 0.08, 0.05],
-      "at": [-0.1, -0.26, 0.05]
+      "size": [0.16, 0.12, 0.06],
+      "at": [0.0, -0.11, -0.02],
+      "on": "foot.R"
     },
     {
       "name": "KneeCap.R",
@@ -986,7 +1075,8 @@
       "bone": "LowerLeg.R",
       "slot": "leather",
       "size": [0.09, 0.04, 0.06],
-      "at": [-0.1, -0.12, 0.48]
+      "at": [0.0, -0.03, 0.0],
+      "on": "knee.R"
     },
     {
       "name": "BootCuff.R",
@@ -994,9 +1084,10 @@
       "kind": "box",
       "bone": "LowerLeg.R",
       "slot": "leather",
-      "size": [0.135, 0.135, 0.06],
-      "at": [-0.1, -0.1, 0.17],
-      "bevel": 0.006
+      "size": [0.16, 0.16, 0.07],
+      "at": [0.0, 0.0, 0.0],
+      "bevel": 0.006,
+      "on": "shin.R"
     },
     {
       "name": "DeadEye.R.A",
@@ -1004,10 +1095,11 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.04, 0.008, 0.008],
-      "at": [-0.04, -0.093, 1.635],
+      "size": [0.028, 0.007, 0.007],
+      "at": [-0.046, -0.14, 0.06],
       "rotation": [0.0, 0.7, 0.0],
-      "face": "dead"
+      "face": "dead",
+      "on": "head.base"
     },
     {
       "name": "DeadEye.R.B",
@@ -1015,10 +1107,11 @@
       "kind": "box",
       "bone": "Head",
       "slot": "hair",
-      "size": [0.04, 0.008, 0.008],
-      "at": [-0.04, -0.093, 1.635],
+      "size": [0.028, 0.007, 0.007],
+      "at": [-0.046, -0.14, 0.06],
       "rotation": [0.0, -0.7, 0.0],
-      "face": "dead"
+      "face": "dead",
+      "on": "head.base"
     }
   ]
 }

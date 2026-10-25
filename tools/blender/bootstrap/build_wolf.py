@@ -1,10 +1,15 @@
-"""Bootstrap Wolf, the baseline duelist (art-src/blender/fighters/wolf.blend).
+"""Bootstrap Wolf's blockout (art-src/blender/fighters/wolf.blend).
 
-Wolf is built in layers, never painted: a cylindrical core torso, a separate
-gambeson shell, a chest layer, a cloak or mantle, a physical belt, a fur
-collar, block boots, bracers, block hair, and cloth panels. Every piece is its own low-poly solid bound rigidly
-to exactly one bone, so joints read as construction joints and nothing
-deforms organically.
+The blocks, the palette, and the one training difference are
+`game/content/characters/wolf.character.json`. This script resets the scene
+and overwrites the blend. Run it headless. A live Blender session is not
+this file's editor. The output is the shipping surface only until a gameplay
+capture accepts an authored mesh on the same rig. Do not add a prism here
+to imitate a finished chest, skull, or boot. See docs/concepts/character-art.md.
+
+Wolf is built in layers: a core torso, a gambeson, a chest layer, one fur
+collar, a belt, boots, bracers, a swept forelock and a nape. Every piece is
+its own low-poly solid bound rigidly to exactly one bone.
 
 Dimensions follow the physical baseline: 1.75 m tall inside a 0.27 m
 footprint, hands at the sword markers in a HEMA guard with the blade at
@@ -39,6 +44,7 @@ import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
 import character_art  # noqa: E402
+import character_build  # noqa: E402
 import riposte_blocks as rb  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -48,12 +54,6 @@ FPS = 60
 BLADE_HEIGHT = _RIG["blade_height"]
 GRIP_DOMINANT = _RIG["grip_dominant"]
 GRIP_OFFHAND = _RIG["grip_offhand"]
-## Slightly long for a 1.75 m body on purpose: at full wind-back the far hand
-## must still reach the grip, and block proportions forgive the extra reach.
-ARM_SEGMENT = _RIG["arm_segment"]
-HAND_LENGTH = _RIG["hand_length"]
-SHOULDER = tuple(_RIG["shoulder"])
-
 ## The display sword's mount for cinematic clips (intro, victory): an unweighted
 ## bone whose head is the pommel and which points down the blade. Gameplay never
 ## reads it — the duel's blade is the simulation's — but a showcase actor rides
@@ -62,13 +62,10 @@ SWORD_MOUNT = "SwordMount"
 ## Mid-grip distance from the pommel along the blade (between the markers).
 GRIP_MID = (GRIP_DOMINANT + GRIP_OFFHAND) * 0.5
 
-## The fixed lead: which bone side plays each leg role, and where each foot
-## stands fore/aft (metres toward the opponent, which is -Y). The rest stagger
-## is wide enough that the in-place steps below never close it.
+## The fixed lead: which bone side plays each leg role. Where each foot stands
+## is an anchor derived from the character rig, not a second copy of those metres.
 LEAD = "R"
 REAR = "L"
-LEAD_FOOT_FORWARD = _RIG["lead_foot_forward"]
-REAR_FOOT_BACK = _RIG["rear_foot_back"]
 ## Leg axes, measured on this rig: a thigh's X− swings its foot forward (X+
 ## back), its Z+ moves the foot toward the fighter's right (−X); a knee's X+
 ## flexes it; a foot's Y+ rolls its sole back level after the thigh's Z+.
@@ -87,45 +84,6 @@ SIDE_STEP_SWING = 5.0
 GUARD_SINK = 0.032
 STEP_BOB = 0.008
 LEG_ROLES = ("UpperLeg", "LowerLeg", "Foot")
-
-BONES = [
-    # name, head, tail, parent
-    ("Root", (0, 0, 0), (0, 0, 0.15), None),
-    (SWORD_MOUNT, (0, 0, BLADE_HEIGHT), (0, -0.3, BLADE_HEIGHT), "Root"),
-    ("Hips", (0, 0, 0.88), (0, 0, 1.0), "Root"),
-    ("Spine", (0, 0, 1.0), (0, 0, 1.18), "Hips"),
-    ("Chest", (0, 0, 1.18), (0, 0, 1.4), "Spine"),
-    ("Neck", (0, 0, 1.4), (0, 0, 1.5), "Chest"),
-    ("Head", (0, 0, 1.5), (0, 0, 1.76), "Neck"),
-]
-
-
-def _arm_chain(side):
-    """Shoulder → elbow → wrist → grip for one arm in the guard rest pose.
-    The right (dominant) hand holds near the guard, the left behind it."""
-    x = SHOULDER[0] * side
-    shoulder = Vector((x, SHOULDER[1], SHOULDER[2]))
-    collar = Vector((x * 0.3, 0.0, SHOULDER[2]))
-    grip = Vector((0.0, -(GRIP_DOMINANT if side < 0 else GRIP_OFFHAND), BLADE_HEIGHT))
-    to_grip = (grip - shoulder).normalized()
-    wrist = grip - to_grip * HAND_LENGTH
-    reach = (wrist - shoulder).length
-    # Elbow out to the side and slightly FORWARD (−Y is where Wolf faces), so
-    # the arms open into a triangle toward the hilt in front of the chest
-    # rather than clamping the weapon back against the ribs. Lateral dominates
-    # so the elbows clear the torso silhouette from the gameplay camera.
-    mid = (shoulder + wrist) * 0.5
-    bend = math.sqrt(max(ARM_SEGMENT * ARM_SEGMENT - (reach * 0.5) ** 2, 0.0))
-    outward = Vector((side, -0.30, -0.12)).normalized()
-    axis = (wrist - shoulder).normalized()
-    pole = (outward - axis * outward.dot(axis)).normalized()
-    elbow = mid + pole * bend
-    return collar, shoulder, elbow, wrist, grip
-
-
-def _foot_y(tag):
-    """Fore/aft rest position of one foot (armature Y; -Y is forward)."""
-    return -LEAD_FOOT_FORWARD if tag == LEAD else REAR_FOOT_BACK
 
 
 def _stance(poses):
@@ -170,21 +128,16 @@ def _flat_feet(poses):
     return out
 
 
-def _leg_chain(side, forward):
-    hip = Vector((0.1 * side, forward * 0.5, 0.88))
-    knee = Vector((0.1 * side, forward - 0.03, 0.47))
-    ankle = Vector((0.1 * side, forward, 0.09))
-    toe = Vector((0.1 * side, forward - 0.15, 0.04))
-    return hip, knee, ankle, toe
-
-
 def build_armature():
+    ## Rest positions come from the character anchors. The clips below still
+    ## key this rig; the crowd never builds one.
     data = bpy.data.armatures.new("WolfRig")
     rig = bpy.data.objects.new("Armature", data)
     bpy.context.scene.collection.objects.link(rig)
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode="EDIT")
     edit = data.edit_bones
+    points = character_art.anchors(ART)
 
     def bone(name, head, tail, parent):
         b = edit.new(name)
@@ -196,19 +149,21 @@ def build_armature():
             b.use_connect = False
         return b
 
-    for name, head, tail, parent in BONES:
-        bone(name, head, tail, parent)
-    for side, tag in ((1, "L"), (-1, "R")):
-        collar, shoulder, elbow, wrist, grip = _arm_chain(side)
-        bone("Shoulder." + tag, collar, shoulder, "Chest")
-        bone("UpperArm." + tag, shoulder, elbow, "Shoulder." + tag)
-        bone("Forearm." + tag, elbow, wrist, "UpperArm." + tag)
-        bone("Hand." + tag, wrist, grip, "Forearm." + tag)
-        # The fixed lead in the rest skeleton itself: right foot forward.
-        hip, knee, ankle, toe = _leg_chain(side, _foot_y(tag))
-        bone("UpperLeg." + tag, hip, knee, "Hips")
-        bone("LowerLeg." + tag, knee, ankle, "UpperLeg." + tag)
-        bone("Foot." + tag, ankle, toe, "LowerLeg." + tag)
+    bone("Root", points["root"], points["root.tail"], None)
+    bone(SWORD_MOUNT, (0, 0, BLADE_HEIGHT), (0, -0.3, BLADE_HEIGHT), "Root")
+    bone("Hips", points["hips"], points["hips.top"], "Root")
+    bone("Spine", points["spine"], points["spine.top"], "Hips")
+    bone("Chest", points["chest"], points["chest.top"], "Spine")
+    bone("Neck", points["neck"], points["head.base"], "Chest")
+    bone("Head", points["head.base"], points["head.bone"], "Neck")
+    for tag in ("L", "R"):
+        bone("Shoulder." + tag, points["collar." + tag], points["shoulder." + tag], "Chest")
+        bone("UpperArm." + tag, points["shoulder." + tag], points["elbow." + tag], "Shoulder." + tag)
+        bone("Forearm." + tag, points["elbow." + tag], points["wrist." + tag], "UpperArm." + tag)
+        bone("Hand." + tag, points["wrist." + tag], points["grip." + tag], "Forearm." + tag)
+        bone("UpperLeg." + tag, points["hip." + tag], points["knee." + tag], "Hips")
+        bone("LowerLeg." + tag, points["knee." + tag], points["ankle." + tag], "UpperLeg." + tag)
+        bone("Foot." + tag, points["ankle." + tag], points["toe." + tag], "LowerLeg." + tag)
     bpy.ops.object.mode_set(mode="OBJECT")
     for pose_bone in rig.pose.bones:
         pose_bone.rotation_mode = "XYZ"
@@ -228,76 +183,19 @@ def bind(obj, rig, bone_name):
     return obj
 
 
-def segment(name, a, b, width, depth, mat, rig, bone_name, bevel=0.006):
-    """A block spanning two points (for limbs), bound to `bone_name`."""
-    a, b = Vector(a), Vector(b)
-    length = (b - a).length
-    obj = rb.box(name, (width, depth, length), (0, 0, 0), mat, bevel=bevel)
-    direction = (b - a).normalized()
-    obj.rotation_mode = "QUATERNION"
-    obj.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(direction)
-    obj.location = (a + b) * 0.5
-    bpy.context.view_layer.update()
-    obj.data.transform(obj.matrix_world)
-    obj.matrix_world.identity()
-    return bind(obj, rig, bone_name)
-
-
 def build_body(rig, training):
-    ## Palette and blocks come from the character art file. Ranger is the
+    ## Palette and blocks come from the compiled character. Ranger is the
     ## default; training overrides fabric and leather and skips ranger-only parts.
     variant = "training" if training else "ranger"
-    colors = character_art.palette_for(ART, variant)
-    m = {}
-    for slot, body in colors.items():
-        color = character_art.linear_color(body["color"])
-        extra = {}
-        material_name = "costume_metal" if slot == "metal" else slot
-        if slot == "metal":
-            extra = {"metallic": body.get("metallic", 0.0)}
-        elif "metallic" in body:
-            extra = {"metallic": body["metallic"]}
-        m[slot] = rb.material(material_name, color, roughness=body.get("roughness", 0.8), **extra)
-    accent = ART["side_accent"]
-    m["side_accent"] = rb.material("side_accent", character_art.linear_color(accent["preview"]), roughness=accent.get("roughness", 0.7))
-
-    def solid(obj, bone_name):
-        return bind(obj, rig, bone_name)
-
-    for part in ART["parts"]:
-        if not character_art.visible(part, variant):
+    compiled = character_art.compile(ART)
+    m = character_build.materials_for(compiled, variant)
+    for part in compiled["parts"]:
+        if not character_art.visible(part, variant, compiled):
             continue
-        mat = m[part["slot"]]
-        kind = part["kind"]
-        if kind == "prism":
-            solid(rb.prism(
-                part["name"], int(part["sides"]), part["radius"], part["z0"], part["z1"], mat,
-                depth_scale=part.get("depth_scale", 1.0), top_scale=part.get("top_scale", 1.0),
-                spin=part.get("spin", 0.0), bevel=part.get("bevel", 0.0),
-            ), part["bone"])
-        elif kind == "box":
-            solid(rb.box(
-                part["name"], tuple(character_art.part_value(ART, part, variant, "size")), tuple(part["at"]), mat,
-                bevel=part.get("bevel", 0.0), rotation=tuple(part.get("rotation", (0.0, 0.0, 0.0))),
-            ), part["bone"])
-        elif kind == "dome":
-            solid(rb.dome(
-                part["name"], int(part["sides"]), part["radius"], part["rings"], tuple(part["apex"]), mat,
-                depth_scale=part.get("depth_scale", 1.0), spin=part.get("spin", 0.0), bevel=part.get("bevel", 0.0),
-            ), part["bone"])
-        elif kind == "clump":
-            solid(rb.clump(
-                part["name"],
-                character_art.part_value(ART, part, variant, "points"),
-                character_art.part_value(ART, part, variant, "width"),
-                character_art.part_value(ART, part, variant, "depth"),
-                mat, bevel=part.get("bevel", 0.0),
-            ), part["bone"])
-        else:
-            segment(
-                part["name"], tuple(part["a"]), tuple(part["b"]), part["width"], part["depth"],
-                mat, rig, part["bone"], bevel=part.get("bevel", 0.006),
-            )
+        obj = character_build.emit_part(compiled, part, m, variant)
+        if part["kind"] == "segment":
+            character_build.bake(obj)
+        bind(obj, rig, part["bone"])
     return m
 
 
@@ -686,6 +584,10 @@ def main():
     name = "wolf_training.blend" if variant == "training" else "wolf.blend"
     out = os.path.join(ROOT, "art-src", "blender", "fighters", name)
     os.makedirs(os.path.dirname(out), exist_ok=True)
+    meshes = [obj for obj in bpy.data.objects if obj.type == "MESH"]
+    for obj in sorted(meshes, key=lambda item: item.name):
+        print("RIPOSTE_PART_TRIS", obj.name, rb.triangle_count([obj]))
+    print("RIPOSTE_FIGHTER_TRIS", variant, rb.triangle_count(meshes))
     bpy.ops.wm.save_as_mainfile(filepath=out, compress=True)
     print("RIPOSTE_BUILT", out)
 

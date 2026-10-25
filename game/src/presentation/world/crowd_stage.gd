@@ -208,6 +208,9 @@ func _build() -> void:
 	var hairs: Array[Mesh] = []
 	for style: int in _profile.hair_scenes.size():
 		hairs.append(_profile.hair_style(style))
+	var beards: Array[Mesh] = []
+	for style: int in _profile.beard_scenes.size():
+		beards.append(_profile.beard_style(style))
 	var face := _profile.face()
 	var count := _layout.section_count
 	var seat_section := PackedInt32Array()
@@ -265,9 +268,18 @@ func _build() -> void:
 			var used := PackedByteArray()
 			used.resize(seats.size())
 			hair_used.append(used)
+		var beard_used: Array[PackedByteArray] = []
+		for _style: int in beards.size():
+			var used := PackedByteArray()
+			used.resize(seats.size())
+			beard_used.append(used)
 		for local: int in which.size():
-			var style := _rows[which[local]].hair % hairs.size()
-			hair_used[style][local] = 1
+			var row := _rows[which[local]]
+			if not row.bald:
+				var style := row.hair % hairs.size()
+				hair_used[style][local] = 1
+			if row.beard > 0 and not beards.is_empty():
+				beard_used[row.beard % beards.size()][local] = 1
 		var everyone := PackedByteArray()
 		everyone.resize(seats.size())
 		everyone.fill(1)
@@ -280,6 +292,8 @@ func _build() -> void:
 		section.add_layer(face, face, seats, ink, everyone)
 		for style: int in hairs.size():
 			section.add_layer(hairs[style], hairs[style], seats, hair, hair_used[style])
+		for style: int in beards.size():
+			section.add_layer(beards[style], beards[style], seats, hair, beard_used[style])
 		_sections.append(section)
 		add_child(section)
 	_build_box(started)

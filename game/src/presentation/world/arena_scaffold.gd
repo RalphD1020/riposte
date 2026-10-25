@@ -34,8 +34,11 @@ const BRAZIER_GLOW := 2.2
 ## Presentation floor slab under the platform top (m).
 const GROUND_THICKNESS := 0.2
 const BOWL_SCENE := "res://assets/generated/arenas/arena_bowl.glb"
-## Metres from the camera the key's orthogonal shadow map covers: the far
-## stone of the bowl from the far end of the 14–18 m duel camera, no further.
+## Metres from the camera the key's orthogonal shadow map covers. The duel
+## camera sits 14–18 m out and the bowl starts at the combat radius, so the
+## far stone is about 26 m along the view. 24 m sharpened the map and clipped
+## that wall. 32 m keeps the wall in the map. Desktop resolution is 2048, so
+## the texel is still about half the old 1024-at-32 m shadow.
 const KEY_SHADOW_DISTANCE := 32.0
 
 var _crowd: CrowdStage
@@ -298,8 +301,10 @@ func _build_environment(profile: StagePresentationProfile) -> void:
 	## The void has no sun. The Arena key still draws the one disc.
 	key.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY if void_sky else DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	if profile.key_shadow:
-		## One orthogonal split over the duel camera's view. The atlas size is
-		## the project's `directional_shadow/size`.
+		## One orthogonal split. Desktop map is 2048. Distance stays 32 m so the
+		## bowl casts onto the floor from the far camera. Mobile stays 1024.
+		## The filter stays hard: Compatibility's soft filter smears, and blur
+		## does not run there.
 		key.shadow_enabled = true
 		key.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 		key.directional_shadow_max_distance = KEY_SHADOW_DISTANCE

@@ -159,7 +159,9 @@ const END_UNDERSIDE := Color("120e1c")
 const END_ORB := Color("6e5a90")
 const WORLD_KEY := Color("fff0d0")
 const WORLD_KEY_ENERGY := 1.3
-const WORLD_KEY_ROTATION_DEGREES := Vector3(-58.0, -32.0, 0.0)
+## Beyond the far wall, 40° above the horizon. From the south camera the 1.6 m
+## stone throws about 2 m of shadow onto the sand.
+const WORLD_KEY_ROTATION_DEGREES := Vector3(-40.0, 180.0, 0.0)
 ## A faint cool rim from behind the fighters, so dark clothing keeps an edge.
 const WORLD_RIM := Color("b8c4ff")
 const WORLD_RIM_ENERGY := 0.35

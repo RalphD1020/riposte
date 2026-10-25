@@ -40,6 +40,11 @@
     "output": "crowd/face.glb"
   },
   {
+    "source": "crowd/beard_full.blend",
+    "id": "crowd.beard_full",
+    "output": "crowd/beard_full.glb"
+  },
+  {
     "source": "arenas/arena_bowl.blend",
     "id": "arena.bowl",
     "output": "arenas/arena_bowl.glb"

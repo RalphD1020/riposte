@@ -144,9 +144,67 @@ func test_a_press_while_the_weapon_is_busy_cannot_charge() -> void:
 	assert_eq(rig.fighter.weapon.charge, 0.0, "a busy weapon earns nothing however long it is held")
 	assert_eq(rig.fighter.weapon.earned_windback, 0.0, "because it has not wound back")
 	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 0, "and it never entered a charge at all")
-	## Busy longer than the input buffer expires the press, so walking out of
-	## a long recovery does not fire a swing the player has mentally moved on from.
-	assert_eq(rig.fighter.buffered_press_tick, -1, "and busy longer than the buffer expires it")
+	## The tap clock expires. The finger is still down; that hold is not a
+	## charge yet, because the blade is still in recovery.
+	assert_eq(rig.fighter.buffered_press_tick, -1, "the tap clock expires while the blade is busy")
+	assert_true(rig.fighter.attack_held, "a finger that stayed down is still down")
+
+
+## A hold that outlasts the four-tick clock starts charging on the first
+## controllable tick. It does not ask for a second press, and it does not
+## charge while the blade is still recovering.
+func test_a_hold_that_outlasts_the_buffer_charges_when_the_blade_can() -> void:
+	var rig := _rig()
+	var definition := _rules.combatant(0).weapon
+	var busy := definition.tap_threshold_ticks * 4 + definition.buffer_ticks
+	WeaponSystem.enter_recovery(rig.fighter.weapon, busy + 10)
+	rig.press()
+	rig.hold(busy)
+	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.RECOVERY, "precondition: still recovering")
+	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 0, "no charge while busy")
+	while rig.fighter.weapon.phase != CombatPhase.Id.NEUTRAL:
+		rig.hold(1)
+	rig.hold(definition.tap_threshold_ticks + 1)
+	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.CHARGING, "the held button charges once the blade can")
+	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 1, "one charge, from the original press")
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "holding did not launch")
+
+
+## A click during recovery is a tap. It waits, then cuts 90° at charge 0.
+## It does not become a charge because the button came up.
+func test_a_click_during_a_swing_cuts_when_the_blade_can() -> void:
+	var rig := _rig()
+	WeaponSystem.enter_recovery(rig.fighter.weapon, 40)
+	rig.press()
+	rig.release()
+	assert_true(rig.fighter.buffered_release, "the click is queued as a tap")
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "it does not cut while recovering")
+	var guard := 80
+	while rig.fighter.weapon.phase != CombatPhase.Id.NEUTRAL and guard > 0:
+		rig.step()
+		guard -= 1
+	rig.step()
+	var released := rig.events_of(DuelEventTypes.ATTACK_RELEASED)
+	assert_eq(released.size(), 1, "one cut when the blade can take it")
+	assert_true(released[0].number(DuelEventKeys.CHARGE) == 0.0, "a released click stays a tap")
+	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 0, "a released click never charges")
+
+
+## A held flag with no press started does not own the guard. The blade is
+## still too fast to attack, so the hold has not begun, and the sword walks
+## back toward the guard instead of freezing.
+func test_a_held_flag_without_a_press_does_not_freeze_the_guard() -> void:
+	var rig := _rig()
+	var weapon := rig.fighter.weapon
+	weapon.angle = 0.0
+	weapon.speed = 2.0
+	weapon.set_phase(CombatPhase.Id.NEUTRAL)
+	rig.fighter.attack_held = true
+	rig.fighter.press_tick = -1
+	rig.fighter.buffered_press_tick = -1
+	rig.step()
+	assert_true(rig.fighter.press_tick < 0, "too fast to start, so no press owns the tick")
+	assert_true(absf(weapon.angle) > 0.01, "the guard return moved the blade")
 
 
 func test_wind_back_is_credited_from_where_the_hold_began() -> void:
@@ -384,13 +442,120 @@ func test_press_just_before_recovery_ends_is_buffered() -> void:
 	assert_true(starts[1].tick - pressed_at <= _rules.combatant(0).weapon.buffer_ticks, "within the buffer window")
 
 
-func test_stale_press_expires() -> void:
+## A tap during a swing is one queued cut. It fires when the blade is free.
+## It belongs to that swing, not to a clock, and it is not a charge.
+func test_a_tap_during_a_swing_fires_once_when_the_blade_is_free() -> void:
 	var rig := _rig()
 	rig.attack(3)
 	rig.step(true, true)
 	rig.settle()
-	rig.hold(10)
-	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 1, "a press far outside the buffer is dropped")
+	rig.hold(2)
+	var released := rig.events_of(DuelEventTypes.ATTACK_RELEASED)
+	assert_eq(released.size(), 2, "the queued tap cuts once the blade is free")
+	assert_true(released[1].number(DuelEventKeys.CHARGE) == 0.0, "and it stayed a tap")
+	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 0, "a released click did not charge")
+
+
+## The tap is the blocked action's, so a long recovery still delivers it.
+## A three-second clock would have dropped this click before the window.
+func test_a_tap_during_a_long_recovery_fires_when_that_recovery_opens() -> void:
+	var rig := _rig()
+	var definition := _rules.combatant(0).weapon
+	WeaponSystem.enter_recovery(rig.fighter.weapon, definition.buffer_ticks * 50)
+	rig.step(true, true)
+	rig.hold(definition.buffer_ticks * 40)
+	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.RECOVERY, "precondition: the blocking recovery is still running")
+	assert_true(rig.fighter.buffered_release, "the tap is still the pending intent")
+	rig.settle()
+	rig.step()
+	var released := rig.events_of(DuelEventTypes.ATTACK_RELEASED)
+	assert_eq(released.size(), 1, "one cut when that recovery opens")
+	assert_true(released[0].number(DuelEventKeys.CHARGE) == 0.0, "and it stayed a tap")
+
+
+## The floor is over and a bind holds the blade fast. The tap does not wait
+## for a later exchange: the healthy brake from this speed is the limit.
+func test_a_tap_waiting_on_a_blade_that_will_not_slow_is_dropped() -> void:
+	var rig := _rig()
+	var weapon := rig.fighter.weapon
+	weapon.speed = 8.0
+	weapon.swing_charge = 1.0
+	WeaponSystem.enter_recovery(weapon, 1)
+	weapon.recovery_left = 0
+	rig.step(true, true)
+	assert_true(rig.fighter.buffered_release, "precondition: the click is queued")
+	var budget := WeaponSystem._healthy_brake_ticks(rig.fighter, rig.rules) + WeaponSystem.TAP_COAST_SLACK + 4
+	for _i in budget:
+		weapon.speed = 8.0
+		rig.step()
+	assert_false(rig.fighter.buffered_release, "the tap was dropped while the blade was still fast")
+	assert_eq(weapon.phase, CombatPhase.Id.RECOVERY, "precondition: recovery had not opened")
+	rig.settle()
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "a dropped tap does not cut later")
+
+
+## One intent. A hold that arrives while a tap is queued replaces the tap.
+func test_a_new_hold_replaces_a_queued_tap() -> void:
+	var rig := _rig()
+	var definition := _rules.combatant(0).weapon
+	WeaponSystem.enter_recovery(rig.fighter.weapon, 30)
+	rig.step(true, true)
+	assert_true(rig.fighter.buffered_release, "precondition: a tap is queued")
+	rig.press()
+	assert_false(rig.fighter.buffered_release, "the tap is gone")
+	assert_true(rig.fighter.attack_held, "the new press is a hold")
+	while rig.fighter.weapon.phase != CombatPhase.Id.NEUTRAL:
+		rig.hold(1)
+	rig.hold(definition.tap_threshold_ticks + 2)
+	assert_eq(rig.events_of(DuelEventTypes.CHARGE_STARTED).size(), 1, "exactly one attack starts")
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "the replaced tap did not also cut")
+
+
+## Cancel, including focus loss and a touch cancel, clears a queued tap.
+## Coming back does not invent a press; the intent is already gone.
+func test_cancel_clears_a_queued_tap() -> void:
+	var rig := _rig()
+	WeaponSystem.enter_recovery(rig.fighter.weapon, 30)
+	rig.step(true, true)
+	rig.step(false, false, true)
+	assert_false(rig.fighter.buffered_release, "the tap is cleared")
+	assert_eq(rig.fighter.buffered_press_tick, -1, "no stamp remains")
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_CANCELED).size(), 1, "the cancel is the interruption")
+	rig.settle()
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "nothing fires after the cancel")
+
+
+## A press during stagger is pending. Death drops it. The corpse does not swing.
+func test_death_clears_a_press_made_during_stagger() -> void:
+	var rig := _rig()
+	WeaponSystem.stagger(rig.fighter, 40)
+	rig.press()
+	assert_true(rig.fighter.buffered_press_tick >= 0, "precondition: the press is waiting out the stagger")
+	DuelFixture.kill(rig.fighter)
+	assert_eq(rig.fighter.buffered_press_tick, -1, "death clears the pending press")
+	assert_false(rig.fighter.attack_held, "and the held button")
+	rig.hold(50)
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "a dead fighter does not swing")
+	assert_eq(rig.fighter.weapon.phase, CombatPhase.Id.DEAD, "stays dead")
+
+
+## A click while the blade is already neutral, only too fast, is the short
+## buffer. It does not survive into the next exchange.
+func test_a_neutral_tap_older_than_the_buffer_is_dropped() -> void:
+	var rig := _rig()
+	var weapon := rig.fighter.weapon
+	var definition := _rules.combatant(0).weapon
+	weapon.speed = 3.0
+	weapon.phase_ticks = 40
+	rig.step(true, true)
+	assert_true(rig.fighter.buffered_release, "precondition: queued while still too fast")
+	for _i in definition.buffer_ticks + 2:
+		weapon.speed = 3.0
+		rig.step()
+	assert_false(rig.fighter.buffered_release, "the short buffer dropped it")
+	weapon.speed = 0.0
+	rig.hold(5)
+	assert_eq(rig.events_of(DuelEventTypes.ATTACK_RELEASED).size(), 0, "it does not cut once the blade is calm")
 
 
 func test_cancel_drops_charge_without_attacking() -> void:

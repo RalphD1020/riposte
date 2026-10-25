@@ -230,6 +230,7 @@ func _hair_views(viewport: SubViewport, world: Node3D, out: String) -> void:
 			{"name": "three_quarter", "at": Vector3(1.7, 1.55, 1.7)},
 			{"name": "turn", "at": Vector3(1.7, 1.55, 1.7), "angle": 0.9},
 			{"name": "rear", "at": Vector3(0.0, 1.55, -2.4)},
+			{"name": "above", "at": Vector3(0.15, 3.4, 0.35)},
 			{"name": "gameplay", "at": Vector3(0.0, 10.4, 12.6)},
 		]
 		for shot: Dictionary in shots:
@@ -241,6 +242,27 @@ func _hair_views(viewport: SubViewport, world: Node3D, out: String) -> void:
 			await process_frame
 			_save(viewport, out, "hair_%s_%s" % [names[index], String(shot["name"])])
 		proxy.queue_free()
+	## Both cuts in one gameplay frame, so the silhouettes can be compared
+	## without flipping between files.
+	var pair_head := Vector3(0.0, 1.6, 0.0)
+	for index: int in 2:
+		var chosen: Array[StringName] = [skins[index], &""]
+		var kits := DuelKits.resolve(catalog, rules, chosen)
+		var spec := rules.combatant(0)
+		var proxy := FighterPresentation3D.create(0, DuelSide.Id.LIGHT_SOUTH, kits.combatant(0), spec.fighter.push_radius, spec)
+		world.add_child(proxy)
+		var row := SnapshotProjector.project(DuelSetup.new_state(rules, 1), rules).fighter(0)
+		proxy.apply_pose(Vector3(-0.55 if index == 0 else 0.55, 0.0, 0.0), 0.0, row.weapon_angle, row, 1.0 / 60.0)
+	camera.position = Vector3(0.0, 10.4, 12.6)
+	camera.look_at(Vector3(0.0, 0.8, 0.0), Vector3.UP)
+	await process_frame
+	await process_frame
+	_save(viewport, out, "hair_pair_gameplay")
+	camera.position = Vector3(0.0, 1.7, 3.2)
+	camera.look_at(pair_head, Vector3.UP)
+	await process_frame
+	await process_frame
+	_save(viewport, out, "hair_pair_front")
 	camera.free()
 
 

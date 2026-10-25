@@ -4,12 +4,12 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.258,
-      -0.0961,
+      -0.2542,
+      -0.1668,
       0.06
     ],
     "max": [
-      0.258,
+      0.2542,
       0.52,
       1.29
     ]
@@ -21,11 +21,12 @@
   ],
   "material_slots": [
     "fabric",
+    "face",
     "leather",
     "skin"
   ],
-  "triangle_count": 1193,
+  "triangle_count": 1520,
   "color_targets": [],
   "source": "crowd/cheer.blend",
-  "source_sha256": "f699680eb4ea798316d3c5413f8265a3e8fe1f1e560ec153384978ca36186a86"
+  "source_sha256": "aeef693c046caf9cd1955cc9739ecd32071fa57b646a378a8641df36c64d1131"
 }

@@ -218,12 +218,18 @@ def validate_fighter():
     ## — the kinetic chain, the head clearance proxy — would silently miss.
     ## Godot node names cannot hold ".", so only an undotted name can clash.
     problems += ["object %s shares a bone's name" % o.name for o in bpy.data.objects if o.name in bones and "." not in o.name and o.type != "ARMATURE"]
+    for obj in meshes:
+        if obj.name != "HeadSkin" and obj.data.uv_layers:
+            problems.append("%s carries UVs it does not need" % obj.name)
     tris = rb.triangle_count(meshes)
+    print("RIPOSTE_FIGHTER_TRIS", tris)
     if tris > FIGHTER_TRIANGLES:
         problems.append("triangles %d over budget %d" % (tris, FIGHTER_TRIANGLES))
     lo, hi = rb.world_bounds(meshes)
     if not FIGHTER_HEIGHT[0] <= hi.z - lo.z <= FIGHTER_HEIGHT[1]:
         problems.append("height %.3f outside %s" % (hi.z - lo.z, FIGHTER_HEIGHT))
+    # Head size is not a chibi envelope (ART-HEAD-001). A gameplay capture
+    # accepts the skull. Height and the floor still gate the export.
     if abs(lo.z) > 0.02:
         problems.append("feet at %.3f, not on the floor" % lo.z)
     problems += validate_motion(rig)

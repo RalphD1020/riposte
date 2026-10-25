@@ -329,7 +329,12 @@ func test_fast_blades_draw_trails_and_slow_blades_do_not() -> void:
 	for _i in 3:
 		mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
 		mount.presenter.render(1.0, 1.0 / 60.0)
-	assert_true(mount.presenter.trail(0).sample_count() >= 2, "a fast blade leaves a ribbon")
+	assert_eq(mount.presenter.trail(0).sample_count(), 0, "a fast wind-back is not a strike, so it leaves no ribbon")
+	mount.state.fighter(0).weapon.phase = CombatPhase.Id.ACTIVE_THREAT
+	for _i in 3:
+		mount.presenter.push(SnapshotProjector.project(mount.state, _rules), none)
+		mount.presenter.render(1.0, 1.0 / 60.0)
+	assert_true(mount.presenter.trail(0).sample_count() >= 2, "a fast strike leaves a ribbon")
 	mount.dispose()
 
 
@@ -348,9 +353,13 @@ func _ribbon(potentials: PackedFloat64Array) -> SwordTrail3D:
 ## potential the simulation computed, so a dangerous part of a swing is
 ## visibly heavier than a spent one (COMBAT-009).
 func test_the_ribbon_is_thicker_where_the_swing_is_more_dangerous() -> void:
-	var trail := _ribbon(PackedFloat64Array([0.0, 0.5, 1.0]))
-	assert_near(trail.half_width_at(0), SwordTrail3D.WIDTH_SPENT, 1e-9, "a spent blade draws its thinnest line")
-	assert_near(trail.half_width_at(2), SwordTrail3D.WIDTH_FULL, 1e-9, "a fully dangerous one its heaviest")
+	var wind := SwordTrail3D.create(Color.WHITE, 8)
+	wind.add_sample(Vector3.ZERO, Vector3(0.0, 0.0, 1.0), 0.0, 10.0, 1.0)
+	assert_eq(wind.sample_count(), 0, "a wind-back has no potential and leaves no sample")
+	wind.queue_free()
+	var trail := _ribbon(PackedFloat64Array([0.2, 0.5, 1.0]))
+	assert_true(trail.half_width_at(0) > SwordTrail3D.WIDTH_SPENT, "a live strike is past the empty sheet")
+	assert_near(trail.half_width_at(2), SwordTrail3D.WIDTH_FULL, 1e-9, "a fully dangerous one is the heaviest")
 	assert_true(trail.half_width_at(1) > trail.half_width_at(0), "and the middle is between them")
 	assert_true(trail.half_width_at(1) < trail.half_width_at(2), "monotonically")
 	trail.queue_free()
@@ -360,10 +369,11 @@ func test_the_ribbon_is_thicker_where_the_swing_is_more_dangerous() -> void:
 ## authoritative value; it may not invent one, so anything out of range is
 ## clamped rather than believed.
 func test_the_ribbon_records_the_potential_it_was_given() -> void:
-	var trail := _ribbon(PackedFloat64Array([0.4, 2.0, -1.0]))
+	var trail := _ribbon(PackedFloat64Array([0.4, 2.0]))
 	assert_eq(trail.potential_at(0), 0.4, "what the simulation said")
 	assert_eq(trail.potential_at(1), 1.0, "clamped above")
-	assert_eq(trail.potential_at(2), 0.0, "and below")
+	trail.add_sample(Vector3(3.0, 1.0, 0.0), Vector3(3.0, 1.0, 1.0), -1.0, 10.0, 1.0)
+	assert_eq(trail.sample_count(), 2, "a negative potential is not a sample")
 	trail.queue_free()
 
 

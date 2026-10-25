@@ -1,0 +1,29 @@
+{
+  "asset_id": "crowd.beard_full",
+  "kind": "crowd",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.062,
+      0.0613,
+      0.8812
+    ],
+    "max": [
+      0.069,
+      0.1266,
+      0.9563
+    ]
+  },
+  "bone_names": [],
+  "animation_names": [],
+  "attachment_names": [
+    "beard_full"
+  ],
+  "material_slots": [
+    "hair"
+  ],
+  "triangle_count": 58,
+  "color_targets": [],
+  "source": "crowd/beard_full.blend",
+  "source_sha256": "771659898ce83fd63a000cc68e4348533f425418d8b375a2b7b879c7127252e5"
+}

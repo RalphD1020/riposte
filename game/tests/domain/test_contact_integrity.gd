@@ -1021,11 +1021,17 @@ func _deflection_physics(state: MatchState) -> String:
 ## a gameplay contract. The assertions are the impulse, the missing arrest,
 ## and the cutter striking nothing. Re-read inside the wander pilots, not a
 ## new stick.
-const DEFLECTION_SEED := 5
-const DEFLECTION_CLASH_TICK := 1296
+## Seed 5 tick 1296 was the witness before a held attack could outlive the
+## four-tick buffer. That duel no longer reaches this clash. Seed 23 tick 259
+## is a redirected slot-0 cut under the current input.
+## Seed 5 tick 1296 was the witness before a held attack could outlive the
+## four-tick buffer. That duel no longer reaches this clash. Seed 23 tick 259
+## is a redirected slot-0 cut under the current input.
+const DEFLECTION_SEED := 23
+const DEFLECTION_CLASH_TICK := 259
 const DEFLECTION_LEAD := 1
 const DEFLECTION_CUTTER := 0
-const DEFLECTION_TICKS := 30
+const DEFLECTION_TICKS := 40
 
 
 ## The witness duel played to one tick before the clash, and the commands its

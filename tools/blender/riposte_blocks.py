@@ -44,6 +44,52 @@ def material(name, color, roughness=0.8, metallic=0.0, emission=None, emission_s
     return mat
 
 
+def stubble_mask(color):
+    """Opaque face paint. `color` is the linear skin from the one conversion.
+    Beard pixels are that color pulled down, in stepped clusters on the jaw
+    and lower cheeks. The nose, the upper lip, and any mouth-shaped bar stay
+    the plain skin color."""
+    size = 32
+    image = bpy.data.images.new("wolf_stubble", size, size, alpha=False, float_buffer=True)
+    image.colorspace_settings.name = "sRGB"
+    pixels = []
+    for _pixel in range(size * size):
+        pixels.extend((color[0], color[1], color[2], 1.0))
+    shade = tuple(channel * 0.72 for channel in color)
+
+    def put(x, y):
+        if 0 <= x < size and 0 <= y < size:
+            index = (y * size + x) * 4
+            pixels[index] = shade[0]
+            pixels[index + 1] = shade[1]
+            pixels[index + 2] = shade[2]
+
+    for x, y in (
+        (4, 3), (5, 3), (5, 4), (6, 4), (6, 5), (7, 5),
+        (4, 6), (5, 6), (8, 6), (8, 7),
+        (24, 3), (25, 3), (25, 4), (26, 4), (26, 5), (27, 5),
+        (24, 6), (27, 6), (23, 7), (28, 7),
+        (15, 1), (16, 1), (15, 2), (16, 2), (14, 2), (17, 3),
+    ):
+        put(x, y)
+    image.pixels.foreach_set(pixels)
+    image.pack()
+    return image
+
+
+def material_with_mask(name, color, image, roughness=0.75):
+    """HeadSkin only. The image is the albedo, so the shared skin material
+    stays untouched. The image already holds the linear skin color."""
+    mat = material(name, (1.0, 1.0, 1.0), roughness=roughness)
+    tree = mat.node_tree
+    bsdf = next(node for node in tree.nodes if node.type == "BSDF_PRINCIPLED")
+    tex = tree.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    tex.interpolation = "Closest"
+    tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    return mat
+
+
 def _object(name, mesh, mat, parent):
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.scene.collection.objects.link(obj)
@@ -64,6 +110,77 @@ def _finish(bm, mesh, bevel):
         poly.use_smooth = False
 
 
+def span(name, a, b, width, depth, mat, bevel=0.0, overlap_from=0.0, overlap_to=0.0):
+    """A block whose long axis runs from `a` to `b`. Local +Z is that axis
+    until the caller bakes the transform. Fighters and the crowd both use this
+    for limbs, sleeves, and bracers.
+
+    `overlap_from` and `overlap_to` are metres along that axis, past the
+    anchors. They bury one segment in the next so a bent joint is not two
+    caps touching at a point. The anchors stay where the rig put them. A
+    zero overlap is a cap that ends on the anchor, which is what the grip
+    end of a hand must stay.
+    """
+    start, end = Vector(a), Vector(b)
+    delta = end - start
+    length = delta.length
+    unit = delta / length if length > 1.0e-8 else Vector((0.0, 0.0, 1.0))
+    start = start - unit * float(overlap_from)
+    end = end + unit * float(overlap_to)
+    length = (end - start).length
+    obj = box(name, (width, depth, length), (0.0, 0.0, 0.0), mat, bevel=bevel)
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = Vector((0.0, 0.0, 1.0)).rotation_difference((end - start).normalized())
+    obj.location = (start + end) * 0.5
+    return obj
+
+
+def tapered_segment(
+    name, a, b, width0, depth0, width1, depth1, mat,
+    bevel=0.0, overlap_from=0.0, overlap_to=0.0, rings=2, sides=6,
+):
+    """A faceted limb from `a` to `b`. Width and depth are full sizes at each
+    end. The anchors stay put; overlap buries the caps the same way `span`
+    does. Two rings are a straight taper. More rings only add stations along
+    that same line. Hands that must stop on a grip stay on `span`."""
+    start, end = Vector(a), Vector(b)
+    delta = end - start
+    unit = delta.normalized() if delta.length > 1.0e-8 else Vector((0.0, 0.0, 1.0))
+    start = start - unit * float(overlap_from)
+    end = end + unit * float(overlap_to)
+    axis = end - start
+    tangent = axis.normalized() if axis.length > 1.0e-8 else Vector((0.0, 0.0, 1.0))
+    up = Vector((0.0, 0.0, 1.0))
+    if abs(tangent.dot(up)) > 0.85:
+        up = Vector((0.0, 1.0, 0.0))
+    side = tangent.cross(up).normalized()
+    lift = side.cross(tangent).normalized()
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    count = max(int(rings), 2)
+    corners = max(int(sides), 4)
+    loops = []
+    for index in range(count):
+        t = index / (count - 1)
+        point = start.lerp(end, t)
+        half_w = (float(width0) + (float(width1) - float(width0)) * t) * 0.5
+        half_d = (float(depth0) + (float(depth1) - float(depth0)) * t) * 0.5
+        ring = []
+        for corner in range(corners):
+            angle = math.tau * corner / corners
+            ring.append(bm.verts.new(point + side * (math.cos(angle) * half_w) + lift * (math.sin(angle) * half_d)))
+        loops.append(ring)
+    bm.faces.new(loops[0][::-1])
+    bm.faces.new(loops[-1])
+    for index in range(count - 1):
+        begin, finish = loops[index], loops[index + 1]
+        for corner in range(corners):
+            nxt = (corner + 1) % corners
+            bm.faces.new((begin[corner], begin[nxt], finish[nxt], finish[corner]))
+    _finish(bm, mesh, bevel)
+    return _object(name, mesh, mat, None)
+
+
 def box(name, size, location, mat, parent=None, bevel=0.0, rotation=(0.0, 0.0, 0.0)):
     """An axis-aligned block of `size` (x, y, z) centred at `location`."""
     mesh = bpy.data.meshes.new(name)
@@ -76,10 +193,20 @@ def box(name, size, location, mat, parent=None, bevel=0.0, rotation=(0.0, 0.0, 0
     return _object(name, mesh, mat, parent)
 
 
-def clump(name, points, widths, depths, mat, parent=None, bevel=0.0):
-    """A faceted solid along a centerline. Each station is a rectangle of
-    `widths` by `depths` in the plane across the path. The result tapers with
-    those sizes. It is not a tube and not a box dropped on each point."""
+def _profile(kind):
+    ## (side, lift) pairs. Width and depth scale them. A gem has a ridge,
+    ## so a lock is not a rectangular plank.
+    if kind == "gem":
+        return ((0.0, 0.5), (0.5, 0.15), (0.32, -0.5), (-0.32, -0.5), (-0.5, 0.15))
+    if kind == "ridge":
+        return ((0.0, 0.5), (0.5, -0.5), (-0.5, -0.5))
+    return ((-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5))
+
+
+def clump(name, points, widths, depths, mat, parent=None, bevel=0.0, profile="gem"):
+    """A faceted solid along a centerline. `profile` is gem, ridge, or rect.
+    Width and depth taper along the path. A gem is the hair lock. A rect is
+    a block, and a short wide one is the plank this exists to avoid."""
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     stations = [Vector(point) for point in points]
@@ -101,54 +228,83 @@ def clump(name, points, widths, depths, mat, parent=None, bevel=0.0):
             side = tangent.cross(Vector((0.0, 1.0, 0.0)))
         side.normalize()
         lift = side.cross(tangent).normalized()
-        half_w = float(widths[index]) * 0.5
-        half_d = float(depths[index]) * 0.5
+        half_w = float(widths[index])
+        half_d = float(depths[index])
         ring = []
-        for sx, sy in ((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)):
+        for sx, sy in _profile(profile):
             ring.append(bm.verts.new(point + side * (sx * half_w) + lift * (sy * half_d)))
         rings.append(ring)
+    count = len(rings[0])
     bm.faces.new(rings[0][::-1])
     bm.faces.new(rings[-1])
     for index in range(len(rings) - 1):
         start, end = rings[index], rings[index + 1]
-        for corner in range(4):
-            nxt = (corner + 1) % 4
+        for corner in range(count):
+            nxt = (corner + 1) % count
             bm.faces.new((start[corner], start[nxt], end[nxt], end[corner]))
     _finish(bm, mesh, bevel)
     return _object(name, mesh, mat, parent)
 
 
-def dome(name, sides, radius, rings, apex, mat, parent=None, center=(0.0, 0.0), depth_scale=1.0, spin=0.0, bevel=0.0):
-    """A faceted crown: the same polygon as the face, in shrinking rings, closed
-    by a small apex. Flat faces. Open at the bottom so it can sit on a prism.
-    Not a smooth sphere and not a flat lid."""
+def _crown_ring(bm, sides, radius, ring, center, depth_scale, spin, inset):
+    z = float(ring[0])
+    scale = float(ring[1])
+    ox = float(ring[2]) if len(ring) > 2 else 0.0
+    oy = float(ring[3]) if len(ring) > 3 else 0.0
+    radial = max(radius * scale, 1.0e-4)
+    ratio = max(radial - inset, 0.004) / radial
+    loop = []
+    for index in range(int(sides)):
+        angle = spin + math.tau * index / int(sides)
+        x = center[0] + ox + math.cos(angle) * radius * scale * ratio
+        y = center[1] + oy + math.sin(angle) * radius * scale * depth_scale * ratio
+        loop.append(bm.verts.new((x, y, z)))
+    return loop
+
+
+def dome(name, sides, radius, rings, apex, mat, parent=None, center=(0.0, 0.0), depth_scale=1.0, spin=0.0, bevel=0.0, thickness=0.0):
+    """A faceted crown of the same polygon as the face.
+
+    `apex` None closes the last ring as a pentagonal face: a solid cap, not
+    a point. `thickness` 0 with an apex is the bald skull, open at the
+    bottom, sitting on the face prism. A positive thickness is a hollow
+    shell. The ring scales are the roundness. A bevel is optional and is
+    not what makes the cap round.
+    """
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
-    built = []
-    for ring in rings:
-        z = float(ring[0])
-        scale = float(ring[1])
-        ox = float(ring[2]) if len(ring) > 2 else 0.0
-        oy = float(ring[3]) if len(ring) > 3 else 0.0
-        loop = []
-        for index in range(int(sides)):
-            angle = spin + math.tau * index / int(sides)
-            x = center[0] + ox + math.cos(angle) * radius * scale
-            y = center[1] + oy + math.sin(angle) * radius * scale * depth_scale
-            loop.append(bm.verts.new((x, y, z)))
-        built.append(loop)
+    count = int(sides)
+    outer = [_crown_ring(bm, count, radius, ring, center, depth_scale, spin, 0.0) for ring in rings]
+    if apex is None:
+        bm.faces.new(outer[0][::-1])
+        for lower, upper in zip(outer, outer[1:]):
+            for index in range(count):
+                nxt = (index + 1) % count
+                bm.faces.new((lower[index], lower[nxt], upper[nxt], upper[index]))
+        bm.faces.new(outer[-1])
+        bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+        if bevel > 0.0:
+            bmesh.ops.bevel(bm, geom=list(bm.edges), offset=bevel, segments=1, affect="EDGES", clamp_overlap=True)
+        bm.to_mesh(mesh)
+        bm.free()
+        for poly in mesh.polygons:
+            poly.use_smooth = False
+        return _object(name, mesh, mat, parent)
     tip = bm.verts.new((float(apex[0]), float(apex[1]), float(apex[2])))
-    bottom = bm.faces.new(built[0][::-1])
-    for lower, upper in zip(built, built[1:]):
-        for index in range(int(sides)):
-            nxt = (index + 1) % int(sides)
-            bm.faces.new((lower[index], lower[nxt], upper[nxt], upper[index]))
-    last = built[-1]
-    for index in range(int(sides)):
-        nxt = (index + 1) % int(sides)
-        bm.faces.new((last[index], last[nxt], tip))
-    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
-    bm.faces.remove(bottom)
+    if thickness <= 0.0:
+        bottom = bm.faces.new(outer[0][::-1])
+        _dome_shell(bm, outer, tip, count)
+        bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+        bm.faces.remove(bottom)
+    else:
+        inner = [_crown_ring(bm, count, radius, ring, center, depth_scale, spin, thickness) for ring in rings]
+        inner_tip = bm.verts.new((float(apex[0]), float(apex[1]), float(apex[2]) - thickness))
+        _dome_shell(bm, outer, tip, count)
+        _dome_shell(bm, inner, inner_tip, count, inward=True)
+        for index in range(count):
+            nxt = (index + 1) % count
+            bm.faces.new((outer[0][index], outer[0][nxt], inner[0][nxt], inner[0][index]))
+        bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
     if bevel > 0.0:
         bmesh.ops.bevel(bm, geom=list(bm.edges), offset=bevel, segments=1, affect="EDGES", clamp_overlap=True)
     bm.to_mesh(mesh)
@@ -158,7 +314,46 @@ def dome(name, sides, radius, rings, apex, mat, parent=None, center=(0.0, 0.0), 
     return _object(name, mesh, mat, parent)
 
 
-def prism(name, sides, radius, z0, z1, mat, parent=None, center=(0.0, 0.0), depth_scale=1.0, top_scale=1.0, spin=0.0, bevel=0.0, axis="Z"):
+def _dome_shell(bm, rings, tip, count, inward=False):
+    for lower, upper in zip(rings, rings[1:]):
+        for index in range(count):
+            nxt = (index + 1) % count
+            if inward:
+                bm.faces.new((lower[nxt], lower[index], upper[index], upper[nxt]))
+            else:
+                bm.faces.new((lower[index], lower[nxt], upper[nxt], upper[index]))
+    last = rings[-1]
+    for index in range(count):
+        nxt = (index + 1) % count
+        if inward:
+            bm.faces.new((last[nxt], last[index], tip))
+        else:
+            bm.faces.new((last[index], last[nxt], tip))
+
+
+def _uv_face(mesh, sides):
+    """UVs for the pentagonal face only. The two quads that meet at the
+    forward vertex carry the beard mask. Every other face sits on white."""
+    layer = mesh.uv_layers.new(name="UVMap")
+    for poly in mesh.polygons:
+        loops = list(poly.loop_indices)
+        if poly.index < 2 or poly.index - 2 >= sides:
+            for loop_index in loops:
+                layer.data[loop_index].uv = (0.02, 0.98)
+            continue
+        side = poly.index - 2
+        if side == sides - 1:
+            u0, u1 = 0.06, 0.46
+        elif side == 0:
+            u0, u1 = 0.54, 0.94
+        else:
+            u0, u1 = 0.02, 0.02
+        coords = ((u0, 0.0), (u1, 0.0), (u1, 1.0), (u0, 1.0))
+        for loop_index, coord in zip(loops, coords):
+            layer.data[loop_index].uv = coord
+
+
+def prism(name, sides, radius, z0, z1, mat, parent=None, center=(0.0, 0.0), depth_scale=1.0, top_scale=1.0, spin=0.0, bevel=0.0, axis="Z", face_uv=False):
     """A vertical n-gon prism from z0 to z1 (or along -Y when axis == "Y").
 
     `spin` rotates the polygon; with sides=5 and spin=-pi/2 one vertex points
@@ -186,6 +381,8 @@ def prism(name, sides, radius, z0, z1, mat, parent=None, center=(0.0, 0.0), dept
         j = (i + 1) % sides
         bm.faces.new((rings[0][i], rings[0][j], rings[1][j], rings[1][i]))
     _finish(bm, mesh, bevel)
+    if face_uv:
+        _uv_face(mesh, sides)
     return _object(name, mesh, mat, parent)
 
 

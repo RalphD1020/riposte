@@ -1,0 +1,302 @@
+{
+  "id": "character.wolf",
+  "facing": "blender -Y becomes Godot +Z",
+  "body_scale_does_not_scale_mesh": true,
+  "bones": [
+    {
+      "name": "Root",
+      "parent": null,
+      "head": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tail": [
+        0.0,
+        0.0,
+        0.15
+      ]
+    },
+    {
+      "name": "SwordMount",
+      "parent": "Root",
+      "head": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "tail": [
+        0.0,
+        -0.3,
+        1.0
+      ],
+      "rotation_mode": "QUATERNION"
+    },
+    {
+      "name": "Hips",
+      "parent": "Root",
+      "head": [
+        0.0,
+        0.0,
+        0.89
+      ],
+      "tail": [
+        0.0,
+        0.0,
+        1.03
+      ]
+    },
+    {
+      "name": "Spine",
+      "parent": "Hips",
+      "head": [
+        0.0,
+        0.0,
+        1.03
+      ],
+      "tail": [
+        0.0,
+        0.0,
+        1.18
+      ]
+    },
+    {
+      "name": "Chest",
+      "parent": "Spine",
+      "head": [
+        0.0,
+        0.0,
+        1.18
+      ],
+      "tail": [
+        0.0,
+        0.0,
+        1.39
+      ]
+    },
+    {
+      "name": "Neck",
+      "parent": "Chest",
+      "head": [
+        0.0,
+        0.0,
+        1.41
+      ],
+      "tail": [
+        0.0,
+        0.0,
+        1.505
+      ]
+    },
+    {
+      "name": "Head",
+      "parent": "Neck",
+      "head": [
+        0.0,
+        0.0,
+        1.505
+      ],
+      "tail": [
+        0.0,
+        0.0,
+        1.8
+      ]
+    },
+    {
+      "name": "Shoulder.L",
+      "parent": "Chest",
+      "head": [
+        0.0795,
+        0.0,
+        1.37
+      ],
+      "tail": [
+        0.265,
+        0.05,
+        1.37
+      ]
+    },
+    {
+      "name": "UpperArm.L",
+      "parent": "Shoulder.L",
+      "head": [
+        0.265,
+        0.05,
+        1.37
+      ],
+      "tail": [
+        0.400264,
+        -0.15852,
+        1.112343
+      ]
+    },
+    {
+      "name": "Forearm.L",
+      "parent": "UpperArm.L",
+      "head": [
+        0.400264,
+        -0.15852,
+        1.112343
+      ],
+      "tail": [
+        0.047977,
+        -0.113791,
+        1.066986
+      ]
+    },
+    {
+      "name": "Hand.L",
+      "parent": "Forearm.L",
+      "head": [
+        0.047977,
+        -0.113791,
+        1.066986
+      ],
+      "tail": [
+        0.0,
+        -0.15,
+        1.0
+      ]
+    },
+    {
+      "name": "UpperLeg.L",
+      "parent": "Hips",
+      "head": [
+        0.12,
+        0.04,
+        0.89
+      ],
+      "tail": [
+        0.12,
+        0.05,
+        0.4
+      ]
+    },
+    {
+      "name": "LowerLeg.L",
+      "parent": "UpperLeg.L",
+      "head": [
+        0.12,
+        0.05,
+        0.4
+      ],
+      "tail": [
+        0.12,
+        0.08,
+        0.09
+      ]
+    },
+    {
+      "name": "Foot.L",
+      "parent": "LowerLeg.L",
+      "head": [
+        0.12,
+        0.08,
+        0.09
+      ],
+      "tail": [
+        0.12,
+        -0.07,
+        0.04
+      ]
+    },
+    {
+      "name": "Shoulder.R",
+      "parent": "Chest",
+      "head": [
+        -0.0795,
+        0.0,
+        1.37
+      ],
+      "tail": [
+        -0.265,
+        0.05,
+        1.37
+      ]
+    },
+    {
+      "name": "UpperArm.R",
+      "parent": "Shoulder.R",
+      "head": [
+        -0.265,
+        0.05,
+        1.37
+      ],
+      "tail": [
+        -0.395795,
+        -0.184393,
+        1.133111
+      ]
+    },
+    {
+      "name": "Forearm.R",
+      "parent": "UpperArm.R",
+      "head": [
+        -0.395795,
+        -0.184393,
+        1.133111
+      ],
+      "tail": [
+        -0.044853,
+        -0.178455,
+        1.062624
+      ]
+    },
+    {
+      "name": "Hand.R",
+      "parent": "Forearm.R",
+      "head": [
+        -0.044853,
+        -0.178455,
+        1.062624
+      ],
+      "tail": [
+        0.0,
+        -0.225,
+        1.0
+      ]
+    },
+    {
+      "name": "UpperLeg.R",
+      "parent": "Hips",
+      "head": [
+        -0.12,
+        -0.05,
+        0.89
+      ],
+      "tail": [
+        -0.12,
+        -0.13,
+        0.4
+      ]
+    },
+    {
+      "name": "LowerLeg.R",
+      "parent": "UpperLeg.R",
+      "head": [
+        -0.12,
+        -0.13,
+        0.4
+      ],
+      "tail": [
+        -0.12,
+        -0.1,
+        0.09
+      ]
+    },
+    {
+      "name": "Foot.R",
+      "parent": "LowerLeg.R",
+      "head": [
+        -0.12,
+        -0.1,
+        0.09
+      ],
+      "tail": [
+        -0.12,
+        -0.25,
+        0.04
+      ]
+    }
+  ]
+}

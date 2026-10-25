@@ -88,6 +88,8 @@ func test_the_same_seed_seats_the_same_people() -> void:
 	assert_eq(again.skin, first.skin, "skin is the seed and the seat")
 	assert_eq(again.role, first.role, "role is the seed and the seat")
 	assert_eq(again.hair, first.hair, "hair is the seed and the seat")
+	assert_eq(again.bald, first.bald, "bald is its own draw and does not follow the hair")
+	assert_eq(again.beard, first.beard, "a beard is its own draw and does not follow the hair")
 	var raw := CrowdRoster.assign(11, 5)
 	var forced := CrowdRoster.new()
 	forced.skin = raw.skin
@@ -117,6 +119,10 @@ func test_the_same_seed_seats_the_same_people() -> void:
 	assert_false(String(crop.resource_name).begins_with("fallback"), "the crop is the exported mesh")
 	assert_false(String(bun.resource_name).begins_with("fallback"), "the bun is the exported mesh")
 	assert_false(String(fringe.resource_name).begins_with("fallback"), "the fringe is the exported mesh")
+	var beard := _roman().beard_style(0)
+	assert_false(String(beard.resource_name).begins_with("fallback"), "the beard is the exported mesh")
+	assert_true(beard != crop and beard != bun and beard != fringe, "the beard is not a hairstyle standing in")
+	assert_true(_mesh_tris(beard) > 40, "the beard keeps its clumps (%d)" % _mesh_tris(beard))
 	var crop_tris := _mesh_tris(crop)
 	var bun_tris := _mesh_tris(bun)
 	var fringe_tris := _mesh_tris(fringe)
@@ -137,6 +143,7 @@ func test_the_same_seed_seats_the_same_people() -> void:
 		top = maxf(top, point.y)
 	assert_true(top > 1.1, "the skull clears the collar (top %.3f)" % top)
 	var skin_drawn := _roman().part(false, "skin").get_aabb()
+	assert_true(skin_drawn.position.y < 0.2, "the seated body includes the legs and boots (bottom %.3f)" % skin_drawn.position.y)
 	var drawn_top := skin_drawn.position.y + skin_drawn.size.y
 	## The authored head is 0.25 m, and the marks sit at Wolf's fraction of it.
 	var head_height := 0.25
@@ -612,11 +619,15 @@ func test_the_layout_puts_feet_on_four_treads_and_leaves_the_disc_alone() -> voi
 	var key := arena.get_node("KeyLight") as DirectionalLight3D
 	var rim := arena.get_node("RimLight") as DirectionalLight3D
 	assert_true(key.shadow_enabled, "the warm key casts the one shadow map")
+	assert_near(key.rotation_degrees.x, RiposteTheme.WORLD_KEY_ROTATION_DEGREES.x, 0.05, "the sun is 40° above the horizon")
+	assert_near(key.rotation_degrees.y, RiposteTheme.WORLD_KEY_ROTATION_DEGREES.y, 0.05, "the sun sits beyond the far wall")
+	assert_near(key.rotation_degrees.z, RiposteTheme.WORLD_KEY_ROTATION_DEGREES.z, 0.05, "the key has no roll")
 	assert_eq(key.directional_shadow_mode, DirectionalLight3D.SHADOW_ORTHOGONAL, "in one orthogonal split")
 	assert_near(key.directional_shadow_max_distance, ArenaScaffold.KEY_SHADOW_DISTANCE, 1e-4, "over the duel camera's view only")
 	assert_false(rim.shadow_enabled, "the rim never casts")
-	assert_eq(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size"), 1024, "a 1024 map: a 512 one broke the sword's shadow into dots")
-	assert_eq(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality"), 0, "hard filtering: the soft filter smears, and shadow_blur does nothing on Compatibility")
+	assert_eq(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size"), 2048, "desktop map is 2048: 1024 over a 44 m fit broke the sword shadow into dots, and 32 m still reaches the far wall")
+	assert_eq(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size.mobile"), 1024, "mobile stays on the 1024 control until a device measures it")
+	assert_eq(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality"), 0, "hard filtering: Compatibility's soft filter smears, and shadow_blur does nothing there")
 	assert_eq(key.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY, "the key draws the one sun")
 	assert_eq(rim.sky_mode, DirectionalLight3D.SKY_MODE_LIGHT_ONLY, "the rim does not add a second sun")
 	assert_true(key.light_energy > rim.light_energy, "the key stays stronger than the cool fill")

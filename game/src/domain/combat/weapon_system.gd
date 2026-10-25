@@ -40,6 +40,11 @@ const PROGRESS_LATE := 0.8
 ## apart. Not a gameplay slack. Kept while the changed duels are traced;
 ## narrowing it to recover an older hash is not a reason.
 const STOP_ARRIVAL_RAD := 1.0e-9
+## After the recovery floor, a queued tap may still be waiting on the brake.
+## Two ticks covers the step that notices the coast and the step that opens
+## the window. It is not a memory of the click. A bind that keeps the blade
+## fast past the healthy brake from the speed at that moment drops the tap.
+const TAP_COAST_SLACK := 2
 
 
 static func can_start_attack(fighter: FighterState, weapon: WeaponDefinition) -> bool:
@@ -228,12 +233,38 @@ static func _begin_press(fighter: FighterState, tick: int, events: Array[DuelEve
 static func _promote_buffer(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
 	if fighter.buffered_press_tick < 0:
 		return
-	if tick - fighter.buffered_press_tick > rules.spec_of(fighter).weapon.buffer_ticks:
+## Promote a queued press once the blade can take it.
+##
+## One pending intent. A released click is a tap for the action that blocked
+## it: it fires one charge-0 cut on that action's first controllable tick, and
+## it is not kept into a later exchange. A finger that stays down is a hold.
+## The four-tick stamp may expire; the hold does not. The hold starts on the
+## first eligible tick, once, without a second press. A new press replaces a
+## queued tap. Death, stagger, and cancel clear the intent.
+static func _promote_buffer(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
+	var definition := rules.spec_of(fighter).weapon
+	if fighter.buffered_press_tick != -1 and can_start_attack(fighter, definition):
+		_start_buffered(fighter, rules, tick, events)
+		return
+	if fighter.buffered_release and fighter.buffered_press_tick != -1 and _tap_expired(fighter, rules, tick):
 		fighter.buffered_press_tick = -1
 		fighter.buffered_release = false
-		return
-	if not can_start_attack(fighter, rules.spec_of(fighter).weapon):
-		return
+	elif not fighter.buffered_release and fighter.buffered_press_tick >= 0 and tick - fighter.buffered_press_tick > definition.buffer_ticks:
+		## The short buffer forgot the stamp. A finger still down is the hold
+		## path below, not a second press.
+		fighter.buffered_press_tick = -1
+		fighter.buffered_release = false
+	if (
+		fighter.attack_held
+		and not fighter.buffered_release
+		and fighter.press_tick < 0
+		and fighter.buffered_press_tick < 0
+		and can_start_attack(fighter, definition)
+	):
+		_begin_press(fighter, tick, events)
+
+
+static func _start_buffered(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
 	var released := fighter.buffered_release
 	_begin_press(fighter, tick, events)
 	fighter.buffered_release = false
@@ -242,8 +273,47 @@ static func _promote_buffer(fighter: FighterState, rules: DuelRules, tick: int, 
 		fighter.press_tick = -1
 
 
-static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick: int, events: Array[DuelEvent]) -> void:
+## A tap pressed while the blade was already free expires with the four-tick
+## buffer. A tap pressed during an action waits out that action. Once the
+## recovery floor is done and the blade is still fast, the wait is the healthy
+## brake from that speed. The deadline is stored as a negative stamp so the
+## press tick itself is not a second piece of state.
+static func _tap_expired(fighter: FighterState, rules: DuelRules, tick: int) -> bool:
 	var weapon := fighter.weapon
+	var definition := rules.spec_of(fighter).weapon
+	if fighter.buffered_press_tick < -1:
+		return tick >= -fighter.buffered_press_tick - 2
+	var pressed_during_phase := fighter.buffered_press_tick >= tick - weapon.phase_ticks
+	if weapon.phase == CombatPhase.Id.NEUTRAL and pressed_during_phase:
+		return tick - fighter.buffered_press_tick > definition.buffer_ticks
+	var coasting := (
+		weapon.phase == CombatPhase.Id.RECOVERY
+		and weapon.recovery_left == 0
+		and absf(weapon.speed) > definition.control_speed
+	)
+	var carried_into_neutral := weapon.phase == CombatPhase.Id.NEUTRAL and not pressed_during_phase and absf(weapon.speed) > definition.control_speed
+	if not coasting and not carried_into_neutral:
+		return false
+	var budget := _healthy_brake_ticks(fighter, rules) + TAP_COAST_SLACK
+	fighter.buffered_press_tick = -(tick + budget) - 2
+	return false
+
+
+## Ticks for the healthy brake to take `speed` down to `control_speed`.
+## Fatigue is not in it: a wound must not stretch a queued tap, and a bind
+## that holds the speed up does not refresh this number.
+static func _healthy_brake_ticks(fighter: FighterState, rules: DuelRules) -> int:
+	var weapon := fighter.weapon
+	var definition := rules.spec_of(fighter).weapon
+	var excess := absf(weapon.speed) - definition.control_speed
+	if excess <= 0.0:
+		return 0
+	var spec := rules.spec_of(fighter)
+	var inertia := WeaponKinematics.motor_inertia(spec, weapon.angle)
+	var brake := definition.brake_accel(weapon.swing_charge, spec.fighter.weapon_torque_scale, inertia)
+	if brake <= SimMath.EPSILON:
+		return 0
+	return ceili(excess / (brake * SimulationTimebase.TICK_SECONDS))
 	var definition := rules.spec_of(fighter).weapon
 	weapon.swing_charge = charge
 	_clear_charge(weapon)

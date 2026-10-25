@@ -4,14 +4,14 @@
   "version": 1,
   "bounds": {
     "min": [
-      -0.1221,
-      -0.0987,
-      1.095
+      -0.1517,
+      -0.1396,
+      1.08
     ],
     "max": [
-      0.1221,
-      0.122,
-      1.18
+      0.1517,
+      0.1547,
+      1.1789
     ]
   },
   "bone_names": [],
@@ -22,8 +22,8 @@
   "material_slots": [
     "hair"
   ],
-  "triangle_count": 69,
+  "triangle_count": 76,
   "color_targets": [],
   "source": "crowd/hair_fringe.blend",
-  "source_sha256": "1bcf7e32f0270bc2d4a35efb2f89583b409fa608239883f3f7aae3cd92ed39ad"
+  "source_sha256": "88ecf5d3c3b34340fd7cf37d6abcff9a7f71d56e5fa352d69bfd2cea7252d47c"
 }

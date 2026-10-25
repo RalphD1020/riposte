@@ -42,13 +42,12 @@ extends RefCounted
 ## Guard keys over |θ| (degrees): 0 Long Guard, 45 Ready, 90 the edge of the
 ## ready band, 135 wound fully round. Hands' height above blade height, and the
 ## blade's pitch. Wound fully round without a charge (a rebound, a recovery)
-## the blade trails back past the head at a shallow pitch: steeper, on the
-## rear side it would rise through the head the bladed stance carries there
-## (PRES-RIG), and the narrow rules-40 load carries the hands nearer it still;
-## a charge's gather lifts it to the load's own pitch instead.
+## the blade stays low and shallow, under the heroic head the bladed stance
+## carries toward the hands (PRES-RIG). Steeper, or a higher hand, it rises
+## through that head; a charge's gather lifts it to the load's own pitch instead.
 const STANCE_DEGREES: PackedFloat64Array = [0.0, 45.0, 90.0, 135.0]
-const STANCE_RAISE: PackedFloat64Array = [0.17, 0.17, 0.15, 0.30]
-const STANCE_PITCH_DEGREES: PackedFloat64Array = [10.0, 12.0, 8.0, 14.0]
+const STANCE_RAISE: PackedFloat64Array = [0.17, 0.17, 0.15, 0.18]
+const STANCE_PITCH_DEGREES: PackedFloat64Array = [10.0, 12.0, 8.0, 4.0]
 
 ## The high shoulder load at full charge: the hands at shoulder height, the
 ## point high.

@@ -4,15 +4,16 @@ extends MeshInstance3D
 ## World-space ribbon behind a moving blade (UX §19). It is a *reading* of the
 ## swing rather than decoration: every sample carries the `swing_potential` the
 ## simulation computed at that instant, and the ribbon's silhouette thickness
-## and opacity come from it. Thin while the swing is still gathering, thickest
-## through the part of the arc that is genuinely most dangerous, tapering as the
-## swing spends itself.
+## and opacity come from it. A gathering wind-back has no potential and is not
+## recorded. A strike is thin where it is weak and thickest through the part
+## of the arc that is genuinely most dangerous.
 ##
-## Because potential is read from the blade and not from the input that produced
-## it, the strongest part of the ribbon lands in a slightly different place every
-## swing (COMBAT-009). There is nothing authored here to memorize, and nothing
-## here is predictive: the ribbon says how dangerous this swing *is*, never what
-## it would do to the other fighter.
+## A sample is kept only when that potential is above zero. A wind-back is a
+## fast sword with none, so it leaves no sheet. Among the samples that are
+## kept, thickness follows the potential: thin at the start of a strike,
+## thickest through the dangerous part (COMBAT-009). Nothing here is
+## predictive. The ribbon says how dangerous this swing is, never what it
+## would do to the other fighter.
 ##
 ## The percussion band of the blade is drawn as a separate, narrower rib
 ## floating just above the ribbon, so the sweet region reads as a distinct
@@ -114,7 +115,9 @@ func drawn_sample_start() -> int:
 
 
 func add_sample(hilt: Vector3, tip: Vector3, potential: float, speed: float, min_speed: float) -> void:
-	if speed < min_speed:
+	## A wind-back is fast and has no strike potential. Recording it drew a
+	## bright sheet along the pull-back, which is not the dangerous space.
+	if potential <= 0.0 or speed < min_speed:
 		return
 	_hilts.append(hilt)
 	_tips.append(tip)
