@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .anatomy import resolve_controls, validate_controls
 from .parameters import (
     ACCEPTED_CHEEK_WIDTH_M,
     ACCEPTED_HEAD_SCALE,
@@ -84,6 +85,7 @@ def validate(data):
     if "calf_belly" in sliders and "calf_knee" in sliders and "calf_ankle" in sliders:
         if sliders["calf_belly"] < sliders["calf_knee"] or sliders["calf_belly"] < sliders["calf_ankle"]:
             problems.append("calf belly is not the fullest part of the lower leg")
+    problems += validate_controls(data.get("controls"))
     return problems
 
 
@@ -114,6 +116,7 @@ def resolve(data):
         "status": data["status"],
         "pose": data["pose"],
         "sliders": sliders,
+        "controls": resolve_controls(data.get("controls")),
         "head_kw": head_kw,
         "cheek_width_m": ACCEPTED_CHEEK_WIDTH_M * head_width,
         "style": {
@@ -174,6 +177,13 @@ def self_check():
     unknown["sliders"]["grip_z"] = 1.0
     if not validate(unknown):
         raise SystemExit("a control that is not a slider must be refused")
+    if set(first["controls"].values()) != {1.0}:
+        raise SystemExit("regional controls must default to the accepted shape (1.0)")
+    for controls, why in (({"muscularity": 1.05}, "global muscularity must stay disabled"),
+                          ({"lat_flare": 2.0}, "a regional control past its range must be refused"),
+                          ({"bulk": 1.0}, "an unknown regional control must be refused")):
+        if not validate(dict(pending, controls=controls)):
+            raise SystemExit(why)
     landmarks = {
         "shoulder_x": 0.265, "shoulder_z": 1.37, "hip_x": 0.12, "hip_z": 0.89,
         "upper_arm": 0.358, "forearm": 0.30, "hand": 0.06,

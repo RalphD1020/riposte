@@ -29,6 +29,7 @@
     "test:changed": "turbo run test:changed --",
     "test:perf": "turbo test:perf",
     "test:tooling": "pnpm --filter @riposte/game test:tooling",
+    "test:character-modeling": "node scripts/test-character-modeling.mjs",
     "format": "prettier --write --ignore-unknown . && turbo format",
     "format:check": "prettier --check --ignore-unknown . && turbo format:check",
     "docs:generate": "node scripts/docs-generate.mjs",

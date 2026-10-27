@@ -19,6 +19,7 @@ pnpm lint              # ESLint + game source scanners (not Godot import)
 pnpm typecheck         # tsc + GDScript load
 pnpm test              # Vitest 100% + manifest check + Godot harness + GDScript manifest
 pnpm test:tooling      # Fail-fixture gate (not inside pnpm test)
+pnpm test:character-modeling  # Pure-Python character scanner unit tests (not inside pnpm test)
 pnpm test:balance      # CPU balance smoke (CPU-BALANCE), own process + progress guard (verify runs it)
 pnpm test:balance:audit  # CPU tuning-corpus report (40 seeds), a line per duel; never a gate
 pnpm test:balance:accept # CPU held-out ladder (CPU-ACCEPT), run once after a tuning pass

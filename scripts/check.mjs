@@ -159,6 +159,12 @@ const plan = [
   ["Integrity", PNPM.command, [...PNPM.prefix, "integrity:check"], ROOT],
   ["Security", PNPM.command, [...PNPM.prefix, "security:check"], ROOT],
   [
+    "Character scanner",
+    PNPM.command,
+    [...PNPM.prefix, "test:character-modeling"],
+    ROOT,
+  ],
+  [
     "Tooling / harness gate",
     process.execPath,
     [join(GAME, "scripts/test-exit-propagation.mjs")],

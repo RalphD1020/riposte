@@ -33,6 +33,7 @@ If code violates spec, the implementation is defective unless the spec has been 
 ## Riposte game work
 
 - Read `.impl/INDEX.md` when available. Concept index: [docs/concepts/game.md](./docs/concepts/game.md).
+- Character art (ART-STYLE-001): stylized low-poly fantasy, sculpted heroic forms, restrained detail, Hades II painterly light. Soulstone Survivors is a readability reference, not a copy. Do not aim the authored body at a voxel, Roblox, or Minecraft look. The shipping blockout stays the placeholder until a gameplay capture accepts an authored surface. A remesh that closes a study is not that look.
 - Normative game contracts live in `spec/`. Durable explanations live in `docs/`. Never introduce committed references to `.impl/`.
 - Use Compatibility for Web (WEB-001). Follow [docs/reference/godot.md](./docs/reference/godot.md). Authoritative runtime: Godot **4.7.2-stable**.
 - Simulation (SIM-001): only `DuelSimulation.step` advances state, one `PlayerCommand` per fighter per 60 Hz tick (CMD-001). Domain uses `SimMath` scalars (SIM-MATH-001) and `SeededRng` (SIM-RNG-001); no engine types, singletons, signals, or upward dependencies (lint). Rules values live in `game/content/rules/`; changing one bumps `DuelRules.version` (SIM-002).
