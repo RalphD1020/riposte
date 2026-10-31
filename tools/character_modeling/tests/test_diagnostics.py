@@ -329,12 +329,12 @@ class RegionsAndControls(unittest.TestCase):
         broken = dict(lm, hip_z=1.2)
         self.assertTrue(anatomy.validate_landmarks(broken))
 
-    def test_controls_default_to_one_and_muscularity_stays_disabled(self):
+    def test_controls_default_to_one_and_muscularity_is_a_body_input(self):
         resolved = anatomy.resolve_controls()
         self.assertEqual(set(resolved.values()), {1.0})
+        self.assertNotIn("muscularity", resolved)
         self.assertEqual(anatomy.resolve_controls({"lat_flare": 1.05})["lat_flare"], 1.05)
-        self.assertEqual(anatomy.validate_controls({"muscularity": 1.0}), [])
-        self.assertTrue(anatomy.validate_controls({"muscularity": 1.05}))
+        self.assertEqual(anatomy.validate_controls({"muscularity": 1.0}), ["unknown control muscularity"])
         self.assertTrue(anatomy.validate_controls({"lat_flare": 1.3}))
         self.assertTrue(anatomy.validate_controls({"bulk": 1.0}))
         with self.assertRaises(ValueError):
@@ -355,11 +355,11 @@ class ProtectedMeasurements(unittest.TestCase):
         self.assertNotIn("body.deltoid_span_m", measurements.hard_tolerances(exclude=("body.deltoid_span_m",)))
         self.assertIn("head_landmarks.integrity.mirror_max_dev_m", full)
 
-    def test_body_span_tolerance_is_at_least_one_voxel(self):
+    def test_body_span_tolerance_is_at_least_one_remesh_cell(self):
         span = measurements.BY_PATH["body.deltoid_span_m"]
-        self.assertGreaterEqual(span.tolerance, measurements.VOXEL_M)
+        self.assertGreaterEqual(span.tolerance, measurements.REMESH_CELL_M)
         nose = measurements.BY_PATH["head_landmarks.mask_fit.face.nose_tip.y"]
-        self.assertLess(nose.tolerance, measurements.VOXEL_M)  # skull loft, not remeshed
+        self.assertLess(nose.tolerance, measurements.REMESH_CELL_M)  # skull loft, not remeshed
 
 
 class ThresholdStatus(unittest.TestCase):

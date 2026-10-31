@@ -1,0 +1,80 @@
+{
+  "asset_id": "character.male_base",
+  "kind": "candidate",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.4416,
+      -0.2583,
+      0.0096
+    ],
+    "max": [
+      0.4457,
+      0.1544,
+      1.7985
+    ]
+  },
+  "bone_names": [
+    "Root",
+    "SwordMount",
+    "Hips",
+    "Spine",
+    "Chest",
+    "Neck",
+    "Head",
+    "Shoulder.L",
+    "UpperArm.L",
+    "Forearm.L",
+    "Hand.L",
+    "Shoulder.R",
+    "UpperArm.R",
+    "Forearm.R",
+    "Hand.R",
+    "UpperLeg.L",
+    "LowerLeg.L",
+    "Foot.L",
+    "UpperLeg.R",
+    "LowerLeg.R",
+    "Foot.R"
+  ],
+  "animation_names": [
+    "charge_support",
+    "dash_back",
+    "dash_forward",
+    "dash_left",
+    "dash_right",
+    "death",
+    "death_stab",
+    "flourish",
+    "hurt_heavy",
+    "hurt_light",
+    "idle",
+    "orbit_ccw",
+    "orbit_cw",
+    "overswing",
+    "recovery",
+    "ring_fall_a",
+    "ring_fall_b",
+    "ring_fall_c",
+    "run_through",
+    "stagger",
+    "swing_support",
+    "victory_combo",
+    "victory_idle",
+    "walk_backward",
+    "walk_forward"
+  ],
+  "attachment_names": [],
+  "material_slots": [
+    "skin"
+  ],
+  "triangle_count": 2016,
+  "color_targets": [],
+  "source": "characters/male_base.blend",
+  "source_sha256": "218adb23eda198bf795a451dbe39a653facf532308d936910bf7a836874310a4",
+  "configuration": {
+    "name": "default",
+    "values": {},
+    "sha256": "68328a9728ecf170c39183eb319ad521a7a931bfc60c56b6c05c9e2e3020ea1e"
+  }
+}

@@ -19,7 +19,7 @@ func _init() -> void:
 func test_only_the_arena_carries_structures() -> void:
 	var pit := StandardDuelRules.pit()
 	assert_eq(pit.problem(), "", "the walled pit is valid rules")
-	assert_eq(pit.version, 60, "on version 60")
+	assert_eq(pit.version, 62, "on version 62")
 	var ids: Array[StringName] = []
 	for structure: StageObjectDef in pit.structures:
 		ids.append(structure.object_id)
@@ -29,7 +29,7 @@ func test_only_the_arena_carries_structures() -> void:
 	assert_eq(pit.structure_pair(0, 0).friction, 0.35, "steel on stone grips 0.35")
 	assert_eq(pit.structure_pair(1, 1).friction, 0.45, "steel on wood grips 0.45")
 	var open := StandardDuelRules.create()
-	assert_true(open.structures.is_empty(), "version 58 has no walls")
+	assert_true(open.structures.is_empty(), "version 61 has no walls")
 	assert_true(StageCatalog.the_end().rules().structures.is_empty(), "The End has no walls")
 	assert_eq(DuelSetup.new_state(pit, 1).structure_contacts.size(), 2, "a walled match tracks each sword on the stage")
 	assert_eq(DuelSetup.new_state(open, 1).structure_contacts.size(), 0, "a match without walls tracks nothing, so it hashes as before")

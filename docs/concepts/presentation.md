@@ -4,7 +4,8 @@
 > See also: [docs/concepts/ux.md](./ux.md), [docs/concepts/simulation.md](./simulation.md), [docs/concepts/combat.md](./combat.md)
 > See also: [docs/reference/godot.md](../reference/godot.md) — the rig and animation contract for authored scenes
 > See also: [docs/reference/assets.md](../reference/assets.md) — the Blender and ElevenLabs asset pipeline
-> See also: [docs/concepts/character-art.md](./character-art.md) — the block body, WoW proportions with chibi softness, face clearance, art layers
+> See also: [docs/concepts/character-art.md](./character-art.md) — the blockout body, powerful heroic physiques in minimalist dark fantasy, face clearance, art layers
+> See also: [character-modeling.md](./character-modeling.md) — anatomy and deformation are separate mappings on one WolfRig
 > Source: `game/src/presentation/`, `game/content/presentation/`
 
 Presentation turns authoritative facts into pictures, sound, and feel. It never decides them (PRES-001).
@@ -255,8 +256,15 @@ interpolated θ → WeaponKinematics            (carriage C(θ), yaw θ — the 
   → CombatPresentationField + CutPresentationCurve   (height, pitch, roll about the carriage)
   → displayed sword (the SwordCarriage node)         (same carriage, same yaw, lifted)
   → grip markers + ElbowGuideField poles             (hands on the sword, elbows' bend planes)
-  → CombatPoseModifier3D → TwoBoneIK3D             (body support, head on the target, then both arms)
+  → CombatPoseModifier3D → TwoBoneIK3D → GripHandsModifier3D
+      (body support, clavicle, head, elbow poles, grip frames; both arms to the wrists; each hand turned to its grip)
 ```
+
+A hand on the sword is a position and an orientation (PRES-GRIP-001). Each hand's grip frame sits on the displayed sword: the palm at its grip, the knuckle line along the handle, the hand in the common (handshake) grip — hanging under the handle, tilted 45°–90° off it and turned within ±100° to follow its forearm. The IK reaches the wrist that frame implies and the last pass turns the hand, so both hands wrap one handle instead of each hand keeping whatever roll its arm chain left. Each scene's `hand_span_axes` is its own hand mesh's knuckle line (the production body and the blockout differ), and PRES-RIG measures it from the mesh. `game/tools/capture_grip.gd` draws the skeleton, the sword's frame and both hands' axes over the real stack at the plane's landmarks (`.reports/grip/`).
+
+Long Guard (θ = 0) is a Langort-inspired long point (PRES-LONGPOINT-001): the hands a little above Ready and the point at the opponent. On the 0.63 m hilt track the bladed left arm bounds how high the hands can go, and a lift cannot straighten the arms; that needs a longer centre on the track, which is a rules change.
+
+The production body uses that same stack. Blender binds the mesh to WolfRig; Godot imports `Skeleton3D`, `Skin` and `MeshInstance3D` and does not skin the mesh again in script. There is one deform skeleton. The A-pose is the modeling reference, not a second rig. `ClavicleResponse` lifts each existing `Shoulder` bone from arm elevation — a dead zone, a smooth rise, a ceiling, not a fixed ratio — inside `CombatPoseModifier3D`, after the torso pose and before the elbow guides, so the arm IK solves from the girdle's final position. It does not move the simulation, the reach, or the hitboxes. Four bone influences is the import limit, because the game renders with Compatibility.
 
 The presenter interpolates θ between ticks and evaluates the orbit there, so every drawn pose lies on it; it never blends transforms. The lift's continuous inputs — swing progress and charge — are interpolated with θ (`MatchPresenter.lift_inputs`), so drawn between ticks (a faster display, slow motion) the lift moves with the sword instead of stepping once a tick; across a phase change, or when a cut commits into the opposite side, the lift's branch changes and the proxy's carry blend inertializes the difference. PRES-RIG proves it by adaptive refinement: a real cut is redrawn at 8 and 32 sub-steps wherever it turns more than 1° or changes phase, and the worst excess of the drawn point over the authoritative one must shrink — a step keeps its size, motion does not. That makes the presenter the one owner of interpolation: Godot's automatic physics interpolation stays off for the fighter proxies (it is off project-wide), because interpolating the transform `C(θ)` produced would interpolate the same motion twice and draw chords off the orbit. If it is ever turned on for anything else, the proxies opt out. `WeaponOrigin` is the authoritative planar sword (the domain's pommel on the blade plane, yaw θ, never drawn); the steel, the x-ray ghost and the grip targets hang from `SwordCarriage`, which shares its carriage and yaw and adds only the lift — so the hands, the displayed sword and collision are one rigid object. Pitch foreshortens the drawn blade's ground projection (about 2 cm at the tip through the near-level contact corridor); nothing re-aims it. There is no horizontal offset, yaw correction, tip targeting or side-specific shove anywhere in presentation. Trails follow the displayed tip; sparks come from authoritative contact coordinates.
 

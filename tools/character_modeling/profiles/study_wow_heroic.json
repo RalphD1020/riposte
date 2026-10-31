@@ -1,11 +1,16 @@
 {
   "schema": "riposte.character_model",
-  "version": 1,
+  "version": 2,
   "id": "study-wow-heroic",
   "label": "A",
   "title": "A  WoW heroic",
   "status": "study",
   "pose": "relaxed-a-pose",
+  "body": {
+    "height_m": 1.8,
+    "frame_build": 1.0,
+    "muscularity": 1.0
+  },
   "sliders": {
     "shoulder_breadth": 3.0,
     "chest_mass": 1.52,

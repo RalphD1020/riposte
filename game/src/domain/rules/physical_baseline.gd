@@ -6,9 +6,14 @@ extends RefCounted
 ## "player size 100".
 ##
 ## These are a *normalized combat baseline*, not a demographic claim. The
-## fighter is a neutral athletic duelist: 1.75 m is close to the modern adult
-## male mean, but 80 kg is deliberately below the ~90 kg population mean,
-## because that mean includes bodies nobody would cast as a duelist.
+## fighter is a neutral athletic duelist: 1.80 m is the canonical reference —
+## the same figure the character art tops out at (`wolf.character.json`
+## head_top) and the height the Model A silhouette study is scaled to — while
+## 80 kg is deliberately below the ~90 kg population mean, because that mean
+## includes bodies nobody would cast as a duelist. Height is the honest scale
+## of the body; it feeds no derived combat value (forces and inertia use mass
+## and `push_radius`), so this figure is the reference every character build
+## scales from, not a gameplay lever.
 ##
 ## The sword needs no such apology. 1.22 m overall with a ~0.97 m blade at
 ## ~1.6 kg is almost directly represented by surviving museum examples, which
@@ -22,7 +27,7 @@ extends RefCounted
 ## See also: /docs/concepts/combat.md, /docs/concepts/content.md
 
 ## Baseline fighter.
-const FIGHTER_HEIGHT_M := 1.75
+const FIGHTER_HEIGHT_M := 1.80
 const FIGHTER_MASS_KG := 80.0
 const FIGHTER_RADIUS_M := 0.27
 ## The torso a blade can actually strike, at blade height: the enclosing

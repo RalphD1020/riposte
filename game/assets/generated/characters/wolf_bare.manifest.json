@@ -1,0 +1,80 @@
+{
+  "asset_id": "character.wolf.bare",
+  "kind": "character",
+  "version": 1,
+  "bounds": {
+    "min": [
+      -0.4416,
+      -0.2583,
+      0.0096
+    ],
+    "max": [
+      0.4457,
+      0.1544,
+      1.7985
+    ]
+  },
+  "bone_names": [
+    "Root",
+    "SwordMount",
+    "Hips",
+    "Spine",
+    "Chest",
+    "Neck",
+    "Head",
+    "Shoulder.L",
+    "UpperArm.L",
+    "Forearm.L",
+    "Hand.L",
+    "Shoulder.R",
+    "UpperArm.R",
+    "Forearm.R",
+    "Hand.R",
+    "UpperLeg.L",
+    "LowerLeg.L",
+    "Foot.L",
+    "UpperLeg.R",
+    "LowerLeg.R",
+    "Foot.R"
+  ],
+  "animation_names": [
+    "charge_support",
+    "dash_back",
+    "dash_forward",
+    "dash_left",
+    "dash_right",
+    "death",
+    "death_stab",
+    "flourish",
+    "hurt_heavy",
+    "hurt_light",
+    "idle",
+    "orbit_ccw",
+    "orbit_cw",
+    "overswing",
+    "recovery",
+    "ring_fall_a",
+    "ring_fall_b",
+    "ring_fall_c",
+    "run_through",
+    "stagger",
+    "swing_support",
+    "victory_combo",
+    "victory_idle",
+    "walk_backward",
+    "walk_forward"
+  ],
+  "attachment_names": [],
+  "material_slots": [
+    "hair",
+    "skin"
+  ],
+  "triangle_count": 2260,
+  "color_targets": [],
+  "source": "characters/wolf/wolf.assembly.json",
+  "source_sha256": "0c98bb611c4bac3a9a18a8994d55716be27b4af5b93cdb8c6a2893b6c7819a27",
+  "assembly": {
+    "outfit": "bare",
+    "configuration": "default"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "riposte.build_manifest",
+  "version": 1,
+  "profile": "male_base.json",
+  "profile_sha256": "f40a1dedbfa9d7237c5f774a573265ee2eb5413b8c5d490c08c1a541e58e3a1a",
+  "status": "pending",
+  "model": "male_base_a",
+  "study": {
+    "lineage": "20261027_1551_smooth",
+    "label": "A",
+    "generator_sha256": "a07906e5d816c57aaac499648355873f4c1807d982f9ad0d698c0a287b0f3c39",
+    "blender": "5.2.2",
+    "variants": {
+      "RIPOSTE_BACK2": 1,
+      "RIPOSTE_NAPE": 1,
+      "RIPOSTE_BACKSMOOTH": 1
+    }
+  },
+  "physical_baseline": {
+    "height_m": 1.8,
+    "mass_kg": 80.0,
+    "hurt_radius_m": 0.195,
+    "push_radius_m": 0.27
+  },
+  "measurements": {
+    "deltoid_span_m": 0.9155,
+    "waist_over_chest": 0.88,
+    "head_width_m": 0.2173,
+    "head_depth_m": 0.2421,
+    "head_height_m": 0.2778
+  },
+  "validation": {
+    "scan_mode": "acceptance",
+    "control": "20261027_1314_nape",
+    "new_high": 0,
+    "protected_violations": 0
+  }
+}

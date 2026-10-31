@@ -41,7 +41,7 @@ var basin_height: float:
 		return stage.basin_height if stage != null else 0.0
 
 
-## The version-58 open disc on the Arena kit, mirror colorways.
+## The version-61 open disc on the Arena kit, mirror colorways.
 static func quick_play(difficulty: Difficulty, match_seed: int) -> MatchConfig:
 	var config := MatchConfig.new()
 	config.mode = Mode.QUICK_PLAY_CPU

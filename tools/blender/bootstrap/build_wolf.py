@@ -11,7 +11,7 @@ Wolf is built in layers: a core torso, a gambeson, a chest layer, one fur
 collar, a belt, boots, bracers, a swept forelock and a nape. Every piece is
 its own low-poly solid bound rigidly to exactly one bone.
 
-Dimensions follow the physical baseline: 1.75 m tall inside a 0.27 m
+Dimensions follow the physical baseline: 1.80 m tall inside a 0.27 m
 footprint, hands at the sword markers in a HEMA guard with the blade at
 1.0 m. The rig faces -Y (Godot +Z). Arms are left to two-hand IK in Godot —
 the clips animate only what expresses physical state (feet, hips, spine,

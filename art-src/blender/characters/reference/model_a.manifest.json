@@ -1,0 +1,30 @@
+{
+  "schema": "riposte.character_source",
+  "version": 1,
+  "id": "character.male_base.reference.model_a",
+  "role": "reference: the approved study the male base was built from; its flat-panel face is the base's head and its joints are WolfRig's",
+  "status": "approved study, preserved; the production master is art-src/blender/characters/male_base.blend",
+  "source": {
+    "study_tag": "20261027_1551_smooth",
+    "study_blend_sha256": "caf27ca6d4ba41014dbc9cc72b9f737b1aba3947b858ffdd2060cfa159f049cb",
+    "generator_sha256": "a07906e5d816c57aaac499648355873f4c1807d982f9ad0d698c0a287b0f3c39",
+    "blender": "5.2.2",
+    "profile": "tools/character_modeling/profiles/male_base.json",
+    "profile_manifest": "tools/character_modeling/profiles/male_base.manifest.json"
+  },
+  "extraction": {
+    "kept_objects": ["BodyATorso", "BodyASkull", "BodyASkullBrow0", "BodyASkullBrow1", "BodyASkullEye0", "BodyASkullEye1"],
+    "translation_m": [2.05, 0.0, 0.0],
+    "note": "Study A stood 2.05 m to -X beside B and C; it is moved onto the origin. A translation only: no vertex changes shape."
+  },
+  "geometry": {
+    "BodyATorso": {"vertices": 471674, "faces": 471672, "bounds_m": [[-0.915, -0.161, 0.017], [0.914, 0.176, 1.612]]},
+    "BodyASkull": {"vertices": 12290, "faces": 12416, "bounds_m": [[-0.109, -0.135, 1.507], [0.109, 0.107, 1.785]]}
+  },
+  "pose": "relaxed-a-pose: arms 35 degrees below horizontal, legs straight, Z up, -Y forward",
+  "known_differences_from_wolfrig": [
+    "Crown at 1.785 m; WolfRig's Head tail is 1.80 m.",
+    "A-pose, not WolfRig's rest (the combat stance the clips were authored on).",
+    "Automatic remesh topology: no joint loops, no stable vertex identity, no weights. It is a shape target, not a skin."
+  ]
+}

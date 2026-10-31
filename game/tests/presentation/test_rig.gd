@@ -164,6 +164,171 @@ func test_the_grip_is_a_right_handed_hand_and_a_half_grip() -> void:
 	proxy.queue_free()
 
 
+## PRES-GRIP-001: a hand's hold on the handle, measured in the sword's own
+## frame (+Z down the handle, +X the crossguard bar, +Y the flat), in degrees:
+## how far the knuckle line (the mesh's wide axis, `hand_span_axes`) is off
+## the handle, and how far the hand's length (wrist → palm) is outside the
+## common grip's tilt and turn (0 inside it).
+const GRIP_SPAN_DEGREES := 8.0
+const GRIP_RANGE_DEGREES := 3.0
+
+
+static func _grip_error(hand: Basis, sword: Basis, span_local: Vector3) -> Vector2:
+	var into_sword := sword.orthonormalized().inverse()
+	var span := (into_sword * (hand.orthonormalized() * span_local)).normalized()
+	var length := (into_sword * hand.orthonormalized().y).normalized()
+	var handle := (Vector3.BACK - length * length.dot(Vector3.BACK)).normalized()
+	var tilt := length.angle_to(Vector3.BACK)
+	var roll := absf(atan2(length.x, -length.y))
+	var outside := maxf(maxf(SwordGripFrame.TILT_MIN - tilt, tilt - SwordGripFrame.TILT_MAX), roll - SwordGripFrame.ROLL_LIMIT)
+	return Vector2(rad_to_deg(acos(clampf(absf(span.dot(handle)), 0.0, 1.0))), maxf(0.0, rad_to_deg(outside)))
+
+
+## PRES-GRIP-001: both hands hold the handle in the common grip through the
+## whole legal arc: each palm on its grip, each knuckle line along the handle,
+## each hand inside the common grip's tilt and turn, so no hand inverts
+## anywhere on the plane.
+func test_both_hands_wrap_the_handle_in_the_common_grip_across_the_arc() -> void:
+	## ARRANGE
+	var proxy := _proxy()
+	var rig := proxy.rig()
+	assert_true(rig.grip_hands() != null, "fixture: the stack ends in the hand-orientation pass")
+	var limit := rad_to_deg(_rules.combatant(0).weapon.guard_limit)
+	var sword_node := rig.grip_target(0).get_parent() as Node3D
+	var worst := Vector2.ZERO
+	var degrees := -limit
+	while degrees <= limit + 1e-6:
+		## ACT
+		var pose: Dictionary = await _settle(proxy, deg_to_rad(degrees))
+		## ASSERT
+		for index in 2:
+			var hand: Transform3D = pose["Hand.R" if index == 0 else "Hand.L"]
+			var error := _grip_error(hand.basis, sword_node.global_transform.basis, rig.hand_span_axes[index])
+			worst = Vector2(maxf(worst.x, error.x), maxf(worst.y, error.y))
+			assert_true(_palm(hand).distance_to(rig.grip_target(index).global_position) < GRIP_TOLERANCE, "%.0f°: hand %d is on its grip" % [degrees, index])
+		degrees += ARC_STEP_DEGREES
+	assert_true(worst.x <= GRIP_SPAN_DEGREES, "both knuckle lines run along the handle across ±%.0f° (worst %.1f°)" % [limit, worst.x])
+	assert_true(worst.y <= GRIP_RANGE_DEGREES, "both hands come onto the handle the common grip's way (worst %.1f°)" % worst.y)
+	proxy.queue_free()
+
+
+## PRES-GRIP-001: the grip check is real. The defects it exists for — the
+## dominant hand rolled 135° round its own length (the inverted top hand), the
+## hand turned onto the top of the handle (palm on the wrong side), the stack
+## without its hand pass (IK alone leaves the roll to the arm) — each fail it.
+func test_an_inverted_or_turned_hand_fails_the_grip() -> void:
+	## ARRANGE
+	var proxy := _proxy()
+	var rig := proxy.rig()
+	var sword := (rig.grip_target(0).get_parent() as Node3D)
+	var pose: Dictionary = await _settle(proxy, deg_to_rad(-45.0))
+	var hand: Transform3D = pose["Hand.R"]
+	var sword_basis := sword.global_transform.basis
+	var good := _grip_error(hand.basis, sword_basis, rig.hand_span_axes[0])
+	assert_true(good.x <= GRIP_SPAN_DEGREES and good.y <= GRIP_RANGE_DEGREES, "fixture: the real right hand passes (%.1f°, %.1f°)" % [good.x, good.y])
+	## PERTURB / ACT / ASSERT: rolled 135° about its own length.
+	var rolled := Basis(hand.basis.y.normalized(), deg_to_rad(135.0)) * hand.basis
+	assert_true(_grip_error(rolled, sword_basis, rig.hand_span_axes[0]).x > GRIP_SPAN_DEGREES, "a right hand rolled 135° fails the knuckle line")
+	## Turned round the handle until it sits on top: the palm on the wrong side.
+	var handle := (sword_basis * Vector3.BACK).normalized()
+	var length := sword_basis.orthonormalized().inverse() * hand.basis.orthonormalized().y
+	var turned := Basis(handle, PI - atan2(length.x, -length.y)) * hand.basis
+	assert_true(_grip_error(turned, sword_basis, rig.hand_span_axes[0]).y > GRIP_RANGE_DEGREES, "a hand turned onto the top of the handle fails the common grip")
+	## The IK alone, without the hand pass: somewhere on the plane a hand's
+	## roll is the arm chain's, not the grip's.
+	rig.grip_hands().active = false
+	var bare_worst := 0.0
+	for degrees: float in [-135.0, -45.0, 0.0, 45.0, 135.0]:
+		var bare: Dictionary = await _settle(proxy, deg_to_rad(degrees))
+		for index in 2:
+			var bare_error := _grip_error((bare["Hand.R" if index == 0 else "Hand.L"] as Transform3D).basis, sword.global_transform.basis, rig.hand_span_axes[index])
+			bare_worst = maxf(bare_worst, maxf(bare_error.x - GRIP_SPAN_DEGREES, bare_error.y - GRIP_RANGE_DEGREES))
+	assert_true(bare_worst > 0.0, "the IK alone leaves a hand's roll wrong somewhere on the plane (%.1f° over)" % bare_worst)
+	rig.grip_hands().active = true
+	proxy.queue_free()
+
+
+## PRES-GRIP-001: each authored scene's `hand_span_axes` is its hand mesh's
+## measured wide axis (knuckle line), so the grip turns the hand the mesh
+## actually has. A body rebuilt with differently shaped hands fails here
+## instead of gripping with its palm edge.
+const HAND_SPAN_TOLERANCE_DEGREES := 6.0
+const RIGGED_SCENES := {
+	"res://assets/presentation/fighters/duelist/wolf_wrapper.tscn": "res://assets/generated/fighters/wolf.glb",
+	"res://assets/presentation/skins/wolf_training/wolf_training_wrapper.tscn": "res://assets/generated/fighters/wolf_training.glb",
+	"res://assets/presentation/fighters/duelist/wolf_production_wrapper.tscn": "res://assets/generated/fighters/wolf_production.glb",
+	"res://assets/presentation/characters/male_base_wrapper.tscn": "res://assets/generated/characters/male_base.glb",
+	"res://assets/presentation/characters/male_base_lean_wrapper.tscn": "res://assets/generated/characters/variants/male_base_lean.glb",
+	"res://assets/presentation/characters/male_base_lean_half_wrapper.tscn": "res://assets/generated/characters/variants/male_base_lean_half.glb",
+	"res://assets/presentation/characters/male_base_heavy_half_wrapper.tscn": "res://assets/generated/characters/variants/male_base_heavy_half.glb",
+	"res://assets/presentation/characters/male_base_heavy_wrapper.tscn": "res://assets/generated/characters/variants/male_base_heavy.glb",
+	"res://assets/presentation/characters/male_base_extreme_lean_wrapper.tscn": "res://assets/generated/characters/variants/male_base_extreme_lean.glb",
+	"res://assets/presentation/characters/male_base_extreme_heavy_wrapper.tscn": "res://assets/generated/characters/variants/male_base_extreme_heavy.glb",
+}
+
+
+func test_every_scenes_hand_span_axes_are_its_hand_mesh() -> void:
+	for wrapper: String in RIGGED_SCENES:
+		## ARRANGE
+		var rig := (load(wrapper) as PackedScene).instantiate() as SwordRig3D
+		var body := (load(RIGGED_SCENES[wrapper]) as PackedScene).instantiate()
+		var skeleton := body.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+		for index in 2:
+			## ACT
+			var measured := _hand_wide_axis(body, skeleton, "Hand." + ("R" if index == 0 else "L"))
+			## ASSERT
+			assert_true(measured.length_squared() > 0.5, "fixture: %s hand %d has rigid hand vertices" % [wrapper.get_file(), index])
+			var authored := rig.hand_span_axes[index].normalized()
+			var off := rad_to_deg(acos(clampf(absf(authored.dot(measured)), 0.0, 1.0)))
+			assert_true(off <= HAND_SPAN_TOLERANCE_DEGREES, "%s hand %d: hand_span_axes is the mesh's knuckle line (%.1f° off)" % [wrapper.get_file(), index, off])
+		rig.free()
+		body.free()
+
+
+## The wide axis (largest spread perpendicular to the bone) of the vertices
+## riding `bone_name` alone, in that bone's rest frame. Zero if none.
+static func _hand_wide_axis(body: Node, skeleton: Skeleton3D, bone_name: String) -> Vector3:
+	var hand := skeleton.find_bone(bone_name)
+	var local := PackedVector3Array()
+	for node: Node in body.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null or mesh.skin == null:
+			continue
+		for surface in mesh.mesh.get_surface_count():
+			var arrays := mesh.mesh.surface_get_arrays(surface)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var stride := roundi(float(bones.size()) / float(maxi(1, verts.size())))
+			for index in verts.size():
+				for slot in stride:
+					var bind := bones[index * stride + slot]
+					var bone := mesh.skin.get_bind_bone(bind)
+					if bone < 0:
+						bone = skeleton.find_bone(mesh.skin.get_bind_name(bind))
+					if bone == hand and weights[index * stride + slot] >= 0.99:
+						## A bind pose carries mesh space into its bone's frame.
+						local.append(mesh.skin.get_bind_pose(bind) * verts[index])
+	if local.is_empty():
+		return Vector3.ZERO
+	var best := Vector3.ZERO
+	var spread := -1.0
+	for step in 180:
+		var a := deg_to_rad(float(step))
+		var direction := Vector3(cos(a), 0.0, sin(a))
+		var mean := 0.0
+		for point in local:
+			mean += point.dot(direction)
+		mean /= float(local.size())
+		var total := 0.0
+		for point in local:
+			total += pow(point.dot(direction) - mean, 2.0)
+		if total > spread:
+			spread = total
+			best = direction
+	return best
+
+
 func test_hands_stay_on_the_grip_through_the_whole_legal_arc() -> void:
 	var proxy := _proxy()
 	assert_true(proxy.rig() != null and proxy.rig().is_bound(), "precondition: the authored rig is bound to the sword")

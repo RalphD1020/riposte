@@ -46,7 +46,12 @@ extends RefCounted
 ## carries toward the hands (PRES-RIG). Steeper, or a higher hand, it rises
 ## through that head; a charge's gather lifts it to the load's own pitch instead.
 const STANCE_DEGREES: PackedFloat64Array = [0.0, 45.0, 90.0, 135.0]
-const STANCE_RAISE: PackedFloat64Array = [0.17, 0.17, 0.15, 0.18]
+## Long Guard (Langort-inspired, PRES-LONGPOINT-001) lifts the hands a little
+## above Ready. Higher costs the bladed left arm its Long Guard extension at the
+## corridor's edge (with the hands aimed along the forearms, 0.22 measured
+## 0.865 at −18° against PRES-RIG's 0.88): on the 0.63 m hilt track a lift
+## cannot lengthen the arms, only the track can, and that is a rules change.
+const STANCE_RAISE: PackedFloat64Array = [0.19, 0.17, 0.15, 0.18]
 const STANCE_PITCH_DEGREES: PackedFloat64Array = [10.0, 12.0, 8.0, 4.0]
 
 ## The high shoulder load at full charge: the hands at shoulder height, the

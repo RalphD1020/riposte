@@ -1,0 +1,29 @@
+{
+  "schema": "riposte.surface_calibration",
+  "version": 1,
+  "notes": "Bounds for Character Surface Integration (character_modeling.surface_integration), each measured on approved assets and recorded with its provenance; the bound applied is value x margin (a floor takes a margin below 1). A metric absent here is uncalibrated: the audit reports it as a measurement and never flags it. Recalibrate when a new asset is approved or the base changes (the base overhaul changes the neck, trapezius and upper back these were measured on).",
+  "metrics": {
+    "attach.max_gap_m": {
+      "value": 0.012,
+      "margin": 1.25,
+      "status": "provisional",
+      "calibrated_on": [
+        "wolf_hair_ranger revision 3 variant B (approved 2026-10-30 22:28): scalp cap at most 0.012 m off the scalp",
+        "wolf_hair_ranger revision 5 variant D (approved 2026-10-30 23:40): 0.012 m",
+        "wolf_hair_training revision 5 variant E (approved 2026-10-30 23:40): 0.012 m"
+      ]
+    },
+    "drape.p90_separation_m": {
+      "value": 0.0305,
+      "margin": 1.25,
+      "status": "provisional",
+      "calibrated_on": ["wolf_hair_training revision 5 variant E (approved 2026-10-30 23:40): occiput p90 0.0305 m, nape p90 0.0248 m at rest"]
+    },
+    "drape.min_follow": {
+      "value": 0.519,
+      "margin": 0.8,
+      "status": "provisional",
+      "calibrated_on": ["wolf_hair_training revision 5 variant E (approved 2026-10-30 23:40): locks follow 0.519-0.751 of the nape's narrowing"]
+    }
+  }
+}

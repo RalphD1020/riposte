@@ -1,0 +1,313 @@
+{
+  "schema": "riposte.character_assembly",
+  "version": 1,
+  "id": "character.wolf",
+  "notes": "Wolf 1.0: the male base in its default configuration plus Wolf's identity and outfits (CHARACTER-SOURCE-001). The base owns anatomy; this file owns what is present. Assembly refuses a base fingerprint or rig contract digest that does not match.",
+  "base": {
+    "id": "character.male_base",
+    "source": "characters/male_base.blend",
+    "topology_fingerprint": "ea08f9e93cef77ba1c687d9286bbe216b4590109d6f710b783f38611ff75ac5d"
+  },
+  "skeleton": {
+    "id": "WolfRig",
+    "contract": "game/content/characters/wolf.rig-contract.json",
+    "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf"
+  },
+  "physique": {
+    "height_m": 1.8,
+    "mass_kg": 80.0,
+    "body_scale": 1.0,
+    "configuration": "default",
+    "supported_configurations": [
+      "default",
+      "lean",
+      "lean_half",
+      "heavy_half",
+      "heavy",
+      "extreme_lean",
+      "extreme_heavy"
+    ]
+  },
+  "identity": {
+    "source": "characters/wolf/wolf_attire.blend",
+    "collections": [
+      "Face"
+    ],
+    "palette": {
+      "skin": {
+        "srgb": [
+          0.94052,
+          0.8597,
+          0.79774
+        ],
+        "roughness": 0.75
+      },
+      "hair": {
+        "srgb": [
+          0.1451,
+          0.15686,
+          0.16863
+        ],
+        "roughness": 0.9
+      }
+    },
+    "face": {
+      "frame": "the base's head island: fractions of its height from its lowest vertex and of its half-width from the centre line; marks lie on the flat panels either side of the raised ridge, oriented to the panel under them. x and z are the protected landmarks; outline (u outward from the centre line, v up, in -0.5..0.5 of width and height), size, tilt (tilt_by_side for deliberate asymmetry) and inset (the bevelled top) are the features' design",
+      "marks": {
+        "Eye": {
+          "x": 0.335,
+          "z": 0.536,
+          "width": 0.36,
+          "height": 0.05,
+          "depth_m": 0.006,
+          "proud_m": 0.003,
+          "tilt_deg": 3.0,
+          "inset": 0.84,
+          "outline": [
+            [
+              -0.5,
+              0.0
+            ],
+            [
+              -0.3,
+              -0.38
+            ],
+            [
+              0.26,
+              -0.3
+            ],
+            [
+              0.5,
+              0.08
+            ],
+            [
+              0.16,
+              0.44
+            ],
+            [
+              -0.34,
+              0.36
+            ]
+          ]
+        },
+        "Brow": {
+          "x": 0.288,
+          "z": 0.616,
+          "width": 0.352,
+          "height": 0.05,
+          "depth_m": 0.006,
+          "proud_m": 0.004,
+          "tilt_deg": 8.0,
+          "tilt_by_side": {
+            "L": 10.0,
+            "R": 6.0
+          },
+          "inset": 0.8,
+          "outline": [
+            [
+              -0.5,
+              -0.42
+            ],
+            [
+              0.18,
+              -0.18
+            ],
+            [
+              0.5,
+              0.02
+            ],
+            [
+              0.1,
+              0.3
+            ],
+            [
+              -0.42,
+              0.5
+            ]
+          ]
+        },
+        "DeadEye": {
+          "x": 0.335,
+          "z": 0.536,
+          "width": 0.26,
+          "height": 0.022,
+          "depth_m": 0.006,
+          "proud_m": 0.004,
+          "tilt_deg": 40.0,
+          "inset": 0.8,
+          "outline": [
+            [
+              -0.5,
+              0.0
+            ],
+            [
+              -0.22,
+              -0.5
+            ],
+            [
+              0.22,
+              -0.5
+            ],
+            [
+              0.5,
+              0.0
+            ],
+            [
+              0.22,
+              0.5
+            ],
+            [
+              -0.22,
+              0.5
+            ]
+          ]
+        }
+      },
+      "clearance": {
+        "band": [
+          0.44,
+          0.7
+        ],
+        "width": 0.6,
+        "reach_m": 0.04
+      }
+    },
+    "head": {
+      "archetype": "reference",
+      "parameters": {},
+      "notes": "Wolf is the reference head identity (HEAD-IDENTITY-001): the approved face and proportions every archetype is measured from; his physique (default) contributes no head morphology."
+    }
+  },
+  "art": {
+    "profile": "riposte_heroic_dark_fantasy",
+    "notes": "The machine-readable part of Wolf's identity standard (docs/reference/blender-mcp-character-art-direction.md), read by the assembly (character_modeling.identity), the audits and Blender MCP tasks. Ranger and Training are two presentations of one character: base, configuration, face, WolfRig, skin, hair colour, scale, mass, clips and weapon attachment are shared by construction (one manifest).",
+    "anchors": {
+      "face": "the approved flat-panel head: two simple dark eyes, the split brow, the central ridge, the pointed nose; no realistic facial anatomy",
+      "anatomy": "the accepted male base in its default (weightlifter) configuration: broad chest, substantial upper back, athletic arms, coherent pelvis-to-leg transition",
+      "silhouette": "his hairstyle, his head profile and a practical swordsman's posture",
+      "equipment": "the leather mantle, the sash, bracers and the hand-and-a-half sword"
+    },
+    "style": {
+      "geometry": "intentional_low_poly",
+      "surface": "broad_designed_planes",
+      "detail": "restrained",
+      "anatomy": "heroic_athletic",
+      "material_separation": "strong",
+      "exaggeration": "strong",
+      "shading": "hybrid",
+      "hair_read": "layered",
+      "training_distinctness": "moderate",
+      "mantle_prominence": "moderate",
+      "reference_sheets": "blender_silhouette_blockouts"
+    },
+    "outfits": {
+      "ranger": {
+        "identity": "field adventurer: experienced, rugged, practical, quietly intimidating",
+        "hair": "wolf_hair_ranger",
+        "hair_regions": [
+          "scalp",
+          "front_sweep",
+          "temples",
+          "rear_tie"
+        ],
+        "construction": [
+          "fitted",
+          "padded",
+          "structured",
+          "fur",
+          "rigid",
+          "accessory"
+        ],
+        "shoulder_reinforcement": "integrated_mantle"
+      },
+      "training": {
+        "identity": "practical swordsman: athletic, disciplined, approachable; shows more of the anatomy",
+        "hair": "wolf_hair_training",
+        "hair_regions": [
+          "scalp",
+          "front_sweep",
+          "rear_tie",
+          "side_locks",
+          "rear_mass"
+        ],
+        "construction": [
+          "padded",
+          "fitted",
+          "structured",
+          "accessory"
+        ],
+        "shoulder_reinforcement": "none"
+      }
+    }
+  },
+  "materials": {
+    "intrinsic": [
+      "skin",
+      "hair"
+    ],
+    "costume": [
+      "fabric",
+      "cloth",
+      "leather",
+      "mantle",
+      "fur",
+      "metal",
+      "side_accent"
+    ]
+  },
+  "outfits": {
+    "bare": {
+      "collections": [],
+      "body_mask": null,
+      "garments": []
+    },
+    "ranger": {
+      "collections": [],
+      "body_mask": null,
+      "garments": [
+        "wolf_hair_ranger"
+      ],
+      "complete": false
+    },
+    "training": {
+      "collections": [],
+      "body_mask": null,
+      "garments": [
+        "wolf_hair_training"
+      ],
+      "complete": false
+    }
+  },
+  "weapons": [
+    "weapon.bastard_sword",
+    "weapon.bastard_sword.training"
+  ],
+  "budget": {
+    "review_triangles": 4000,
+    "max_triangles": 8000,
+    "note": "Measured performance, never art direction (ART-STYLE-001). review_triangles is the review reference: above it the export says so and a person looks at where the geometry went. max_triangles is the per-fighter performance limit, provisional at twice the review reference until the character rendering benchmark (one fighter, two, two plus arena, two plus crowd, both skins, Compatibility, target devices) measures the device budget."
+  },
+  "validation": [
+    "validate_character"
+  ],
+  "exports": [
+    {
+      "id": "character.wolf.bare",
+      "outfit": "bare",
+      "configuration": "default",
+      "output": "characters/wolf_bare.glb"
+    },
+    {
+      "id": "character.wolf.ranger",
+      "outfit": "ranger",
+      "configuration": "default",
+      "output": "characters/wolf_ranger.glb"
+    },
+    {
+      "id": "character.wolf.training",
+      "outfit": "training",
+      "configuration": "default",
+      "output": "characters/wolf_training.glb"
+    }
+  ]
+}

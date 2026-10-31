@@ -260,7 +260,7 @@ func start_quick_play() -> void:
 	start_arena(PackedInt32Array([0, 1]))
 
 
-## Version 58, open edge. Journeys that must ring out call this. It is not Quick Play.
+## Version 61, open edge. Journeys that must ring out call this. It is not Quick Play.
 func start_open_edge() -> void:
 	telemetry.record_product(ProductEvents.QUICK_PLAY_CLICKED, {ProductEvents.PROP_DIFFICULTY: int(settings.difficulty)})
 	crowd_seed = absi(_seeds.randi()) | 1

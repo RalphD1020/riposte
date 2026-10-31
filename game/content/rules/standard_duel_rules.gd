@@ -52,7 +52,11 @@ static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter
 	var rules := DuelRules.new()
 	rules.id = ContentIds.RULES_STANDARD_DUEL
 	## 58: a mutual hilt start-cap is not steel (STEEL-TOPOLOGY-001).
-	rules.version = 58
+	## 61: the tap buffer ships — a released tap is the blocking action's
+	## charge-0 cut on its first controllable tick, and a finger still down is a
+	## hold that becomes a charge (recovered from the wip-art rewrite that was
+	## committed broken; BUFFER behaviour is proven by the ATTACK suite).
+	rules.version = 61
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
 	rules.materials = MaterialCatalog.standard_table()
@@ -81,15 +85,16 @@ static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter
 	return rules
 
 
-## The product pit. Same combat as version 58, with the edge closed. Quick Play
-## stays on `create()` until the pit mesh is the stage it loads. A version-58
+## The product pit. Same combat as version 61, with the edge closed. Quick Play
+## stays on `create()` until the pit mesh is the stage it loads. A version-61
 ## replay does not become this rules set.
 static func pit() -> DuelRules:
 	var rules := create()
-	## 59: the centre is held at the support radius. Version 58 stays open.
+	## 59: the centre is held at the support radius. Version 61 stays open.
 	## 60: swords meet the stone wall and the wooden gates
 	## (STRUCTURE-CONTACT-001). Bodies are still held by the support circle.
-	rules.version = 60
+	## 62: version-61 combat (the tap buffer) behind that closed edge.
+	rules.version = 62
 	rules.edge_policy = DuelRules.EDGE_CLOSED
 	rules.structures = StageStructures.arena(rules.platform_radius)
 	return rules

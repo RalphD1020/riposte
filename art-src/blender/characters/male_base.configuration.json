@@ -1,0 +1,45 @@
+{
+  "schema": "riposte.character_configuration",
+  "version": 1,
+  "master": "characters/male_base.blend",
+  "mesh": "Body",
+  "notes": "Physique parameters of the master, as shape keys on its one topology (CHARACTER-SOURCE-001). A signed parameter drives its '_minus' key below zero and its '_plus' key above; 0 is the authored default (Olympic weightlifter), the middle of the range. Mass is muscle, definition is leanness; they are separate dimensions. Nothing here moves a joint, scales a bone or changes physics.",
+  "parameters": [
+    { "id": "mass", "range": [-1, 1], "reads": "lean muscular <- weightlifter -> bodybuilder" },
+    { "id": "definition", "range": [-1, 1], "reads": "softer <- -> very defined" },
+    { "id": "upper_body", "range": [-1, 1], "reads": "balanced <- -> broad and powerful" },
+    { "id": "chest", "range": [-1, 1], "reads": "chest volume" },
+    { "id": "shoulders", "range": [-1, 1], "reads": "shoulder mantle volume" },
+    { "id": "waist", "range": [-1, 1], "reads": "waist volume" },
+    { "id": "arms", "range": [-1, 1], "reads": "arm girth" },
+    { "id": "legs", "range": [-1, 1], "reads": "leg girth" }
+  ],
+  "configurations": {
+    "default": {},
+    "lean": { "mass": -1, "definition": 0.5 },
+    "lean_half": { "mass": -0.5, "definition": 0.25 },
+    "heavy_half": { "mass": 0.5, "definition": 0.25 },
+    "heavy": { "mass": 1, "definition": 0.5 },
+    "extreme_lean": { "mass": -1, "definition": 1, "upper_body": -1, "chest": -1, "shoulders": -1, "waist": -1, "arms": -1, "legs": -1 },
+    "extreme_heavy": { "mass": 1, "definition": -1, "upper_body": 1, "chest": 1, "shoulders": 1, "waist": 1, "arms": 1, "legs": 1 }
+  },
+  "exports": {
+    "character.male_base": "default",
+    "character.male_base.lean": "lean",
+    "character.male_base.lean_half": "lean_half",
+    "character.male_base.heavy_half": "heavy_half",
+    "character.male_base.heavy": "heavy",
+    "character.male_base.extreme_lean": "extreme_lean",
+    "character.male_base.extreme_heavy": "extreme_heavy"
+  },
+  "head_profiles_notes": "Physique-derived head morphology (HEAD-MORPH-001, character_modeling.head_profile): directional targets per configuration, shared parameters only (never identity), the skull restrained; provisional until calibrated on approved renders, and driving geometry only once the head shape keys exist (head milestone M3).",
+  "head_profiles": {
+    "default": {},
+    "lean_half": { "jaw_width": -0.15, "cheek_fullness": -0.15, "neck_transition": -0.15 },
+    "lean": { "jaw_width": -0.3, "cheek_fullness": -0.3, "cheekbone_depth": 0.2, "neck_transition": -0.3 },
+    "extreme_lean": { "jaw_width": -0.45, "cheek_fullness": -0.45, "cheekbone_depth": 0.35, "chin_projection": -0.1, "neck_transition": -0.5, "cranial_width": -0.1 },
+    "heavy_half": { "jaw_width": 0.25, "cheek_fullness": 0.25, "neck_transition": 0.3 },
+    "heavy": { "jaw_width": 0.5, "cheek_fullness": 0.45, "chin_projection": 0.15, "neck_transition": 0.6 },
+    "extreme_heavy": { "jaw_width": 0.8, "cheek_fullness": 0.7, "chin_projection": 0.25, "neck_transition": 1.0, "cranial_width": 0.2, "cheekbone_width": 0.2 }
+  }
+}

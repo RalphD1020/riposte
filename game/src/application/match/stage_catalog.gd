@@ -45,13 +45,13 @@ static func the_end() -> StageDefinition:
 	return stage
 
 
-## Version 58 on the Arena kit. Ring-out journeys and the CPU ladder play here.
+## Version 61 on the Arena kit. Ring-out journeys and the CPU ladder play here.
 static func open_disc() -> StageDefinition:
 	var stage := StageDefinition.new()
 	stage.stage_id = ContentIds.STAGE_OPEN_DISC
 	stage.kit_id = ContentIds.ARENA_STANDARD
 	stage.display_name = "Open Disc"
-	stage.blurb = "Version 58. Open edge."
+	stage.blurb = "Version 61. Open edge."
 	stage.has_crowd = true
 	stage.has_crowd_bed = true
 	stage.closed_edge = false

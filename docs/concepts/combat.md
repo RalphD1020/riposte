@@ -40,7 +40,7 @@ Everything below is in SI units, measured against one concrete fighter holding o
 
 | Quantity              | Baseline | Scaling                           |
 | --------------------- | -------- | --------------------------------- |
-| Fighter height        | 1.75 m   | linear in fighter scale           |
+| Fighter height        | 1.80 m   | linear in fighter scale           |
 | Fighter mass          | 80 kg    | authored; cubic only as a default |
 | Fighter body radius   | 0.27 m   | linear in fighter scale           |
 | Sword overall length  | 1.22 m   | linear in weapon scale            |
@@ -50,7 +50,7 @@ Everything below is in SI units, measured against one concrete fighter holding o
 | Guard limit           | ±135°    | invariant                         |
 | Tap arc               | 90°      | invariant                         |
 
-These are a _normalized combat baseline_, not a demographic claim. 1.75 m is close to the modern adult male mean, but 80 kg is deliberately under the ~90 kg population mean, which includes bodies nobody would cast as a duelist. The sword needs no such apology: 1.22 m at 1.60 kg is almost directly represented by surviving museum examples, which makes it the more trustworthy of the two anchors.
+These are a _normalized combat baseline_, not a demographic claim. 1.80 m is the canonical reference the character art and the Model A study share, and height feeds no derived combat value; 80 kg is deliberately under the ~90 kg population mean, which includes bodies nobody would cast as a duelist. The sword needs no such apology: 1.22 m at 1.60 kg is almost directly represented by surviving museum examples, which makes it the more trustworthy of the two anchors.
 
 The single law that governs all of it:
 
@@ -264,7 +264,7 @@ From the same `k`, `J·v_n = 2E / (1 − e)`, so the two disagree in a way that 
 
 **There is no universal sword force.** The same pre-impact energy gives wildly different peak forces depending on how long the contact lasts and what gives way — a 23 J transverse blow stopped over 5 cm is roughly 900 N; stop it over half that and the force doubles. So nothing in the rules authors, calibrates against or reads a force. Velocity, effective mass, impulse and energy are the primary quantities; average force `J/Δt` exists only for instrumentation and presentation — it changes with the substep, the momentum does not.
 
-**Calibration against the real thing.** The reference pair (CONTENT-002) is the baseline duelist — presented as Wolf, 1.75 m and 80 kg — holding the bastard sword: 1.22 m overall, 0.97 m of blade, 1.60 kg. Museum hand-and-a-half swords cluster around 1.1–1.3 m and 1.3–2.0 kg (the Royal Armouries' featured example is about 1.20 m and 1.8 kg), so the pair is squarely historical. The fastest sword-point speed measured across longsword practitioners in a 2019 inertial-sensor study was about 14 m/s, and roughly a kilogram of effective mass at that speed is about 100 J — the band the reference strike sits in (49 J at the guard, 94 J at the centre of percussion, 97 J at the tip at θ̇ = 15 rad/s). These are calibration witnesses, not targets: a number is never changed because it "sounds large", only because the physics or the play says so.
+**Calibration against the real thing.** The reference pair (CONTENT-002) is the baseline duelist — presented as Wolf, 1.80 m and 80 kg — holding the bastard sword: 1.22 m overall, 0.97 m of blade, 1.60 kg. Museum hand-and-a-half swords cluster around 1.1–1.3 m and 1.3–2.0 kg (the Royal Armouries' featured example is about 1.20 m and 1.8 kg), so the pair is squarely historical. The fastest sword-point speed measured across longsword practitioners in a 2019 inertial-sensor study was about 14 m/s, and roughly a kilogram of effective mass at that speed is about 100 J — the band the reference strike sits in (49 J at the guard, 94 J at the centre of percussion, 97 J at the tip at θ̇ = 15 rad/s). These are calibration witnesses, not targets: a number is never changed because it "sounds large", only because the physics or the play says so.
 
 Damage curves are **compressive** at the top. Severity is genuinely quadratic in closing speed, but injury is not: a cut that already opens a fighter up is not improved by more energy. Without that compression the quadratic would make heavy charges strictly dominant and spacing, timing, and punishment would stop paying.
 

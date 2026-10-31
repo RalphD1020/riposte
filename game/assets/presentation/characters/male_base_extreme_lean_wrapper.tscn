@@ -1,0 +1,15 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/presentation/entities/sword_rig_3d.gd" id="1_rig"]
+[ext_resource type="PackedScene" path="res://assets/generated/characters/variants/male_base_extreme_lean.glb" id="2_body"]
+[ext_resource type="Script" path="res://src/presentation/entities/clavicle_response.gd" id="3_clavicle"]
+
+[sub_resource type="Resource" id="Resource_clavicle"]
+script = ExtResource("3_clavicle")
+
+[node name="MaleBaseExtremeLean" type="Node3D"]
+script = ExtResource("1_rig")
+hand_span_axes = PackedVector3Array(-0.799, 0, 0.602, 0.809, 0, 0.588)
+clavicle_response = SubResource("Resource_clavicle")
+
+[node name="Model" parent="." instance=ExtResource("2_body")]

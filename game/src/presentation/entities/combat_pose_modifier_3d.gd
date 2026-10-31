@@ -127,6 +127,15 @@ var grips: Array[Node3D] = []
 var poles: Array[Node3D] = []
 var frame: Node3D
 var arm_roots: PackedStringArray = PackedStringArray()
+## Clavicle participation (PRES-CLAVICLE-001), from the fighter scene; null
+## leaves the shoulder girdle at rest. `grip_weight` is how strongly the hands
+## hold the grip (the arm IK's influence): the arm's elevation is read from the
+## grip it is about to reach in that share, and from the clip's arm otherwise.
+var clavicle: ClavicleResponse
+var grip_weight: float = 1.0
+## The hands' knuckle lines in their own bones' frames (PRES-GRIP-001), set
+## with the grips; each grip frame is aimed along its arm before the IK.
+var grip_spans := PackedVector3Array()
 
 var _chain_bones := PackedInt32Array()
 var _arm_bones := PackedInt32Array()
@@ -184,7 +193,9 @@ func _process_modification() -> void:
 		var twist := Quaternion(Vector3.UP, float(LOCAL_SHARES[link]) * sword_angle * effort + _blade_for(link))
 		skeleton.set_bone_pose_rotation(bone, skeleton.get_bone_pose_rotation(bone) * twist)
 	_turn_feet(skeleton)
+	_raise_clavicles(skeleton)
 	_guide_elbows(skeleton)
+	_aim_grips()
 
 
 ## Turn each foot about the skeleton's vertical at its ankle by the stance's
@@ -202,6 +213,48 @@ func _turn_feet(skeleton: Skeleton3D) -> void:
 		var parent_rotation := skeleton.get_bone_global_pose(parent).basis.get_rotation_quaternion() if parent >= 0 else Quaternion.IDENTITY
 		var turn := parent_rotation.inverse() * Quaternion(Vector3.UP, foot_turns[index]) * parent_rotation
 		skeleton.set_bone_pose_rotation(bone, turn * skeleton.get_bone_pose_rotation(bone))
+
+
+## Elevate each clavicle by the response to its arm's elevation, after the
+## torso is posed and before the elbow guides and the arm IK read the
+## shoulders, so the IK solves from the girdle's final position.
+func _raise_clavicles(skeleton: Skeleton3D) -> void:
+	if clavicle == null or _arm_bones.size() != 2:
+		return
+	var to_skeleton := skeleton.global_transform.affine_inverse()
+	for arm in 2:
+		var upper := _arm_bones[arm]
+		var collar := skeleton.get_bone_parent(upper) if upper >= 0 else -1
+		if collar < 0:
+			continue
+		var torso := skeleton.get_bone_parent(collar)
+		var torso_pose := skeleton.get_bone_global_pose(torso)
+		var root := skeleton.get_bone_global_pose(upper)
+		var direction := root.basis.y.normalized()
+		if grips.size() == 2 and grip_weight > 0.0:
+			var reach := (to_skeleton * grips[arm].global_position) - root.origin
+			if reach.length_squared() > 1e-8:
+				direction = direction.lerp(reach.normalized(), clampf(grip_weight, 0.0, 1.0)).normalized()
+		var lift := clavicle.elevation(ClavicleResponse.arm_elevation(torso_pose.basis.y.normalized(), direction))
+		ClavicleResponse.raise(skeleton, collar, lift, torso_pose)
+
+
+## Turn each grip frame on the handle toward its forearm (PRES-GRIP-001), after
+## the elbow guides are placed from this pose's shoulders: the palm stays on
+## the grip and the knuckle line on the handle; the hand's tilt and turn follow
+## the line from the elbow's guide to the palm inside the common grip, so the
+## wrist the IK reaches sits along the forearm. (The shoulder → palm line is
+## no forearm when the elbow folds: it measured 110–170° of wrist bend at the
+## near arm's own-side loads.)
+func _aim_grips() -> void:
+	if grips.size() != 2 or grip_spans.size() != 2 or frame == null or stance == null:
+		return
+	var out_of_frame := frame.global_transform
+	for arm in 2:
+		var grip := grips[arm]
+		var sword := (grip.get_parent() as Node3D).global_transform
+		var forearm := sword.basis.inverse() * (grip.global_position - out_of_frame * _elbows.guides[arm])
+		grip.basis = SwordGripFrame.hand_basis(SwordGripFrame.aimed_hand_axis(forearm), grip_spans[arm])
 
 
 func _guide_elbows(skeleton: Skeleton3D) -> void:

@@ -228,7 +228,7 @@ def validate_fighter():
     lo, hi = rb.world_bounds(meshes)
     if not FIGHTER_HEIGHT[0] <= hi.z - lo.z <= FIGHTER_HEIGHT[1]:
         problems.append("height %.3f outside %s" % (hi.z - lo.z, FIGHTER_HEIGHT))
-    # Head size is not a chibi envelope (ART-HEAD-001). A gameplay capture
+    # Head size is not an enlarged-head envelope (ART-HEAD-001). A gameplay capture
     # accepts the skull. Height and the floor still gate the export.
     if abs(lo.z) > 0.02:
         problems.append("feet at %.3f, not on the floor" % lo.z)
@@ -590,8 +590,153 @@ def validate_deck():
     return problems
 
 
+## A production-topology candidate is one skinned body on WolfRig. It is not the
+## blockout: it deforms (weighted, not rigid), carries Wolf's clips so the
+## import can be posed (it does not author a second animation set), and stays
+## on the hero's budget.
+CANDIDATE_BODY = "Body"
+CANDIDATE_MAX_INFLUENCES = 4
+CANDIDATE_WEIGHT_TOLERANCE = 1e-4
+
+
+def validate_candidate():
+    problems = []
+    rig = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
+    if rig is None:
+        return ["no armature"]
+    bones = {b.name for b in rig.data.bones}
+    problems += ["missing bone %s" % b for b in FIGHTER_BONES if b not in bones]
+    meshes = _meshes()
+    if [o.name for o in meshes] != [CANDIDATE_BODY]:
+        return problems + ["a candidate is exactly one mesh named %s (has %s)" % (CANDIDATE_BODY, [o.name for o in meshes])]
+    body = meshes[0]
+    if "skin" not in _material_names(meshes):
+        problems.append("the body needs the skin material")
+    if not any(m.type == "ARMATURE" and m.object == rig for m in body.modifiers):
+        problems.append("the body must deform with the armature")
+    if body.data.uv_layers:
+        problems.append("%s carries UVs it does not need" % body.name)
+    if body.data.shape_keys is not None:
+        problems.append("%s reaches the export with unbaked shape keys (export a configuration)" % body.name)
+    unknown = sorted(g.name for g in body.vertex_groups if g.name not in bones)
+    if unknown:
+        problems.append("vertex groups name no bone: %s" % ", ".join(unknown))
+    loose = heavy = unnormalized = 0
+    for vertex in body.data.vertices:
+        weights = [g.weight for g in vertex.groups if g.weight > 0.0]
+        if not weights:
+            loose += 1
+        elif len(weights) > CANDIDATE_MAX_INFLUENCES:
+            heavy += 1
+        elif abs(sum(weights) - 1.0) > CANDIDATE_WEIGHT_TOLERANCE:
+            unnormalized += 1
+    if loose:
+        problems.append("%d vertices follow no bone" % loose)
+    if heavy:
+        problems.append("%d vertices have more than %d influences" % (heavy, CANDIDATE_MAX_INFLUENCES))
+    if unnormalized:
+        problems.append("%d vertices have weights that do not sum to one" % unnormalized)
+    actions = {a.name for a in bpy.data.actions}
+    problems += ["missing action %s (a candidate carries Wolf's clips)" % a for a in FIGHTER_ACTIONS if a not in actions]
+    problems += validate_motion(rig)
+    problems += ["object %s shares a bone's name" % o.name for o in bpy.data.objects if o.name in bones and "." not in o.name and o.type != "ARMATURE"]
+    tris = rb.triangle_count(meshes)
+    print("RIPOSTE_CANDIDATE_TRIS", tris)
+    if tris > FIGHTER_TRIANGLES:
+        problems.append("triangles %d over budget %d" % (tris, FIGHTER_TRIANGLES))
+    lo, hi = rb.world_bounds(meshes)
+    if not FIGHTER_HEIGHT[0] <= hi.z - lo.z <= FIGHTER_HEIGHT[1]:
+        problems.append("height %.3f outside %s" % (hi.z - lo.z, FIGHTER_HEIGHT))
+    if abs(lo.z) > 0.02:
+        problems.append("feet at %.3f, not on the floor" % lo.z)
+    return problems
+
+
+## A character is an assembly (CHARACTER-SOURCE-001): the base body skinned on
+## WolfRig, its head island split out as HeadSkin, the face marks and any rigid
+## pieces bound to one bone each, garments skinned. The triangle budget is the
+## character manifest's (ART-STYLE-001: measured performance, never art
+## direction): above `review_triangles` the export reports it for a person to
+## look at; above `max_triangles`, the per-fighter performance limit, it fails.
+CHARACTER_MARKS = ("Eye.L", "Eye.R", "Brow.L", "Brow.R", "DeadEye.L.A", "DeadEye.L.B", "DeadEye.R.A", "DeadEye.R.B")
+CHARACTER_SLOTS = ("skin", "hair")
+
+
+def _weights_problems(obj):
+    loose = heavy = unnormalized = 0
+    for vertex in obj.data.vertices:
+        weights = [g.weight for g in vertex.groups if g.weight > 0.0]
+        if not weights:
+            loose += 1
+        elif len(weights) > CANDIDATE_MAX_INFLUENCES:
+            heavy += 1
+        elif abs(sum(weights) - 1.0) > CANDIDATE_WEIGHT_TOLERANCE:
+            unnormalized += 1
+    problems = []
+    if loose:
+        problems.append("%s: %d vertices follow no bone" % (obj.name, loose))
+    if heavy:
+        problems.append("%s: %d vertices have more than %d influences" % (obj.name, heavy, CANDIDATE_MAX_INFLUENCES))
+    if unnormalized:
+        problems.append("%s: %d vertices have weights that do not sum to one" % (obj.name, unnormalized))
+    return problems
+
+
+def validate_character():
+    problems = []
+    rig = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
+    if rig is None:
+        return ["no armature"]
+    bones = {b.name for b in rig.data.bones}
+    problems += ["missing bone %s" % b for b in FIGHTER_BONES if b not in bones]
+    meshes = _meshes()
+    names = {o.name for o in meshes}
+    for required in (CANDIDATE_BODY, "HeadSkin") + CHARACTER_MARKS:
+        if required not in names:
+            problems.append("missing %s" % required)
+    problems += ["missing material slot %s" % s for s in CHARACTER_SLOTS if s not in _material_names(meshes)]
+    for obj in meshes:
+        if not any(m.type == "ARMATURE" and m.object == rig for m in obj.modifiers):
+            problems.append("%s must deform with the armature" % obj.name)
+        if obj.data.shape_keys is not None:
+            problems.append("%s reaches the export with unbaked shape keys" % obj.name)
+        unknown = sorted(g.name for g in obj.vertex_groups if g.name not in bones)
+        if unknown:
+            problems.append("%s: vertex groups name no bone: %s" % (obj.name, ", ".join(unknown)))
+        problems += _weights_problems(obj)
+        if obj.name == "HeadSkin" or obj.name in CHARACTER_MARKS:
+            groups = [g.name for g in obj.vertex_groups]
+            if groups != ["Head"]:
+                problems.append("%s must ride Head alone (has %s)" % (obj.name, groups))
+        if obj.name != "HeadSkin" and obj.data.uv_layers:
+            problems.append("%s carries UVs it does not need" % obj.name)
+    if bpy.context.scene.get("riposte_outfit_complete", False) and not any(o.name.startswith("SideAccent") for o in meshes):
+        problems.append("no SideAccent* piece for side affiliation")
+    actions = {a.name for a in bpy.data.actions}
+    problems += ["missing action %s (a character carries Wolf's clips)" % a for a in FIGHTER_ACTIONS if a not in actions]
+    problems += validate_motion(rig)
+    problems += ["object %s shares a bone's name" % o.name for o in bpy.data.objects if o.name in bones and "." not in o.name and o.type != "ARMATURE"]
+    tris = rb.triangle_count(meshes)
+    print("RIPOSTE_CHARACTER_TRIS", tris)
+    scene = bpy.context.scene
+    if "riposte_max_triangles" not in scene:
+        problems.append("the assembly recorded no triangle budget")
+    elif tris > scene["riposte_max_triangles"]:
+        problems.append("triangles %d over the performance limit %d" % (tris, scene["riposte_max_triangles"]))
+    elif tris > scene["riposte_review_triangles"]:
+        print("RIPOSTE_BUDGET_REVIEW %d triangles over the review reference %d" % (tris, scene["riposte_review_triangles"]))
+    lo, hi = rb.world_bounds(meshes)
+    if not FIGHTER_HEIGHT[0] <= hi.z - lo.z <= FIGHTER_HEIGHT[1]:
+        problems.append("height %.3f outside %s" % (hi.z - lo.z, FIGHTER_HEIGHT))
+    if abs(lo.z) > 0.02:
+        problems.append("feet at %.3f, not on the floor" % lo.z)
+    return problems
+
+
 VALIDATORS = {
     "fighter": validate_fighter,
+    "candidate": validate_candidate,
+    "character": validate_character,
     "weapon": validate_weapon,
     "arena": validate_arena,
     "board": validate_board,

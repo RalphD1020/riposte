@@ -25,7 +25,7 @@ func _finished_cpu_session(seed_value: int) -> MatchSession:
 func test_the_product_arena_is_closed_and_the_open_fixture_stays_open() -> void:
 	var open := MatchConfig.quick_play(MatchConfig.Difficulty.MEDIUM, 5)
 	assert_false(open.rules.is_closed_edge(), "MatchConfig.quick_play is the open-edge fixture")
-	assert_eq(open.rules.version, 58, "and it stays version 58")
+	assert_eq(open.rules.version, 61, "and it stays version 61")
 	var stage := StageCatalog.arena()
 	assert_eq(stage.problem(), "", "The Arena can start")
 	assert_true(stage.has_crowd, "The Arena has a crowd")
@@ -33,7 +33,7 @@ func test_the_product_arena_is_closed_and_the_open_fixture_stays_open() -> void:
 	assert_eq(stage.basin, StageDefinition.Basin.NONE, "and no basin")
 	var product := MatchConfig.for_stage(stage, MatchConfig.Difficulty.HARD, 5)
 	assert_true(product.rules.is_closed_edge(), "the product stage closes the edge")
-	assert_eq(product.rules.version, 60, "on version 60")
+	assert_eq(product.rules.version, 62, "on version 62")
 	assert_eq(product.palette_slot, PackedInt32Array([0, 1]), "Main versus Alternate")
 	assert_true(product.crowd_bed, "the match copies the bed flag")
 	var quiet := StageDefinition.new()
@@ -61,7 +61,7 @@ func test_the_product_arena_is_closed_and_the_open_fixture_stays_open() -> void:
 
 func test_the_end_is_an_open_deck_and_a_rematch_stays_there() -> void:
 	var open := StandardDuelRules.create()
-	assert_eq(open.arena_id, ContentIds.ARENA_STANDARD, "version 58 still names the Arena")
+	assert_eq(open.arena_id, ContentIds.ARENA_STANDARD, "version 61 still names the Arena")
 	var stage := StageCatalog.the_end()
 	assert_eq(stage.problem(), "", "The End can start")
 	assert_false(stage.closed_edge, "open edge")
@@ -70,7 +70,7 @@ func test_the_end_is_an_open_deck_and_a_rematch_stays_there() -> void:
 	assert_eq(stage.basin, StageDefinition.Basin.NONE, "no basin")
 	var config := MatchConfig.for_stage(stage, MatchConfig.Difficulty.MEDIUM, 3)
 	assert_false(config.rules.is_closed_edge(), "the match is the open disc")
-	assert_eq(config.rules.version, 58, "version 58")
+	assert_eq(config.rules.version, 61, "version 61")
 	assert_eq(config.rules.arena_id, ContentIds.ARENA_END, "its kit is the deck")
 	assert_false(config.crowd_bed, "the match copies the quiet flag")
 	assert_eq(config.basin, StageDefinition.Basin.NONE, "and copies the empty basin")

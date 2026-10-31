@@ -481,7 +481,7 @@ func test_a_blade_catch_parries_a_cpu_attack_and_the_riposte_lands() -> void:
 	var screen := await _scenario(driver, cpu, DEFENSE_SEED)
 	var state := screen.session.state
 	## ARRANGE
-	assert_eq(screen.session.simulation.rules.version, rules.version, "fixture: the open-edge journey uses version 58")
+	assert_eq(screen.session.simulation.rules.version, rules.version, "fixture: the open-edge journey uses version 61")
 	## ACT
 	var parry: DuelEvent = null
 	var riposte: DuelEvent = null

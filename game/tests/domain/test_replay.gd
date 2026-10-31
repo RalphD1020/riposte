@@ -28,19 +28,19 @@ func test_identical_commands_reproduce_identical_duels() -> void:
 	assert_eq(first.hashes, second.hashes, "every tick hash matches")
 
 
-func test_a_pit_recording_is_version_59_and_refused_on_the_open_disc() -> void:
+func test_a_pit_recording_is_version_62_and_refused_on_the_open_disc() -> void:
 	var pit := StandardDuelRules.pit()
 	var runner := SimRunner.create(DuelFixture.mirror(pit), 3)
 	runner.idle(20)
 	runner.seal()
-	assert_eq(runner.record.rules_version, 60, "the pit records version 60")
+	assert_eq(runner.record.rules_version, 62, "the pit records version 62")
 	assert_true(runner.record.matches_rules(pit), "and matches those rules")
-	assert_false(runner.record.matches_rules(StandardDuelRules.create()), "version 58 is a different rules set")
+	assert_false(runner.record.matches_rules(StandardDuelRules.create()), "version 61 is a different rules set")
 	assert_eq(ReplayVerifier.verify(runner.record, pit), ReplayVerifier.VERIFIED, "it replays on the pit")
 	assert_eq(ReplayVerifier.verify(runner.record, StandardDuelRules.create()), ReplayVerifier.RULES_MISMATCH, "and is refused on the open disc")
 	var open := _played(5)
-	assert_eq(open.record.rules_version, 58, "fixture: the golden path is still version 58")
-	assert_false(open.record.matches_rules(pit), "a version-58 recording is not the pit")
+	assert_eq(open.record.rules_version, 61, "fixture: the golden path is still version 61")
+	assert_false(open.record.matches_rules(pit), "a version-61 recording is not the pit")
 
 
 func test_different_seeds_diverge() -> void:
@@ -214,12 +214,29 @@ func _replay_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2,
 ## attacks 47 → 66, blade contacts 30 → 59, body hits 13 → 3, kills 2 → 0,
 ## rounds 2 → 0. The hash is the regression signal for this queue. It is not
 ## a claim that seed 5 got better.
+## Reconstruction re-pin (rules 61). Rules 61 ships the tap buffer as the
+## gameplay contract (see `standard_duel_rules.gd`); these goldens are its
+## reproducibility baseline, and the ATTACK suite proves the input-to-action
+## behaviour the hashes only reproduce. The `wip art` commit
+## (3e509f5) rewrote the tap buffer (`_promote_buffer` / `_start_buffered` /
+## `_tap_expired`) and re-pinned these goldens from its author's local tree,
+## but the file it committed was malformed — a duplicate `_promote_buffer` and a
+## deleted `_launch` header — so `weapon_system.gd` has not loaded on any commit
+## since, and the pins reference a tree that was never committed (the wip-art →
+## HEAD sim diff is empty). The header and `var weapon` were restored from the
+## last loading revision (156c76a); the new buffering is kept verbatim. The
+## restored behaviour is deterministic (two runs agree per seed) and sane
+## (fights, kills, rounds, ring-outs all present and in range). Against the old
+## pins seeds 3 and 17 differ by one or two events and seeds 5 and 9 diverge
+## chaotically from a sub-tick buffering difference in that lost tree — the
+## expected shape of an unrecoverable late divergence. These pins are the
+## faithful reconstruction, not a law change; a human ratifies them.
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
-		3: "f59b4d492a0adc52215ec19a1fcc8b4036298f432b40c2f76d398911fb99af42",
-		5: "1dedce5d877be11401994f524c3e2e0f40ca392a5611ea5f46a9ad928ebf93f3",
-		9: "09d37c1613e1b0a97346d8f08b0e30e1b3656a640ac8a9563108531291f6f509",
-		17: "593e0a09500c412119a030f5a40ef5d32c063dadfb88ff2e87d2718af13746a4",
+		3: "3725a69f34e10647439a52c3d37865d487d245326c3f7ecf24b4f176856bab10",
+		5: "06014cdc3605f4bab81c1f16f933740cc1fc1e895d06b9f6efef526058500af3",
+		9: "903f883d9669f585a3a0459e7b4a0f7e67dd7a1e94b28e9038e60153eb71c044",
+		17: "a881d347a14d98d3451682f0f8271918aa5eb862c04fe61d330941c5784d0a00",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -834,10 +851,10 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## stays; it was not narrowed to recover the old hashes.
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
-		3: {"attack_released": 27, "blade_collision": 1, "parry": 0, "deflection": 0, "body_hit": 16, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 4, "ring_out": 0, "round_ended": 4},
-		5: {"attack_released": 66, "blade_collision": 59, "parry": 17, "deflection": 1, "body_hit": 3, "body_poke": 0, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 0, "ring_out": 0, "round_ended": 0},
-		9: {"attack_released": 45, "blade_collision": 35, "parry": 8, "deflection": 1, "body_hit": 11, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 1, "ring_out": 1, "round_ended": 2},
-		17: {"attack_released": 32, "blade_collision": 13, "parry": 4, "deflection": 0, "body_hit": 21, "body_poke": 3, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
+		3: {"attack_released": 28, "blade_collision": 1, "parry": 0, "deflection": 0, "body_hit": 16, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 4, "ring_out": 0, "round_ended": 4},
+		5: {"attack_released": 49, "blade_collision": 28, "parry": 7, "deflection": 0, "body_hit": 14, "body_poke": 1, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		9: {"attack_released": 41, "blade_collision": 22, "parry": 4, "deflection": 0, "body_hit": 16, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		17: {"attack_released": 33, "blade_collision": 12, "parry": 4, "deflection": 0, "body_hit": 20, "body_poke": 2, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
 		var runner := _played(seed_value)

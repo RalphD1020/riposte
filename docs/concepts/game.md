@@ -12,18 +12,18 @@ Riposte is a physics-driven 1v1 sword duel for the browser: two verbs (move, att
 
 ## Where to read next
 
-| Topic                                                             | Doc                                    |
-| ----------------------------------------------------------------- | -------------------------------------- |
-| Deterministic simulation, ticks, replay, sessions, clock          | [simulation.md](./simulation.md)       |
-| Footwork, attack language, collision, parry, damage               | [combat.md](./combat.md)               |
-| CPU perception, decisions, difficulty                             | [cpu.md](./cpu.md)                     |
-| Snapshots, presenter, kits (art/animation/sound in one place)     | [presentation.md](./presentation.md)   |
-| Character art, heroic proportions, face clearance, art layers | [character-art.md](./character-art.md) |
-| Modeling pose, proportion sliders, study profiles                            | [character-modeling.md](./character-modeling.md) |
-| Screens, layout, accessibility, settings                          | [ux.md](./ux.md)                       |
-| Devices → commands                                                | [controls.md](./controls.md)           |
-| Product vs duel events                                            | [telemetry.md](./telemetry.md)         |
-| Website and play admission                                        | [web.md](./web.md)                     |
+| Topic                                                         | Doc                                              |
+| ------------------------------------------------------------- | ------------------------------------------------ |
+| Deterministic simulation, ticks, replay, sessions, clock      | [simulation.md](./simulation.md)                 |
+| Footwork, attack language, collision, parry, damage           | [combat.md](./combat.md)                         |
+| CPU perception, decisions, difficulty                         | [cpu.md](./cpu.md)                               |
+| Snapshots, presenter, kits (art/animation/sound in one place) | [presentation.md](./presentation.md)             |
+| Character art, heroic proportions, face clearance, art layers | [character-art.md](./character-art.md)           |
+| Modeling pose, proportion sliders, study profiles             | [character-modeling.md](./character-modeling.md) |
+| Screens, layout, accessibility, settings                      | [ux.md](./ux.md)                                 |
+| Devices → commands                                            | [controls.md](./controls.md)                     |
+| Product vs duel events                                        | [telemetry.md](./telemetry.md)                   |
+| Website and play admission                                    | [web.md](./web.md)                               |
 
 ## Runtime
 

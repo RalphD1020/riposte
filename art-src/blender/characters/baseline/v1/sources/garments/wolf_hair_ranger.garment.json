@@ -1,0 +1,122 @@
+{
+  "schema": "riposte.garment",
+  "type": "hair",
+  "base_id": "character.male_base",
+  "base_topology_fingerprint": "ea08f9e93cef77ba1c687d9286bbe216b4590109d6f710b783f38611ff75ac5d",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "materials": [
+    "hair"
+  ],
+  "id": "wolf_hair_ranger",
+  "category": "structured",
+  "regions": [
+    "head"
+  ],
+  "source": {
+    "blend": "characters/wolf/wolf_attire.blend",
+    "object": "HairRanger"
+  },
+  "deformation": {
+    "method": "rigid",
+    "bone": "Head",
+    "physique": "none"
+  },
+  "clearance": {
+    "face": true,
+    "crown_max_m": 0.06
+  },
+  "notes": "Ranger: neat, tightly tied: swept-back crown, tight sides, gathered nape, compact bun. Rigid on Head; the head region has no physique parameter. Authored by tools/blender/authoring/wolf_hair.py (Gate 1 silhouette). Clearance: hair volume is designed, so the bun and crown may stand up to 10 cm off the skull.",
+  "clearance_m": {
+    "default": [
+      0.0,
+      0.1
+    ]
+  },
+  "design": {
+    "style": "tied_back",
+    "method": "sculpted_mesh",
+    "primary": "scalp",
+    "regions": {
+      "scalp": [
+        "Cap"
+      ],
+      "front_sweep": [
+        "Sweep.*",
+        "Crown.*"
+      ],
+      "temples": [
+        "Temple.*"
+      ],
+      "rear_tie": [
+        "Nape.*",
+        "Bun.*"
+      ]
+    },
+    "scalp_attachment": "a ray-grid scalp foundation on the base's skull down to the Ranger hairline; every clump grows from it",
+    "flow_guides": "great circles from hairline roots to the gather point at the rear (azimuth 180)",
+    "surface_detail": "the creases between overlapping lens-section clumps, seeded width, lift and curvature variation",
+    "deformation_regions": {
+      "Head": "everything (rigid)"
+    },
+    "silhouette": "compact, narrow and controlled; the neck exposed; a compact tied bun",
+    "intent": "neat and tightly tied for combat: a clean swept-back crown and sides flowing into a compact, deliberate bun that grows from the gathered hair; no loose locks or stray tips"
+  },
+  "surfaces": {
+    "notes": "Tied for combat: the scalp cap and every root attach to the scalp; the tied hair and bun clear the occiput, temples and jaw; the nape stays bare.",
+    "relationships": [
+      {
+        "region": "scalp",
+        "relationship": "attach",
+        "design_regions": [
+          "scalp"
+        ],
+        "severity": "hard"
+      },
+      {
+        "region": "temple",
+        "relationship": "clearance",
+        "design_regions": [
+          "front_sweep",
+          "temples"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "occiput",
+        "relationship": "clearance",
+        "design_regions": [
+          "front_sweep",
+          "temples",
+          "rear_tie"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "jaw",
+        "relationship": "clearance",
+        "design_regions": [
+          "temples"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "nape",
+        "relationship": "clearance",
+        "design_regions": [
+          "rear_tie"
+        ],
+        "severity": "warning"
+      }
+    ]
+  }
+}

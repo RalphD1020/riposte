@@ -229,10 +229,6 @@ static func _begin_press(fighter: FighterState, tick: int, events: Array[DuelEve
 	events.append(DuelEvent.create(DuelEventTypes.ATTACK_STARTED, tick, fighter.slot, DuelEvent.NONE, {DuelEventKeys.DIRECTION: weapon.swing_dir}))
 
 
-## Promote a press made shortly before the weapon became controllable.
-static func _promote_buffer(fighter: FighterState, rules: DuelRules, tick: int, events: Array[DuelEvent]) -> void:
-	if fighter.buffered_press_tick < 0:
-		return
 ## Promote a queued press once the blade can take it.
 ##
 ## One pending intent. A released click is a tap for the action that blocked
@@ -314,6 +310,10 @@ static func _healthy_brake_ticks(fighter: FighterState, rules: DuelRules) -> int
 	if brake <= SimMath.EPSILON:
 		return 0
 	return ceili(excess / (brake * SimulationTimebase.TICK_SECONDS))
+
+
+static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick: int, events: Array[DuelEvent]) -> void:
+	var weapon := fighter.weapon
 	var definition := rules.spec_of(fighter).weapon
 	weapon.swing_charge = charge
 	_clear_charge(weapon)

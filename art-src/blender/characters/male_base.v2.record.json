@@ -1,0 +1,19 @@
+{
+  "schema": "riposte.male_base_v2_record",
+  "version": 1,
+  "approved": "2026-10-31 (review r1)",
+  "source": "male_base.blend (v1)",
+  "builder": "tools/blender/authoring/male_base_v2.py",
+  "objects": {
+    "BodyV2": {
+      "vertices": 86694,
+      "faces": 86692,
+      "sha256": "4f63865cb92c36185f4001cf2d7fb45867a74178d21c7e7c382eb16d440f60c3"
+    },
+    "HeadV2": {
+      "vertices": 1353,
+      "faces": 2702,
+      "sha256": "dedeb2d710760ea84a79d376adffd0072d7a860f2cf30ab74cb6f025bc56bc75"
+    }
+  }
+}

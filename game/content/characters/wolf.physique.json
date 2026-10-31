@@ -1,0 +1,31 @@
+{
+  "schema": "riposte.physique",
+  "version": 1,
+  "id": "character.wolf",
+  "body": {
+    "height_m": 1.8,
+    "frame_build": 1.0,
+    "muscularity": 1.0
+  },
+  "applied": {
+    "mass_kg": 80.0,
+    "strength_scale": 1.0,
+    "traction_scale": 1.0,
+    "turn_support_scale": 1.0,
+    "hurt_radius_m": 0.195,
+    "push_radius_m": 0.27,
+    "grip_radius_m": 0.25,
+    "hand_radius_m": 0.035,
+    "lying_half_length_m": 0.85,
+    "lying_radius_m": 0.18
+  },
+  "proposed": {
+    "stamina_capacity": 1.0,
+    "stamina_recovery": 1.0
+  },
+  "readings": {
+    "mass_scale": 1.0,
+    "acceleration_scale": 1.0,
+    "turn_acceleration_scale": 1.0
+  }
+}

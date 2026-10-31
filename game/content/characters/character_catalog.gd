@@ -11,6 +11,9 @@ extends RefCounted
 ## Source: game/content/characters/wolf.character.json
 
 const ART_PATH := "res://content/characters/wolf.character.json"
+## Wolf's resolved physique, written by `tools/character_modeling` from the
+## Model A profile. Regenerate with `python -m character_modeling.physique`.
+const WOLF_PHYSIQUE_PATH := "res://content/characters/wolf.physique.json"
 
 static var _cached: CharacterDefinition
 
@@ -47,7 +50,30 @@ static func wolf() -> CharacterDefinition:
 static func spec_at(scale: float) -> CombatantPhysicsSpec:
 	if not (scale > 0.0) or not is_finite(scale):
 		return null
-	var fighter := FighterCatalog.duelist() if is_equal_approx(scale, 1.0) else FighterCatalog.prototype_at(scale)
+	return _with_sword(FighterCatalog.duelist() if is_equal_approx(scale, 1.0) else FighterCatalog.prototype_at(scale))
+
+
+## A resolved physique file (`riposte.physique`), parsed. Empty when the file
+## is missing or is not a JSON object; `FighterCatalog.physique_problem` judges
+## the contents.
+static func physique(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parser := JSON.new()
+	if parser.parse(FileAccess.get_file_as_string(path)) != OK or typeof(parser.data) != TYPE_DICTIONARY:
+		return {}
+	return parser.data
+
+
+## The combat spec for a resolved physique holding the bastard sword at that
+## body's grip. Null when the physique cannot author a fighter or the sword no
+## longer fits the hands. The product match does not call this.
+static func spec_from_physique(fighter_id: StringName, document: Dictionary) -> CombatantPhysicsSpec:
+	var fighter := FighterCatalog.from_physique(fighter_id, document)
+	return null if fighter == null else _with_sword(fighter)
+
+
+static func _with_sword(fighter: FighterDefinition) -> CombatantPhysicsSpec:
 	var weapon := WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, fighter.grip_radius)
 	if weapon == null or not weapon.is_valid():
 		return null

@@ -29,7 +29,7 @@ var materials: ContactMaterialTable = ContactMaterialTable.new()
 ## that is their identity in contact records. Empty on an open disc.
 var structures: Array[StageObjectDef] = []
 
-## Arena. `EDGE_OPEN` rings out at `platform_radius` (version 58). `EDGE_CLOSED`
+## Arena. `EDGE_OPEN` rings out at `platform_radius` (version 61). `EDGE_CLOSED`
 ## holds the centre inside the support radius and does not emit `RING_OUT`.
 const EDGE_OPEN := &"open"
 const EDGE_CLOSED := &"closed"

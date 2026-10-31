@@ -368,6 +368,54 @@
       "budget_ms": 4000
     },
     {
+      "name": "PRES-PRODUCTION",
+      "path": "res://tests/presentation/test_production.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE",
+      "path": "res://tests/presentation/test_male_base.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE-LEAN",
+      "path": "res://tests/presentation/test_male_base_lean.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE-LEAN-HALF",
+      "path": "res://tests/presentation/test_male_base_lean_half.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE-HEAVY-HALF",
+      "path": "res://tests/presentation/test_male_base_heavy_half.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE-HEAVY",
+      "path": "res://tests/presentation/test_male_base_heavy.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE-EXTREME-LEAN",
+      "path": "res://tests/presentation/test_male_base_extreme_lean.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
+      "name": "PRES-MALE-BASE-EXTREME-HEAVY",
+      "path": "res://tests/presentation/test_male_base_extreme_heavy.gd",
+      "tier": "focused",
+      "budget_ms": 4000
+    },
+    {
       "name": "PRES-VICTORY",
       "path": "res://tests/presentation/test_victory.gd",
       "tier": "focused",
@@ -597,6 +645,14 @@
         "PRES-CONTACT",
         "PRES-READABILITY",
         "PRES-RIG",
+        "PRES-PRODUCTION",
+        "PRES-MALE-BASE",
+        "PRES-MALE-BASE-LEAN",
+        "PRES-MALE-BASE-LEAN-HALF",
+        "PRES-MALE-BASE-HEAVY-HALF",
+        "PRES-MALE-BASE-HEAVY",
+        "PRES-MALE-BASE-EXTREME-LEAN",
+        "PRES-MALE-BASE-EXTREME-HEAVY",
         "PRES-VICTORY",
         "PRES-FACE",
         "PRES-CROWD",

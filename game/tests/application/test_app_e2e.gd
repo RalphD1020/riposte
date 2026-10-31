@@ -143,7 +143,7 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 	assert_eq(app.presentation_mount.get_child_count(), 1, "one presenter mounted")
 	assert_eq(first.session.config.mode, MatchConfig.Mode.QUICK_PLAY_CPU, "against the CPU")
 	assert_true(first.session.config.rules.is_closed_edge(), "The Arena closes the edge")
-	assert_eq(first.session.config.rules.version, 60, "and records version 60")
+	assert_eq(first.session.config.rules.version, 62, "and records version 62")
 	assert_eq(first.session.config.palette_slot, PackedInt32Array([0, 1]), "Main versus Alternate reaches the match")
 	var dressed := app.resolve_kits(first.session.config)
 	assert_true(dressed.combatant(0).fighter_skin == null, "Main is the ranger body")
@@ -261,7 +261,7 @@ func test_menu_quick_play_results_rematch_pause_quit() -> void:
 ## The two-stage journey (STAGE-IDENTITY): Fight Setup starts The Arena by
 ## default; the keyboard reaches The End's stage segment and selects it (a
 ## selected state that is a pressed toggle plus a marker glyph, never colour
-## alone); starting carries the stage id into the match; The End is version 58,
+## alone); starting carries the stage id into the match; The End is version 61,
 ## open-edge, no crowd, no wall structures, and basin NONE; a rematch stays The
 ## End because the stage id is preserved, not inferred from the edge; and a
 ## fresh Arena afterwards carries no stale End state.
@@ -292,7 +292,7 @@ func test_two_stage_the_arena_and_the_end_by_keyboard() -> void:
 	assert_true(end_match != null, "The End opens a duel")
 	var end_config := end_match.session.config
 	assert_eq(end_config.stage_id, ContentIds.ARENA_END, "the selected stage id reached the match")
-	assert_eq(end_config.rules.version, 58, "The End is version 58")
+	assert_eq(end_config.rules.version, 61, "The End is version 61")
 	assert_false(end_config.rules.is_closed_edge(), "with an open edge")
 	assert_true(end_config.rules.structures.is_empty(), "and no wall structures")
 	assert_false(end_config.stage.has_crowd, "The End has no crowd")
@@ -325,7 +325,7 @@ func test_two_stage_the_arena_and_the_end_by_keyboard() -> void:
 	await await_frames(2)
 	var arena_match := _match(booted)
 	assert_eq(arena_match.session.config.stage_id, ContentIds.ARENA_STANDARD, "the default is The Arena again")
-	assert_eq(arena_match.session.config.rules.version, 60, "version 60")
+	assert_eq(arena_match.session.config.rules.version, 62, "version 62")
 	assert_true(arena_match.session.config.rules.is_closed_edge(), "closed edge")
 	assert_true(arena_match.session.config.stage.has_crowd, "crowd back")
 	var seated := arena_match.presenter.crowd()

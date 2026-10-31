@@ -1,0 +1,25 @@
+{
+  "schema": "riposte.surface_regions",
+  "version": 1,
+  "base": "character.male_base",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "notes": "Anatomical surface regions for Character Surface Integration (character_modeling.surface_integration). Located by spatial query in the rig's frame: a band along a bone (span: 0 = the bone's head, 1 = its tail; beyond extends it) and a sector of azimuth from the front round the vertical axis through the axis bone's head (0..180, symmetric). The first region that contains a point names it. No vertex indices: the same regions serve every physique, topology and component on this rig.",
+  "axis": "Neck",
+  "interfaces": {
+    "head_to_neck": ["jaw", "nape", "neck_side", "throat"],
+    "neck_to_shoulder": ["neck_side", "trapezius", "collar", "upper_back"]
+  },
+  "regions": [
+    {"name": "scalp", "bone": "Head", "span": [0.55, 1.3], "sector": [0.0, 180.0]},
+    {"name": "occiput", "bone": "Head", "span": [0.3, 0.55], "sector": [100.0, 180.0]},
+    {"name": "temple", "bone": "Head", "span": [0.3, 0.55], "sector": [0.0, 100.0]},
+    {"name": "jaw", "bone": "Head", "span": [0.0, 0.3], "sector": [0.0, 100.0]},
+    {"name": "nape", "bone": "Head", "span": [-0.32, 0.3], "sector": [100.0, 180.0]},
+    {"name": "neck_side", "bone": "Head", "span": [-0.32, 0.0], "sector": [45.0, 100.0]},
+    {"name": "throat", "bone": "Head", "span": [-0.32, 0.0], "sector": [0.0, 45.0]},
+    {"name": "trapezius", "bone": "Neck", "span": [-1.2, 0.0], "sector": [45.0, 180.0]},
+    {"name": "collar", "bone": "Neck", "span": [-1.2, 0.0], "sector": [0.0, 45.0]},
+    {"name": "upper_back", "bone": "Chest", "span": [0.3, 0.97], "sector": [100.0, 180.0]}
+  ]
+}

@@ -1,0 +1,371 @@
+{
+ "schema": "riposte.body_baseline",
+ "version": "v1",
+ "notes": "Gate 0 of the male base overhaul (2026-10-30 23:37): the v1 male base (1,025 vertices, 2,016 triangles, fingerprint ea08f9e9..., 8 parameters / 16 keys / 7 configurations, WolfRig rest), Wolf's assembly and attire with the approved hair (Ranger D, Training E), the ten exports made from them, the body record and the captures (7 configurations x A-pose and rest x front/three-quarter/side/rear, the gameplay camera, the wireframe).",
+ "files": {
+  "sources/characters/male_base.blend": {
+   "from": "art-src/blender/characters/male_base.blend",
+   "sha256": "218adb23eda198bf795a451dbe39a653facf532308d936910bf7a836874310a4"
+  },
+  "sources/characters/male_base.configuration.json": {
+   "from": "art-src/blender/characters/male_base.configuration.json",
+   "sha256": "68328a9728ecf170c39183eb319ad521a7a931bfc60c56b6c05c9e2e3020ea1e"
+  },
+  "sources/characters/male_base.regions.json": {
+   "from": "art-src/blender/characters/male_base.regions.json",
+   "sha256": "c9aaffb2889bff969aeec81a9411f487adcde52f4e20fc90f0c7851eb658a84b"
+  },
+  "sources/characters/male_base.surfaces.json": {
+   "from": "art-src/blender/characters/male_base.surfaces.json",
+   "sha256": "98526a03bc2093bf5aaff94ee8195d912210092275a22ee366cd1f9650e12885"
+  },
+  "sources/characters/male_base.surface_calibration.json": {
+   "from": "art-src/blender/characters/male_base.surface_calibration.json",
+   "sha256": "d71be01a6b57bb1f62fac5a09ba00b6f27276f869fe4923f00b52753711fb516"
+  },
+  "sources/characters/wolf/wolf.assembly.json": {
+   "from": "art-src/blender/characters/wolf/wolf.assembly.json",
+   "sha256": "0c98bb611c4bac3a9a18a8994d55716be27b4af5b93cdb8c6a2893b6c7819a27"
+  },
+  "sources/characters/wolf/wolf_attire.blend": {
+   "from": "art-src/blender/characters/wolf/wolf_attire.blend",
+   "sha256": "8b58e3b7b77bd1e7657362cee5e4bbab493c7148beb698201e9895ecc4d9609a"
+  },
+  "sources/garments/wolf_hair_ranger.garment.json": {
+   "from": "art-src/blender/garments/wolf_hair_ranger.garment.json",
+   "sha256": "02567c84766b635d308625369e430854a6d4dfbda2bf22ba8dc3a3e037ed14a7"
+  },
+  "sources/garments/wolf_hair_training.garment.json": {
+   "from": "art-src/blender/garments/wolf_hair_training.garment.json",
+   "sha256": "3198837537de2b4f5ac93078b58f127cf49235f9816b1298e835e659c1fdbb79"
+  },
+  "exports/male_base.glb": {
+   "from": "game/assets/generated/characters/male_base.glb",
+   "sha256": "1ca4584ca854bb22d90aef11dd91fda3967f0578843a386b1a3e6f73181a8505"
+  },
+  "exports/male_base.manifest.json": {
+   "from": "game/assets/generated/characters/male_base.manifest.json",
+   "sha256": "d4a235493fcdf76be04e268e8719284ecf9b043e9fe14f020777beb612b20ab5"
+  },
+  "exports/male_base_lean.glb": {
+   "from": "game/assets/generated/characters/variants/male_base_lean.glb",
+   "sha256": "93a3e387db29528a5410fa4491be8da4896bb8d855e31a76d42ecf4c20065484"
+  },
+  "exports/male_base_lean.manifest.json": {
+   "from": "game/assets/generated/characters/variants/male_base_lean.manifest.json",
+   "sha256": "882f115f853c8401b95cb9310a356dc726ab2d18b5c9147534dd3b150e40d71b"
+  },
+  "exports/male_base_lean_half.glb": {
+   "from": "game/assets/generated/characters/variants/male_base_lean_half.glb",
+   "sha256": "e0a2e409ef3cc2f689c809afecbf25b9efdd39922720a57d2c0004f80f25c3d6"
+  },
+  "exports/male_base_lean_half.manifest.json": {
+   "from": "game/assets/generated/characters/variants/male_base_lean_half.manifest.json",
+   "sha256": "f2c9cc4db4602625a9409b368b08afebf848a6e9612aa09c73ab7585530d4177"
+  },
+  "exports/male_base_heavy_half.glb": {
+   "from": "game/assets/generated/characters/variants/male_base_heavy_half.glb",
+   "sha256": "da5da0f2ce4a48e4630eed0c724c7ce67b98eaa4dde6b62f5e7e5678c176e30a"
+  },
+  "exports/male_base_heavy_half.manifest.json": {
+   "from": "game/assets/generated/characters/variants/male_base_heavy_half.manifest.json",
+   "sha256": "f6a55279170e748e317b86c6e08528746edf636482ed9bf2d37ccb553754fe5a"
+  },
+  "exports/male_base_heavy.glb": {
+   "from": "game/assets/generated/characters/variants/male_base_heavy.glb",
+   "sha256": "bf611265a3a6e30075ef2d2f536e3bab0c44961434e0825e73cbb0c27ab22374"
+  },
+  "exports/male_base_heavy.manifest.json": {
+   "from": "game/assets/generated/characters/variants/male_base_heavy.manifest.json",
+   "sha256": "592fc1398bba02521562704c5e34b0ab1d1983cf1ab49fda167c6a8363e2c0e2"
+  },
+  "exports/male_base_extreme_lean.glb": {
+   "from": "game/assets/generated/characters/variants/male_base_extreme_lean.glb",
+   "sha256": "739b217a7f2ca934c7ce28cdd51b6f732b16a0cba1fb31e736b66c4ab1abae3b"
+  },
+  "exports/male_base_extreme_lean.manifest.json": {
+   "from": "game/assets/generated/characters/variants/male_base_extreme_lean.manifest.json",
+   "sha256": "28d4aefa7db70ff31e6e595f6c8153f90fc09fee437cc117ed1cf1a76fa6cf04"
+  },
+  "exports/male_base_extreme_heavy.glb": {
+   "from": "game/assets/generated/characters/variants/male_base_extreme_heavy.glb",
+   "sha256": "9a9b07a7fed976e468207cd7f80861120f32b5c9ed0f8c23ca8bc40c25a99e0b"
+  },
+  "exports/male_base_extreme_heavy.manifest.json": {
+   "from": "game/assets/generated/characters/variants/male_base_extreme_heavy.manifest.json",
+   "sha256": "03e7dc84198b2c9b65bb19250797951e84f581a781edb74d0718175b374eef11"
+  },
+  "exports/wolf_bare.glb": {
+   "from": "game/assets/generated/characters/wolf_bare.glb",
+   "sha256": "74b4c4283fc2a4a3ea4b72286b42fc641aa10cef7fd4bee1eb1d6e63f4ecd60a"
+  },
+  "exports/wolf_bare.manifest.json": {
+   "from": "game/assets/generated/characters/wolf_bare.manifest.json",
+   "sha256": "1abc570a06a0d94d8963f834136da9192f58821c58e03f1251e1f3122c0d3f29"
+  },
+  "exports/wolf_ranger.glb": {
+   "from": "game/assets/generated/characters/wolf_ranger.glb",
+   "sha256": "8e09c7495bb20f2e19bd77c140aab6f50515c4ed8962b1cf570463ae83c05036"
+  },
+  "exports/wolf_ranger.manifest.json": {
+   "from": "game/assets/generated/characters/wolf_ranger.manifest.json",
+   "sha256": "337a369a7290f871c7e8cb1c79e43a520769d161613846855798a7b88a6ac53f"
+  },
+  "exports/wolf_training.glb": {
+   "from": "game/assets/generated/characters/wolf_training.glb",
+   "sha256": "8627623e6d2e5b2d431cc27475ccb5e5f832a9b0749298672aafbc00f94e4eaf"
+  },
+  "exports/wolf_training.manifest.json": {
+   "from": "game/assets/generated/characters/wolf_training.manifest.json",
+   "sha256": "375c1ba45235832b8a353bb89d902f10a77fd45527d6f050fdb2a050a74419e6"
+  },
+  "body_record.json": {
+   "from": "tools/blender/inspect/base_record.py",
+   "sha256": "e1e871a2792e5146b945ed05625426f59b84ada4cf117c2610b2060db3446e8d"
+  },
+  "captures/default_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "5f1db9680d00ed0bfc6980f2eb5a6f90edfc3bfd36cc67cf33b01baa36529a9a"
+  },
+  "captures/default_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "f46a01036321f1440db2cfd667b4edc29c56b2faab70c7e453e8f8b0571fbfba"
+  },
+  "captures/default_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "1845ab8663616714885754367502f306fdab87554c90e8c88700f35347262695"
+  },
+  "captures/default_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "23f496b44becd926c28083bc03cb938c6437d8d76af6c1fe3f67f031378fbdad"
+  },
+  "captures/default_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "88a7d6ef6546aee218c0134c82f337d3548512ac4f9ddbab5b6cc707105d8f02"
+  },
+  "captures/default_rest_gameplay.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "c20b701c72ac51dedd3636e609b1c8c72732ac74fcd536eeab78b2631d3288fb"
+  },
+  "captures/default_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "b76398ab1948d0f0552562922d067262ef66aa5b54e4acd42dd2f4565701995b"
+  },
+  "captures/default_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "a95d92c5b5834f6351ac7aff9ac2cdec3e36a8f97ba40a642c2c5b0b7448832b"
+  },
+  "captures/default_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "facc2ba83b526eb05b6498b2fb2b6135755ea277f89bcb8946fac7a6172d7b7d"
+  },
+  "captures/default_wire_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "9a203b16dfcf590ff80e0716dd087b81a19c47ef2975c187cc7d6dd2de6a1cc6"
+  },
+  "captures/default_wire_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "003cf704458fca046557cecab8f85b5f2d9b8f56a29dd68073a17d61f97fbaed"
+  },
+  "captures/default_wire_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "fe6f05fe95cce1549d88bb78105435f399decbdc62567fb5b2e6f9b84c67397c"
+  },
+  "captures/default_wire_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "1a65b5c63aaa562db7afc9cb3b84a05257b0565372e6b99682ea14e27154f17a"
+  },
+  "captures/extreme_heavy_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "c8400bee4dfae5dbb51894851631bb06d0cba34b2b5c53a6d8793ef1ff165a33"
+  },
+  "captures/extreme_heavy_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "21eb0d701d418a3efe731d635f63a8c73b75007d63dba449ad05cb04d6df3b50"
+  },
+  "captures/extreme_heavy_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "077655a5ec17b2fef87175dd484c10bfcc10edccbf318411ed611c4da9f3ab9a"
+  },
+  "captures/extreme_heavy_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "34c9c66e96078e4e9931cfadbbe605e411a0699217a8e3a98b68b21686d6d6bd"
+  },
+  "captures/extreme_heavy_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "34265338d3360e91087897200ad65093e0067e04ad6094ffc610d9b9a4dcf9ca"
+  },
+  "captures/extreme_heavy_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "1541350e439cc5485dd1434d22db9003fe16f405888d4caa70e430505561f8ad"
+  },
+  "captures/extreme_heavy_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "d296e5d9d7da4b45ff11c776f69b9e9f5582dd59ebe544862fd7b7e6cfd6ddac"
+  },
+  "captures/extreme_heavy_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "7d44c3f4a9fcf0b1620fb9b71e06ad7c9f2fd9ca4fe3715ae87105bc0dc9ca30"
+  },
+  "captures/extreme_lean_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "89c6d8a861d1a255203b733362f28748c6faf3bfeb8ac0fc5acbd9e9322cc1d5"
+  },
+  "captures/extreme_lean_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "e165c243a69c49401f941740fcd3299c9057a87e98b9e79543153093f93abac8"
+  },
+  "captures/extreme_lean_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "f0ffd3d458eb9f5a1f6e509158520ab10abc2ddb1de5de37360cb0f0cf599936"
+  },
+  "captures/extreme_lean_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "0bd2c18dcb36e33b9251ab5ce528eff8af6e5f9a1734a4f93f24c965bb980e51"
+  },
+  "captures/extreme_lean_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "3abdc92d486942e13a0c7637fbe2f0dc635439af1564bd771d075de80d472a50"
+  },
+  "captures/extreme_lean_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "e22cb8abf9bd7e2be9613fd730c4c7bf33e4319c8f1589755cb4b68a3484eeb6"
+  },
+  "captures/extreme_lean_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "00ac13832bc191523bd22f0ccf285329479a0a77525ed553e01acdbd44a228d0"
+  },
+  "captures/extreme_lean_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "11e44aff18591d81a1681de7b58abb76fac3c08466b13bd93181d0b89bdbd5b3"
+  },
+  "captures/heavy_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "1041f531552c34c74c351adf85274378e81ef988c824976a26a28f8cb3a2d486"
+  },
+  "captures/heavy_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "17913966cf7606add1ca7c5c15adba1d16ee014c0b7e46f331678038c6dc6bb9"
+  },
+  "captures/heavy_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "ef3e3d47bc0025acd06d88c6ac5f3b2e27207305325935a2a8d7b47fcafa7982"
+  },
+  "captures/heavy_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "cf6986f5efbaffe60ed74e177f892f9c5cf73d08b09dcd6906271a0162aa096c"
+  },
+  "captures/heavy_half_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "5dea3e592eb51e5158a9267a01c63a39c7bd195d71a8920b92e2e58ad919577f"
+  },
+  "captures/heavy_half_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "83c37121bb268a5d15bb54787501635e12059326e032b6901ba5231c42c743a1"
+  },
+  "captures/heavy_half_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "e7596b6ccccc7f00b097f1156002442a9307ff4f175492ae0fbf3f59d006b554"
+  },
+  "captures/heavy_half_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "70996e0a77accced7ad2b6b3acc1e314bcfcbe47e7cf2c968da07913be43958c"
+  },
+  "captures/heavy_half_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "caedbc13495a20cf364dbedab03126b347ee7eea6eafc8bbd8cb2c03c81b9574"
+  },
+  "captures/heavy_half_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "a6fedcb91633beeedd1b1fc41de2ae9c4d13e65e08db728d272cc096cc6be504"
+  },
+  "captures/heavy_half_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "e3272a04cc92696a2a2fb301e82a66dc47271f3ad9cd6e344d818c316a980ec1"
+  },
+  "captures/heavy_half_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "ba4708315cf36bd5544ea8010c3b425fca152de0c498b234944c054f3a73208f"
+  },
+  "captures/heavy_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "e3da87030c8b3a925684fb52b740b69e55e973a2b99734fa021f13d038863887"
+  },
+  "captures/heavy_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "b7126719a3fb7d4ed76aa36f3f4a8637ebd62c5aa18307fcd18929f30469b345"
+  },
+  "captures/heavy_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "c517f47d045aa45d292c4dd2a265bdd6aea3ed1541f3874ded4515c4d32a0ca3"
+  },
+  "captures/heavy_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "241bbbf294985fda83ce33a88a8842a2a60f356492255b45c27413f06b5328a2"
+  },
+  "captures/lean_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "5f89f8e54e4a22cf7b5f43671a0c7d645957839447b22f760c912b140053e3ab"
+  },
+  "captures/lean_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "6f8673ac0ce706d31f4053c50442e5c164710d6ae4d2cc251c3b3d7e171591e1"
+  },
+  "captures/lean_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "7d841371b7002c68fd28b712cda9acad78b1d5488e3d079e0dd6cd8a90397720"
+  },
+  "captures/lean_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "897dfc625b33f3fd40af5c75c95d64cfec502e3b16bc85668b081579aa5d44cb"
+  },
+  "captures/lean_half_apose_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "3dcce66a830a44cff97be07545b5b4d5942d9e71d0cfcc6500cf48fd93551e06"
+  },
+  "captures/lean_half_apose_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "688c60f6cc28c479879ed3f03fcab4c5c42cb74782917820baa2fc88212b4acb"
+  },
+  "captures/lean_half_apose_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "402c6adbe083e6258d95bc5ca3f66cbb015847db2227d6c4c10825fabaf1c619"
+  },
+  "captures/lean_half_apose_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "9653433c7ff4a94081ed508d3e649cde1ed55bc667950bcc3c032bfe60fab0bb"
+  },
+  "captures/lean_half_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "afc7455b432bc75050c068b0548db68e10fa164e4b7fda6f64b817ed09456f28"
+  },
+  "captures/lean_half_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "6c9954a6584a197856746daf220aed0a09a77452ea4b1de7133cd0214760f628"
+  },
+  "captures/lean_half_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "ccdc4d154b5bf4c9673d77309857cd98dcf4e937a6bd5c54e9ef83b5c0c46fd7"
+  },
+  "captures/lean_half_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "834604af4bca58578d964a74e2bd332cfc33158b775575ef4b9289c7cd76c27d"
+  },
+  "captures/lean_rest_front.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "0870e39c78f7d776725d7dc0d5b61d3db0832ea168338f6240325c17535153eb"
+  },
+  "captures/lean_rest_rear.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "fb83c343330faaaec6fbf7f89510ef936cd61552f817a24bbe40f6a21dbe570b"
+  },
+  "captures/lean_rest_side.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "b9388113424b400dced365a90536786d1cff3cefa4a9e12fc32d04ad2b911a5a"
+  },
+  "captures/lean_rest_three_quarter.png": {
+   "from": "tools/blender/inspect/render_views.py",
+   "sha256": "0b281add1951e4d5827272c5fb52b273be6663bdaede6fdb5642d3962c325f93"
+  }
+ }
+}

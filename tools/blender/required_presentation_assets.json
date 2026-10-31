@@ -10,6 +10,46 @@
     "output": "fighters/wolf_training.glb"
   },
   {
+    "source": "fighters/wolf_production.blend",
+    "id": "fighter.wolf.production",
+    "output": "fighters/wolf_production.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base",
+    "output": "characters/male_base.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base.lean",
+    "output": "characters/variants/male_base_lean.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base.lean_half",
+    "output": "characters/variants/male_base_lean_half.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base.heavy_half",
+    "output": "characters/variants/male_base_heavy_half.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base.heavy",
+    "output": "characters/variants/male_base_heavy.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base.extreme_lean",
+    "output": "characters/variants/male_base_extreme_lean.glb"
+  },
+  {
+    "source": "characters/male_base.blend",
+    "id": "character.male_base.extreme_heavy",
+    "output": "characters/variants/male_base_extreme_heavy.glb"
+  },
+  {
     "source": "crowd/seated.blend",
     "id": "crowd.seated",
     "output": "crowd/seated.glb"

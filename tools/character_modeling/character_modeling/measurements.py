@@ -1,6 +1,6 @@
 """Which measurements are protected, how, and on what authority.
 
-A blanket sub-millimetre tolerance on a voxel-remeshed surface is precise in
+A blanket sub-millimetre tolerance on a remeshed surface is precise in
 the report without being accurate about the mesh. So every protected
 measurement declares its class, where the number is measured, its tolerance
 and the reason for it, and a calibration status. Only the hard classes can
@@ -20,9 +20,9 @@ Status
 
 Measurement source matters for tolerance. The head skull and mask are direct
 lofts at fine resolution (``head_mesh``), so a face landmark can hold a
-sub-millimetre-to-millimetre tolerance. The torso is voxel-remeshed
-(``VOXEL`` = 5.5 mm), so a body span cannot credibly claim better than roughly
-one voxel.
+sub-millimetre-to-millimetre tolerance. The torso is remeshed
+(``REMESH_CELL_M`` = 5.5 mm), so a body span cannot credibly claim better than
+roughly one remesh cell.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ HEURISTIC = "heuristic"
 HARD_CLASSES = frozenset((SOURCE_INVARIANT, GEOMETRY_INVARIANT, SHAPE_INVARIANT))
 SOFT_CLASSES = frozenset((ANATOMY_TARGET, HEURISTIC))
 
-VOXEL_M = 0.0055  # study fuse resolution; a remeshed span is no finer than this
+REMESH_CELL_M = 0.0055  # study fuse resolution; a remeshed span is no finer than this
 
 
 class Protected:
@@ -55,8 +55,8 @@ class Protected:
 
 
 # Face landmarks are measured on the direct skull/mask loft, not the remesh, so
-# they hold fine tolerances. Body spans are measured on the voxel-remeshed
-# torso, so they are held to roughly one voxel. Each entry names its phase
+# they hold fine tolerances. Body spans are measured on the remeshed
+# torso, so they are held to roughly one remesh cell. Each entry names its phase
 # owner: the phase allowed to change it is the one that must re-justify it.
 REGISTRY = (
     Protected("head_landmarks.mask_fit.face.nose_tip.y", SHAPE_INVARIANT, "P1",
@@ -85,7 +85,7 @@ REGISTRY = (
               "The head is authored symmetric; the loft is exact to rounding.", "calibrated"),
     Protected("body.deltoid_span_m", SHAPE_INVARIANT, "P3",
               "widest shoulder extent on the remeshed torso", 0.006,
-              "Shoulder span defines the figure; measured on the 5.5 mm remesh, so ~1 voxel.", "provisional"),
+              "Shoulder span defines the figure; measured on the 5.5 mm remesh, so ~1 remesh cell.", "provisional"),
     Protected("body.head.height", SOURCE_INVARIANT, "P1",
               "skull bounding height on the assembled figure", 0.003,
               "Proportion anchor; remesh plus bounding read, so a few mm.", "provisional"),

@@ -1,0 +1,135 @@
+{
+  "schema": "riposte.garment",
+  "type": "hair",
+  "base_id": "character.male_base",
+  "base_topology_fingerprint": "ea08f9e93cef77ba1c687d9286bbe216b4590109d6f710b783f38611ff75ac5d",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "materials": [
+    "hair"
+  ],
+  "id": "wolf_hair_training",
+  "category": "loose",
+  "regions": [
+    "head",
+    "neck"
+  ],
+  "source": {
+    "blend": "characters/wolf/wolf_attire.blend",
+    "object": "HairTraining"
+  },
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "clearance": {
+    "face": true,
+    "crown_max_m": 0.06
+  },
+  "clearance_m": {
+    "neck": [
+      0.0,
+      0.12
+    ]
+  },
+  "notes": "Training: side-swept fringe, broad side locks, layered rear locks to the trapezius, irregular ends. Head blending into Neck down the rear; no Chest share unless the clips prove it needed. Keys from garment_physique.py (the rear reaches the neck). Authored by tools/blender/authoring/wolf_hair.py (Gate 1 silhouette).",
+  "design": {
+    "style": "half_up_shoulder_length",
+    "method": "sculpted_mesh",
+    "primary": "scalp",
+    "regions": {
+      "scalp": [
+        "Cap"
+      ],
+      "front_sweep": [
+        "Sweep.*",
+        "Crown.*",
+        "Temple.*"
+      ],
+      "rear_tie": [
+        "Nape.*",
+        "Bun.*"
+      ],
+      "side_locks": [
+        "Lock.*"
+      ],
+      "rear_mass": [
+        "Fall.*"
+      ]
+    },
+    "scalp_attachment": "the same ray-grid scalp foundation down to the Training hairline",
+    "flow_guides": "great circles from the hairline to a small knot high on the rear; falling curves below the knot down the nape and beside the face",
+    "surface_detail": "the creases between overlapping clumps; tapered visible tips of different lengths",
+    "deformation_regions": {
+      "Head": "scalp, tied upper hair and the knot (rigid)",
+      "Head->Neck": "the hanging hair by height"
+    },
+    "silhouette": "broader and layered; fuller around the neck; a small tied knot over shoulder-length hair",
+    "intent": "relaxed, half up: the upper hair swept back into a small knot that is part of it; shoulder-length hair falling beneath as one continuous rear volume with a few overlapping locks and tapered ends; side locks following the head and neck"
+  },
+  "surfaces": {
+    "notes": "Half up: the scalp cap attaches; the hanging hair drapes the occiput and the nape hollow, following their contour with its own volume, and ends at the base of the neck; the side locks clear the jaw and the side of the neck.",
+    "relationships": [
+      {
+        "region": "scalp",
+        "relationship": "attach",
+        "design_regions": [
+          "scalp"
+        ],
+        "severity": "hard"
+      },
+      {
+        "region": "temple",
+        "relationship": "clearance",
+        "design_regions": [
+          "front_sweep"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "jaw",
+        "relationship": "clearance",
+        "design_regions": [
+          "side_locks"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "neck_side",
+        "relationship": "clearance",
+        "design_regions": [
+          "side_locks"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "occiput",
+        "relationship": "drape",
+        "design_regions": [
+          "rear_mass",
+          "side_locks"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "nape",
+        "relationship": "drape",
+        "design_regions": [
+          "rear_mass",
+          "side_locks"
+        ],
+        "severity": "warning"
+      }
+    ]
+  }
+}

@@ -390,10 +390,10 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 58, "rules version tracks gameplay-affecting changes (58: mutual hilt start-caps are not steel)")
-	assert_false(rules.is_closed_edge(), "version 58 is the open disc")
+	assert_eq(rules.version, 61, "rules version tracks gameplay-affecting changes (61: the tap buffer ships a held charge and a blocking-action tap)")
+	assert_false(rules.is_closed_edge(), "version 61 is the open disc")
 	var pit := StandardDuelRules.pit()
-	assert_eq(pit.version, 60, "the pit is the closed-edge selection with its walls")
+	assert_eq(pit.version, 62, "the pit is the closed-edge selection with its walls")
 	assert_true(pit.is_closed_edge(), "and it holds the rim")
 	assert_eq(pit.id, rules.id, "it is the same rules id, pinned by version")
 	assert_true(pit.is_valid(), "the pit rules start a duel")

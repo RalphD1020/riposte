@@ -38,6 +38,28 @@ const TURN_TORQUE_NM := 175.0
 ## through his centre of mass, and his torso's thickness.
 const LYING_HALF_LENGTH_M := 0.85
 const LYING_RADIUS_M := 0.18
+## The resolved physique document `from_physique` reads. The keys are the
+## resolver's (`tools/character_modeling/character_modeling/physique.py`).
+const PHYSIQUE_SCHEMA := "riposte.physique"
+const PHYSIQUE_VERSION := 1
+const PHYSIQUE_BODY := "body"
+const PHYSIQUE_APPLIED := "applied"
+const PHYSIQUE_HEIGHT := "height_m"
+const PHYSIQUE_MASS := "mass_kg"
+const PHYSIQUE_STRENGTH := "strength_scale"
+const PHYSIQUE_TRACTION := "traction_scale"
+const PHYSIQUE_TURN_SUPPORT := "turn_support_scale"
+const PHYSIQUE_HURT := "hurt_radius_m"
+const PHYSIQUE_PUSH := "push_radius_m"
+const PHYSIQUE_GRIP := "grip_radius_m"
+const PHYSIQUE_HAND := "hand_radius_m"
+const PHYSIQUE_LYING_HALF_LENGTH := "lying_half_length_m"
+const PHYSIQUE_LYING_RADIUS := "lying_radius_m"
+const PHYSIQUE_APPLIED_KEYS: Array[String] = [
+	PHYSIQUE_MASS, PHYSIQUE_STRENGTH, PHYSIQUE_TRACTION, PHYSIQUE_TURN_SUPPORT,
+	PHYSIQUE_HURT, PHYSIQUE_PUSH, PHYSIQUE_GRIP, PHYSIQUE_HAND,
+	PHYSIQUE_LYING_HALF_LENGTH, PHYSIQUE_LYING_RADIUS,
+]
 
 
 static func of(id: StringName) -> FighterDefinition:
@@ -52,24 +74,93 @@ static func of(id: StringName) -> FighterDefinition:
 static func duelist() -> FighterDefinition:
 	var fighter := FighterDefinition.new()
 	fighter.id = ContentIds.FIGHTER_DUELIST
-	fighter.height = PhysicalBaseline.FIGHTER_HEIGHT_M
-	fighter.push_radius = PhysicalBaseline.FIGHTER_RADIUS_M
-	fighter.hurt_radius = PhysicalBaseline.TORSO_HURT_RADIUS_M
-	fighter.hand_radius = PhysicalBaseline.HAND_PROXY_RADIUS_M
-	fighter.grip_radius = PhysicalBaseline.GRIP_RADIUS_M
-	fighter.mass = PhysicalBaseline.FIGHTER_MASS_KG
-	fighter.hand_mass = fighter.mass * PhysicalBaseline.HAND_REFLECTED_MASS_SHARE
-	## Solid cylinder about its own axis. With the reference mass and footprint
-	## `moment_of_inertia()` is ~2.92 kg·m², the scale `TURN_TORQUE_NM` is
-	## authored against.
-	fighter.body_inertia_coefficient = 0.5
-	fighter.lying_half_length = LYING_HALF_LENGTH_M
-	fighter.lying_radius = LYING_RADIUS_M
-	fighter.material = MaterialCatalog.flesh()
+	_author_body(
+		fighter,
+		PhysicalBaseline.FIGHTER_HEIGHT_M,
+		PhysicalBaseline.FIGHTER_MASS_KG,
+		PhysicalBaseline.FIGHTER_RADIUS_M,
+		PhysicalBaseline.TORSO_HURT_RADIUS_M,
+		PhysicalBaseline.HAND_PROXY_RADIUS_M,
+		PhysicalBaseline.GRIP_RADIUS_M,
+		LYING_HALF_LENGTH_M,
+		LYING_RADIUS_M
+	)
 	resolve_actuators(fighter, 1.0, 1.0, 1.0)
 	_semantics(fighter)
 	fighter.precompute()
 	return fighter
+
+
+## A fighter authored from a resolved physique (`riposte.physique`, written by
+## `tools/character_modeling` from a profile's height, frame build and
+## muscularity). The resolver is the only formula: this reads its applied
+## values and passes them through the same body facts and `resolve_actuators`
+## every fighter uses. Proposed values (stamina) and readings are never read.
+## Null when the document is malformed or breaks `0 < hurt <= push`; the
+## reason is `physique_problem`. Nothing is clamped.
+static func from_physique(id: StringName, physique: Dictionary) -> FighterDefinition:
+	if physique_problem(physique) != "":
+		return null
+	var body: Dictionary = physique[PHYSIQUE_BODY]
+	var applied: Dictionary = physique[PHYSIQUE_APPLIED]
+	var fighter := FighterDefinition.new()
+	fighter.id = id
+	_author_body(
+		fighter,
+		float(body[PHYSIQUE_HEIGHT]),
+		float(applied[PHYSIQUE_MASS]),
+		float(applied[PHYSIQUE_PUSH]),
+		float(applied[PHYSIQUE_HURT]),
+		float(applied[PHYSIQUE_HAND]),
+		float(applied[PHYSIQUE_GRIP]),
+		float(applied[PHYSIQUE_LYING_HALF_LENGTH]),
+		float(applied[PHYSIQUE_LYING_RADIUS])
+	)
+	resolve_actuators(fighter, float(applied[PHYSIQUE_STRENGTH]), float(applied[PHYSIQUE_TRACTION]), float(applied[PHYSIQUE_TURN_SUPPORT]))
+	_semantics(fighter)
+	fighter.precompute()
+	return fighter
+
+
+## Why a physique document cannot author a fighter, or "" when it can.
+static func physique_problem(physique: Dictionary) -> String:
+	if physique.get("schema") != PHYSIQUE_SCHEMA or int(physique.get("version", -1)) != PHYSIQUE_VERSION:
+		return "a physique must be %s version %d" % [PHYSIQUE_SCHEMA, PHYSIQUE_VERSION]
+	if typeof(physique.get(PHYSIQUE_BODY)) != TYPE_DICTIONARY or typeof(physique.get(PHYSIQUE_APPLIED)) != TYPE_DICTIONARY:
+		return "a physique needs its body and applied values"
+	var body: Dictionary = physique[PHYSIQUE_BODY]
+	var applied: Dictionary = physique[PHYSIQUE_APPLIED]
+	if not _positive_finite(body.get(PHYSIQUE_HEIGHT)):
+		return "body.%s must be a positive number" % PHYSIQUE_HEIGHT
+	for key: String in PHYSIQUE_APPLIED_KEYS:
+		if not _positive_finite(applied.get(key)):
+			return "applied.%s must be a positive number" % key
+	if float(applied[PHYSIQUE_HURT]) > float(applied[PHYSIQUE_PUSH]):
+		return "hurt_radius must not exceed push_radius"
+	return ""
+
+
+static func _positive_finite(value: Variant) -> bool:
+	return (typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT) and is_finite(float(value)) and float(value) > 0.0
+
+
+## The body facts every fighter states, in one place: geometry, mass, the hands
+## and the lying body. Hand mass follows body mass by the reference share.
+static func _author_body(fighter: FighterDefinition, height: float, mass: float, push_radius: float, hurt_radius: float, hand_radius: float, grip_radius: float, lying_half_length: float, lying_radius: float) -> void:
+	fighter.height = height
+	fighter.push_radius = push_radius
+	fighter.hurt_radius = hurt_radius
+	fighter.hand_radius = hand_radius
+	fighter.grip_radius = grip_radius
+	fighter.mass = mass
+	fighter.hand_mass = mass * PhysicalBaseline.HAND_REFLECTED_MASS_SHARE
+	## Solid cylinder about its own axis. With the reference mass and footprint
+	## `moment_of_inertia()` is ~2.92 kg·m², the scale `TURN_TORQUE_NM` is
+	## authored against.
+	fighter.body_inertia_coefficient = 0.5
+	fighter.lying_half_length = lying_half_length
+	fighter.lying_radius = lying_radius
+	fighter.material = MaterialCatalog.flesh()
 
 
 ## Resolve authored actuator scales into the forces and torques the
@@ -92,17 +183,17 @@ static func resolve_actuators(fighter: FighterDefinition, strength_scale: float,
 static func prototype_at(size_scale: float) -> FighterDefinition:
 	var fighter := FighterDefinition.new()
 	fighter.id = ContentIds.FIGHTER_DUELIST
-	fighter.height = PhysicalBaseline.fighter_height(size_scale)
-	fighter.push_radius = PhysicalBaseline.fighter_radius(size_scale)
-	fighter.hurt_radius = PhysicalBaseline.torso_hurt_radius(size_scale)
-	fighter.hand_radius = PhysicalBaseline.hand_proxy_radius(size_scale)
-	fighter.grip_radius = PhysicalBaseline.fighter_grip(size_scale)
-	fighter.mass = PhysicalBaseline.volumetric_mass(PhysicalBaseline.FIGHTER_MASS_KG, size_scale)
-	fighter.hand_mass = fighter.mass * PhysicalBaseline.HAND_REFLECTED_MASS_SHARE
-	fighter.body_inertia_coefficient = 0.5
-	fighter.lying_half_length = LYING_HALF_LENGTH_M * size_scale
-	fighter.lying_radius = LYING_RADIUS_M * size_scale
-	fighter.material = MaterialCatalog.flesh()
+	_author_body(
+		fighter,
+		PhysicalBaseline.fighter_height(size_scale),
+		PhysicalBaseline.volumetric_mass(PhysicalBaseline.FIGHTER_MASS_KG, size_scale),
+		PhysicalBaseline.fighter_radius(size_scale),
+		PhysicalBaseline.torso_hurt_radius(size_scale),
+		PhysicalBaseline.hand_proxy_radius(size_scale),
+		PhysicalBaseline.fighter_grip(size_scale),
+		LYING_HALF_LENGTH_M * size_scale,
+		LYING_RADIUS_M * size_scale
+	)
 	resolve_actuators(
 		fighter,
 		PhysicalBaseline.torque_scale(1.0, size_scale),

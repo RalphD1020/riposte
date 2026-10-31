@@ -10,9 +10,12 @@ extends Node3D
 ##
 ## Stack on the Skeleton3D, in order: animation (feet, hips, spine, head) →
 ## CombatPoseModifier3D (chest → spine → hips follow the sword in decreasing
-## shares, head counter-rotates to the opponent — the cut's body support) →
-## TwoBoneIK3D (both hands locked to the grip markers, elbows poled from the
-## chest so they never flip). Nothing here writes the carriage; IK reads it.
+## shares, head counter-rotates to the opponent — the cut's body support — and,
+## when the scene names a `clavicle_response`, each shoulder girdle rises with
+## its arm) → TwoBoneIK3D (both wrists to the wrists the grip frames imply,
+## elbows poled so they never flip) → GripHandsModifier3D (each hand turned to
+## its grip frame, so the palm lands on the grip and the hand wraps the handle,
+## PRES-GRIP-001). Nothing here writes the carriage; IK reads it.
 ## Guard contract: /docs/concepts/presentation.md.
 ##
 ## See also: /docs/reference/godot.md
@@ -55,11 +58,21 @@ const HAND_LENGTH := 0.06
 ## markers (the primitive blade).
 @export var dominant_grip: float = PhysicalBaseline.GRIP_DOMINANT_M
 @export var offhand_grip: float = PhysicalBaseline.GRIP_OFFHAND_M
+## Each hand mesh's wide axis (its knuckle line) in its own bone's frame,
+## dominant then off hand, measured from the body (PRES-GRIP-001 holds it to
+## the mesh). The default is the blockout's hand blocks.
+@export var hand_span_axes: PackedVector3Array = PackedVector3Array([Vector3(0.0, 0.0, 1.0), Vector3(0.105, 0.0, 0.995)])
+## Clavicle participation (PRES-CLAVICLE-001): a body skinned to its
+## `Shoulder.*` bones names one; a rigid-part body leaves it null and its
+## shoulders stay at rest. Presentation only.
+@export var clavicle_response: ClavicleResponse
 
 var _skeleton: Skeleton3D
 var _chain: CombatPoseModifier3D
 var _ik: TwoBoneIK3D
+var _hands: GripHandsModifier3D
 var _targets: Array[Node3D] = []
+var _wrists: Array[Node3D] = []
 var _poles: Array[Node3D] = []
 var _guided: Array[Node3D] = []
 
@@ -85,8 +98,14 @@ func bind_sword(carriage: Node3D, weapon_model: Node = null) -> void:
 		_target(carriage, "GripDominantTarget", _marker(weapon_model, GRIP_DOMINANT, dominant_grip)),
 		_target(carriage, "GripOffhandTarget", _marker(weapon_model, GRIP_OFFHAND, offhand_grip)),
 	]
+	_wrists = []
+	for index in 2:
+		var grip := _targets[index]
+		grip.transform = SwordGripFrame.frame(grip.position, SwordGripFrame.COMMON_HAND_AXIS, hand_span_axes[index])
+		_wrists.append(_target(grip, "Wrist", SwordGripFrame.wrist_offset(HAND_LENGTH)))
 	_chain = CombatPoseModifier3D.new()
 	_chain.name = "KineticChain"
+	_chain.clavicle = clavicle_response
 	skel.add_child(_chain)
 	var chest_mount := BoneAttachment3D.new()
 	chest_mount.name = "ChestPoles"
@@ -103,15 +122,16 @@ func bind_sword(carriage: Node3D, weapon_model: Node = null) -> void:
 		_ik.set_root_bone_name(index, bones[0])
 		_ik.set_middle_bone_name(index, bones[1])
 		_ik.set_end_bone_name(index, bones[2])
-		## The hand bone's tail is the grip: extend the end bone so the
-		## palm, not the wrist, lands on the marker.
-		_ik.set_extend_end_bone(index, true)
-		## Along the hand's own axis (glTF bones point down +Y), not the
-		## default continuation of the forearm, or the palm misses by a hand.
-		_ik.set_end_bone_direction(index, SkeletonModifier3D.BONE_DIRECTION_PLUS_Y)
-		_ik.set_end_bone_length(index, skel.get_bone_global_rest(skel.find_bone(bones[2])).origin.distance_to(_tail(skel, bones[2])))
-		_ik.set_target_node(index, _ik.get_path_to(_targets[index]))
+		## The wrist the grip frame implies, not the palm: the hand's turn
+		## around the handle is the grip's, set after the IK.
+		_ik.set_extend_end_bone(index, false)
+		_ik.set_target_node(index, _ik.get_path_to(_wrists[index]))
 		_ik.set_pole_node(index, _ik.get_path_to(poles[index]))
+	_hands = GripHandsModifier3D.new()
+	_hands.name = "GripHands"
+	_hands.hand_bones = PackedStringArray([dominant_bones[2], offhand_bones[2]])
+	_hands.frames = _targets
+	skel.add_child(_hands)
 
 
 ## How the body holds the sword this frame: the proxy's one `BodySupportPose`
@@ -169,6 +189,7 @@ func apply_stance(stance: FighterStanceProfile) -> void:
 			_ik.set_pole_node(index, _ik.get_path_to(guided))
 	_chain.stance = stance
 	_chain.grips = _targets
+	_chain.grip_spans = hand_span_axes
 	_chain.poles = _guided
 	_chain.frame = get_parent() as Node3D
 	_chain.arm_roots = PackedStringArray([dominant_bones[0], offhand_bones[0]])
@@ -180,6 +201,10 @@ func apply_stance(stance: FighterStanceProfile) -> void:
 func set_grip_influence(value: float) -> void:
 	if _ik != null:
 		_ik.influence = clampf(value, 0.0, 1.0)
+	if _hands != null:
+		_hands.influence = clampf(value, 0.0, 1.0)
+	if _chain != null:
+		_chain.grip_weight = clampf(value, 0.0, 1.0)
 
 
 func grip_influence() -> float:
@@ -208,6 +233,11 @@ func grip_target(index: int) -> Node3D:
 
 func ik() -> TwoBoneIK3D:
 	return _ik
+
+
+## The final hand-orientation pass, for tests.
+func grip_hands() -> GripHandsModifier3D:
+	return _hands
 
 
 ## The elbow pole arm `index` bends toward (0 dominant / right, 1 off-hand /
@@ -252,14 +282,3 @@ static func _pole(mount: Node3D, pole_name: String, at: Vector3) -> Node3D:
 	pole.position = at
 	mount.add_child(pole)
 	return pole
-
-
-## Rest-space tail of a bone: the head of its first child, or one bone length
-## along its own axis when it has none (the hand).
-static func _tail(skel: Skeleton3D, bone_name: String) -> Vector3:
-	var bone := skel.find_bone(bone_name)
-	var rest := skel.get_bone_global_rest(bone)
-	var children := skel.get_bone_children(bone)
-	if children.size() > 0:
-		return skel.get_bone_global_rest(children[0]).origin
-	return rest.origin + rest.basis.y.normalized() * HAND_LENGTH

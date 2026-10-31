@@ -85,6 +85,41 @@ BY_ID = {slider.id: slider for slider in SLIDERS}
 UI_IDS = tuple(slider.id for slider in SLIDERS if slider.ui)
 
 
+# --- Body inputs -------------------------------------------------------------
+#
+# Three high-level physical inputs, independent of the 21 shape sliders above.
+# They describe the body the resolver turns into physical attributes; they do
+# not drive the sliders (no hidden coupling until authored examples prove a
+# stable mapping). The default is Wolf, the 1.0 reference (``baseline.py``).
+# ``affects`` is the contract: an input may change only the resolver outputs it
+# names, and the resolver tests hold every other output fixed.
+
+class BodyInput(Slider):
+    def __init__(self, id, label, meaning, unit, minimum, default, maximum, affects):
+        super().__init__(id, "body", label, meaning, unit, minimum, default, maximum, True)
+        self.affects = frozenset(affects)
+
+
+BODY_INPUTS = (
+    BodyInput("height_m", "Height",
+              "Standing height to the crown. Lengths follow it; girth follows physique.GIRTH_EXPONENT.", "metres",
+              1.60, 1.80, 2.00,
+              ("mass_kg", "mass_scale", "strength_scale", "traction_scale", "turn_support_scale",
+               "hurt_radius_m", "push_radius_m", "grip_radius_m", "hand_radius_m",
+               "lying_half_length_m", "lying_radius_m", "stamina_capacity")),
+    BodyInput("frame_build", "Frame build",
+              "Skeletal breadth of ribcage, shoulder girdle and pelvis relative to Wolf. Not muscle.", "multiplier",
+              0.85, 1.00, 1.15,
+              ("mass_kg", "mass_scale", "hurt_radius_m", "push_radius_m", "lying_radius_m")),
+    BodyInput("muscularity", "Muscularity",
+              "Muscle volume and force-producing cross-section relative to Wolf. Not body fat, not a global scale.",
+              "multiplier", 0.80, 1.00, 1.25,
+              ("mass_kg", "mass_scale", "strength_scale", "traction_scale", "turn_support_scale",
+               "hurt_radius_m", "lying_radius_m", "stamina_capacity")),
+)
+BODY_BY_ID = {entry.id: entry for entry in BODY_INPUTS}
+
+
 def require_slider(id):
     slider = BY_ID.get(id)
     if slider is None:

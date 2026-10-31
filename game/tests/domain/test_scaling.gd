@@ -42,7 +42,7 @@ func test_shipped_content_sits_exactly_on_the_baseline() -> void:
 	## derived from it is measuring the wrong thing.
 	var fighter := _fighter()
 	var weapon := _weapon()
-	assert_near(fighter.height, PhysicalBaseline.FIGHTER_HEIGHT_M, 1e-12, "1.75 m tall")
+	assert_near(fighter.height, PhysicalBaseline.FIGHTER_HEIGHT_M, 1e-12, "1.80 m tall")
 	assert_near(fighter.mass, PhysicalBaseline.FIGHTER_MASS_KG, 1e-12, "80 kg")
 	assert_near(fighter.push_radius, PhysicalBaseline.FIGHTER_RADIUS_M, 1e-12, "0.27 m footprint")
 	assert_near(weapon.length(), PhysicalBaseline.SWORD_LENGTH_M, 1e-12, "1.22 m sword")
