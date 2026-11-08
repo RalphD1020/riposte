@@ -1,0 +1,8 @@
+{
+ "foundation": "character.male_base.foundation",
+ "notes": "How the foundation's derived height and build variants are generated: switches that never change the 1.80 m / 80 kg reference. v001: the face response off (the approved derived faces).",
+ "schema": "riposte.foundation_variants",
+ "settings": {
+  "face_response": false
+ }
+}

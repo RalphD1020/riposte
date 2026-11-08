@@ -1,0 +1,46 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-06",
+  "evidence": "iteration 20261106_2215_wolf_face (candidate r2: boards face_wolf_r2_*, eyes_wolf_r2, x_*; identical under Ranger and Training)"
+ },
+ "category": "face",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "default_face",
+   "version": "v002"
+  }
+ ],
+ "files": {
+  "wolf_face.json": {
+   "from": "iteration evidence: wolf_face.json",
+   "sha256": "529b4795004e4f9f41c8ea03141f084923d44d1f3f9b9eb1b62811c928c39de5"
+  }
+ },
+ "id": "wolf_face",
+ "notes": "Wolf's face: the default face with his face_refine (heavier upper lid toward the outer corner, a lash heavy in its outer third and tapered at the tip, deeper brows with an inner mass and a tapered tail) and his eye and hair colours (dark grey iris, near-black brown hair). Clean-shaven; shared by Ranger and Training.",
+ "origin": "wolf",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {},
+ "status": "approved",
+ "subtype": "face",
+ "tags": [
+  "clean_shaven",
+  "watchful_lids",
+  "dark_grey_iris"
+ ],
+ "version": "v001"
+}

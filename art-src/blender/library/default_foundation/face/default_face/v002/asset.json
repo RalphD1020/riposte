@@ -1,0 +1,47 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-06",
+  "evidence": "iterations 20261105_1530_heroic_cranium (head design rounds 1-7, locked), 20261106_2215_wolf_face (eye fix: white_over_iris 0 on the 15-row sweep; v002 base reproduces the locked HeadV2; lock v002_lock)"
+ },
+ "category": "face",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "male_base_foundation",
+   "version": "v002"
+  }
+ ],
+ "files": {
+  "default_face.json": {
+   "from": "iteration evidence: default_face.json",
+   "sha256": "7f67a7610a58ea7ffd44edaeec7762eb9314c27b8d4ce5dbf83b38a061b03e1a"
+  }
+ },
+ "id": "default_face",
+ "notes": "The default eyes and brows of v001 with the eye's white a fixed backing under the mask (white: backing, white_m 0.3 mm): the white no longer shows in front of the iris mid-blink or mid-gaze.",
+ "origin": "default_foundation",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {},
+ "status": "approved",
+ "subtype": "face",
+ "tags": [
+  "eyes",
+  "brows",
+  "masked_anime_eye",
+  "fixed_white"
+ ],
+ "version": "v002"
+}

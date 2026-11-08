@@ -1,0 +1,52 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-10-31",
+  "evidence": "Training E approved design; refit on the foundation verified 2026-11-02 (iteration 20261102_0800_face_hair_mapping)"
+ },
+ "category": "hair",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "regions": [
+   "head",
+   "neck"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "male_base_foundation",
+   "version": "v001"
+  }
+ ],
+ "files": {
+  "wolf_hair_training.garment.json": {
+   "from": "art-src/blender/garments/wolf_hair_training.garment.json",
+   "sha256": "5f1adec1b08fe095d3d514133aff117ef1ca9ec05667bd8cc6838d03bc665168"
+  }
+ },
+ "id": "wolf_hair_training",
+ "notes": "Training: a small knot over shoulder-length hair; fitted by wolf_hair.build_style to each resolved head.",
+ "origin": "wolf",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {
+  "tools/blender/authoring/wolf_hair.py": "a3cd60021c83dee5fcc1f754071483f6827bdf36aaca19f57006ec60d215818c"
+ },
+ "status": "approved",
+ "subtype": "hairstyle",
+ "tags": [
+  "half_up",
+  "bun",
+  "shoulder_length"
+ ],
+ "version": "v001"
+}

@@ -1,0 +1,11 @@
+{
+ "category": "facial_hair",
+ "origin": "wolf",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "beard",
+  "moustache",
+  "sideburns",
+  "stubble"
+ ]
+}

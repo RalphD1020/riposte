@@ -1,0 +1,111 @@
+{
+ "asset": "male_base_variants",
+ "records": [
+  {
+   "configuration": "h1.60_f0.850_m0.800",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep lean_160)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.60_f1.000_m1.000",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep reference_160)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.60_f1.150_m1.250",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep strongman_160)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.70_f0.850_m0.800",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep lean_170)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.70_f1.000_m1.000",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep reference_170)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.70_f1.150_m1.250",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep strongman_170)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.80_f0.850_m0.800",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep lean_180)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.80_f1.000_m1.000",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep reference_180)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.80_f1.150_m1.250",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep strongman_180)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.90_f0.850_m0.800",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep lean_190)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.90_f1.000_m1.000",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep reference_190)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h1.90_f1.150_m1.250",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep strongman_190)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h2.00_f0.850_m0.800",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep lean_200)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h2.00_f1.000_m1.000",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep reference_200)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  },
+  {
+   "configuration": "h2.00_f1.150_m1.250",
+   "date": "2026-11-02",
+   "evidence": "default bodies and faces approved 2026-11-02 (iterations 20261101_2310 1_smooth, 20261102_0100_foundation_lock: sweep strongman_200)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  }
+ ],
+ "schema": "riposte.library_validations"
+}

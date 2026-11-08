@@ -52,6 +52,89 @@ func test_death_keeps_the_x_until_a_new_figure() -> void:
 	rematch["root"].free()
 
 
+## Blend-shape weights are stored as 32-bit floats.
+const WEIGHT_TOLERANCE := 1e-6
+const CHANNELS: Array[String] = ["brow_inner_down", "brow_outer_up", "lid_upper_close", "lid_upper_open", "gaze_left", "gaze_right", "gaze_up", "gaze_down", "blink"]
+
+
+func _keyed_mesh(part: String) -> MeshInstance3D:
+	var mesh := ArrayMesh.new()
+	for key in CHANNELS:
+		mesh.add_blend_shape(key)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3.UP])
+	var shapes: Array[Array] = []
+	for _key in CHANNELS:
+		var shape := []
+		shape.resize(Mesh.ARRAY_MAX)
+		shape[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3.ZERO, Vector3.RIGHT, Vector3(0.0, 2.0, 0.0)])
+		shapes.append(shape)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, shapes)
+	var node := MeshInstance3D.new()
+	node.name = part
+	node.mesh = mesh
+	return node
+
+
+func _weight(node: MeshInstance3D, key: String) -> float:
+	return node.get_blend_shape_value(node.find_blend_shape_by_name(key))
+
+
+## FACE-EXPRESSION-001 / FACE-EYE-001: a preset weights its channels per side
+## (designed asymmetry), on brows and lids together; gaze and the blink are
+## channels too; dead is the X with neutral brows; neutral clears every channel.
+func test_presets_weight_the_channels_per_side() -> void:
+	## ARRANGE: a face whose left and right brow and upper lid carry the channels.
+	var root := Node3D.new()
+	var brow_l := _keyed_mesh("Brow_L")
+	var brow_r := _keyed_mesh("Brow_R")
+	var lid_l := _keyed_mesh("EyeLidUpper_L")
+	var dead := MeshInstance3D.new()
+	dead.name = "DeadEye_L_A"
+	for node: Node in [brow_l, brow_r, lid_l, dead]:
+		root.add_child(node)
+	(Engine.get_main_loop() as SceneTree).root.add_child(root)
+	var parts := FacePresentation.bind(root)
+	assert_eq(parts.size(), 4, "fixture: both brows, a lid and the X are bound")
+	var left: Dictionary = FacePresentation.PRESETS[FacePresentation.AGGRESSIVE]["L"]
+	var right: Dictionary = FacePresentation.PRESETS[FacePresentation.AGGRESSIVE]["R"]
+	assert_true(left["brow_inner_down"] != right["brow_inner_down"], "fixture: aggressive is asymmetric")
+	## ACT
+	FacePresentation.show_expression(parts, FacePresentation.AGGRESSIVE)
+	## ASSERT: each side carries its own weights; a channel the preset does not name stays 0.
+	assert_near(_weight(brow_l, "brow_inner_down"), float(left["brow_inner_down"]), WEIGHT_TOLERANCE, "the left brow compresses by the left weight")
+	assert_near(_weight(brow_r, "brow_inner_down"), float(right["brow_inner_down"]), WEIGHT_TOLERANCE, "the right brow by the right weight")
+	assert_near(_weight(lid_l, "lid_upper_close"), float(left["lid_upper_close"]), WEIGHT_TOLERANCE, "the lid closes with the brow")
+	assert_eq(_weight(lid_l, "lid_upper_open"), 0.0, "an unnamed channel stays at rest")
+	assert_false(dead.visible, "aggressive hides the X")
+	## PERTURB: a half blend, a gaze up and to the character's left, a blink.
+	FacePresentation.pose(parts, FacePresentation.ALERT, 0.5, Vector2(0.6, 0.3), 1.0)
+	var alert: Dictionary = FacePresentation.PRESETS[FacePresentation.ALERT]["L"]
+	assert_near(_weight(brow_l, "brow_outer_up"), float(alert["brow_outer_up"]) * 0.5, WEIGHT_TOLERANCE, "a blend is partial")
+	assert_near(_weight(lid_l, "gaze_left"), 0.6, WEIGHT_TOLERANCE, "the gaze is a channel")
+	assert_eq(_weight(lid_l, "gaze_right"), 0.0, "the opposite gaze is off")
+	assert_near(_weight(lid_l, "gaze_up"), 0.0, WEIGHT_TOLERANCE, "a closed eye drops the vertical gaze (it moves the edges)")
+	assert_eq(_weight(lid_l, "blink"), 1.0, "the blink closes the lid")
+	assert_true(float(alert["lid_upper_open"]) > 0.0, "fixture: alert opens the lid")
+	assert_eq(_weight(lid_l, "lid_upper_open"), 0.0, "a full blink closes from rest: the preset's lid channels fade out")
+	FacePresentation.pose(parts, FacePresentation.ALERT, 1.0, Vector2(0.0, 0.4), 0.5)
+	assert_near(_weight(lid_l, "gaze_up"), 0.2, WEIGHT_TOLERANCE, "the lids follow the gaze up, half through a half blink")
+	assert_near(_weight(lid_l, "lid_upper_open"), float(alert["lid_upper_open"]) * 0.5, WEIGHT_TOLERANCE, "a half blink keeps half the lid")
+	assert_near(_weight(brow_l, "brow_outer_up"), float(alert["brow_outer_up"]), WEIGHT_TOLERANCE, "the brows keep the expression through a blink")
+	FacePresentation.show_expression(parts, FacePresentation.DEAD)
+	assert_false(lid_l.visible, "dead hides the eye assembly")
+	assert_true(dead.visible, "dead shows the X")
+	assert_true(brow_l.visible, "dead keeps the brow")
+	for key in CHANNELS:
+		assert_eq(_weight(brow_l, key), 0.0, "dead brows are neutral: %s" % key)
+	FacePresentation.show_expression(parts, FacePresentation.NEUTRAL)
+	for key in CHANNELS:
+		assert_eq(_weight(lid_l, key), 0.0, "neutral clears %s" % key)
+	assert_true(lid_l.visible and not dead.visible, "neutral is the living face")
+	root.free()
+
+
 ## The exported Ranger and Training bodies carry both faces, and the production
 ## proxy selects from the projected terminal: a kill, a ring-out, and a new proxy.
 func test_the_exported_bodies_and_the_proxy_share_one_face_contract() -> void:

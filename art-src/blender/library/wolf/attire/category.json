@@ -1,0 +1,13 @@
+{
+ "category": "attire",
+ "origin": "wolf",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "top",
+  "trousers",
+  "armour",
+  "footwear",
+  "belt",
+  "accessory"
+ ]
+}

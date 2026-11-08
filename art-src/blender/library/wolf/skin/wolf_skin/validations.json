@@ -1,0 +1,13 @@
+{
+ "asset": "wolf_skin",
+ "records": [
+  {
+   "configuration": "h1.80_f1.000_m1.000",
+   "date": "2026-11-02",
+   "evidence": "skin board (iteration 20261102_0900_wolf_identity_layer/skin): skin_02 chosen",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  }
+ ],
+ "schema": "riposte.library_validations"
+}

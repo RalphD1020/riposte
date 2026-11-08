@@ -26,7 +26,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "tools", "character_modeling"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "blender"))
 
-from character_modeling import head_fit  # noqa: E402
+from character_modeling import face_mask, head_fit  # noqa: E402
 import character_assembly  # noqa: E402
 ## The direction the approved hairstyles gather to (azimuth from the front, elevation from
 ## the head centre): the shared bun anchor on the occipital region.
@@ -104,6 +104,7 @@ def measure(obj, marks):
     def side_at(sign, y, z):
         return ray((sign * (half_width + 0.3), y, z), (-sign, 0.0, 0.0))
 
+    marks = face_mask.resolve_marks(marks, height / half_width)
     eye, brow = marks["Eye"], marks["Brow"]
     eye_z = low + eye["z"] * height
     landmarks = {}

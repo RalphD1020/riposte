@@ -140,6 +140,97 @@ class HeadFields(unittest.TestCase):
         self.assertTrue(set(variation.HEAD_FIELDS) <= set(head_profile.PARAMETERS))
         self.assertEqual(set(head_profile.PARAMETERS) - set(variation.HEAD_FIELDS), set(variation.PLACEMENT_PARAMETERS))
 
+    def test_the_jaw_stations_move_the_corners_not_the_chin_centre(self):
+        ## ARRANGE: chart points: the mandibular corner, a chin corner, the chin's centre.
+        def at(u, v, d):
+            return (u * FRAME["half_width"], FRAME["front"] + d * (FRAME["back"] - FRAME["front"]), FRAME["low"] + v * FRAME["height"])
+        jaw_corner, chin_corner, chin_centre = at(0.80, 0.15, 0.48), at(0.30, 0.04, 0.05), at(0.0, 0.04, 0.05)
+        ## ACT
+        jaw = variation.head_displacement(jaw_corner, FRAME, {"jaw_angle": 1.0})
+        corner = variation.head_displacement(chin_corner, FRAME, {"chin_corner": 1.0})
+        centre = variation.head_displacement(chin_centre, FRAME, {"chin_corner": 1.0})
+        ## ASSERT: the mandibular corner moves out and forward (away from a lean neck behind
+        ## it, never down into it); the chin's corners move out and down; its centre (height,
+        ## projection) barely moves; all within the 1-3 mm budget.
+        self.assertGreater(jaw[0], 0.0019)
+        self.assertLess(jaw[1], -0.0014)
+        self.assertEqual(jaw[2], 0.0)
+        self.assertGreater(corner[0], 0.001)
+        self.assertLess(corner[2], -0.0008)
+        self.assertLess(max(abs(c) for c in centre), 0.0001)
+        for move in (jaw, corner):
+            self.assertLessEqual(max(abs(c) for c in move), 0.003)
+
+    def test_the_submental_lift_raises_the_underside_and_leaves_the_chin_pad(self):
+        ## ARRANGE: the chin pad (front of the underside), the submental region behind it, the
+        ## jaw's side edge and the face mask's lower boundary corner (jaw_low).
+        def at(u, v, d):
+            return (u * FRAME["half_width"], FRAME["front"] + d * (FRAME["back"] - FRAME["front"]), FRAME["low"] + v * FRAME["height"])
+        pad, submental, side_edge, jaw_low = at(0.0, 0.02, 0.05), at(0.0, 0.02, 0.45), at(0.85, 0.05, 0.45), at(0.30, 0.04, 0.10)
+        params = {"submental_lift": 1.0}
+        ## ACT / ASSERT: only the submental region rises (never the pad, the side edge or the
+        ## mask's boundary), and it only rises (no shelf pushed forward or sideways).
+        lifted = variation.head_displacement(submental, FRAME, params)
+        self.assertGreater(lifted[2], 0.0035)
+        self.assertEqual((lifted[0], lifted[1]), (0.0, 0.0))
+        for point in (pad, side_edge, jaw_low):
+            self.assertLess(abs(variation.head_displacement(point, FRAME, params)[2]), 0.0002)
+        ## The jaw's lower border rises toward the corner; the chin pad stays.
+        border = variation.head_displacement(at(0.68, 0.03, 0.48), FRAME, {"mandible_border": 1.0})
+        self.assertGreater(border[2], 0.0035)
+        self.assertLess(abs(variation.head_displacement(pad, FRAME, {"mandible_border": 1.0})[2]), 0.0002)
+        ## Behind the corner the jaw's side edge rises toward the ear; ahead of it, it stays.
+        behind, corner = at(0.80, 0.08, 0.66), at(0.80, 0.08, 0.40)
+        self.assertGreater(variation.head_displacement(behind, FRAME, {"ramus_recess": 1.0})[2], 0.0035)
+        self.assertEqual(variation.head_displacement(corner, FRAME, {"ramus_recess": 1.0}), (0.0, 0.0, 0.0))
+        ## The anime_jaw study is layered on heroic_jaw: the checkpoint is the study without it.
+        self.assertNotIn("submental_lift", variation.HEAD_STUDY["heroic_jaw"])
+        self.assertEqual(set(variation.HEAD_STUDY["anime_jaw"]) - set(variation.HEAD_FIELDS), set())
+
+    def test_the_submental_profile_rises_to_the_junction_and_never_folds(self):
+        ## ARRANGE: the midline underside from the chin pad back to the junction, and a column
+        ## of heights at the junction (the lift's strongest depth), at the study's value.
+        def at(u, v, d):
+            return (u * FRAME["half_width"], FRAME["front"] + d * (FRAME["back"] - FRAME["front"]), FRAME["low"] + v * FRAME["height"])
+        params = {"submental_profile": variation.HEAD_STUDY["submental_fix"]["submental_profile"]}
+        ## ACT / ASSERT: the lift grows from the pad to the junction (the chin stays lowest)...
+        lifts = [variation.head_displacement(at(0.0, 0.0, d), FRAME, params)[2] for d in (0.10, 0.20, 0.28, 0.35)]
+        self.assertEqual(lifts[0], 0.0)
+        self.assertEqual(lifts, sorted(lifts))
+        self.assertGreater(lifts[-1], 0.010)
+        ## ...and moved heights keep their order (no fold) through the height band's ramp.
+        column = [FRAME["low"] + v * FRAME["height"] + variation.head_displacement(at(0.0, v, 0.36), FRAME, params)[2]
+                  for v in [i / 100.0 for i in range(0, 25)]]
+        self.assertEqual(column, sorted(column))
+
+
+class PhysiqueDesign(unittest.TestCase):
+    """Three-physique head design: studies anchored at lean, reference and strongman,
+    piecewise linear on the build coordinate, independent of height."""
+
+    DESIGN = {"lean": {"lean_face": 1.0, "submental_fix": 1.0}, "reference": {"reference_face": 1.0, "submental_fix": 1.0},
+              "strongman": {"heroic_jaw": 1.0, "submental_fix": 1.0}}
+
+    def test_the_build_coordinate_spans_the_archetypes_and_ignores_height(self):
+        for name, frame, muscle in variation.ARCHETYPES:
+            expected = {"lean": -1.0, "reference": 0.0, "strongman": 1.0}[name]
+            for h in variation.SWEEP_HEIGHTS_M:
+                self.assertAlmostEqual(variation.design_coordinate({"height_m": h, "frame_build": frame, "muscularity": muscle}), expected)
+
+    def test_each_anchor_gets_its_own_studies_and_between_is_linear(self):
+        ## ACT: at each anchor and halfway between reference and strongman.
+        lean = variation.designed_study(self.DESIGN, {"height_m": 1.8, "frame_build": 0.85, "muscularity": 0.8})
+        strong = variation.designed_study(self.DESIGN, {"height_m": 2.0, "frame_build": 1.15, "muscularity": 1.25})
+        half = variation.designed_study(self.DESIGN, {"height_m": 1.6, "frame_build": 1.075, "muscularity": 1.125})
+        ## ASSERT: exact at the anchors, linear between, shared studies constant.
+        self.assertEqual((lean["lean_face"], lean["reference_face"], lean["heroic_jaw"]), (1.0, 0.0, 0.0))
+        self.assertEqual((strong["heroic_jaw"], strong["reference_face"]), (1.0, 0.0))
+        self.assertAlmostEqual(half["heroic_jaw"], 0.5)
+        self.assertAlmostEqual(half["reference_face"], 0.5)
+        self.assertEqual({lean["submental_fix"], strong["submental_fix"], half["submental_fix"]}, {1.0})
+        ## PERTURB: no design, no studies.
+        self.assertEqual(variation.designed_study(None, {"height_m": 1.8, "frame_build": 1.0, "muscularity": 1.0}), {})
+
     def test_jaw_width_widens_the_jaw_and_leaves_the_crown(self):
         jaw, crown = (0.07, -0.05, 1.56), (0.06, 0.0, 1.79)
         params = {"jaw_width": 1.0}
@@ -154,6 +245,69 @@ class HeadFields(unittest.TestCase):
             self.assertAlmostEqual(left[0], -right[0])
             self.assertAlmostEqual(left[1], right[1])
             self.assertAlmostEqual(left[2], right[2])
+
+
+class HeadStudies(unittest.TestCase):
+    def test_a_head_study_offsets_the_resolved_parameters_by_its_value(self):
+        ## ARRANGE: a resolved identity head and the anime head study.
+        head = resolved(WOLF)["head"]["parameters"]
+        study = variation.HEAD_STUDY["anime_head"]
+        self.assertTrue(set(study) <= set(variation.HEAD_FIELDS), "fixture: the study moves morph fields only")
+        ## ACT
+        full = variation.studied_head(head, {"anime_head": 1.0})
+        half = variation.studied_head(head, {"anime_head": 0.5})
+        ## ASSERT: each named parameter moves by its amount times the value; the rest and the
+        ## input are untouched; no study is the identity's head.
+        for name, amount in study.items():
+            self.assertAlmostEqual(full[name], head.get(name, 0.0) + amount)
+            self.assertAlmostEqual(half[name], head.get(name, 0.0) + 0.5 * amount)
+        self.assertEqual({k: v for k, v in full.items() if k not in study}, {k: v for k, v in head.items() if k not in study})
+        self.assertEqual(variation.studied_head(head), head)
+        ## PERTURB: an unknown study fails closed.
+        with self.assertRaises(ValueError):
+            variation.studied_head(head, {"chibi": 1.0})
+
+
+class LimbGirth(unittest.TestCase):
+    def test_mass_slims_lean_muscle_bellies_and_leaves_joints_and_heavier_builds(self):
+        ## ARRANGE: the lean profile's muscle bellies and joints.
+        thigh, calf, knee, ankle = 0.40, 0.20, 0.285, 0.07
+        upper_arm, forearm, wrist = 0.22, 0.55, 0.74
+        ## ACT / ASSERT: at the lean anchor the bellies slim far more than the joints (the
+        ## fleshy-versus-bony scaling of measured girths); the gluteal fold and the hand
+        ## never change; the reference and everything heavier is untouched.
+        lean = lambda limb, t: variation.girth_factor(-1.0, limb, t)  # noqa: E731
+        self.assertLess(lean("leg", thigh), 0.9)
+        self.assertLess(lean("leg", calf), 0.92)
+        self.assertGreater(lean("leg", knee), 0.95)
+        self.assertGreater(lean("leg", ankle), 0.97)
+        self.assertLess(lean("arm", upper_arm), lean("arm", forearm))
+        self.assertEqual(lean("arm", wrist), 1.0)
+        self.assertEqual(lean("leg", 0.47), 1.0)
+        self.assertEqual(lean("leg", 0.9), 1.0)
+        for mass in (0.0, 0.5, 1.0, 2.0):
+            self.assertEqual(variation.girth_factor(mass, "leg", thigh), 1.0)
+        ## The strongman's distal fullness (opt-in): the calf and forearm bellies grow, the
+        ## joints and the thigh hold; halfway is half; never below the reference.
+        strong = lambda limb, t: variation.girth_factor(1.0, limb, t, True)  # noqa: E731
+        self.assertGreater(strong("leg", calf), 1.04)
+        self.assertGreater(strong("arm", 0.5), 1.05)
+        for limb, joint in (("leg", knee), ("leg", ankle), ("arm", wrist), ("arm", 0.40), ("leg", thigh)):
+            self.assertEqual(strong(limb, joint), 1.0)
+        self.assertAlmostEqual(variation.girth_factor(0.5, "leg", calf, True), 0.5 * (1.0 + strong("leg", calf)))
+        self.assertEqual(variation.girth_factor(0.0, "leg", calf, True), 1.0)
+        self.assertEqual(variation.girth_factor(-1.0, "leg", calf, True), lean("leg", calf))
+        ## PERTURB: halfway to lean is halfway in factor; past lean it is held.
+        self.assertAlmostEqual(variation.girth_factor(-0.5, "leg", thigh), 0.5 * (1.0 + lean("leg", thigh)))
+        self.assertAlmostEqual(variation.girth_factor(-3.0, "arm", upper_arm), lean("arm", upper_arm))
+
+    def test_the_head_plane_study_stays_below_the_eyes(self):
+        ## ARRANGE / ACT / ASSERT: its fields are head fields, none of them the cranium's or
+        ## a field whose window reaches the eye panel (the cheekbone's).
+        study = variation.HEAD_STUDY["anime_planes"]
+        self.assertTrue(set(study) <= set(variation.HEAD_FIELDS))
+        self.assertFalse(set(study) & {"cranial_width", "cranial_depth", "cranial_height", "cheekbone_width",
+                                       "cheekbone_depth", "brow_strength"})
 
 
 class BoundaryMatrix(unittest.TestCase):
@@ -179,6 +333,25 @@ class BoundaryMatrix(unittest.TestCase):
 
     def test_the_underweight_reading_names_the_short_lean_corner(self):
         self.assertEqual(variation.matrix_report()["below_underweight_bmi"], ["short_lean"])
+
+    def test_the_sweep_reaches_every_build_at_every_height(self):
+        ## ARRANGE / ACT
+        rows = variation.sweep()
+        ## ASSERT: five heights x three archetypes, the reference row the approved default;
+        ## the matrix holds all eight combinations of the body-input extremes.
+        self.assertEqual(len(rows), len(variation.SWEEP_HEIGHTS_M) * len(variation.ARCHETYPES))
+        self.assertIn(("reference_180", 1.80, 1.00, 1.00), rows)
+        corners = {(h, f, m) for _n, h, f, m in variation.BOUNDARY_MATRIX}
+        self.assertLessEqual(set(itertools.product((1.60, 2.00), (0.85, 1.15), (0.80, 1.25))), corners)
+
+    def test_the_resolved_fingerprint_follows_the_physical_inputs(self):
+        ## ARRANGE
+        body = {"height_m": 1.8, "frame_build": 1.0, "muscularity": 1.0}
+        ## PERTURB
+        taller = dict(body, height_m=1.81)
+        ## ACT / ASSERT: the same inputs, the same fingerprint; a change invalidates it.
+        self.assertEqual(variation.fingerprint(resolved(body)), variation.fingerprint(resolved(dict(body))))
+        self.assertNotEqual(variation.fingerprint(resolved(body)), variation.fingerprint(resolved(taller)))
 
     def test_every_body_input_extreme_resolves(self):
         for values in itertools.product((1.60, 2.00), (0.85, 1.15), (0.80, 1.25)):

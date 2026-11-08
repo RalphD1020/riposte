@@ -1,0 +1,325 @@
+{
+ "schema": "riposte.character_foundation_lock",
+ "version": 1,
+ "foundation": "character.male_base.foundation",
+ "approved": "2026-11-02: the default bodies (lean, reference, strongman across 1.60-2.00 m), the default eyes and brows, and the side-profile chest smoothing (person)",
+ "set": "sweep",
+ "notes": "Every default body's resolved configuration and mesh fingerprints (body, head, face features). male_base_v2_variation.py --set sweep --verify-lock rebuilds and compares; a change to the foundation is a new approval and a new lock.",
+ "characters": {
+  "lean_160": {
+   "resolved_fingerprint": "0b8d2f0946fe6ec2",
+   "fingerprints": {
+    "lean_160.Body": "a1122b52536b6825cd57e0f8e3978fd4bd591d2a5629ca85280563992aea2649",
+    "lean_160.Brow.L": "6fa80965b7a843709bf8eb375771477d95c7844311687688c8972cf1f575773a",
+    "lean_160.Brow.R": "4fb03a7ce9580913dcf052de45ef1f4fbf4dbbb8fcb3423a9043c95ce1f33ed6",
+    "lean_160.DeadEye.L.A": "b127db6a8887c26ff293d7e2af149aed333cd7e4b357b07defe1229053b33cd3",
+    "lean_160.DeadEye.L.B": "15b277e763b5666de89a4d7aacd293783c5c47bcfb34756118702d1610bed12d",
+    "lean_160.DeadEye.R.A": "446cb0c28327b441187c66d76dbbd6f28c5c338a74bfdc353b4fa3271f9eaffb",
+    "lean_160.DeadEye.R.B": "05793529a5dcd58b454e0f04666077b984b91becb5b5235de077d45ad21915fc",
+    "lean_160.Eye.L": "8202f05099ff0b3a7a829cc4a05d3d30f36d639d934b7cc8096a057d3cca1b32",
+    "lean_160.Eye.R": "d5a0d703af1d2b77289b42aea46767f561db918595c29fecf45c7552cb2c565c",
+    "lean_160.EyeIris.L": "1129dfb74841458c1b721eb6fc1cfe859bf2fb5f28298e422d4531ba63018cf3",
+    "lean_160.EyeIris.R": "5effceafef5eef59ee5966b289ce642ec649b37193d6594f6222dd61ae67ab99",
+    "lean_160.EyeLine.L": "6c365dc7cb2e9a711c799a65db8caf251384dd11bc39e43cfab9603867b49285",
+    "lean_160.EyeLine.R": "959d2bdd0a6909522a91aa3e467effc990fbb125c610e8830a2bf27375e08a27",
+    "lean_160.EyeMask.L": "50fdce80e0a2cb07e77678dd66d3bf392462f8a3f77ff161e5007341813545ff",
+    "lean_160.EyeMask.R": "920899368f76380683d76ea26bc7484370d6d617cfb07c23c659284aa3f010c6",
+    "lean_160.Head": "557b8951635c2818cd900c01ff040168b8bdb0f8f869432d6b8632ae4af3d4e8"
+   }
+  },
+  "lean_170": {
+   "resolved_fingerprint": "3f5db6e510e2532f",
+   "fingerprints": {
+    "lean_170.Body": "a851c8d36b83995a4a297e2110ea5c09208472d82ed7374722303479658eef06",
+    "lean_170.Brow.L": "51dabce46dc35dd429f563d9fdfab9bcd8dd686b2f19c5f5ff3da653bf146ab0",
+    "lean_170.Brow.R": "01dd537348efa9079fd578341b99551b4f8e0798649c4911b8ba7d39de274b44",
+    "lean_170.DeadEye.L.A": "8af193fc559f52f4823e1cb2affb610359ec71beec1a0516584724df4f3aeee5",
+    "lean_170.DeadEye.L.B": "9e225ebba722914e98cd0389579684fd7bc704d4284cd09f499da3ffcea34dba",
+    "lean_170.DeadEye.R.A": "2fb664950f4a96d527bcce386fe9c33732d5aee14aa3956b015406a0c4fcef1e",
+    "lean_170.DeadEye.R.B": "21ab5053558ae7ca59b65fdbb9416efdb31b2776e82ae46d7c67929c292794a9",
+    "lean_170.Eye.L": "397c4633f289d2072970b2144cb67f258ac3e71082a5d9d4ae9fe479c34b5ecc",
+    "lean_170.Eye.R": "dd2c508474cd0cbf4becd994ff3aa0d6621f973171c7239aa19a12b84a740c17",
+    "lean_170.EyeIris.L": "2ef4c83437a8755c9c99de29c3cc302ef013d64166f5e1441ec4cf34ad374e5d",
+    "lean_170.EyeIris.R": "89925f7e650ff529b34ccb61fb7663ae842012ea0badba59dbf26c327bae6db2",
+    "lean_170.EyeLine.L": "93a8a1371d3e8c508c35812b597fac177282d0eacb2908724179bc73f4939f19",
+    "lean_170.EyeLine.R": "329f4e6766703b117658bbc40d75e0314915aaf2442be50955bba10637dfcff8",
+    "lean_170.EyeMask.L": "d61e72ecea3808f3ec86011cb3abe638ef896ae45aff65a430c0b7250d4979d6",
+    "lean_170.EyeMask.R": "fc411eed8fd92c6c297be5d4f12b6a67af6ac5d41d1190b148d551907dcdf3b4",
+    "lean_170.Head": "4bae1ce134d9741ed9ba54cdf379239100ca15d2341c55d3f6f14dc06b3c53e6"
+   }
+  },
+  "lean_180": {
+   "resolved_fingerprint": "32aa375d1ce07123",
+   "fingerprints": {
+    "lean_180.Body": "a1122b52536b6825cd57e0f8e3978fd4bd591d2a5629ca85280563992aea2649",
+    "lean_180.Brow.L": "94ea971ee72d45e4b45533e211fc804d09b1c96a2b6bc8d460be7f5620bf501a",
+    "lean_180.Brow.R": "cfa2e40727719336c1a726e4dde26183b986825085245e446dc8f48dcc432b47",
+    "lean_180.DeadEye.L.A": "4e484b28f2003ed7747e1aa3df8c87c266ff1750fb9ba0ead429e5c90fe013ef",
+    "lean_180.DeadEye.L.B": "d27eb0e02caf3b9289a9ddb1c4273599589b34dfb84bb84126e5c98dc993cc9d",
+    "lean_180.DeadEye.R.A": "cb97c75ce08441ec43780fed0001cd79d2ec56f06a51563fad0a86b0cc6ede05",
+    "lean_180.DeadEye.R.B": "af93340385bbd072c0b96c1aababbde9be6a7a1c0cb86cc3d1503709a7bea5ed",
+    "lean_180.Eye.L": "ac31767df164c767457c980ea416089f2deeeb7f6ed916914e8cb3b546980363",
+    "lean_180.Eye.R": "69dfefd482c0e4a8844b784060fc17cffbfb49b5462d5ab1a0f9ebae10b75525",
+    "lean_180.EyeIris.L": "b9100afe8161e0a455a5f94e1e10904f1d34466fe84623534e660d37e8476c11",
+    "lean_180.EyeIris.R": "a7cb8cf6d88b182ddd0e1def5eb7a4c5a46746e9e33aee5e7c38e79445befb43",
+    "lean_180.EyeLine.L": "c531411d13490654732f374bb8beeb7d454419619796bf9edeefd284dbb4be32",
+    "lean_180.EyeLine.R": "905779f3553e78b2c8286680fb27321d52947f37c903a5c31a8a624b8d5fe399",
+    "lean_180.EyeMask.L": "ce7127148d60e6206e4230fd07be04570b02eed4d88ea4dcf7b06619891dec38",
+    "lean_180.EyeMask.R": "1802628baea15179a8f7dd032d5f4845e397db0ce8fdb263f255cec99f6b8b84",
+    "lean_180.Head": "97f6e268d0eb0c581c9be4e03ac2f19bb2975d0daac57fe025974f06213e6f7d"
+   }
+  },
+  "lean_190": {
+   "resolved_fingerprint": "a8588a4670d16e14",
+   "fingerprints": {
+    "lean_190.Body": "a1122b52536b6825cd57e0f8e3978fd4bd591d2a5629ca85280563992aea2649",
+    "lean_190.Brow.L": "e8310ffbb3ff359b49f44bc95fe0f2264922c5201b917c014a4df60f69c37b08",
+    "lean_190.Brow.R": "f75e18b57f32c5a9b6360b6c8c23f95d1bbf9e4876d3ef32b6af67fc2ff39fab",
+    "lean_190.DeadEye.L.A": "3690c295dd2c71ca9934ccfc029edf21afdf9227b9d31fa7b937b6c10348b8e1",
+    "lean_190.DeadEye.L.B": "f782df55f194ab63835693dbd73299227a1d89aca5261735d6ac31df10958a6f",
+    "lean_190.DeadEye.R.A": "c016b85466642af19e446e4a67339ae0b32a2bc722c8d4a72aa77939985e760e",
+    "lean_190.DeadEye.R.B": "248f76d61ef8f25e8047253f081b8f3ab1a317ab60bf1bbc3011d54087cfdd0b",
+    "lean_190.Eye.L": "9592bb1e99b23911845daf995ba743b56a481da744d8b5078cd31b6a29983c97",
+    "lean_190.Eye.R": "31b79f8ef71724e6364f282e9fbd32c14cf60ae4083921efc154bfe59cd04f78",
+    "lean_190.EyeIris.L": "24464874700ca7c4bf52a0e2cb5a49d28341c71c29c5d35844823e0ce1d39818",
+    "lean_190.EyeIris.R": "37e795d770be072e9382bfebac2b48d94a893f0f2c1c8b6f9a47751055b1bf83",
+    "lean_190.EyeLine.L": "4bac726daab879c90eff98049eb0f3cc14b442e3b7ed0305a28510a85699557b",
+    "lean_190.EyeLine.R": "a21f0d001da0d0da32c4d5bdfc57f0e42358dc68d801d0062a47d230b97676c3",
+    "lean_190.EyeMask.L": "5a53a46f5257431261e3b6daf929c94f266c5fa5ef1ed82a0d425e6eb55c9762",
+    "lean_190.EyeMask.R": "938c103f9f7aec1a0f54bfe48a2367b6f57a63c408cbe421bdafb7a00d321b88",
+    "lean_190.Head": "8cffdf013c2aeeb1130c70b89fa977da4ee74aad38e67c629e7f685ef742d423"
+   }
+  },
+  "lean_200": {
+   "resolved_fingerprint": "98496701ebca9968",
+   "fingerprints": {
+    "lean_200.Body": "a1122b52536b6825cd57e0f8e3978fd4bd591d2a5629ca85280563992aea2649",
+    "lean_200.Brow.L": "f11d3a38555307d4fc4e7a2b252f8d91033e294e04ce5e0ff9f982a0d6d85304",
+    "lean_200.Brow.R": "a86227421105997d1edb8908a716fc6c2b9cdbde0b44a760dc096abc27535990",
+    "lean_200.DeadEye.L.A": "83031dcf7934bb3bebc2c39fda208d9229cd6744c9a9bd6bb83236707df92dab",
+    "lean_200.DeadEye.L.B": "37f0bf8cd0fc35a73b36b9b911750d8bd554d2f834b59591811da7df98a0c1ad",
+    "lean_200.DeadEye.R.A": "4c493d434fcc01883635b46394c351140e3de87d8ea3739dac06debf43d31fc3",
+    "lean_200.DeadEye.R.B": "912348320628bf0c51afbad364c55f1780f0ecb20624e19fa3344d9942a11c8d",
+    "lean_200.Eye.L": "486d162a7fa8d759095a98f0443bfa76349bfac8ed2b1ebf2fda4b99fe271029",
+    "lean_200.Eye.R": "e11be38d94b95444f0afd6138827a1bca33fa55f6a9966ec3547b2b460154b98",
+    "lean_200.EyeIris.L": "ce4ecfc42c5c52e4896da5490500496cf27bf1e77135d8694a4ccc845d551d1f",
+    "lean_200.EyeIris.R": "54db4bcaa20f2ed856a4be7f776ff0ce8936195f6919a507cb57e165438f333a",
+    "lean_200.EyeLine.L": "a6a33d3f8be1c62e1453ad2aff98d73a0273a325c73779f83642dac4bacc9092",
+    "lean_200.EyeLine.R": "fef6534cc24be84fc1451303e995cc2ae378fbccb30a9a4b1205d9d039714657",
+    "lean_200.EyeMask.L": "60a39dd256b934f6d4b803a0a4f0d30e2f40412459aa608e2f91f069b791007e",
+    "lean_200.EyeMask.R": "f0340b78c4f0bf0bd8d628616c424b885c2d4d51104ee4d1718442e1701c426f",
+    "lean_200.Head": "87c2c3298814894a705addc25f97e4b768e7b940dd5df12453eb482ca0b8cc14"
+   }
+  },
+  "reference_160": {
+   "resolved_fingerprint": "cea33178bf27725d",
+   "fingerprints": {
+    "reference_160.Body": "eb52905f96929b9c4690fe5111c6a7fd42faaf4065653bbec4f16801a4feb7e3",
+    "reference_160.Brow.L": "dc8615d04f732d812054749eb7c0399aaef1966f92d264ff3ceb2738ccd172ce",
+    "reference_160.Brow.R": "31fc1adcb4863770eaa20ec59b65dac8c9a46beeb98c358062be5479444d609a",
+    "reference_160.DeadEye.L.A": "f0e2e353fc4cae7920cc8e95f14674a1506a83347889acda4e32ca00ac91122f",
+    "reference_160.DeadEye.L.B": "f02caface4f6a2b4bf3f60137d1e8c92db1fdb8a377aee915b557f1ba925ee07",
+    "reference_160.DeadEye.R.A": "445ca8f70657f70e2b1fbff6c433470c0e1c5f700167e2bd3fa605e3da07e702",
+    "reference_160.DeadEye.R.B": "ab40e171ffa461a4b5326603c04729423e52f7c2cbea045ed1a471741789deb6",
+    "reference_160.Eye.L": "91097611dc8d3372be235c4d1c41d4ed602c4e2e6712d07fd0a67dedc9bee4b9",
+    "reference_160.Eye.R": "90da2cde175ea96d93fbe748817d6e0d2c2963579d0f01527b187a811f452298",
+    "reference_160.EyeIris.L": "c1719e07b3eebcbf55fce0ff76ba8f135302544c2d893e2856d234810a7350b1",
+    "reference_160.EyeIris.R": "43c0f47692da0d98c1e9f6e4d7beec1ecbfa29399b0b2edc638190b572a750b5",
+    "reference_160.EyeLine.L": "67bc29572b5989a89822d6d07b169fef5712e332d96311094cfd5a18c0d4e542",
+    "reference_160.EyeLine.R": "e69df08ce5f16fc96edf37544827444504664d7c4270bcafeffbf7f2fdc77726",
+    "reference_160.EyeMask.L": "788717b3df7dd76f0b19030bf1f967de769aadc73dc1c5d10744564de9b8749b",
+    "reference_160.EyeMask.R": "6b79705507f2171f69b871ff6f29df4f9fcb6b7698e04383dd44def140257608",
+    "reference_160.Head": "e66fe177bb78c4382df39cfcd5abe88a6250d1c427511285e554fc3144d1a9d3"
+   }
+  },
+  "reference_170": {
+   "resolved_fingerprint": "634026106983259f",
+   "fingerprints": {
+    "reference_170.Body": "eb52905f96929b9c4690fe5111c6a7fd42faaf4065653bbec4f16801a4feb7e3",
+    "reference_170.Brow.L": "fbbbc2fcf674a412938f9e4643c97ff40f5b849a511eb8f4af264037320eb5d0",
+    "reference_170.Brow.R": "9abaaa0b10454c20504e7c600df6230faf7e0d4205f239e98611b99314ac6058",
+    "reference_170.DeadEye.L.A": "e636d974e7e0808a409f2d6edbc8527abc204028b323b2622f4ba23d49da26a1",
+    "reference_170.DeadEye.L.B": "9052b6d7c4917225a8a33c4332a3bdfacfd45743df0d65d34dae2a79dead5d18",
+    "reference_170.DeadEye.R.A": "404b97b3cccb424b15bdc46e894e0d5eddd20cf68a13c4625b3401fb3d9853e7",
+    "reference_170.DeadEye.R.B": "3850be0ffae59eb8038a3420d72161a5626da9692866e391ab81e1b4f6f91a4f",
+    "reference_170.Eye.L": "ab52365faf3efa05b7a594fb5368ef341ef21dd1c1f9a4c4d2be2d05df263739",
+    "reference_170.Eye.R": "e22b80fa9822423884efcb95048e397470d907bd3132622d3c3e4fadb11feb77",
+    "reference_170.EyeIris.L": "baa3e77c2899a09f2876dccb604c62f15de781b1abd644946d749dcbffc8bc6a",
+    "reference_170.EyeIris.R": "f326be55ef54f2d573c023a174f5eadaf55ccecd4eb4d23d97759aa5cd37fd5e",
+    "reference_170.EyeLine.L": "eb631c970022f7e144933b79a826df2fdb1f882bff90a5b6190f673f4408910b",
+    "reference_170.EyeLine.R": "ed7f29cfd93fc4d93529e0d4df9d283274cc1c7e96461cc662518cc6235cc8c0",
+    "reference_170.EyeMask.L": "c8f69aea29209a95f0723cca9b53f42020fecf949e2f7872a917263035f42a24",
+    "reference_170.EyeMask.R": "eedfe1d4c76bb09bf3e17cdca81ce0de7178102066718af77d6077beb251b15f",
+    "reference_170.Head": "3d276fc4d9f0794893715831a5074c5aa76fe114aa98516ec1a29d1cf4c3503e"
+   }
+  },
+  "reference_180": {
+   "resolved_fingerprint": "b7e83c20c0089216",
+   "fingerprints": {
+    "reference_180.Body": "eb52905f96929b9c4690fe5111c6a7fd42faaf4065653bbec4f16801a4feb7e3",
+    "reference_180.Brow.L": "78d13a860a8cff140853a9f1c1a6ad3ba639a046bc5a15ad2468a2a91e7cc966",
+    "reference_180.Brow.R": "c7234cc5047e0bfda0210bd99aae6b701eca16d2d24296f460f7dcc17208e6ca",
+    "reference_180.DeadEye.L.A": "f793d5420f18beecb09936597160d594ac8d3e8367647c7b230a151b8d8d3311",
+    "reference_180.DeadEye.L.B": "4f0fdfe4952a3ab3ecec70778f75885700a55205d795dd9adc6cbd04a67fc982",
+    "reference_180.DeadEye.R.A": "4afe280b4d99ce05c79008b2ea9341efdf9715bc0cc2552fac88a716f6f2eb6b",
+    "reference_180.DeadEye.R.B": "5966ca1209dbc7e33ecf127f03274f015c45b64b71171577cc91ec4c74cdb08b",
+    "reference_180.Eye.L": "799c24aa1470fe68fc9bfdcb04f319b63e1f7aeffeeff9f754937381ee0d3983",
+    "reference_180.Eye.R": "e6639dcada4a6fb7b737923d68534d0ebfe6938b17d232560fda9728c5502804",
+    "reference_180.EyeIris.L": "405c50b9cc457ebb6c7905b72d3fa7c9abad60bdc9165bf16d9a103f6bd973fb",
+    "reference_180.EyeIris.R": "5a5589d2ef34112001038d918e4253232ec2183d0ffbf0d6caa110c29640baf4",
+    "reference_180.EyeLine.L": "b29c001b0c89fc1f165cc526db49588ee51f82fd23e7a96327b6d6ce012857f1",
+    "reference_180.EyeLine.R": "92a1e6e47ab2987b1dafbaa764c380db40a2420ed01fcb9978c4bead17ec13a7",
+    "reference_180.EyeMask.L": "1526305e7f18d07635f0470f5ae987eb28388d83d0287baf1c393b1405d9aa79",
+    "reference_180.EyeMask.R": "fb24264a6fc9981e1f4b6a44acb7c8de6c1f6be0deae383973b8ad401e967930",
+    "reference_180.Head": "7b5688a7e4a54e719e8ea8ce5773428c5327aeac4e7f7f158aefb78b3299ca04"
+   }
+  },
+  "reference_190": {
+   "resolved_fingerprint": "7f830858e80d73d8",
+   "fingerprints": {
+    "reference_190.Body": "eb52905f96929b9c4690fe5111c6a7fd42faaf4065653bbec4f16801a4feb7e3",
+    "reference_190.Brow.L": "84a878545c0e3973d4df173efc8ad466d6828df60281310ca45f5a756c7c66f9",
+    "reference_190.Brow.R": "13ee781a78da785d1b3022bdcb4752697bbac030375bddce19f85157271ed934",
+    "reference_190.DeadEye.L.A": "b8256e6fab8105d38f9ccf6d84056da39f04ae82f9cee6a990cb8a4eb35370f1",
+    "reference_190.DeadEye.L.B": "9099a2b60d1a5ef07953bbdf07c13934c9129e694efb4259bbd157267726676c",
+    "reference_190.DeadEye.R.A": "73b9ae0a8d12e79f03dd4e553718bc56312d822a09df7a86a7e943d29f66244f",
+    "reference_190.DeadEye.R.B": "2f0b1253b0caefb2dfe339a8abf2d4a72a22246fc20a19491a13a855c4173939",
+    "reference_190.Eye.L": "2ad95b676fb1925ea2d7d720deff90dd4171cf839c1301de81eb1e7ea89baae8",
+    "reference_190.Eye.R": "04be859ccf4deda8bd71f18bf69c47240afe9685ccc8db27af50f3ac10a2ccae",
+    "reference_190.EyeIris.L": "47e6e9e53fa0ee94d7ac3a2d5d87f15de6095a874cd618f731457a78100d3736",
+    "reference_190.EyeIris.R": "d5b80ab86141440d792c730c7143a8ae36d3935e26c99e712f4f79deeac7caa1",
+    "reference_190.EyeLine.L": "4708ee5b5b7bc5a17540bf575b9a52bd72e254c8670aef256f896c4460f8d8c0",
+    "reference_190.EyeLine.R": "062ac6cbc5555b332520e6ad2d13505a2bde5f1bc07ace049e41de803f221968",
+    "reference_190.EyeMask.L": "18c5d9cc0373bf217671ccb8755ae80c24c56e46044d93ab89144c8620d7380c",
+    "reference_190.EyeMask.R": "313bf498b4f83d9f38bcef2904cf214d1835dc2e734997d266cb93ca8e234457",
+    "reference_190.Head": "6e8653b86861a3243b59a0434c1fe3cc95046c53e7d8ca986816fe7b2c5792e8"
+   }
+  },
+  "reference_200": {
+   "resolved_fingerprint": "864e4ae883cdfa03",
+   "fingerprints": {
+    "reference_200.Body": "eb52905f96929b9c4690fe5111c6a7fd42faaf4065653bbec4f16801a4feb7e3",
+    "reference_200.Brow.L": "d88063006be28719863838d384ee57880ba518dc23f783001f98f5278a284ffa",
+    "reference_200.Brow.R": "6f1541bf0d608ed4e7f28d15c30cea2c546744c6e52e9a205b4d8a7baffa0905",
+    "reference_200.DeadEye.L.A": "c2852f2db4b6a17d3ef7998ebd39f5067e9e3eb02f02d81c8d95ee2dbfa6aee3",
+    "reference_200.DeadEye.L.B": "8614dab8f6209dfead98a345d6d024b9912bff8a80dfa986bf48f24d12adb05d",
+    "reference_200.DeadEye.R.A": "e3914996a88632a67c8c295aae73df3138d4632bd25d3cb4f5ab59b383f66e48",
+    "reference_200.DeadEye.R.B": "dfb7163c89d8d393f600acd6481d1f9416a8bde096d35ce10aeba5a452ba4c50",
+    "reference_200.Eye.L": "157b6cf60f1ad4c3dee98152a5f7d1dbc9fe5a35367961848dd5a1176c47f5b2",
+    "reference_200.Eye.R": "37d703a68d165fef206623b56672837d8e966e83380535cb47d3591b0450c4be",
+    "reference_200.EyeIris.L": "f7f000ab0843cf3f590ffb41209aa614ed19ce510bbb52d0ea420cf0f26f8424",
+    "reference_200.EyeIris.R": "55dae3c7f22d427e4ce93b7ee2e644b0c829aea4810ed3c262c030b3aebb35ef",
+    "reference_200.EyeLine.L": "e4defd9038c270e6f6369801ad23ef344ebb4d12d218862d9dce34e096e41877",
+    "reference_200.EyeLine.R": "30e7ff183c2d9e9f8a0388b8dccd847ac431f2d69ed36cc21105bcd59a17656f",
+    "reference_200.EyeMask.L": "238a34655e1fe0b03026a9a49a59a530ab3becdcff8c79efd7fb72f1aa6a648c",
+    "reference_200.EyeMask.R": "4973707e08bd98a0fedca9d79e63728a6e229e7f927eceb0868525ef0a065b0e",
+    "reference_200.Head": "76b5c82cfeb922327cf67d2f718289492c025cf1924088a2bfd0afd5848b37a1"
+   }
+  },
+  "strongman_160": {
+   "resolved_fingerprint": "2ec07595add2980c",
+   "fingerprints": {
+    "strongman_160.Body": "7814e4bcd6cf7f4c2c88640024710aaa7d6402b66a066985e0f9f487ab881893",
+    "strongman_160.Brow.L": "30332783b91fda3263b203654025b734d6ef67c5078e097c69e017e3af7b4711",
+    "strongman_160.Brow.R": "19074d73d688c5d77bff705bace60edbc3ebe1815dd51106f845a5877c0f0b93",
+    "strongman_160.DeadEye.L.A": "80e83e5a3f36c635c51898fac371472ca15d5df8ff5873eba60f40ce4d764078",
+    "strongman_160.DeadEye.L.B": "4126c39999944483e3a5366e9c0adebb4473324d2a7910b41a4b0bf218e13256",
+    "strongman_160.DeadEye.R.A": "8d09257992a4105b37cb4058b35f900e50c60388644084950d0d508d728f4e01",
+    "strongman_160.DeadEye.R.B": "e38a86c4c542065c2a16281f1c947296bcb247b098eea20fbd287190c1dcb1a9",
+    "strongman_160.Eye.L": "e2c1f17f536058c2b792570ed3fdd5fcd270d06586bd21a9ff0ac8fbde7434bc",
+    "strongman_160.Eye.R": "92a3071a4215b06d88206a33c52136fb72efece41d4e5b764cbc3ce483699fb9",
+    "strongman_160.EyeIris.L": "b711757d405a3f901b75180253adc17f3e9d55252c20cf3eba76f6967db9585a",
+    "strongman_160.EyeIris.R": "0fdeb278945f5de60567a9d42ecfff3b79beb718584d34b9a0822ac8f5f5759d",
+    "strongman_160.EyeLine.L": "53895c3432f8dcd2b5df510e6a376fc96544d1829e3194a502a636fbf9e5c4c8",
+    "strongman_160.EyeLine.R": "d69fb14db5059b56c085ba5cf92d03073afccd03f9db17699202b3a1cab05972",
+    "strongman_160.EyeMask.L": "6d95b18a5bd9d315eb64651fc3a14354dbae17b4c54a426a90d688dd48933a5e",
+    "strongman_160.EyeMask.R": "4f487a8b1765f08180090b6a6e645ae9a502e0b0b4b6370ac1d80c3ae87ac879",
+    "strongman_160.Head": "7160980ff129283d00e506e8a6ceedd5efecf92b1ac798314f53e328324f9f70"
+   }
+  },
+  "strongman_170": {
+   "resolved_fingerprint": "9ecdb6f4a9157191",
+   "fingerprints": {
+    "strongman_170.Body": "7814e4bcd6cf7f4c2c88640024710aaa7d6402b66a066985e0f9f487ab881893",
+    "strongman_170.Brow.L": "dfc4b9c7fd6edb86882c507e235dd7cf2face8fde6a1e39c82e24ec8de39196b",
+    "strongman_170.Brow.R": "793f4f0e2256d60857b449742657747aa19f09711cac0211c379c6a0983e2388",
+    "strongman_170.DeadEye.L.A": "3c9b136a650d0ba318b66617a7d5542e8636c1731ed82b58734bb284a6051587",
+    "strongman_170.DeadEye.L.B": "8168f227bdafbfd0864a61d432c67b3113a7f68c5936c2f3d1cfd2e22ad56180",
+    "strongman_170.DeadEye.R.A": "6cca6fda7196b35cf712ea0aebf9ba9bb9795cfafe7604c8be928fea750989b8",
+    "strongman_170.DeadEye.R.B": "147d4b69199bdc5399225a21cebcb0643d1bcba0f9b7bf35628d78812fed7485",
+    "strongman_170.Eye.L": "a4c3edec4847360cc9791bbdaaceeb93a2b59531646df2578c8271dc1a628147",
+    "strongman_170.Eye.R": "24a68c92f77147f82dd8bb00cf8230f13c5041665214f1d749a49d0b3894d395",
+    "strongman_170.EyeIris.L": "642c0443fd53c61fb0c4fa01b2743dc102f88e140142423d3708d3f87a6cf60f",
+    "strongman_170.EyeIris.R": "952cbee9b8d1db2ce8b1a2e6a03306669e305b4cbd876213beeb7222b57da55a",
+    "strongman_170.EyeLine.L": "c684dcf70acb67932d26175942de894aaf76637d1d8b8b7d8f3c2d633949292b",
+    "strongman_170.EyeLine.R": "36606350bf970b982ccda29278ebd576a66236fa0c5ecc5bae59f29460aa3793",
+    "strongman_170.EyeMask.L": "036afb48e226d6ab642e28eda240a4a8225920c7cb43a64f390377fb0d03d9ab",
+    "strongman_170.EyeMask.R": "c78c7cbf7a49967c407f77b5304eb4a7f7f69f11c98af05bba03b92ac91fe37e",
+    "strongman_170.Head": "0b67a7743a8c6167d5a0257dbdc48a2e7a5cebe537d507a4b5e17f300432048e"
+   }
+  },
+  "strongman_180": {
+   "resolved_fingerprint": "49cc99baf57cc7d0",
+   "fingerprints": {
+    "strongman_180.Body": "7814e4bcd6cf7f4c2c88640024710aaa7d6402b66a066985e0f9f487ab881893",
+    "strongman_180.Brow.L": "404d614b90b29415a8d3b02745b2a34687ab917a0809b02297efbdbb6eef5a64",
+    "strongman_180.Brow.R": "bf492db0e70d0bcfacc32f09e9cc6e3c99cc4c3c51f2c8273a4f07c184961669",
+    "strongman_180.DeadEye.L.A": "2c3ac36785044e1c0714713af6e814d1ca80dbb5dab94c1dcc1d95792d3c5281",
+    "strongman_180.DeadEye.L.B": "aae8f3b62e0c580ed78315721e6523985d29471679b4036aac238d4de437f860",
+    "strongman_180.DeadEye.R.A": "2f4c1e25a6d02cb879dd8af220012d1ab276665b62b3e52c67cc3826556443a1",
+    "strongman_180.DeadEye.R.B": "7ed71698fb2d239dde0b410a336f25bac2ac08740ebdb7d976dd6e6c6d0ac3c6",
+    "strongman_180.Eye.L": "85b05b840b74d90282f67b74f2aa8fd3cac3266426d5c87181778d9f427f0315",
+    "strongman_180.Eye.R": "3c22bc8b7a1c134c6aa534c0a15d37be5ef2df5e4a3175fc3cd24e55ab4718a4",
+    "strongman_180.EyeIris.L": "dd2ca4086d8e7ae00b62bdb22185d0d01b66340e06ac7f0af1c805d01ff04d06",
+    "strongman_180.EyeIris.R": "8eec1081416bfe375e6d877ead573e7a1a8e99bb4b3e29139f3ca952e10162a7",
+    "strongman_180.EyeLine.L": "9823f0883ea8c2981cab5c72baf265bd5e307c688ff6fef67db0e2196b6b2c3c",
+    "strongman_180.EyeLine.R": "706999264486764d4a16b9ab587eeb8d73cfce5e10fe4d77aa586e2c0bae411f",
+    "strongman_180.EyeMask.L": "0ee1bed353c192845a4be22ff954b228029e211b7ddbe7749b75d9c79dac2432",
+    "strongman_180.EyeMask.R": "35c547f77300c1aa0829c20bb85e89b5cf09dbb4c3f4a9fdbd0316a36ec779eb",
+    "strongman_180.Head": "a2c49ed5b79769e2108c9c38c381ff329c655713b368b6de4919361823777d62"
+   }
+  },
+  "strongman_190": {
+   "resolved_fingerprint": "c60a0f279059e822",
+   "fingerprints": {
+    "strongman_190.Body": "7814e4bcd6cf7f4c2c88640024710aaa7d6402b66a066985e0f9f487ab881893",
+    "strongman_190.Brow.L": "305a5908c803dfcf14e7f322ad2ff95e048cbad4f8c201967d7cfc69408a7448",
+    "strongman_190.Brow.R": "031c70398b870f2accd2f06330107e26f6508f82eab5c2d42123bf6b0a39421a",
+    "strongman_190.DeadEye.L.A": "27f80a78e31cc33e726292cd90339718a1055a21fe3424325ed3aca9b6a415f0",
+    "strongman_190.DeadEye.L.B": "05b68fe5a59524156c7b940a73f13ecf9adbbe966cca3352b1a775dc84332fac",
+    "strongman_190.DeadEye.R.A": "b4eccbce0795247601c20187fe65a2c51a59f4d3f16adfec6758bd7caace5c51",
+    "strongman_190.DeadEye.R.B": "b7383f4784add2087d396692c8486ad0c1f3e06d701b6e7e68e03d83de9df5f9",
+    "strongman_190.Eye.L": "81c78f7ec9838fee775a3580775f58fde16e0ce4ac65170264c1a8a3302d4b9e",
+    "strongman_190.Eye.R": "7d8c07caa28d48c080e5633b177c8340363a1ddc1d1fb94cee5ad947c6e678f3",
+    "strongman_190.EyeIris.L": "0d33e059b1fb1f2eb9db4df2d59c4b3e4221156a545b6fa82f5f83639069f416",
+    "strongman_190.EyeIris.R": "446d2e30636ecfcabedd8b2c0f4e4eb7dac7e68188419d5c3e86120e8f1b7bd3",
+    "strongman_190.EyeLine.L": "5a3f93b67b87d1e34bd43e56c8ac87261f43e2f05f0b79ca335204c2dcf5831f",
+    "strongman_190.EyeLine.R": "97456c534dd1b85935c829bf5e67ce070d09693ef37e99946b251c38e28fca6d",
+    "strongman_190.EyeMask.L": "77cf602d59ec850b5719af64e1cac84cbefeb48612d032ab3869973798ebeb3f",
+    "strongman_190.EyeMask.R": "3a4980a447315c8788becb42fce841e4704df6717ceb66f57b84889c082df1ac",
+    "strongman_190.Head": "f0eafde76546509999bffebe1569016521e156228d1155d32c02f4b717da7701"
+   }
+  },
+  "strongman_200": {
+   "resolved_fingerprint": "ce8c90a4e944aa8b",
+   "fingerprints": {
+    "strongman_200.Body": "7814e4bcd6cf7f4c2c88640024710aaa7d6402b66a066985e0f9f487ab881893",
+    "strongman_200.Brow.L": "a517b64686969e9657255e3bb359129ab6df7ab4479c8607e5c2c89c2cbb8f84",
+    "strongman_200.Brow.R": "048dbe2fe489e3377f0a1f447a2177c0b89830e4263bb417b1d48ba4f01a7203",
+    "strongman_200.DeadEye.L.A": "6d59ca70f5e52f0035061dd8db05f9c8f7cb4c3bdf46241a1900f683bf136454",
+    "strongman_200.DeadEye.L.B": "53f7c98656b3d6f4126042b20c39c9e798c258ef5ddd95df6f6edb5b48aab956",
+    "strongman_200.DeadEye.R.A": "9f3adad15536ad9dd2b82ec9f35835a968048ae75ad564cb7b835baacf4f3b27",
+    "strongman_200.DeadEye.R.B": "0a921dc8540546f8ba49c255512139a76c8cf20b76c74c973a2a343634bc2f35",
+    "strongman_200.Eye.L": "e55ff970553ceb49507282cd396c7602edb1382148e2d9601d81d05b903efa3b",
+    "strongman_200.Eye.R": "ea6561030dbfb7cf0b106f23b79366eb88e864b0b994b2014d8e8344c8be65cf",
+    "strongman_200.EyeIris.L": "ff3eb34ac6bba26fc044ea6961db679ab5174a9e118b4d296f35fc4534f86762",
+    "strongman_200.EyeIris.R": "d79c607f8732926c97545917a8a04785d52c69680c062ed2b7a7318bce03a7bf",
+    "strongman_200.EyeLine.L": "bcd7eaf1d4936ca29bfc6be27cfa442a56b2e40e75582e743dcae9ccce0e006a",
+    "strongman_200.EyeLine.R": "3e8735e3878b2762508bc204136ba5ca446634053186085dfd8592eee98346ea",
+    "strongman_200.EyeMask.L": "f81046a94e07fa91518df6b47596f940015099f778912e3170550001375fbecc",
+    "strongman_200.EyeMask.R": "00bcd53917346c1eea6d094c38b8d9c379e7d4978a3816980e8a01da7c5b19af",
+    "strongman_200.Head": "44bf3128c23bd94eea3258b0340b1e0ab8c381303944c27ab7383bd29185a855"
+   }
+  }
+ }
+}

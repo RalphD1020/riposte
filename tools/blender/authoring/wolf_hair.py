@@ -109,6 +109,63 @@ RANGER_VARIANTS = {
                    "groove": 0.007, "swirl": 0.006, "jitter": 0.25, "crown": 0},
           "bun": {"radii": (0.035, 0.031, 0.029), "wraps": 4, "turn": 1.8, "wrap_width": 0.95, "wrap_height": 0.22}},
 }
+## Revision 6 (candidate, shared groundwork): D unchanged plus primary flow masses over
+## it: a crown mass, then two front sweeps parted a little off centre (the left over the
+## right), each rooted just in front of the hairline so the hairline is hair, not the
+## shell's edge, curving over the head and converging under the bun.
+## A flow mass: `root` (azimuth, elevation offset from the hairline), `via` controls
+## (azimuth, elevation), `end` (offset from the gather point), `width` / `height` root ->
+## peak -> tip (m), `peak` (share of the length), `twist` (degrees of roll), `embed` (m
+## sunk into the hair beneath).
+RANGER_VARIANTS["F"] = dict(RANGER_VARIANTS["D"], label="D + flow masses: integrated hairline, crown and front sweeps into the bun",
+                            ## The shell thinner under the masses: they carry the volume.
+                            tied=dict(RANGER_VARIANTS["D"]["tied"], thickness=(0.002, 0.008, 0.005), bulge=0.004),
+                            ## Roots flush with the scalp (height 0): a mass grows out of it.
+                            flow=({"name": "Crown.Mass", "root": (4.0, 24.0), "via": ((6.0, 76.0), (172.0, 66.0)), "end": (0.0, 7.0),
+                                   "width": (0.045, 0.075, 0.022), "height": (0.0, 0.008, 0.003), "peak": 0.4, "twist": 6.0, "embed": 0.002},
+                                  {"name": "Sweep.Mass.R", "root": (-12.0, -3.0), "via": ((-22.0, 60.0), (-140.0, 62.0)), "end": (14.0, 3.0),
+                                   "width": (0.06, 0.09, 0.02), "height": (0.0, 0.009, 0.003), "peak": 0.3, "twist": 9.0, "embed": 0.002},
+                                  {"name": "Sweep.Mass.L", "root": (18.0, -3.0), "via": ((28.0, 58.0), (138.0, 60.0)), "end": (-14.0, 5.0),
+                                   "width": (0.06, 0.092, 0.02), "height": (0.0, 0.0095, 0.003), "peak": 0.3, "twist": 9.0, "embed": 0.002}))
+## Revision 7 (candidate, Ranger): F completed. Order matters (each mass lies on what is
+## built before it): crown; temples sweeping back over the ears; the nape rising into the
+## bun from below its hairline (no jagged edge); the front sweeps; secondary locks riding
+## them with their tapered tips on the hair (`length` < 1); one short loose accent at the
+## right temple (the only asymmetry beside the part); and a folded bun, a little fuller,
+## lower and elongated, the gathered tips under it. Bun folds: (phase deg, reach deg,
+## width and height as shares of the core's outward radius).
+_RANGER_FLOW = RANGER_VARIANTS["F"]["flow"]
+RANGER_VARIANTS["G"] = dict(
+    RANGER_VARIANTS["F"], label="F completed: temples, nape, secondary locks, temple accent, folded bun",
+    nape_clear=0.004, fit_head=True,
+    tied=dict(RANGER_VARIANTS["F"]["tied"], gather=(180.0, 26.0), bands=14),
+    bun={"radii": (0.036, 0.04, 0.03), "wraps": 0,
+         "folds": ((45.0, 105.0, 1.2, 0.16), (135.0, 100.0, 1.1, 0.15))},
+    flow=({"name": "Crown.Mass", "root": (4.0, 24.0), "via": ((6.0, 76.0), (172.0, 66.0)), "end": (0.0, 7.0),
+           "width": (0.05, 0.085, 0.024), "height": (0.0, 0.006, 0.0025), "peak": 0.4, "twist": 6.0, "embed": 0.003},
+          {"name": "Temple.Mass.R", "root": (-82.0, -3.0), "via": ((-104.0, 30.0), (-150.0, 30.0)), "end": (22.0, -4.0),
+           "width": (0.04, 0.065, 0.02), "height": (0.0, 0.005, 0.0025), "peak": 0.35, "twist": 5.0, "embed": 0.003},
+          {"name": "Temple.Mass.L", "root": (84.0, -3.0), "via": ((106.0, 32.0), (150.0, 31.0)), "end": (-22.0, -3.0),
+           "width": (0.04, 0.065, 0.02), "height": (0.0, 0.005, 0.0025), "peak": 0.35, "twist": 5.0, "embed": 0.003},
+          {"name": "Nape.Mass.1", "root": (150.0, -7.0), "via": ((160.0, 2.0),), "end": (-16.0, -9.0),
+           "width": (0.014, 0.075, 0.026), "height": (0.0, 0.006, 0.003), "peak": 0.5, "twist": 5.0, "embed": 0.003},
+          {"name": "Nape.Mass.2", "root": (-150.0, -7.0), "via": ((-160.0, 2.0),), "end": (16.0, -9.0),
+           "width": (0.014, 0.075, 0.026), "height": (0.0, 0.006, 0.003), "peak": 0.5, "twist": 5.0, "embed": 0.003},
+          {"name": "Nape.Mass.3", "root": (180.0, -8.0), "via": ((180.0, 2.0),), "end": (0.0, -12.0),
+           "width": (0.014, 0.06, 0.022), "height": (0.0, 0.0065, 0.003), "peak": 0.5, "twist": 4.0, "embed": 0.003},
+          {"name": "Sweep.Mass.R", "root": (-12.0, -3.0), "via": ((-22.0, 60.0), (-140.0, 62.0)), "end": (14.0, 3.0),
+           "width": (0.07, 0.1, 0.022), "height": (0.0, 0.0065, 0.0025), "peak": 0.3, "twist": 8.0, "embed": 0.003},
+          {"name": "Sweep.Mass.L", "root": (18.0, -3.0), "via": ((28.0, 58.0), (138.0, 60.0)), "end": (-14.0, 5.0),
+           "width": (0.07, 0.102, 0.022), "height": (0.0, 0.007, 0.0025), "peak": 0.3, "twist": 8.0, "embed": 0.003},
+          {"name": "Sweep.Lock.R", "root": (-30.0, -1.0), "via": ((-38.0, 56.0), (-128.0, 58.0)), "end": (16.0, 4.0), "length": 0.78,
+           "width": (0.016, 0.03, 0.005), "height": (0.0, 0.0035, 0.0015), "peak": 0.35, "twist": 12.0, "embed": 0.0015},
+          {"name": "Sweep.Lock.L", "root": (36.0, -1.0), "via": ((46.0, 52.0), (132.0, 56.0)), "end": (-16.0, 4.0), "length": 0.84,
+           "width": (0.016, 0.028, 0.005), "height": (0.0, 0.0035, 0.0015), "peak": 0.35, "twist": 12.0, "embed": 0.0015},
+          {"name": "Crown.Lock", "root": (-4.0, 30.0), "via": ((-6.0, 76.0), (174.0, 64.0)), "end": (0.0, 8.0), "length": 0.7,
+           "width": (0.014, 0.026, 0.005), "height": (0.0, 0.0035, 0.0015), "peak": 0.4, "twist": 10.0, "embed": 0.0015},
+          ## Ends on the temple above the ear's front (never on the ear, never past the face).
+          {"name": "Temple.Accent.R", "root": (-56.0, -4.0), "via": ((-64.0, 6.0),), "to": (-72.0, 12.0),
+           "width": (0.012, 0.016, 0.004), "height": (0.0, 0.004, 0.0015), "peak": 0.4, "twist": 14.0, "embed": 0.001}))
 ## hanging: thick sheets of the same ridge/groove construction, falling from below the
 ## tie. rear: `bands` ridges between |azimuth| `from`..180 at root elevation `el`, the
 ## middle longest (`length`: head heights below the head's lowest point, shortest..
@@ -169,6 +226,53 @@ TRAINING_VARIANTS = {
                                "drape": {"root_gap": CAP_LIFT_M + 0.002, "gap": 0.015, "gap_by": 0.5, "fall": 0.45, "rows": 16,
                                          "edge_guides": 2, "groove_ease": 0.2}}}},
 }
+## Revision 6 (candidate, Training): E on Ranger G's root system: Ranger's hairline, the
+## same crown, front sweeps, secondary locks and temple accent (one identity), the temple
+## masses lower so they lie over the parting (no ledge), a smaller folded knot at the
+## same place, and the loose hair as four draped masses behind the ears (no hooks by the
+## jaw): the side masses shorter, the rear pair longest and layered over them, each with
+## its own flow; ends staggered by mass, not saw-teeth.
+_G = RANGER_VARIANTS["G"]
+_SHARED = {m["name"]: m for m in _G["flow"]}
+TRAINING_VARIANTS["F"] = dict(
+    TRAINING_VARIANTS["E"], label="E on Ranger G's roots: shared hairline and front, no ledge, four loose masses",
+    hairline=HAIRLINE_RANGER, nape_clear=0.004, fit_head=True,
+    ## Loose hair Head -> Neck by height (approved 2026-11-07: cleaner than the body's
+    ## resting weights through the head and neck poses), over this hairstyle's own length:
+    ## head only above 0.25 head heights, all Neck by -0.10 (its tips end at -0.135), so no
+    ## tip carries the head into the trapezius when the head snaps back.
+    resting_weights=False, weight_ramp=(0.25, -0.10),
+    tied=dict(TRAINING_VARIANTS["E"]["tied"], thickness=(0.002, 0.008, 0.005), bulge=0.004, gather=(180.0, 26.0), bands=14),
+    bun={"radii": (0.03, 0.033, 0.026), "wraps": 0, "folds": ((45.0, 105.0, 1.2, 0.16), (135.0, 100.0, 1.1, 0.15))},
+    flow=(_SHARED["Crown.Mass"],
+          dict(_SHARED["Temple.Mass.R"], via=((-104.0, 22.0), (-150.0, 24.0))),
+          dict(_SHARED["Temple.Mass.L"], via=((106.0, 22.0), (150.0, 24.0))),
+          _SHARED["Sweep.Mass.R"], _SHARED["Sweep.Mass.L"], _SHARED["Sweep.Lock.R"], _SHARED["Sweep.Lock.L"],
+          _SHARED["Crown.Lock"], _SHARED["Temple.Accent.R"],
+          ## The gathered upper hair rising from below the parting into the knot: it lies
+          ## over the line where the tied section meets the loose hair.
+          {"name": "Nape.Tie.L", "root_at": (140.0, 10.0), "via": ((158.0, 18.0),), "end": (-16.0, -4.0),
+           "width": (0.03, 0.06, 0.022), "height": (0.0, 0.006, 0.003), "peak": 0.45, "twist": 6.0, "embed": 0.003},
+          {"name": "Nape.Tie.R", "root_at": (-140.0, 10.0), "via": ((-158.0, 18.0),), "end": (16.0, -4.0),
+           "width": (0.03, 0.06, 0.022), "height": (0.0, 0.006, 0.003), "peak": 0.45, "twist": 6.0, "embed": 0.003},
+          {"name": "Nape.Tie.C", "root_at": (180.0, 8.0), "via": ((180.0, 16.0),), "end": (0.0, -8.0),
+           "width": (0.03, 0.055, 0.02), "height": (0.0, 0.0065, 0.003), "peak": 0.45, "twist": 4.0, "embed": 0.003},
+          {"name": "Nape.Tie.L2", "root_at": (118.0, 12.0), "via": ((140.0, 20.0),), "end": (-24.0, -2.0),
+           "width": (0.03, 0.055, 0.02), "height": (0.0, 0.006, 0.003), "peak": 0.45, "twist": 6.0, "embed": 0.003},
+          {"name": "Nape.Tie.R2", "root_at": (-118.0, 12.0), "via": ((-140.0, 20.0),), "end": (24.0, -2.0),
+           "width": (0.03, 0.055, 0.02), "height": (0.0, 0.006, 0.003), "peak": 0.45, "twist": 6.0, "embed": 0.003}),
+    ## Each loose mass ends as one chevron (its middle band longest), behind the neck and
+    ## never wider than the head: no curtain, no row of teeth, no blade along the shoulder,
+    ## no hooks; the rear pair ends at the base of the neck, the sides by the jaw.
+    hanging={"drape": dict(TRAINING_VARIANTS["E"]["hanging"]["rear"]["drape"], gap=0.024, rows=14),
+             "masses": ({"name": "A", "az": (122.0, 152.0), "bands": 4, "el": 14.0, "length": (0.08, 0.05),
+                         "thickness": 0.008, "groove": 0.001, "swirl": 0.016, "layer": 0.0, "edge_guides": 2},
+                        {"name": "D", "az": (208.0, 238.0), "bands": 4, "el": 14.0, "length": (0.09, 0.06),
+                         "thickness": 0.008, "groove": 0.001, "swirl": 0.014, "layer": 0.0, "edge_guides": 2},
+                        {"name": "C", "az": (180.0, 212.0), "bands": 4, "el": 20.0, "length": (-0.05, -0.115),
+                         "thickness": 0.009, "groove": 0.0012, "swirl": 0.018, "layer": 0.003, "edge_guides": 2},
+                        {"name": "B", "az": (150.0, 182.0), "bands": 4, "el": 20.0, "length": (-0.06, -0.135),
+                         "thickness": 0.009, "groove": 0.0012, "swirl": 0.02, "layer": 0.007, "edge_guides": 2})})
 ## The candidates put forward for approval (variations stay buildable for review).
 DEFAULT_RANGER = "D"
 DEFAULT_TRAINING = "E"
@@ -222,12 +326,13 @@ def _head_frame(body):
 CONSTRUCTION_ATTRIBUTE = "riposte_f0_co"
 
 
-def head_frame_of(head, body):
+def head_frame_of(head, body, ears=(), brows=()):
     """The fitting frame of any head object (the approved `HeadV2`, a resolved head
     profile) with the body the hanging hair drapes over: extents from the head's
     construction surface when it carries one (equal to v1's head island on the approved
     head), rays against its real surface, so the approved designs fit whatever skull they
-    meet."""
+    meet. With the resolved `ears` and `brows`, the head map a style fitted to the head
+    reads (`fit_head`): the ears' keep-out and the brow line."""
     world = head.matrix_world
     surface = [world @ v.co for v in head.data.vertices]
     stored = head.data.attributes.get(CONSTRUCTION_ATTRIBUTE)
@@ -236,10 +341,93 @@ def head_frame_of(head, body):
     height = max(p.z for p in points) - low
     front = min(p.y for p in points)
     back = max(p.y for p in points)
-    return {"tree": BVHTree.FromPolygons(surface, [list(p.vertices) for p in head.data.polygons]), "low": low,
-            "height": height, "half_width": max(abs(p.x - world.translation.x) for p in points), "front": front,
-            "back": back, "centre": Vector((world.translation.x, (front + back) * 0.5, low + 0.55 * height)),
-            "body": _skin_frame((head, body))}
+    frame = {"tree": BVHTree.FromPolygons(surface, [list(p.vertices) for p in head.data.polygons]), "low": low,
+             "height": height, "half_width": max(abs(p.x - world.translation.x) for p in points), "front": front,
+             "back": back, "centre": Vector((world.translation.x, (front + back) * 0.5, low + 0.55 * height)),
+             "body": _skin_frame((head, body))}
+    frame["map"] = _head_map(frame, ears, brows)
+    return frame
+
+
+## The head map (HAIR-FIT): what a hairstyle fitted to the resolved head keeps clear of or
+## follows, measured on that head's own components, never on Wolf's.
+## An ear's free part stands more than EAR_COVER_M off the skull: hair may lie over the
+## attachment nearer the head (it partly covers the upper ear) but never over the helix
+## or the lower ear (the ear stays a facing cue). The keep-out is the free part's highest
+## elevation per EAR_BIN_DEG of azimuth, widened EAR_SIDE_DEG each way, plus EAR_TOP_M.
+EAR_COVER_M = 0.008
+EAR_TOP_M = 0.004
+EAR_BIN_DEG = 2.0
+EAR_SIDE_DEG = 6.0
+EAR_FALL_DEG = 8.0
+## The front hairline follows the brow: by how much the resolved brow's highest elevation
+## differs from Wolf's approved default (measured on male_base_foundation v002, Wolf's
+## default body), its front lifts or drops, easing out by BROW_FADE_DEG of azimuth.
+BROW_REF_EL = 16.51
+BROW_FADE_DEG = (60.0, 95.0)
+
+
+def _angles(frame, p):
+    d = p - frame["centre"]
+    return math.degrees(math.atan2(d.x, -d.y)), math.degrees(math.asin(max(-1.0, min(1.0, d.z / d.length))))
+
+
+def _head_map(frame, ears, brows):
+    """Ear keep-out bins {signed azimuth bin: lowest elevation hair may reach}, each ear's
+    span and top, and the brow's highest elevation; empty without the components."""
+    floor, spans = {}, {}
+    for entry in ears:
+        ## An ear, or (ear, its free-rim vertex indices): the helix is protected however
+        ## near the skull it lies; only the attachment may be covered.
+        ear, rim = entry if isinstance(entry, tuple) else (entry, ())
+        rim = set(rim)
+        world = ear.matrix_world
+        free = []
+        for v in ear.data.vertices:
+            p = world @ v.co
+            location, normal, _i, _d = frame["tree"].find_nearest(p)
+            if v.index in rim or (p - location).dot(normal) > EAR_COVER_M:
+                free.append(_angles(frame, p))
+        if not free:
+            continue
+        radius = (frame["centre"] - frame["tree"].find_nearest(world @ ear.data.vertices[0].co)[0]).length
+        top = math.degrees(EAR_TOP_M / radius)
+        for az, el in free:
+            k = round(az / EAR_BIN_DEG)
+            floor[k] = max(floor.get(k, -90.0), el + top)
+        side = ear.name.split(".")[-1]
+        spans[side] = [round(min(a for a, _e in free), 1), round(max(a for a, _e in free), 1),
+                       round(max(e for _a, e in free), 1), round(min(e for _a, e in free), 1)]
+    ## A flat plateau EAR_SIDE_DEG each way, then a smooth fall over EAR_FALL_DEG: the
+    ## scalp cap's coarse ring (one vertex every 15 degrees) arches over the ear instead
+    ## of chording across it, and the hairline has no step.
+    plateau = int(round(EAR_SIDE_DEG / EAR_BIN_DEG))
+    fall = int(round(EAR_FALL_DEG / EAR_BIN_DEG))
+    widened = {}
+    for k, el in floor.items():
+        for j in range(k - plateau - fall, k + plateau + fall + 1):
+            x = max(0.0, min(1.0, (abs(j - k) - plateau) / float(fall)))
+            widened[j] = max(widened.get(j, -90.0), el - (el + 40.0) * x * x * (3.0 - 2.0 * x))
+    brow = max((_angles(frame, b.matrix_world @ v.co)[1] for b in brows for v in b.data.vertices), default=None)
+    return {"ear_floor": widened, "ears": spans, "brow_el": None if brow is None else round(brow, 2)}
+
+
+def _ear_floor(frame, azimuth):
+    """The lowest elevation hair may reach at `azimuth` (signed degrees) beside the ears."""
+    bins = frame.get("map", {}).get("ear_floor") or {}
+    if not bins:
+        return -90.0
+    x = azimuth / EAR_BIN_DEG
+    k0 = math.floor(x)
+    a, b = bins.get(k0, -90.0), bins.get(k0 + 1, -90.0)
+    return a + (b - a) * (x - k0)
+
+
+def _clear_ears(frame, d):
+    """`d` raised along its meridian to clear the ears' keep-out."""
+    az, el = math.degrees(math.atan2(d.x, -d.y)), math.degrees(math.asin(max(-1.0, min(1.0, d.z / d.length))))
+    low = _ear_floor(frame, az)
+    return _direction(az, low) if el < low else d
 
 
 def _skin_frame(objects):
@@ -262,8 +450,15 @@ def build_style(frame, which, variant=None):
     weights belong to the production body). Returns the hair object, not linked."""
     name, variants, hairline, default = STYLES[which]
     variant = variant or default
+    ## A variant may share another style's hairline (one root system for both skins).
+    hairline = variants[variant].get("hairline", hairline)
     obj, _cap_faces, _rigid = _build(frame, name, variants[variant], hairline)
     obj["riposte_variant"] = "%s: %s" % (variant, variants[variant]["label"])
+    if variants[variant].get("fit_head"):
+        head_map = frame.get("map", {})
+        obj["riposte_head_map"] = json.dumps({"ears": head_map.get("ears"), "brow_el": head_map.get("brow_el"),
+                                              "behind_ears_deg": round(_behind_ears(frame), 1),
+                                              "neck_clearance_mm": round(_neck_clearance(frame) * 1000, 1)})
     return obj
 
 
@@ -460,6 +655,19 @@ SHEET_TIP = 0.22
 SHEET_ROOT = 0.15
 
 
+## Tied hair lies down the occiput's under-curve (ART-SURFACE-001): where the scalp faces
+## down, its volume gives way, none at UNDERCURVE_Z[0], all of it from UNDERCURVE_Z[1]
+## (the scalp normal's z), so the back of a tied style hugs the nape on any skull,
+## never a brim standing off it.
+UNDERCURVE_Z = (-0.6, -0.1)
+
+
+def _lie(normal):
+    low, high = UNDERCURVE_Z
+    x = max(0.0, min(1.0, (normal.z - low) / (high - low)))
+    return x * x * (3.0 - 2.0 * x)
+
+
 def _tied_guides(frame, spec, hairline):
     """Ridge and groove guides round the head, from the hairline towards the gather point."""
     bands = spec["bands"]
@@ -501,12 +709,13 @@ def _tied_guides(frame, spec, hairline):
         points, normals = [], []
         for m in range(SHELL_ROWS):
             t = SHELL_END * m / (SHELL_ROWS - 1)
-            hit, normal = _hit(frame, Quaternion(axis, angle * t) @ d0)
+            hit, normal = _hit(frame, _clear_ears(frame, Quaternion(axis, angle * t) @ d0))
             thick = _profile(t, spec["thickness"], peak) + spec["bulge"] * bj * math.sin(math.pi * min(1.0, t / (2.0 * peak)))
             if not ridge:
                 thick -= spec["groove"] * math.sin(math.pi * min(1.0, t / SHELL_END)) ** 0.5
             if i in edges:
                 thick = 0.0
+            thick *= _lie(normal)
             ## The first row meets the cap's hairline; the shell rises onto the cap over
             ## RISE_ROWS rows, so the hairline is a soft edge, never a brim.
             rise = math.sin(math.pi * 0.5 * min(1.0, m / RISE_ROWS))
@@ -644,9 +853,12 @@ def _sheet(bm, guides, thickness, groove, edge_guides=0, groove_ease=0.0):
     return faces_by_ridge
 
 
-def _hanging_sheet(frame, bm, azimuths, root_el, ends, end_x, back, splay, thickness, groove, swirl, seed, layer=0.0, drape=None):
+def _hanging_sheet(frame, bm, azimuths, root_el, ends, end_x, back, splay, thickness, groove, swirl, seed, layer=0.0, drape=None,
+                   smooth_ends=False):
     """Ridges at `azimuths` (ordered), grooves between them ending short of both. With
-    `drape`, the guides follow the body (see _draped) instead of falling to a plane."""
+    `drape`, the guides follow the body (see _draped) instead of falling to a plane. With
+    `smooth_ends` a groove ends midway between its ridges: the sheet's lower edge is one
+    line (a mass ending in a chevron), never a row of teeth."""
     rows = HANGING_ROWS if drape is None else drape.get("rows", HANGING_ROWS)
     span = max(abs(180.0 - a) for a in azimuths) or 1.0
 
@@ -665,7 +877,7 @@ def _hanging_sheet(frame, bm, azimuths, root_el, ends, end_x, back, splay, thick
     guides = []
     for k, azimuth in enumerate(azimuths):
         if k > 0:
-            short = max(ends[k - 1], ends[k]) * 0.82 + 0.0
+            short = (ends[k - 1] + ends[k]) * 0.5 if smooth_ends else max(ends[k - 1], ends[k]) * 0.82 + 0.0
             points, normals = guide((azimuths[k - 1] + azimuth) * 0.5, short)
             guides.append({"ridge": False, "points": points, "normals": normals})
         points, normals = guide(azimuth, ends[k])
@@ -729,6 +941,45 @@ def _bun(frame, bm, spec, gather):
         core.append(bm.faces.new([outer, grid[0][c], grid[0][(c + 1) % cols]]))
         core.append(bm.faces.new([inner, grid[-1][(c + 1) % cols], grid[-1][c]]))
     parts.append(("Bun.Core", core, None))
+    ## Folds: gathered hair folded over the core's outer pole, each in the plane of the
+    ## outward normal and an axis `phase` degrees round it, crossing the others: a knot of
+    ## folded hair, never a ring round a ball.
+    def on_core(direction, lift):
+        ## The core's surface along `direction` from its centre, raised `lift`.
+        d = direction.normalized()
+        s = 1.0 / math.sqrt((d.dot(side) / rs) ** 2 + (d.dot(up) / ru) ** 2 + (d.dot(n) / ro) ** 2)
+        return centre + d * (s + lift)
+
+    for k, (phase, reach, width, height) in enumerate(spec.get("folds", ())):
+        a = math.radians(phase)
+        axis = side * math.cos(a) + up * math.sin(a)
+        steps = 9
+        lift = 0.0015 * (k + 1)
+        centres, widths, heights, rings = [], [], [], []
+        for i in range(steps):
+            t = i / (steps - 1)
+            th = math.radians(reach) * (2.0 * t - 1.0)
+            centres.append(on_core(n * math.cos(th) + axis * math.sin(th), lift))
+            widths.append(ro * width * (0.55 + 0.45 * math.sin(math.pi * t)))
+            heights.append(ro * height * (0.6 + 0.4 * math.sin(math.pi * t)))
+        ## Every section point wraps the core (a flat section stood its edges off it).
+        for i, c in enumerate(centres):
+            tangent = (centres[min(i + 1, steps - 1)] - centres[max(i - 1, 0)]).normalized()
+            radial = (c - centre).normalized()
+            across = tangent.cross(radial).normalized()
+            rings.append([bm.verts.new(on_core(c + across * (u * widths[i] * 0.5) - centre, lift + v * heights[i]))
+                          for u, v in FLOW_SECTION])
+        faces = []
+        sides_n = len(FLOW_SECTION)
+        for r0, r1 in zip(rings, rings[1:]):
+            for j in range(sides_n):
+                faces.append(bm.faces.new([r0[j], r0[(j + 1) % sides_n], r1[(j + 1) % sides_n], r1[j]]))
+        for ring, sign in ((rings[0], -1.0), (rings[-1], 1.0)):
+            end = bm.verts.new(centres[0 if sign < 0 else -1])
+            for j in range(sides_n):
+                pair = (ring[(j + 1) % sides_n], ring[j]) if sign < 0 else (ring[j], ring[(j + 1) % sides_n])
+                faces.append(bm.faces.new([end, *pair]))
+        parts.append(("Bun.Fold.%d" % k, faces, {"points": centres, "widths": widths, "heights": heights, "free": False}))
     for band in range(spec["wraps"]):
         phase = 2.0 * math.pi * band / spec["wraps"]
         steps = 9
@@ -747,6 +998,198 @@ def _bun(frame, bm, spec, gather):
     return parts
 
 
+## A flow mass's section (across -1..1, up from its keel 0 to its crest 1): broad, softly
+## convex, thin at the edges and seated a little into what it lies on; never a tube.
+FLOW_SECTION = ((-1.0, 0.06), (-0.62, 0.72), (0.0, 1.0), (0.62, 0.72), (1.0, 0.06), (0.45, -0.14), (-0.45, -0.14))
+FLOW_RINGS = 9
+## A mass's tip: the last ring's centre carried on by this share of its width, to a point.
+FLOW_TIP = 0.6
+
+
+def _flow_guide(frame, mass, hairline, gather, adaptive=False):
+    """A flow mass's guide over the scalp: directions from the head centre through its
+    root (azimuth, elevation offset from the hairline: negative starts in front of it; or
+    `root_at`, absolute), its `via` controls (azimuth, elevation) and its end (an offset
+    from the gather point, or `to`, absolute), on great-circle arcs (`_arc_path`), each
+    sample seated on the skull."""
+    if "root_at" in mass:
+        ## An absolute root (azimuth, elevation): hair gathered from a parting, not the hairline.
+        controls = [_direction(*mass["root_at"])]
+    else:
+        root_az, root_dz = mass["root"]
+        controls = [_direction(root_az, _hairline(hairline, root_az) + root_dz)]
+    controls += [_direction(az, el) for az, el in mass["via"]]
+    if "to" in mass:
+        controls.append(_direction(*mass["to"]))
+    else:
+        controls.append(_direction(gather[0] + mass["end"][0], gather[1] + mass["end"][1]))
+    path = _arc_path(controls, None if adaptive else FLOW_RINGS, mass.get("length", 1.0))
+    return [_hit(frame, _clear_ears(frame, d)) for d in path]
+
+
+## Dense samples per radian of a guide's great-circle arcs, and the smoothing passes that
+## round its corners at the controls (a spline overshoots between unevenly spaced controls).
+ARC_DENSITY = 60.0
+ARC_SMOOTH = 40
+
+
+## Evaluated resolution, independent of the authored controls: a ring every FLOW_RING_RAD
+## of arc (about 17 mm on Wolf's skull), denser where the path turns (each radian of
+## turning counts as FLOW_CURVE_W radians of length), FLOW_RINGS_MIN..FLOW_RINGS_MAX rings.
+FLOW_RING_RAD = 0.17
+FLOW_CURVE_W = 0.6
+FLOW_RINGS_MIN, FLOW_RINGS_MAX = 6, 22
+
+
+def _arc_path(controls, count=None, length=1.0):
+    """Directions along great-circle arcs through `controls`, smoothed at the controls
+    (the ends fixed): `count` of them evenly spaced by angle, or (None) as many as the
+    path's length and turning need, spaced closer where it turns. With `length` < 1 the
+    path stops at that share of the way (a lock whose tip lies on the hair)."""
+    dense = [controls[0]]
+    for a, b in zip(controls, controls[1:]):
+        steps = max(2, int(a.angle(b) * ARC_DENSITY))
+        dense += [a.slerp(b, k / steps) for k in range(1, steps + 1)]
+    for _p in range(ARC_SMOOTH):
+        dense = [dense[0]] + [(dense[i - 1] + dense[i] * 2.0 + dense[i + 1]).normalized() for i in range(1, len(dense) - 1)] + [dense[-1]]
+    lengths, weights = [0.0], [0.0]
+    for i, (a, b) in enumerate(zip(dense, dense[1:])):
+        turn = 0.0
+        if 0 < i:
+            before, after = dense[i] - dense[i - 1], b - a
+            if before.length > 1e-9 and after.length > 1e-9:
+                turn = before.angle(after)
+        lengths.append(lengths[-1] + a.angle(b))
+        weights.append(weights[-1] + a.angle(b) + (0.0 if count else FLOW_CURVE_W * turn))
+    end = lengths[-1] * length
+    j = next((i for i in range(len(lengths) - 1) if lengths[i + 1] >= end), len(lengths) - 2)
+    span = lengths[j + 1] - lengths[j]
+    w_end = weights[j] + (weights[j + 1] - weights[j]) * (0.0 if span <= 0.0 else (end - lengths[j]) / span)
+    if count is None:
+        count = max(FLOW_RINGS_MIN, min(FLOW_RINGS_MAX, int(math.ceil(end / FLOW_RING_RAD)) + 1))
+    out, j = [], 0
+    for n in range(count):
+        s = w_end * n / (count - 1)
+        while j < len(dense) - 2 and weights[j + 1] < s:
+            j += 1
+        span = weights[j + 1] - weights[j]
+        out.append(dense[j].slerp(dense[j + 1], 0.0 if span <= 0.0 else min(1.0, (s - weights[j]) / span)))
+    return out
+
+
+def _outer_height(tree, skull, normal):
+    """The outermost hair surface's height over `skull` along its normal (cap, shell,
+    earlier masses); just off the scalp where nothing is built (a root below the hairline
+    lies on the skin, never floating at the cap's height)."""
+    under = CAP_LIFT_M
+    start = skull + normal * 0.0005
+    while tree is not None:
+        hit = tree.ray_cast(start, normal, 0.08)[0]
+        if hit is None:
+            break
+        under = (hit - skull).length
+        start = hit + normal * 0.0002
+    return under
+
+
+## A mass glides over what lies beneath it: its seat heights are the envelope of the
+## surface under it (each raised to its neighbours' highest, then blurred FLOW_SMOOTH
+## times, never below the surface), so it never traces every ridge, groove and earlier
+## mass edge beneath it as steps.
+FLOW_SMOOTH = 3
+
+
+def _envelope(values, passes=FLOW_SMOOTH):
+    count = len(values)
+    out = [max(values[max(0, i - 1):i + 2]) for i in range(count)]
+    for _p in range(passes):
+        out = [(out[max(0, i - 1)] + out[i] * 2.0 + out[min(count - 1, i + 1)]) * 0.25 for i in range(count)]
+    return [max(a, b) for a, b in zip(out, values)]
+
+
+## Smooth masses (HAIR-FIT styles): seats blurred FLOW_SMOOTH_ALONG times along the mass
+## and FLOW_SMOOTH_ACROSS across it (a lock glides over the grooves beneath, its rims never
+## zigzag); a hairline root eases from the scalp over the first FLOW_ROOT_EASE of the mass
+## (the hair grows out of the skin, no brim); the tip runs on FLOW_TIP_SMOOTH of its last
+## width and sinks into what it lies on (a tapered end, never a spike).
+FLOW_SMOOTH_ALONG = 6
+FLOW_SMOOTH_ACROSS = 2
+FLOW_ROOT_EASE = 0.14
+FLOW_TIP_SMOOTH = 0.35
+
+
+def _flow_mass(frame, bm, mass, hairline, gather, seed, smooth=False):
+    """A primary hair mass on its guide, lying on the hair already built: every point of
+    its section is seated on the outermost surface beneath it (sunk `embed`, so it grows
+    out of the volume and its thin edges melt into it, wrapping the head instead of
+    standing off it as a flat section would), then raised by the section's own height;
+    width and height ease root -> `peak` -> tip and the section rolls by up to `twist`
+    degrees. `smooth`: adaptive resolution, blurred seats, a root from the scalp and a
+    sunk tip (see FLOW_SMOOTH_ALONG). Returns (faces, profile)."""
+    guide = _flow_guide(frame, mass, hairline, gather, smooth)
+    built = [f for f in bm.faces]
+    verts = list({v for f in built for v in f.verts})
+    index = {v: i for i, v in enumerate(verts)}
+    tree = BVHTree.FromPolygons([v.co.copy() for v in verts], [[index[v] for v in f.verts] for f in built]) if built else None
+    peak = mass.get("peak", 0.35)
+    embed = mass.get("embed", 0.002)
+    roll = mass.get("twist", 0.0) * (1.0 if _jitter(seed, 21) >= 0.0 else -1.0)
+    along = FLOW_SMOOTH_ALONG if smooth else FLOW_SMOOTH
+    count = len(guide)
+
+    def rooted(i, seat):
+        if not smooth or "root_at" in mass:
+            return seat
+        x = min(1.0, (i / (count - 1)) / FLOW_ROOT_EASE)
+        return CAP_LIFT_M + (seat - CAP_LIFT_M) * x * x * (3.0 - 2.0 * x)
+
+    seats = _envelope([_outer_height(tree, skull, normal) for skull, normal in guide], along)
+    centres, ups, widths, heights = [], [], [], []
+    for i, (skull, normal) in enumerate(guide):
+        t = i / (count - 1)
+        centres.append(skull + normal * max(CAP_LIFT_M, rooted(i, seats[i]) - embed))
+        ups.append(normal)
+        widths.append(_profile(t, mass["width"], peak) * (1.0 if smooth else 1.0 + _jitter(seed, 22 + i) * 0.03))
+        heights.append(_profile(t, mass["height"], peak))
+    ## The section's points over the surface beneath, as a grid (ring x section point),
+    ## enveloped along the mass and across it.
+    grid = []
+    for i, c in enumerate(centres):
+        t = i / (count - 1)
+        tangent = (centres[min(i + 1, count - 1)] - centres[max(i - 1, 0)]).normalized()
+        across = tangent.cross(ups[i]).normalized()
+        across = Quaternion(tangent, math.radians(roll * math.sin(math.pi * t))) @ across
+        grid.append([_hit(frame, _clear_ears(frame, c + across * (u * widths[i] * 0.5) - frame["centre"])) for u, _v in FLOW_SECTION])
+    sides = len(FLOW_SECTION)
+    under = [[_outer_height(tree, s, n) for s, n in row] for row in grid]
+    for k in range(sides):
+        column = _envelope([under[i][k] for i in range(count)], along)
+        for i in range(count):
+            under[i][k] = column[i]
+    under = [_envelope(row, FLOW_SMOOTH_ACROSS if smooth else 1) for row in under]
+    rings = []
+    for i in range(count):
+        ring = []
+        for k, (u, v) in enumerate(FLOW_SECTION):
+            skull, normal = grid[i][k]
+            ring.append(bm.verts.new(skull + normal * (max(CAP_LIFT_M, rooted(i, under[i][k]) - embed) + v * heights[i])))
+        rings.append(ring)
+    faces = []
+    for r0, r1 in zip(rings, rings[1:]):
+        for k in range(sides):
+            faces.append(bm.faces.new([r0[k], r0[(k + 1) % sides], r1[(k + 1) % sides], r1[k]]))
+    start = bm.verts.new(centres[0] - (centres[1] - centres[0]).normalized() * widths[0] * 0.1)
+    run = (centres[-1] - centres[-2]).normalized() * widths[-1]
+    if smooth:
+        tip = bm.verts.new(centres[-1] + run * FLOW_TIP_SMOOTH - ups[-1] * (embed + heights[-1] * 0.2))
+    else:
+        tip = bm.verts.new(centres[-1] + run * FLOW_TIP + ups[-1] * heights[-1] * 0.3)
+    for k in range(sides):
+        faces.append(bm.faces.new([start, rings[0][(k + 1) % sides], rings[0][k]]))
+        faces.append(bm.faces.new([tip, rings[-1][k], rings[-1][(k + 1) % sides]]))
+    return faces, {"points": centres, "widths": widths, "heights": heights, "free": False}
+
+
 def _sector(azimuth):
     a = abs(azimuth)
     for limit, name in SECTORS:
@@ -757,6 +1200,25 @@ def _sector(azimuth):
 
 ## The scalp cap stays at least this far beneath the hair above it.
 CAP_UNDER_M = 0.0015
+
+
+def _tuck(frame, beneath, over):
+    """The cap and shell disappear under the masses laid over them: every vertex of
+    `beneath` that would show through a face of `over` (outward from the skull) is lowered
+    under it, so no shell band edge or cap row pokes between masses or shows at a root."""
+    verts = list({v for f in over for v in f.verts})
+    index = {v: i for i, v in enumerate(verts)}
+    tree = BVHTree.FromPolygons([v.co.copy() for v in verts], [[index[v] for v in f.verts] for f in over])
+    mine = set(verts)
+    for v in {v for f in beneath for v in f.verts} - mine:
+        direction = (v.co - frame["centre"]).normalized()
+        skull, _normal = _hit(frame, direction)
+        hit = tree.ray_cast(skull + direction * 0.0005, direction, 0.06)[0]
+        if hit is None:
+            continue
+        reach = (hit - skull).length
+        if (v.co - skull).length > reach - CAP_UNDER_M:
+            v.co = skull + direction * max(CAP_LIFT_M * 0.5, reach - CAP_UNDER_M)
 
 
 def _seat_cap(frame, bm, cap):
@@ -778,7 +1240,93 @@ def _seat_cap(frame, bm, cap):
             v.co = skull + direction * max(CAP_LIFT_M * 0.5, reach - CAP_UNDER_M)
 
 
+## Behind the ears the hairline reaches the nape on any skull: from NAPE_FROM to
+## NAPE_FULL degrees of azimuth (smoothstep) it is lowered from the style's line to where
+## the scalp turns under (the normal's z reaches UNDERCURVE_Z[0]), searched in
+## NAPE_STEP_DEG steps no lower than NAPE_LOWEST_DEG.
+NAPE_FROM, NAPE_FULL = 100.0, 150.0
+NAPE_STEP_DEG = 2.0
+NAPE_LOWEST_DEG = -70.0
+HAIRLINE_SAMPLE_DEG = 10.0
+HAIRLINE_FIT_SAMPLE_DEG = 2.0
+
+
+def _nape(frame, azimuth, elevation, clear=None):
+    """How far down the nape the hair reaches: to the skull's undercurve, and with `clear`
+    (metres) no closer than that to the body (a heavy trapezius rises into the nape)."""
+    while elevation > NAPE_LOWEST_DEG:
+        hit, normal = _hit(frame, _direction(azimuth, elevation))
+        if normal.z <= UNDERCURVE_Z[0]:
+            return elevation
+        if clear is not None:
+            p = hit + normal * CAP_LIFT_M
+            loc, body_normal, _face, _distance = frame["body"].find_nearest(p)
+            if loc is not None and (p - loc).dot(body_normal) < clear:
+                return elevation + NAPE_STEP_DEG
+        elevation -= NAPE_STEP_DEG
+    return NAPE_LOWEST_DEG
+
+
+def _fit_hairline(frame, hairline, clear=None):
+    """The style's hairline fitted to the head: behind the ears it reaches the nape (with
+    `clear`, never nearer the body than that)."""
+    fitted = []
+    ## A head-map fit samples finely enough to follow an ear's narrow peak.
+    sample = HAIRLINE_FIT_SAMPLE_DEG if frame.get("map", {}).get("ear_floor") else HAIRLINE_SAMPLE_DEG
+    steps = int(180.0 / sample)
+    for k in range(steps + 1):
+        azimuth = k * sample
+        elevation = _hairline(hairline, azimuth)
+        x = max(0.0, min(1.0, (azimuth - NAPE_FROM) / (NAPE_FULL - NAPE_FROM)))
+        if x > 0.0:
+            share = x * x * (3.0 - 2.0 * x)
+            elevation += (min(elevation, _nape(frame, azimuth, elevation, clear)) - elevation) * share
+        elevation += _brow_shift(frame, azimuth)
+        elevation = max(elevation, _ear_floor(frame, azimuth), _ear_floor(frame, -azimuth))
+        fitted.append((azimuth, elevation))
+    return tuple(fitted)
+
+
+def _brow_shift(frame, azimuth):
+    """How far the front hairline follows the resolved brow (degrees), fading to the sides."""
+    brow = frame.get("map", {}).get("brow_el")
+    if brow is None or BROW_REF_EL is None:
+        return 0.0
+    a0, a1 = BROW_FADE_DEG
+    x = max(0.0, min(1.0, (abs(azimuth) - a0) / (a1 - a0)))
+    return (brow - BROW_REF_EL) * (1.0 - x * x * (3.0 - 2.0 * x))
+
+
+## Loose hair on a thicker neck rests further out, never longer or wider: how far the
+## resolved body's back stands behind the head's back NECK_PROBE_SHARE head heights below
+## the chin, beyond Wolf's (NECK_REF_M, measured on male_base_foundation v002, Wolf's
+## default body), adds NECK_CLEAR_SHARE of itself to the drape gap; a slimmer neck never
+## takes the volume away.
+NECK_PROBE_SHARE = -0.15
+NECK_REF_M = -0.0062
+NECK_CLEAR_SHARE = 0.5
+
+
+def _neck_clearance(frame):
+    z = frame["low"] + NECK_PROBE_SHARE * frame["height"]
+    origin = Vector((frame["centre"].x, frame["back"] + 0.4, z))
+    hit = frame["body"].ray_cast(origin, Vector((0.0, -1.0, 0.0)), 0.8)[0]
+    if hit is None:
+        return 0.0
+    return max(0.0, (hit.y - frame["back"]) - NECK_REF_M) * NECK_CLEAR_SHARE
+
+
+def _behind_ears(frame):
+    """The azimuth (unsigned) behind both ears' free parts, with the keep-out's margin."""
+    spans = frame.get("map", {}).get("ears") or {}
+    return max((max(abs(s[0]), abs(s[1])) for s in spans.values()), default=0.0) + EAR_SIDE_DEG
+
+
 def _build(frame, name, style, hairline):
+    ## Only a style fitted to the head map reads it (the approved v001 designs never do).
+    if not style.get("fit_head"):
+        frame = dict(frame, map={})
+    hairline = _fit_hairline(frame, hairline, style.get("nape_clear"))
     bm = bmesh.new()
     cap = _cap(frame, bm, hairline)
     owners = [CAP_MASS] * len(cap)
@@ -813,10 +1361,43 @@ def _build(frame, name, style, hairline):
         centres, normals, widths, heights = clump
         add("Crown.%02d" % (i + 1), _sweep(bm, centres, normals, widths, heights),
             {"points": centres, "widths": widths, "heights": heights, "free": False}, True)
+    ## Primary flow masses (in order: each seats on the hair built before it), then the bun
+    ## over their converging tips.
+    beneath = [f for f in bm.faces]
+    over = []
+    for n, mass in enumerate(style.get("flow", ())):
+        faces, profile = _flow_mass(frame, bm, mass, hairline, tied["gather"], 600 + n, style.get("fit_head", False))
+        add(mass["name"], faces, profile, True)
+        over += faces
     for mass, faces, profile in _bun(frame, bm, style["bun"], tied["gather"]):
         add(mass, faces, profile, True)
+        over += faces
+    if style.get("fit_head") and over:
+        _tuck(frame, beneath, over)
     hanging = style.get("hanging")
-    if hanging:
+    ## Loose hair as several masses: each a draped sheet over its own azimuths (`az`, on
+    ## the 0..360 round with the rear at 180), its bands longest in its middle (`length`:
+    ## shortest, longest), its own root height, flow and layer, so the loose hair parts
+    ## into masses with their own directions and ends, never one curtain.
+    for n, spec in enumerate((hanging or {}).get("masses", ())):
+        a0, a1 = spec["az"]
+        ## Loose hair starts behind the resolved ears (the keep-out's back edge, each side).
+        behind = _behind_ears(frame)
+        a0, a1 = (max(a0, behind), a1) if a1 <= 180.0 else (a0, min(a1, 360.0 - behind))
+        azimuths = [a0 + (a1 - a0) * k / (spec["bands"] - 1) for k in range(spec["bands"])]
+        shortest, longest = spec["length"]
+        ends = [shortest + (longest - shortest) * (1.0 - abs(2.0 * k / (spec["bands"] - 1) - 1.0)) ** 0.7
+                * (1.0 + _jitter(k + 10 * n, 8) * spec.get("length_jitter", 0.0)) for k in range(spec["bands"])]
+        drape = dict(hanging["drape"], tree=frame["body"])
+        if frame.get("map"):
+            drape["gap"] = drape["gap"] + _neck_clearance(frame)
+        if "edge_guides" in spec:
+            drape["edge_guides"] = spec["edge_guides"]
+        for k, (faces, profile) in enumerate(_hanging_sheet(frame, bm, azimuths, spec["el"], ends, 1.06, 0.0, 0.0,
+                                                             spec["thickness"], spec["groove"], spec["swirl"], 700 + 20 * n,
+                                                             spec.get("layer", 0.0), drape, smooth_ends=True)):
+            add("Fall.%s.%02d" % (spec["name"], k + 1), faces, profile, False)
+    if hanging and "rear" in hanging:
         rear = hanging["rear"]
         bands = rear["bands"]
         azimuths = [rear["from"] + (360.0 - 2.0 * rear["from"]) * k / (bands - 1) for k in range(bands)]

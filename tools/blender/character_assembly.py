@@ -190,6 +190,14 @@ def append_collection(path, name):
     return objects
 
 
+def identity_materials(manifest, repo):
+    """The identity's intrinsic materials (skin from its shared swatch, hair): (skin, hair)."""
+    swatches = identity_profile.load_swatches(manifest, repo)
+    palette = manifest["identity"]["palette"]
+    return tuple(material(slot, identity_profile.palette_srgb(manifest, slot, swatches), palette[slot]["roughness"])
+                 for slot in (identity_profile.SKIN, "hair"))
+
+
 def material(name, srgb, roughness, metallic=0.0):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -340,7 +348,7 @@ def assemble(manifest_path, asset_id, blender_root):
         problems.append("configuration %s is not supported by %s" % (name, manifest["id"]))
     definitions, regions, outfit_problems = load_outfit(manifest, row["outfit"], blender_root)
     problems += outfit_problems
-    problems += identity_profile.problems(manifest, row["outfit"], definitions)
+    problems += identity_profile.problems(manifest, row["outfit"], definitions, identity_profile.load_swatches(manifest, repo))
     unsupported = [d["id"] for d in definitions if name not in d["supported_configurations"]]
     if unsupported:
         problems.append("garments %s do not support configuration %s" % (unsupported, name))
@@ -353,9 +361,7 @@ def assemble(manifest_path, asset_id, blender_root):
     bpy.context.scene["riposte_mask_open_edges"] = len(hole_midpoints)
     head = split_head(body)
     identity = manifest["identity"]
-    palette = identity["palette"]
-    skin = material("skin", palette["skin"]["srgb"], palette["skin"]["roughness"])
-    hair = material("hair", palette["hair"]["srgb"], palette["hair"]["roughness"])
+    skin, hair = identity_materials(manifest, repo)
     for obj in (body, head):
         obj.data.materials.clear()
         obj.data.materials.append(skin)
@@ -391,3 +397,336 @@ def assemble(manifest_path, asset_id, blender_root):
     bpy.context.scene["riposte_review_triangles"] = manifest["budget"]["review_triangles"]
     bpy.context.scene["riposte_max_triangles"] = manifest["budget"]["max_triangles"]
     return row, []
+
+
+## The character on the approved v2 base (CHARACTER-PIPELINE-001, attachments): the
+## identity's face marks and hairstyles fitted to the approved head through the shared
+## builders (`face_features.place_marks`, `wolf_hair.head_frame_of` / `build_style`) in the
+## authoring A-pose, measured, then returned to the rest through the Head bone's own
+## skinning and bound rigid on Head. Hanging-hair weights are topology-dependent data and
+## are rebuilt after topology finalization (CHARACTER-TOPOLOGY-001), not here.
+## Hair closer than this behind the head or body surface counts as inside it.
+HAIR_INSIDE_TOLERANCE_M = 0.002
+## The face the hair must keep clear (FACE-IDENTITY-001), in the head's chart.
+FACE_CLEAR_U = 0.70
+FACE_CLEAR_V = (0.30, 0.80)
+
+
+def _authoring():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "authoring"))
+    import male_base_v2
+    import face_features
+    import wolf_hair
+    return male_base_v2, face_features, wolf_hair
+
+
+def _tree_of(obj):
+    from mathutils.bvhtree import BVHTree
+    points = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    return BVHTree.FromPolygons(points, [list(p.vertices) for p in obj.data.polygons])
+
+
+def _inside(obj, tree):
+    count, deepest = 0, 0.0
+    for v in obj.data.vertices:
+        p = obj.matrix_world @ v.co
+        location, normal, _i, _d = tree.find_nearest(p)
+        if location is None:
+            continue
+        depth = -(p - location).dot(normal)
+        if depth > HAIR_INSIDE_TOLERANCE_M:
+            count += 1
+            deepest = max(deepest, depth)
+    return {"vertices": count, "deepest_mm": round(deepest * 1000, 1)}
+
+
+def _face_intrusion(obj, chart, head_tree):
+    """Hair vertices over the face (the chart's face window, in front of the head's centre)."""
+    from mathutils import Vector
+    low, height, half_width, centre_y = chart
+    count = 0
+    for v in obj.data.vertices:
+        p = obj.matrix_world @ v.co
+        u, z = abs(p.x) / half_width, (p.z - low) / height
+        if u < FACE_CLEAR_U and FACE_CLEAR_V[0] < z < FACE_CLEAR_V[1] and p.y < centre_y:
+            hit = head_tree.ray_cast(Vector((p.x, p.y - 0.5, p.z)), Vector((0.0, 1.0, 0.0)))[0]
+            if hit is None or p.y <= hit.y + 0.001:
+                count += 1
+    return count
+
+
+def _clearance(obj, head_tree):
+    """A mark's vertices' signed distance off the head surface, mm: [min, max]."""
+    distances = []
+    for v in obj.data.vertices:
+        p = obj.matrix_world @ v.co
+        location, normal, _i, _d = head_tree.find_nearest(p)
+        distances.append((p - location).dot(normal))
+    return [round(min(distances) * 1000, 2), round(max(distances) * 1000, 2)]
+
+
+## Samples per triangle edge of a layer's surface clearance (a barycentric grid).
+SURFACE_SAMPLES = 4
+
+
+def _surface_clearance(obj, head_tree):
+    """A layer's closest approach to the head across its faces, not only its vertices (a
+    face's chord can dip under a curved panel between them), mm."""
+    worst = None
+    points = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    for polygon in obj.data.polygons:
+        ring = [points[i] for i in polygon.vertices]
+        for k in range(1, len(ring) - 1):
+            a, b, c = ring[0], ring[k], ring[k + 1]
+            for i in range(SURFACE_SAMPLES + 1):
+                for j in range(SURFACE_SAMPLES + 1 - i):
+                    p = (a * i + b * j + c * (SURFACE_SAMPLES - i - j)) / SURFACE_SAMPLES
+                    location, normal, _i, _d = head_tree.find_nearest(p)
+                    distance = (p - location).dot(normal)
+                    worst = distance if worst is None else min(worst, distance)
+    return round(worst * 1000, 3)
+
+
+def _gap(a, b):
+    """The nearest distance between two objects' vertices and the other's surface, mm."""
+    tree = _tree_of(b)
+    return round(min(tree.find_nearest(a.matrix_world @ v.co)[3] for v in a.data.vertices) * 1000, 1)
+
+
+def palette_materials(manifest, repo):
+    """Every intrinsic identity material (skin from its shared swatch; hair and the eye's
+    eye, iris, pupil and catchlight from the palette): {slot: material}."""
+    swatches = identity_profile.load_swatches(manifest, repo)
+    palette = manifest["identity"]["palette"]
+    return {slot: material(slot, identity_profile.palette_srgb(manifest, slot, swatches), palette[slot]["roughness"])
+            for slot in manifest["materials"]["intrinsic"]}
+
+
+def dress_face(made, materials):
+    """The face features' material slots by component (`eye_assembly.MATERIALS`; the dead X
+    in hair, hidden from renders: it shows only for `dead`)."""
+    from character_modeling import eye_assembly
+    for obj, component, _side in made:
+        obj.data.materials.clear()
+        for slot in eye_assembly.MATERIALS.get(component, ("hair",)):
+            obj.data.materials.append(materials[slot])
+        slots = obj.data.attributes.get("riposte_material_slot")
+        if slots is not None:
+            indices = [0] * len(obj.data.polygons)
+            slots.data.foreach_get("value", indices)
+            obj.data.polygons.foreach_set("material_index", indices)
+            obj.data.attributes.remove(slots)
+        obj.hide_render = component == "dead"
+
+
+def set_face(made, preset, gaze=None, blink=0.0, scale=1.0):
+    """Every face feature's channel keys at preset `preset` (scaled), with a gaze and a blink."""
+    from character_modeling import expressions
+    for obj, _component, side in made:
+        keys = obj.data.shape_keys
+        if keys is None:
+            continue
+        weights = expressions.weights(preset, side, gaze=gaze, blink=blink)
+        for block in keys.key_blocks[1:]:
+            w = weights.get(block.name, 0.0)
+            block.value = w if block.name.startswith(("gaze", "blink")) else w * scale
+
+
+## Face states checked on the built meshes (FACE-EYE-001): every preset at these weights,
+## alone and with each gaze extreme, and the blink.
+FACE_CHECK_SCALES = (0.5, 1.0)
+FACE_CHECK_GAZES = (None, (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0))
+## A ray this long from an iris vertex toward the head must meet the eye white under it;
+## within this of the white's edge a vertex is at the edge (the layers sit at slightly
+## different depths along slightly different normals, and the white's segments chord the
+## drawn edge: up to 0.36 mm measured at full aggressive with a sideways gaze, 2026-11-01;
+## one or two pixels at the close-up review scale).
+FACE_RAY_M = 0.006
+FACE_EDGE_TOLERANCE_M = 0.0004
+## The white-over-iris ray starts this far in front of the iris vertex (the white lies a
+## fraction of a millimetre behind the iris; a start behind the vertex meets it from behind).
+FACE_FRONT_START_M = 0.00002
+
+
+## A masked iris vertex is covered when the eye mask's nearest surface lies in front of it
+## (on the side away from the head) within this distance: the mask stands a fraction of a
+## millimetre over the iris. Geometric, not a ray along the head's nearest normal (at the
+## panel's crease that normal tilts and a ray misses a mask that is there).
+FACE_MASK_COVER_M = 0.0015
+
+
+def _under(mask, p, inward):
+    if mask is None:
+        return False
+    location, _normal, _i, distance = mask.find_nearest(p)
+    return location is not None and distance <= FACE_MASK_COVER_M and (location - p).dot(inward) < 0.0
+
+
+def face_checks(made, head_tree):
+    """Structural checks of the built anime eye (never an art verdict): in every checked
+    state every iris vertex is covered: over the eye white (a ray from it toward the head
+    meets the white) or under the lash line; no white in front of the iris outside the
+    lash line and mask (`white_over_iris`: states where it shows through); the brows and
+    lines off the head; the white's closest approach to the head across its faces
+    (`white_clearance_mm`, at neutral: the head must not show through it); the neutral gap
+    between brow and lash line. Keys are reset to neutral afterwards."""
+    from mathutils.bvhtree import BVHTree
+    from character_modeling import expressions
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+
+    def evaluated(obj):
+        mesh = obj.evaluated_get(depsgraph).data
+        return [obj.matrix_world @ v.co for v in mesh.vertices], [list(p.vertices) for p in mesh.polygons]
+
+    states = [("neutral", None, 1.0, 0.0), ("neutral", None, 1.0, 0.5)]
+    states += [(n, g, k, 0.0) for n in expressions.KEYED for k in FACE_CHECK_SCALES for g in FACE_CHECK_GAZES]
+    states += [("neutral", g, 1.0, 0.0) for g in FACE_CHECK_GAZES[1:]]
+    report = {"states": len(states), "iris_off_white": 0, "examples": [], "white_over_iris": 0, "white_over_examples": []}
+    for preset, gaze, scale, blink in states:
+        set_face(made, preset, gaze, blink, scale)
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        for side in ("L", "R"):
+            parts = {c: o for o, c, s in made if s == side}
+            white = BVHTree.FromPolygons(*evaluated(parts["eye"]))
+            line = BVHTree.FromPolygons(*evaluated(parts["line"]))
+            mask = BVHTree.FromPolygons(*evaluated(parts["mask"])) if "mask" in parts else None
+            for p in evaluated(parts["iris"])[0]:
+                _location, normal, _i, _d = head_tree.find_nearest(p)
+                inward = normal if normal.y > 0.0 else -normal
+                ## The white in front of the iris (toward the viewer), not under the lash
+                ## line or the mask: the white showing through it.
+                if (white.ray_cast(p - inward * FACE_FRONT_START_M, -inward, FACE_RAY_M)[0] is not None
+                        and line.ray_cast(p, -inward, FACE_RAY_M)[0] is None and not _under(mask, p, inward)):
+                    report["white_over_iris"] += 1
+                    if len(report["white_over_examples"]) < 6:
+                        report["white_over_examples"].append("%s %s %s x%.1f blink %.1f" % (side, preset, gaze, scale, blink))
+                    break
+            for p in evaluated(parts["iris"])[0]:
+                _location, normal, _i, _d = head_tree.find_nearest(p)
+                inward = normal if normal.y > 0.0 else -normal
+                ## Covered when the white is under it, or the lash line or the eye mask
+                ## (a masked eye's occlusion) over it.
+                if (white.ray_cast(p, inward, FACE_RAY_M)[0] is None and line.ray_cast(p, -inward, FACE_RAY_M)[0] is None
+                        and not _under(mask, p, inward)
+                        and white.find_nearest(p)[3] > FACE_EDGE_TOLERANCE_M):
+                    report["iris_off_white"] += 1
+                    if len(report["examples"]) < 6:
+                        report["examples"].append("%s %s %s x%.1f blink %.1f" % (side, preset, gaze, scale, blink))
+                    break
+    set_face(made, "neutral")
+    bpy.context.view_layer.update()
+    report["clearance_mm"] = {o.name: _clearance(o, head_tree) for o, c, _s in made if c in ("brow", "line", "dead")}
+    report["white_clearance_mm"] = {o.name: _surface_clearance(o, head_tree) for o, c, _s in made if c == "eye"}
+    for side in ("L", "R"):
+        parts = {c: o for o, c, s in made if s == side}
+        report.setdefault("brow_line_gap_mm", {})[side] = _gap(parts["brow"], parts["line"])
+    return report
+
+
+def fit_identity(head, body, manifest, hair_styles, prefix):
+    """The identity's face features and `hair_styles` ({skin: style}) fitted to `head` (with
+    its stored construction surface) and `body`: the face in `<prefix>.Face` (the eye
+    assemblies, brows on the ridge line, the dead X), every component carrying its shared
+    channels as shape keys (FACE-EYE-001; presets are their weighted sums,
+    FACE-EXPRESSION-001) and checked in every preset, blend, gaze and the blink; each skin's
+    hair in `<prefix>.Hair.<skin>`. Returns (objects, report)."""
+    male_base_v2, face_features, wolf_hair = _authoring()
+    identity = manifest["identity"]
+    repo = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    materials = palette_materials(manifest, repo)
+    hair_material = materials["hair"]
+    stored = head.data.attributes[male_base_v2.F0_ATTRIBUTE]
+    construction = [head.matrix_world @ a.vector for a in stored.data]
+    low = min(p.z for p in construction)
+    height = max(p.z for p in construction) - low
+    half_width = max(abs(p.x) for p in construction)
+    centre_y = 0.5 * (min(p.y for p in construction) + max(p.y for p in construction))
+    head_tree, body_tree = _tree_of(head), _tree_of(body)
+    objects, report = [], {"chart": [round(low, 4), round(height, 4), round(half_width, 4)], "faces": {}, "hair": {}}
+    controls = face_features.ridge_lines(male_base_v2.face_controls, head)
+    crest = face_features.ridge_controls(male_base_v2.face_controls, head)
+    face = bpy.data.collections.new("%s.Face" % prefix)
+    bpy.context.scene.collection.children.link(face)
+    made = face_features.place_marks(face, head_tree, low, height, half_width, identity["face"]["marks"], ridge=controls)
+    dress_face(made, materials)
+    report["faces"] = face_checks(made, head_tree)
+    objects += [obj for obj, _c, _s in made]
+    report["ridge_line_below_crest_mm"] = {n: round(min((p - q).length for _u, q in controls[1.0 if u >= 0 else -1.0]) * 1000, 1)
+                                           for n, (u, p) in crest.items() if u >= 0}
+    for skin, style in hair_styles.items():
+        collection = bpy.data.collections.new("%s.Hair.%s" % (prefix, skin))
+        bpy.context.scene.collection.children.link(collection)
+        obj = wolf_hair.build_style(wolf_hair.head_frame_of(head, body), style)
+        collection.objects.link(obj)
+        obj.data.materials.clear()
+        obj.data.materials.append(hair_material)
+        report["hair"][skin] = {"object": obj.name, "variant": obj.get("riposte_variant"),
+                                "triangles": sum(len(p.vertices) - 2 for p in obj.data.polygons),
+                                "inside_head": _inside(obj, head_tree), "inside_body": _inside(obj, body_tree),
+                                "over_face_vertices": _face_intrusion(obj, (low, height, half_width, centre_y), head_tree)}
+        objects.append(obj)
+    return objects, report
+
+
+def _to_rest_on(obj, rig, bone, skinning):
+    """An object authored in the posed (A-pose) world, returned to the rest by the bone's
+    skinning matrix and bound rigid on it."""
+    from mathutils import Matrix
+    unpose = Matrix([list(row) for row in skinning]).inverted()
+    obj.data.transform(unpose @ obj.matrix_world, shape_keys=True)
+    obj.matrix_world = Matrix.Identity(4)
+    bind_rigid(obj, rig, bone)
+
+
+def build_candidate(manifest_path, out):
+    """The character on the approved v2 base for review: the base bound to WolfRig with
+    its approved head, the identity fitted (both skins' hair), every attachment rigid on
+    Head. Saved to `out` (an iteration folder); no source is written."""
+    male_base_v2, _face_features, _wolf_hair = _authoring()
+    with open(manifest_path, encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    bpy.ops.wm.open_mainfile(filepath=male_base_v2.CANDIDATE)
+    male_base_v2.apose()
+    head, body = bpy.data.objects[male_base_v2.STUDY], bpy.data.objects[male_base_v2.SCULPT]
+    prefix = manifest["id"].split(".")[-1].capitalize()
+    blender_root = os.path.join(male_base_v2.ROOT, "art-src", "blender")
+    styles = {}
+    for skin, outfit in manifest["outfits"].items():
+        for gid in outfit.get("garments", []):
+            definition = garments.load(_library_path(manifest, blender_root, "%s.garment.json" % gid))
+            if definition.get("type") == "hair":
+                styles[skin] = next(k for k, v in _wolf_hair.STYLES.items() if v[0] == definition["source"]["object"])
+    objects, report = fit_identity(head, body, manifest, styles, prefix)
+    report["bind"] = male_base_v2.bind(male_base_v2.SCULPT, male_base_v2.STUDY)
+    rig = male_base_v2._rig()
+    male_base_v2.apose()
+    skinning = male_base_v2._skinning([HEAD])[0]
+    for obj in objects:
+        _to_rest_on(obj, rig, HEAD, skinning)
+    bound = bpy.data.objects[male_base_v2.BOUND]
+    bound.data.materials.clear()
+    bound.data.materials.append(identity_materials(manifest, male_base_v2.ROOT)[0])
+    bpy.context.view_layer.update()
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(filepath=out, copy=True)
+    return report
+
+
+def main():
+    args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if "--candidate" not in args:
+        raise SystemExit("pass --candidate <iteration folder>/<name>.blend [--manifest <character.assembly.json>]")
+    repo = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    from character_modeling import iterations
+    out = os.path.abspath(args[args.index("--candidate") + 1])
+    problems = iterations.path_problems(out, repo)
+    if problems:
+        raise SystemExit("RIPOSTE_ITERATION: " + "; ".join(problems))
+    manifest = args[args.index("--manifest") + 1] if "--manifest" in args else os.path.join(
+        repo, "art-src", "blender", "characters", "wolf", "wolf.assembly.json")
+    print("RIPOSTE_CHARACTER_CANDIDATE", json.dumps(dict(build_candidate(manifest, out), blend=out)))
+
+
+if __name__ == "__main__":
+    main()

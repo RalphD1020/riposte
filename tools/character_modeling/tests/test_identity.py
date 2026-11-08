@@ -51,6 +51,27 @@ class IdentityProfile(unittest.TestCase):
         ## ASSERT
         self.assertIn("outfit training recolors identity materials ['skin']", found)
 
+    def test_skin_is_a_shared_swatch_the_crowd_draws_from(self):
+        ## ARRANGE: the shipped manifest and the shared swatches it names.
+        m = manifest()
+        swatches = identity.load_swatches(m, ROOT)
+        crowd = json.loads((ROOT / m["skin_swatches"]).read_text(encoding="utf-8"))["skin_swatches"]
+        ## ACT
+        skin = identity.palette_srgb(m, identity.SKIN, swatches)
+        hair = identity.palette_srgb(m, "hair", swatches)
+        ## ASSERT
+        self.assertEqual(identity.problems(m, swatches=swatches), [])
+        self.assertEqual(skin, crowd[m["identity"]["palette"]["skin"]["swatch"]])
+        self.assertEqual(hair, m["identity"]["palette"]["hair"]["srgb"])
+        ## PERTURB: a swatch the shared file does not have; then a free colour.
+        m["identity"]["palette"]["skin"]["swatch"] = "skin_99"
+        unknown = identity.problems(m, swatches=swatches)
+        m["identity"]["palette"]["skin"] = {"srgb": [0.94, 0.86, 0.8], "roughness": 0.75}
+        colour = identity.problems(m, swatches=swatches)
+        ## ASSERT
+        self.assertEqual(unknown, ["the identity skin swatch skin_99 is not one of the shared swatches"])
+        self.assertEqual(colour, ["the identity skin must name a shared skin swatch, not a colour"])
+
     def test_the_profile_names_every_anchor_and_every_complete_outfit(self):
         ## ARRANGE
         m = manifest()

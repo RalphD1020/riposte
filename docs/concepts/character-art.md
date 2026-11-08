@@ -10,20 +10,30 @@ Riposte's people are minimalist dark fantasy on powerful heroic physiques (an Ol
 
 Minimalist dark fantasy: stylized, sculpted, intentional character art with restrained detail and a strong identity — Hades II's character design, silhouettes and material language with Soulstone Survivors' readable silhouettes and material discipline, on powerful heroic physiques. It applies to fighters, the crowd, materials, lighting, and stages.
 
+The references have one job each, and none of them sets head-to-body proportion by itself:
+
+| Reference                   | Its job                                                                                                         | Not its job                                         |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| All Might (My Hero Academia) | Primary physique and masculine anatomy: heroic silhouette, jaw, cheekbones, brow musculature, neck into trapezius | His measurements (2.20 m) or his caricature         |
+| Dark-fantasy action RPGs    | World and material language: restrained colour, ruggedness, functional layering, weathered materials            | Realistic human anatomy                             |
+| Fire Emblem (3D)            | Construction of a stylized anime head: simplified planes, readable features, clean three-quarter transitions     | Physique, slender proportions, a softer jaw         |
+
+"Anime" means the facial design, not a slender figure: never a smaller body under a larger skull, larger eyes or a softer jaw. The head is a proportionate rounded cranium carrying a substantial masculine facial mask, designed around the locked eyes and brows, measured at the 1.80 m reference and verified across the sweep. Lean (ectomorphic, visibly athletic), reference (a balanced Olympic weightlifter) and strongman (heavier frame, thick forearms, calves and neck, definition kept) are one heroic language. Keep one body reference board and a separate head and face board, so a request about the face is never read as a request about the physique.
+
 **Low-poly is not a requirement; minimalism is.** Treating low-poly construction as the art direction restricted the hair and clothing to assembled primitives — the hair read as chunky dreadlocks. Low-poly is now a characteristic of one part of the character, the face, not a rule for the whole.
 
-| Area | Standard |
-| --- | --- |
-| Face | The approved geometric design: a flat, panel-based mask, the long flat-bridged angular nose, hooded angular eyes and brows — iconic and minimalist |
-| Body | The accepted male base and its configurations |
-| Hair | Sculpted, flowing, layered, recognizable as actual hair |
-| Clothing | Tailored, fitted to the anatomy, with intentional folds and material transitions |
-| Armor | Sculpted protective forms, a restrained silhouette, never primitive blocks |
-| Weapons | Recognizable historical silhouettes with stylized craftsmanship |
-| Materials | Strong material identity in restrained palettes, without heavy textures |
-| Geometry | Topology appropriate to the art; smooth curves, bevels and subdivision where they serve it |
-| Performance | Mobile-first budgets measured per asset; a triangle count is never a proxy for quality |
-| Physics | Completely independent of visual geometry |
+| Area        | Standard                                                                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Face        | The approved geometric design: a flat, panel-based mask, the long flat-bridged angular nose, hooded angular eyes and brows — iconic and minimalist |
+| Body        | The accepted male base and its configurations                                                                                                      |
+| Hair        | Sculpted, flowing, layered, recognizable as actual hair                                                                                            |
+| Clothing    | Tailored, fitted to the anatomy, with intentional folds and material transitions                                                                   |
+| Armor       | Sculpted protective forms, a restrained silhouette, never primitive blocks                                                                         |
+| Weapons     | Recognizable historical silhouettes with stylized craftsmanship                                                                                    |
+| Materials   | Strong material identity in restrained palettes, without heavy textures                                                                            |
+| Geometry    | Topology appropriate to the art; smooth curves, bevels and subdivision where they serve it                                                         |
+| Performance | Mobile-first budgets measured per asset; a triangle count is never a proxy for quality                                                             |
+| Physics     | Completely independent of visual geometry                                                                                                          |
 
 The authored body is sculpted silhouettes, heroic action-figure anatomy, restrained surface detail, and Hades II's painterly light. Neither reference is a claim that its models are this game's. Detail concentrates at identity features rather than spreading evenly, and it never means a figure assembled from blocks. Smooth means the chest, waist, pelvis, deltoid, and thigh change into each other on purpose. A planned facet, such as the cranium, can stay. An accidental ridge, gap, or primitive intersection cannot.
 
@@ -84,14 +94,14 @@ Tight cloth and stubble are paint. Outerwear is a volume that stands off the bod
 
 The face is a designed mask whose surfaces happen to communicate heroic anatomy, not a miniature human anatomy project. The original approved panel mask is the master: every candidate is composed on it (never on the previous study) and judged against it. The two broad panels meet at the centre, the profile is convex, the nose is its highest forward point, and the silhouette stays simple. The features are changes in the panels' curvature:
 
-| Feature | Construction | Avoid |
-| --- | --- | --- |
-| Brow ridge | A raised section of the upper panel, a shelf over the eye opening | Separate human brow bones |
-| Eyes | Recessed openings beneath the shelf, slightly hooded by the upper panel | Deep human eye sockets |
-| Cheekbones | Broad convex changes in the panel | Bulging cheek pads |
-| Nose | The panels converging into a long flat rectangular bridge and an angular tip | A rounded human nose, nostrils, septum |
-| Chin | A controlled convex lower panel | Creases and wrinkles |
-| Forehead | One broad continuous surface converging into the bridge | Forehead anatomy |
+| Feature    | Construction                                                                 | Avoid                                  |
+| ---------- | ---------------------------------------------------------------------------- | -------------------------------------- |
+| Brow ridge | A raised section of the upper panel, a shelf over the eye opening            | Separate human brow bones              |
+| Eyes       | Recessed openings beneath the shelf, slightly hooded by the upper panel      | Deep human eye sockets                 |
+| Cheekbones | Broad convex changes in the panel                                            | Bulging cheek pads                     |
+| Nose       | The panels converging into a long flat rectangular bridge and an angular tip | A rounded human nose, nostrils, septum |
+| Chin       | A controlled convex lower panel                                              | Creases and wrinkles                   |
+| Forehead   | One broad continuous surface converging into the bridge                      | Forehead anatomy                       |
 
 Edges are not all equally sharp: the nose's silhouette (tip, underside) is the sharpest; transitions within the broader face are soft. Three layers stay separate — the mask (identity), the sculpted features on it, and fitted components (eyes, lids, brows; FACE-MAPPING-001). Every revision is compared with the approved face (`HeadV2`) and its approval captures with the approved Ranger and Training hair; review covers front, side, three-quarter, top, bottom and the gameplay camera. If the face reads as an ordinary human face from three-quarter, it has drifted, however good the features look.
 
@@ -146,7 +156,7 @@ A name is a contract only when something outside the blockout reads it.
 
 The rig contract is the bone list and the rest metres in `wolf.rig-contract.json`. Clips, the grip, and `PRES-RIG` use those. An authored surface binds to them and does not rename them.
 
-The face contract is the node-name prefixes `Eye`, `Brow`, and `DeadEye`. `FacePresentation` shows and hides by those prefixes. `SideAccent` is the export's side marker. Those stay when the body stops being prisms.
+The face contract is the node-name prefixes `Eye`, `Brow`, and `DeadEye`, and on `Eye` and `Brow` one blend shape per shared moving expression (FACE-EXPRESSION-001). `FacePresentation` shows an expression by those prefixes and shape names. `SideAccent` is the export's side marker. Those stay when the body stops being prisms.
 
 `HeadSkin`, `ScalpDome`, `TorsoCore`, `GambesonShell`, `FurCollar`, `ChestLayer`, and `ShoulderMass` are blockout part names. The shipping tests look them up because that is the mesh that ships today. They are not the authored surface's anatomy. When a capture replaces a part, the test keeps the fact it was protecting — the scarf still covers the chest, the face still has no stubble mask, the fighter still has no second cloak — and drops the prism's name.
 

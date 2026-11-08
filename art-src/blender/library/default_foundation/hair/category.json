@@ -1,0 +1,8 @@
+{
+ "category": "hair",
+ "origin": "default_foundation",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "hairstyle"
+ ]
+}

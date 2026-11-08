@@ -1,0 +1,37 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-02",
+  "evidence": "the approved default bodies and faces (face response off); lock male_base.foundation.lock.json"
+ },
+ "category": "foundation",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ]
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "male_base_foundation",
+   "version": "v001"
+  }
+ ],
+ "files": {
+  "variants.json": {
+   "from": "iteration evidence: variants.json",
+   "sha256": "7ace55bc691ea35227ee9e1d42a7397426a31bb6756d5945db7b82c121c55013"
+  }
+ },
+ "id": "male_base_variants",
+ "notes": "Variant generation v001: face_response off. Enabling a variant switch is a new version of this asset (with its own lock of the regenerated variants), never a foundation revision.",
+ "origin": "default_foundation",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {},
+ "status": "approved",
+ "subtype": "variant_generation",
+ "tags": [],
+ "version": "v001"
+}

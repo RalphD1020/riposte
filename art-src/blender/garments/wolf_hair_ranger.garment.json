@@ -3,6 +3,12 @@
   "type": "hair",
   "base_id": "character.male_base",
   "base_topology_fingerprint": "ea08f9e93cef77ba1c687d9286bbe216b4590109d6f710b783f38611ff75ac5d",
+  "also_fitted": [
+    {
+      "base_id": "character.male_base.foundation",
+      "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332"
+    }
+  ],
   "skeleton_id": "WolfRig",
   "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
   "supported_configurations": [

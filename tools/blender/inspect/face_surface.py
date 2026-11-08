@@ -49,6 +49,7 @@ def sample(obj, frame):
     us = [U_SPAN[0] + (U_SPAN[1] - U_SPAN[0]) * i / (GRID[0] - 1) for i in range(GRID[0])]
     vs = [V_SPAN[0] + (V_SPAN[1] - V_SPAN[0]) * j / (GRID[1] - 1) for j in range(GRID[1])]
     positions, normals, outside = [], [], 0
+    rows = []
     for v in vs:
         row = []
         for u in us:
@@ -56,9 +57,20 @@ def sample(obj, frame):
             if hit is not None and normal.y > 0.0:
                 normal = -normal
             row.append(None if hit is None else ((hit.x - offset, hit.y, hit.z), tuple(normal)))
+        rows.append(row)
+    filled = [j for j, row in enumerate(rows) if any(s is not None for s in row)]
+    if not filled:
+        raise SystemExit("RIPOSTE_FACE_SURFACE: no mask on any row")
+    for j, row in enumerate(rows):
+        ## Below a chin that rises above the chart's lowest rows, a row meets no surface: it
+        ## is extended from the nearest row that does, as samples outside the silhouette are
+        ## from their row; landmarks are never searched there.
+        if not any(s is not None for s in row):
+            near = min(filled, key=lambda k: abs(k - j))
+            outside += len(row)
+            rows[j] = [None if s is None else ((s[0][0], s[0][1], low + vs[j] * height), s[1]) for s in rows[near]]
+    for v, row in zip(vs, rows):
         hits = [i for i, s in enumerate(row) if s is not None]
-        if not hits:
-            raise SystemExit("RIPOSTE_FACE_SURFACE: no mask at v %.3f" % v)
         ## Outside the silhouette (the jaw narrows below the chart's corners) the row is
         ## extended from its nearest hit; landmarks are never searched there.
         for i, s in enumerate(row):

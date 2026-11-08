@@ -1,0 +1,418 @@
+{
+  "schema": "riposte.character_foundation",
+  "version": 1,
+  "id": "character.male_base.foundation",
+  "status": "approved",
+  "approved": "2026-11-06: the three-physique default head (lean / reference / strongman head design, ears, lower-face contour, skull underside, seated neck) and the default eye's fixed white (person); the default bodies of 2026-11-02 unchanged",
+  "notes": "The default male foundation every male character is built on (CHARACTER-FOUNDATION-001). It owns the base sculpt and head (built from the v1 master by male_base_v2.py --foundation), the resolution studies every configuration applies, and the default identity (a neutral palette and the locked default face). It owns no character: no hair, no attire, no identity of its own beyond the default face. Characters (Wolf first) layer identity, hair and attire on top through their own definitions. Revision v002 (2026-11-06): the head is designed per build on the build coordinate (resolution head_design: lean after Spike Spiegel, reference after Goku / Vegeta, strongman after All Might), with ears, the lower-face contour and the neck seated under the jaw; the eye's white is a fixed backing under the mask (white: backing). Supersedes male_base.foundation.json (v001, kept for rollback).",
+  "source": "characters/male_base.foundation.v002.blend",
+  "record": "characters/male_base.foundation.v002.record.json",
+  "lock": "characters/male_base.foundation.v002.lock.json",
+  "regions": "characters/male_base.foundation.v002.regions.json",
+  "builder": "tools/blender/authoring/male_base_v2.py",
+  "base": {
+    "master": "characters/male_base.blend",
+    "mask_study": {
+      "anime_face": 1.0,
+      "ridge_straight": 0.8,
+      "ridge_angle": 0.5,
+      "edge_softness": -0.4,
+      "anime_nose": 1.0,
+      "face_integration": 1.0,
+      "lower_contour": 1.6
+    },
+    "body_study": {
+      "heroic_profile": 1.0,
+      "chest_profile": 1.0
+    }
+  },
+  "resolution": {
+    "head_study": {
+      "anime_head": 1.0,
+      "anime_planes": 1.0
+    },
+    "silhouette_study": "heroic_profile",
+    "chest_study": "lean_master_v2",
+    "glute_study": "lean_glute",
+    "girth_study": "full",
+    "region_fix": true,
+    "rig_fit": true,
+    "chest_smooth": true,
+    "chest_fit": false,
+    "face_response": false,
+    "rig_weight_smooth_iterations": 250,
+    "ears": true,
+    "head_design": {
+      "strongman": {
+        "heroic_cranium": 1.0,
+        "submental_fix": 1.0,
+        "heroic_jaw": 1.0,
+        "strongman_face": 1.0,
+        "contour_jaw": 1.0
+      },
+      "reference": {
+        "heroic_cranium": 1.0,
+        "submental_fix": 1.0,
+        "heroic_jaw": 0.5,
+        "reference_face": 1.0,
+        "contour_jaw": 1.0,
+        "chin_end": 1.0
+      },
+      "lean": {
+        "heroic_cranium": 1.0,
+        "submental_fix": 1.0,
+        "lean_face": 1.0,
+        "contour_jaw": 1.0,
+        "chin_end": 1.0
+      }
+    },
+    "seat_neck": true
+  },
+  "reference": {
+    "height_m": 1.8,
+    "frame_build": 1.0,
+    "muscularity": 1.0,
+    "mass_kg": 80.0
+  },
+  "skeleton": {
+    "id": "WolfRig",
+    "contract": "game/content/characters/wolf.rig-contract.json",
+    "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf"
+  },
+  "default_identity": {
+    "skin_swatches": "game/content/characters/wolf.character.json",
+    "palette": {
+      "skin": {
+        "swatch": "skin_02",
+        "roughness": 0.75
+      },
+      "hair": {
+        "srgb": [
+          0.1451,
+          0.15686,
+          0.16863
+        ],
+        "roughness": 0.9
+      },
+      "eye": {
+        "srgb": [
+          0.86,
+          0.82,
+          0.74
+        ],
+        "roughness": 0.6
+      },
+      "iris": {
+        "srgb": [
+          0.56,
+          0.4,
+          0.17
+        ],
+        "roughness": 0.4
+      },
+      "pupil": {
+        "srgb": [
+          0.03,
+          0.03,
+          0.035
+        ],
+        "roughness": 0.35
+      },
+      "catchlight": {
+        "srgb": [
+          0.92,
+          0.9,
+          0.85
+        ],
+        "roughness": 0.2
+      },
+      "iris_rim": {
+        "srgb": [
+          0.17,
+          0.11,
+          0.06
+        ],
+        "roughness": 0.45
+      },
+      "lid_line": {
+        "srgb": [
+          0.13,
+          0.1,
+          0.09
+        ],
+        "roughness": 0.8
+      }
+    },
+    "face": {
+      "marks": {
+        "Eye": {
+          "x": 0.33,
+          "anchor": "eye_recess",
+          "width": 0.45,
+          "height": 0.135,
+          "tilt_deg": 6.0,
+          "upper": [
+            [
+              -0.5,
+              -0.06
+            ],
+            [
+              -0.45,
+              0.16
+            ],
+            [
+              -0.35,
+              0.3
+            ],
+            [
+              -0.2,
+              0.39
+            ],
+            [
+              0.0,
+              0.43
+            ],
+            [
+              0.2,
+              0.43
+            ],
+            [
+              0.35,
+              0.37
+            ],
+            [
+              0.45,
+              0.25
+            ],
+            [
+              0.5,
+              0.06
+            ]
+          ],
+          "lower": [
+            [
+              -0.5,
+              -0.1
+            ],
+            [
+              -0.45,
+              -0.32
+            ],
+            [
+              -0.35,
+              -0.44
+            ],
+            [
+              -0.15,
+              -0.5
+            ],
+            [
+              0.15,
+              -0.51
+            ],
+            [
+              0.35,
+              -0.46
+            ],
+            [
+              0.45,
+              -0.34
+            ],
+            [
+              0.5,
+              -0.06
+            ]
+          ],
+          "iris": {
+            "centre": [
+              0.02,
+              0.06
+            ],
+            "width": 0.611,
+            "height": 0.8,
+            "rim": 0.82,
+            "pupil": 0.68,
+            "pupil_aspect": 1.0,
+            "catchlight": {
+              "offset": [
+                0.32,
+                0.3
+              ],
+              "size": 0.07
+            },
+            "gaze": {
+              "x": 0.06,
+              "up": 0.06,
+              "down": 0.05
+            },
+            "clip_inset": 0.03,
+            "lower_clip_inset": 0.06
+          },
+          "line": {
+            "thickness": [
+              [
+                -0.5,
+                0.16
+              ],
+              [
+                -0.3,
+                0.25
+              ],
+              [
+                0.3,
+                0.27
+              ],
+              [
+                0.5,
+                0.22
+              ]
+            ],
+            "overlap": 0.03,
+            "wing": [
+              0.0,
+              0.0
+            ],
+            "inner": [
+              0.0,
+              0.0
+            ],
+            "lower": {
+              "from": 0.48,
+              "thickness": 0.002
+            }
+          },
+          "depth": {
+            "white_m": 0.0003,
+            "iris_m": 0.0006,
+            "pupil_m": 0.00065,
+            "catchlight_m": 0.0007,
+            "mask_m": 0.0016,
+            "line_m": 0.002
+          },
+          "occlusion": "mask",
+          "white": "backing"
+        },
+        "Brow": {
+          "x": 0.34,
+          "anchor": "brow_ridge",
+          "inner": "ridge_start",
+          "width": 0.4,
+          "height": 0.04,
+          "depth_m": 0.006,
+          "proud_m": 0.004,
+          "tilt_deg": -1.5,
+          "tilt_by_side": {
+            "L": 0.0,
+            "R": 0.0
+          },
+          "inset": 0.8,
+          "lift": 0.0,
+          "profile": [
+            [
+              -0.5,
+              0.94
+            ],
+            [
+              -0.3,
+              1.0
+            ],
+            [
+              0.3,
+              1.0
+            ],
+            [
+              0.46,
+              0.9
+            ],
+            [
+              0.5,
+              0.72
+            ]
+          ],
+          "settle_m": 0.002,
+          "section": {
+            "crest": [
+              [
+                -0.5,
+                0.42
+              ],
+              [
+                0.15,
+                0.58
+              ],
+              [
+                0.5,
+                0.5
+              ]
+            ],
+            "depth": [
+              [
+                -0.5,
+                1.3
+              ],
+              [
+                0.15,
+                1.15
+              ],
+              [
+                0.5,
+                0.6
+              ]
+            ],
+            "lower_edge": 0.55,
+            "upper_edge": 0.45
+          },
+          "inner_offset": 0.02
+        },
+        "DeadEye": {
+          "x": 0.335,
+          "anchor": "eye_recess",
+          "width": 0.26,
+          "height": 0.022,
+          "depth_m": 0.006,
+          "proud_m": 0.004,
+          "tilt_deg": 40.0,
+          "inset": 0.8,
+          "outline": [
+            [
+              -0.5,
+              0.0
+            ],
+            [
+              -0.22,
+              -0.5
+            ],
+            [
+              0.22,
+              -0.5
+            ],
+            [
+              0.5,
+              0.0
+            ],
+            [
+              0.22,
+              0.5
+            ],
+            [
+              -0.22,
+              0.5
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "materials": {
+    "intrinsic": [
+      "skin",
+      "hair",
+      "eye",
+      "iris",
+      "iris_rim",
+      "pupil",
+      "catchlight",
+      "lid_line"
+    ]
+  }
+}

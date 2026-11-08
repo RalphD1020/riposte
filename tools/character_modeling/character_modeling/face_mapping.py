@@ -146,8 +146,11 @@ class FaceSurface:
 
 def derive_landmarks(surface, identity, samples=41):
     """Landmarks in (u, v): the geometric ones measured on the surface, the identity ones
-    (eyes, brows) from the character's mark fractions. `identity` holds the Eye and Brow
-    marks (x, z, width as chart fractions)."""
+    (eyes, brows) from the character's marks. `identity` holds the Eye and Brow marks (x and
+    width as chart fractions; the height a chart fraction `z` or an anchor on the mask,
+    resolved by `face_mask.resolve_marks` for this surface's frame)."""
+    from . import face_mask
+    identity = face_mask.resolve_marks(identity, surface.frame["height"] / surface.frame["half_width"])
     eye, brow = identity["Eye"], identity["Brow"]
     eye_v = eye["z"]
 

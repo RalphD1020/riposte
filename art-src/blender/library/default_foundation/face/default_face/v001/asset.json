@@ -1,0 +1,46 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-01",
+  "evidence": "iteration 20261101_2150_lean_chest_language_rig_fit (face lock); 20261102_0100_foundation_lock (identical on all 15 sweep characters)"
+ },
+ "category": "face",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "male_base_foundation",
+   "version": "v001"
+  }
+ ],
+ "files": {
+  "default_face.json": {
+   "from": "iteration evidence: default_face.json",
+   "sha256": "e43b7cfb3e8c896f53c32fcf41409eed329d4d986b029ee36462f9c089dc126b"
+  }
+ },
+ "id": "default_face",
+ "notes": "The approved default eyes and brows (the masked anime eye, ridge-attached brows) as face marks; every character's face starts here.",
+ "origin": "default_foundation",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {},
+ "status": "approved",
+ "subtype": "face",
+ "tags": [
+  "eyes",
+  "brows",
+  "masked_anime_eye"
+ ],
+ "version": "v001"
+}

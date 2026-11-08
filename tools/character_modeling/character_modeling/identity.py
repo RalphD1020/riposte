@@ -22,15 +22,38 @@ SHOULDER_REINFORCEMENT = ("none", "integrated_mantle")
 ## A design region outside the art profile's list that a hairstyle may still carry.
 HAIR_ACCENTS = "accents"
 OUTFIT_REQUIRED = ("identity", "hair", "hair_regions", "construction", "shoulder_reinforcement")
+## Skin is one of the shared skin swatches (the file the manifest's `skin_swatches` names,
+## the same swatches the crowd draws from): an identity names a swatch, never a colour.
+SKIN = "skin"
 
 
-def problems(manifest, outfit=None, definitions=()):
+def load_swatches(manifest, repo_root):
+    """The shared skin swatches the manifest names: {swatch id: sRGB}."""
+    import json
+    import os
+    with open(os.path.join(repo_root, manifest["skin_swatches"]), encoding="utf-8") as handle:
+        return json.load(handle)["skin_swatches"]
+
+
+def palette_srgb(manifest, slot, swatches):
+    """The sRGB of an identity palette slot: skin from its swatch, any other slot its own."""
+    entry = manifest["identity"]["palette"][slot]
+    return list(swatches[entry["swatch"]]) if slot == SKIN else list(entry["srgb"])
+
+
+def problems(manifest, outfit=None, definitions=(), swatches=None):
     """Why the manifest's identity profile is inconsistent; with `outfit` and that
-    outfit's asset `definitions`, also why that outfit drifts from it. Empty means consistent."""
+    outfit's asset `definitions`, also why that outfit drifts from it; with the shared
+    `swatches`, also whether its skin names one of them. Empty means consistent."""
     art = manifest.get("art")
     if not art:
         return ["%s has no art profile" % manifest.get("id", "?")]
     out = []
+    skin = manifest["identity"].get("palette", {}).get(SKIN, {})
+    if "swatch" not in skin or "srgb" in skin:
+        out.append("the identity skin must name a shared skin swatch, not a colour")
+    elif swatches is not None and skin["swatch"] not in swatches:
+        out.append("the identity skin swatch %s is not one of the shared swatches" % skin["swatch"])
     anchors = art.get("anchors", {})
     out += ["art profile lacks the %s anchor" % a for a in ANCHORS if not anchors.get(a)]
     intrinsic = set(manifest["materials"]["intrinsic"])

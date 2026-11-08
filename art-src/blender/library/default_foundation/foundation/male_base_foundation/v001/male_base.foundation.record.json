@@ -1,0 +1,19 @@
+{
+  "schema": "riposte.character_foundation_record",
+  "version": 1,
+  "foundation": "character.male_base.foundation",
+  "approved": "2026-11-02: the default bodies (lean, reference, strongman across 1.60-2.00 m), the default eyes and brows, and the side-profile chest smoothing (person)",
+  "builder": "tools/blender/authoring/male_base_v2.py --foundation",
+  "objects": {
+    "BodyV2": {
+      "vertices": 86694,
+      "faces": 86692,
+      "sha256": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332"
+    },
+    "HeadV2": {
+      "vertices": 1847,
+      "faces": 3690,
+      "sha256": "711b5a52d6a0b3160cab011445f26c17f9e49d4ec635348a1e3224819bece224"
+    }
+  }
+}

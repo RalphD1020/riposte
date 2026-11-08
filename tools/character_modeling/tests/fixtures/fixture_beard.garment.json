@@ -1,0 +1,266 @@
+{
+  "schema": "riposte.garment",
+  "type": "facial_hair",
+  "id": "fixture_beard",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "category": "fitted",
+  "regions": [
+    "head"
+  ],
+  "source": {
+    "builder": "tools/blender/authoring/facial_hair.py",
+    "object": "FacialHair"
+  },
+  "deformation": {
+    "method": "rigid",
+    "bone": "Head",
+    "physique": "none"
+  },
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "materials": [
+    "hair"
+  ],
+  "coverage": {
+    "hides": [
+      "chin"
+    ],
+    "preserves": [
+      "mouth"
+    ],
+    "margin_rings": 1
+  },
+  "notes": "A facial-hair fixture (no character wears it): a short full beard with a moustache, read as one silhouette along the jaw and chin; proves the identity.facial_hair layer (CHARACTER-LAYERING-001) and facial_hair.build. Rigid on Head until the face has a jaw (FACE-EXPRESSION-001); the mouth stays clear.",
+  "design": {
+    "style": "short_full_beard",
+    "method": "fitted_masses",
+    "masses": [
+      {
+        "name": "Beard",
+        "u": [
+          0.0,
+          0.9
+        ],
+        "columns": 15,
+        "rows": 6,
+        "upper": [
+          [
+            0.0,
+            0.165
+          ],
+          [
+            0.22,
+            0.165
+          ],
+          [
+            0.36,
+            0.24
+          ],
+          [
+            0.6,
+            0.32
+          ],
+          [
+            0.9,
+            0.42
+          ]
+        ],
+        "lower": [
+          [
+            0.0,
+            0.015
+          ],
+          [
+            0.5,
+            0.05
+          ],
+          [
+            0.75,
+            0.11
+          ],
+          [
+            0.9,
+            0.2
+          ]
+        ],
+        "thickness": [
+          [
+            0.0,
+            0.009
+          ],
+          [
+            0.4,
+            0.007
+          ],
+          [
+            0.75,
+            0.005
+          ],
+          [
+            0.9,
+            0.003
+          ]
+        ],
+        "drop": [
+          [
+            0.0,
+            0.016
+          ],
+          [
+            0.35,
+            0.011
+          ],
+          [
+            0.7,
+            0.005
+          ],
+          [
+            0.9,
+            0.0
+          ]
+        ],
+        "clumps": 6,
+        "clump_depth": 0.35
+      },
+      {
+        "name": "Moustache",
+        "u": [
+          0.0,
+          0.3
+        ],
+        "columns": 7,
+        "rows": 4,
+        "upper": [
+          [
+            0.0,
+            0.3
+          ],
+          [
+            0.3,
+            0.28
+          ]
+        ],
+        "lower": [
+          [
+            0.0,
+            0.255
+          ],
+          [
+            0.2,
+            0.25
+          ],
+          [
+            0.3,
+            0.19
+          ]
+        ],
+        "thickness": [
+          [
+            0.0,
+            0.005
+          ],
+          [
+            0.3,
+            0.004
+          ]
+        ],
+        "drop": [
+          [
+            0.0,
+            0.002
+          ],
+          [
+            0.3,
+            0.004
+          ]
+        ],
+        "clumps": 2,
+        "clump_depth": 0.3
+      },
+      {
+        "name": "Under",
+        "kind": "under",
+        "u": [
+          0.0,
+          0.65
+        ],
+        "columns": 10,
+        "rows": 5,
+        "front": [
+          [
+            0.0,
+            0.06
+          ],
+          [
+            0.4,
+            0.11
+          ],
+          [
+            0.65,
+            0.2
+          ]
+        ],
+        "back": [
+          [
+            0.0,
+            0.42
+          ],
+          [
+            0.4,
+            0.44
+          ],
+          [
+            0.65,
+            0.46
+          ]
+        ],
+        "thickness": [
+          [
+            0.0,
+            0.006
+          ],
+          [
+            0.65,
+            0.004
+          ]
+        ],
+        "v_max": [
+          [
+            0.0,
+            0.16
+          ],
+          [
+            1.0,
+            0.32
+          ]
+        ]
+      }
+    ],
+    "growth": {
+      "chin": {
+        "mass": [
+          "Beard",
+          "Under"
+        ]
+      },
+      "jaw": {
+        "mass": "Beard"
+      },
+      "upper_lip": {
+        "mass": "Moustache"
+      }
+    },
+    "silhouette": "one coherent beard along the jaw and chin, broad low-poly clumps on its lower edge, the chin slightly longer; a distinct moustache meeting it at the corners",
+    "intent": "maturity and ruggedness without hiding the face design: the cheekbones, the jaw's angle and the mouth stay readable"
+  }
+}

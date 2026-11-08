@@ -1,0 +1,13 @@
+{
+ "category": "foundation",
+ "origin": "wolf",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "body",
+  "variant_generation",
+  "head",
+  "skeleton",
+  "landmarks",
+  "regions"
+ ]
+}

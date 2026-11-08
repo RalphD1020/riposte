@@ -1,0 +1,10 @@
+{
+ "category": "rigging",
+ "origin": "default_foundation",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "fit_profile",
+  "weights",
+  "corrective"
+ ]
+}

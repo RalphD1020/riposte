@@ -1,0 +1,57 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-06",
+  "evidence": "iterations 20261105_1530_heroic_cranium (head design rounds 1-7, locked), 20261106_2215_wolf_face (eye fix: white_over_iris 0 on the 15-row sweep; v002 base reproduces the locked HeadV2; lock v002_lock)"
+ },
+ "category": "foundation",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [],
+ "files": {
+  "male_base.foundation.v002.json": {
+   "from": "art-src/blender/characters/male_base.foundation.v002.json",
+   "sha256": "c2ab83f33389d248d68b91e6667c3ee0456102dae5f911258ec9c9e3460a00a9"
+  },
+  "male_base.foundation.v002.lock.json": {
+   "from": "art-src/blender/characters/male_base.foundation.v002.lock.json",
+   "sha256": "44e38bd9af373e56aefcc338f7ab02325692d0e30b0fd630a07058e57d5b5942"
+  },
+  "male_base.foundation.v002.record.json": {
+   "from": "art-src/blender/characters/male_base.foundation.v002.record.json",
+   "sha256": "a41fb7611ad17dd8c35af87ac6ef8847d1438eea64b6bdd170a33a1568fd2610"
+  },
+  "male_base.foundation.v002.regions.json": {
+   "from": "art-src/blender/characters/male_base.foundation.v002.regions.json",
+   "sha256": "dbba9cfb7fada6173965febc203001258bdc161458b1f8ad8f33ab053d6a66e0"
+  }
+ },
+ "id": "male_base_foundation",
+ "notes": "Foundation revision v002: the three-physique default head (head_design on the build coordinate: lean after Spike Spiegel, reference after Goku / Vegeta, strongman after All Might; ears; the lower-face contour; the skull underside; the neck seated under the jaw) and the default eye's fixed white (white: backing). BodyV2 unchanged; HeadV2 2662 vertices; fitting regions regenerated (body regions identical to v001). Its blend and documents are protected in place; v001 stays for rollback.",
+ "origin": "default_foundation",
+ "protected": {
+  "art-src/blender/characters/male_base.foundation.v002.blend": "a1fed495c22a3d9ff152b62c009b340e0428e2abdc4e77d012810d2c504ca0bc",
+  "art-src/blender/characters/male_base.foundation.v002.json": "c2ab83f33389d248d68b91e6667c3ee0456102dae5f911258ec9c9e3460a00a9",
+  "art-src/blender/characters/male_base.foundation.v002.lock.json": "44e38bd9af373e56aefcc338f7ab02325692d0e30b0fd630a07058e57d5b5942",
+  "art-src/blender/characters/male_base.foundation.v002.record.json": "a41fb7611ad17dd8c35af87ac6ef8847d1438eea64b6bdd170a33a1568fd2610",
+  "art-src/blender/characters/male_base.foundation.v002.regions.json": "dbba9cfb7fada6173965febc203001258bdc161458b1f8ad8f33ab053d6a66e0"
+ },
+ "schema": "riposte.library_asset",
+ "sources": {
+  "tools/blender/authoring/male_base_v2.py": "80eede1c4bfd5b589994c12059ded3daa9bde66a4561598978adeafde360a6c1"
+ },
+ "status": "approved",
+ "subtype": "body",
+ "tags": [],
+ "version": "v002"
+}

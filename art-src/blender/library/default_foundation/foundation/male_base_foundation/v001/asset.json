@@ -1,0 +1,57 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-02",
+  "evidence": "iterations 20261101_2310_default_lock_chest_smooth (1_smooth), 20261102_0100_foundation_lock"
+ },
+ "category": "foundation",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [],
+ "files": {
+  "male_base.foundation.json": {
+   "from": "art-src/blender/characters/male_base.foundation.json",
+   "sha256": "0cb0e3f246400b471d571d7ab63a2c0763ccad96650a0aaca4a329941be7cfe2"
+  },
+  "male_base.foundation.lock.json": {
+   "from": "art-src/blender/characters/male_base.foundation.lock.json",
+   "sha256": "3374811b19c02ffcdb9492c62935eeb4cc1435a0e2e1e6344c5e96759e593235"
+  },
+  "male_base.foundation.record.json": {
+   "from": "art-src/blender/characters/male_base.foundation.record.json",
+   "sha256": "598e5f48dc3cb72ecceb273ee228f560842aa7d1387b770fbcb322e9512b89d1"
+  },
+  "male_base.foundation.regions.json": {
+   "from": "art-src/blender/characters/male_base.foundation.regions.json",
+   "sha256": "cc33eefe24509edf8107afb08088d3a1d3e802def6d7279f6ccc54f974062d98"
+  }
+ },
+ "id": "male_base_foundation",
+ "notes": "The default male foundation: base sculpt and head, resolution switches, reference 1.80 m / 80 kg, default identity, fitting regions; its blend and documents are protected in place (a revision is a new file and a new version).",
+ "origin": "default_foundation",
+ "protected": {
+  "art-src/blender/characters/male_base.foundation.blend": "b2e0a60a0125a636e6197450404c1791d6ff65fd04be6356b9a9e4142d5b5bc4",
+  "art-src/blender/characters/male_base.foundation.json": "0cb0e3f246400b471d571d7ab63a2c0763ccad96650a0aaca4a329941be7cfe2",
+  "art-src/blender/characters/male_base.foundation.lock.json": "3374811b19c02ffcdb9492c62935eeb4cc1435a0e2e1e6344c5e96759e593235",
+  "art-src/blender/characters/male_base.foundation.record.json": "598e5f48dc3cb72ecceb273ee228f560842aa7d1387b770fbcb322e9512b89d1",
+  "art-src/blender/characters/male_base.foundation.regions.json": "cc33eefe24509edf8107afb08088d3a1d3e802def6d7279f6ccc54f974062d98"
+ },
+ "schema": "riposte.library_asset",
+ "sources": {
+  "tools/blender/authoring/male_base_v2.py": "99eafb452feb621ba6eacc50819732dfa3b059b6e498a97f3c7b0ed7d3c9e00c"
+ },
+ "status": "approved",
+ "subtype": "body",
+ "tags": [],
+ "version": "v001"
+}

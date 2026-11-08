@@ -1,0 +1,45 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-02",
+  "evidence": "skin board, iteration 20261102_0900_wolf_identity_layer/skin (skin_02 chosen)"
+ },
+ "category": "skin",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "male_base_foundation",
+   "version": "v001"
+  }
+ ],
+ "files": {
+  "wolf_skin.json": {
+   "from": "iteration evidence: wolf_skin.json",
+   "sha256": "2857b85a20a57f226b60666f4ece28156d367d7f086d215eece1f7ef26546ae6"
+  }
+ },
+ "id": "wolf_skin",
+ "notes": "Wolf's skin: the shared swatch skin_02.",
+ "origin": "wolf",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {},
+ "status": "approved",
+ "subtype": "tone",
+ "tags": [
+  "fair",
+  "shared_swatch"
+ ],
+ "version": "v001"
+}

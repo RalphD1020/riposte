@@ -186,7 +186,7 @@ class HairContract(unittest.TestCase):
             "deformation": {"method": "rigid", "bone": "Head", "physique": "none"},
             "supported_configurations": list(m["physique"]["supported_configurations"]),
             "materials": ["hair"], "clearance": {"face": True},
-            "design": {"style": "tied_back", "method": "sculpted_mesh", "primary": "front_sweep",
+            "design": {"style": "tied_back", "method": "sculpted_mesh", "primary": "front_sweep", "variant": "A",
                        "regions": {"scalp": ["Cap"], "front_sweep": ["Sweep.*"], "rear_tie": ["Nape.*", "Bun.*"]}},
             "surfaces": {"relationships": [{"region": "scalp", "relationship": "attach", "design_regions": ["scalp"]}]},
         }
@@ -239,6 +239,27 @@ class HairContract(unittest.TestCase):
         hair = self.hair(m)
         del hair["design"]
         self.assertEqual(garments.problems(hair, m, r), ["hair fixture_hair lacks design"])
+        ## PERTURB: a new hairstyle naming no builder variant.
+        hair = self.hair(m)
+        del hair["design"]["variant"]
+        self.assertTrue(any("names the builder variant" in p for p in garments.problems(hair, m, r)))
+
+    def test_a_hairstyle_version_builds_the_variant_it_was_approved_with(self):
+        ## ARRANGE: Wolf's two shipped definitions and their v001 library copies (approved
+        ## before design.variant existed), and a candidate naming its own variant.
+        from character_modeling import asset_library
+        shipped = {s: garments.load(CHARACTERS.parent / "garments" / ("wolf_hair_%s.garment.json" % s)) for s in ("ranger", "training")}
+        library = {s: asset_library.payload("wolf_hair_%s" % s, "wolf_hair_%s.garment.json" % s, "v001") for s in ("ranger", "training")}
+        candidate = copy.deepcopy(shipped["ranger"])
+        candidate["design"]["variant"] = "F"
+        ## ACT / ASSERT: v001 rebuilds D and E whatever the builder's default; a named
+        ## variant wins; an unknown object without one fails closed.
+        for source in (shipped, library):
+            self.assertEqual((garments.hair_variant(source["ranger"]), garments.hair_variant(source["training"])), ("D", "E"))
+        self.assertEqual(garments.hair_variant(candidate), "F")
+        unnamed = dict(candidate, source={"object": "HairOther"}, design={})
+        with self.assertRaisesRegex(ValueError, "names no design.variant"):
+            garments.hair_variant(unnamed)
 
 
 class OutfitPairing(unittest.TestCase):

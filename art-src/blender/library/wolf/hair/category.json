@@ -1,0 +1,8 @@
+{
+ "category": "hair",
+ "origin": "wolf",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "hairstyle"
+ ]
+}

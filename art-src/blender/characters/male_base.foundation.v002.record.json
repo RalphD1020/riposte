@@ -1,0 +1,19 @@
+{
+  "schema": "riposte.character_foundation_record",
+  "version": 1,
+  "foundation": "character.male_base.foundation",
+  "approved": "2026-11-06: the three-physique default head (lean / reference / strongman head design, ears, lower-face contour, skull underside, seated neck) and the default eye's fixed white (person); the default bodies of 2026-11-02 unchanged",
+  "builder": "tools/blender/authoring/male_base_v2.py --foundation",
+  "objects": {
+    "BodyV2": {
+      "vertices": 86694,
+      "faces": 86692,
+      "sha256": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332"
+    },
+    "HeadV2": {
+      "vertices": 2662,
+      "faces": 5320,
+      "sha256": "feaed6dea36a10f91af1321ba668e8299eeaa44b30f8db88d36dccd7ba07240f"
+    }
+  }
+}

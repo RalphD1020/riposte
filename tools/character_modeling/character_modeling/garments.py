@@ -24,14 +24,20 @@ METHODS = ("skinned", "rigid")
 ## bakes with the body; none: it covers only regions no physique parameter shapes.
 PHYSIQUE = ("keys", "none")
 MAX_INFLUENCES = 4
-## Two asset types on one contract: clothing (layered, may hide body) and hair
-## (on the head, the intrinsic `hair` slot, must keep the face clear).
-TYPES = ("garment", "hair")
+## Three asset types on one contract: clothing (layered, may hide body), hair (on the
+## head, the intrinsic `hair` slot, must keep the face clear) and facial hair (an identity
+## layer on the face's growth regions, the `hair` slot, its coverage declared like a
+## garment's, the mouth preserved).
+TYPES = ("garment", "hair", "facial_hair")
 REQUIRED = (
     "id", "base_id", "base_topology_fingerprint", "skeleton_id", "rig_contract_sha256", "category",
     "regions", "source", "deformation", "supported_configurations", "materials",
 )
-REQUIRED_BY_TYPE = {"garment": ("layer", "coverage"), "hair": ("clearance", "design")}
+REQUIRED_BY_TYPE = {"garment": ("layer", "coverage"), "hair": ("clearance", "design"),
+                    "facial_hair": ("design", "coverage")}
+## A region a fitting-region document places on another object than the body (the head's
+## sub-regions on HeadV2) names it, and its parent region.
+BODY_OBJECT = None
 HAIR_SLOT = "hair"
 HAIR_REGION = "head"
 ## A hairstyle is a designed arrangement of connected volumes: `design.regions` maps
@@ -42,6 +48,25 @@ HAIR_SCALP = "scalp"
 ## Shipped hair is opaque sculpted geometry (ART-STYLE-001, mobile-first): no simulated
 ## strands, no alpha-layered cards, no runtime groom.
 HAIR_METHODS = ("sculpted_mesh",)
+
+
+## A hairstyle's geometry is a design variant of its builder (`wolf_hair.py`), named by the
+## definition's `design.variant`. Definitions approved before the field (the v001 library
+## versions) rebuild the variant they were approved with, by their built object, so a later
+## default never changes them.
+HAIR_V001_VARIANTS = {"HairRanger": "D", "HairTraining": "E"}
+
+
+def hair_variant(hair):
+    """The builder variant a hairstyle definition builds: its `design.variant`, else the
+    variant its object was approved with before the field existed."""
+    named = (hair.get("design") or {}).get("variant")
+    if named:
+        return named
+    obj = hair["source"]["object"]
+    if obj not in HAIR_V001_VARIANTS:
+        raise ValueError("%s names no design.variant and %s has no approved variant" % (hair.get("id", "?"), obj))
+    return HAIR_V001_VARIANTS[obj]
 
 
 def load(path):
@@ -66,10 +91,15 @@ def problems(garment, manifest, regions, worn_with=()):
     if garment.get("schema") != SCHEMA:
         out.append("%s is not a %s" % (gid, SCHEMA))
     base = manifest["base"]
-    if garment["base_id"] != base["id"]:
-        out.append("%s is fitted to %s, not %s" % (gid, garment["base_id"], base["id"]))
-    if garment["base_topology_fingerprint"] != base["topology_fingerprint"]:
-        out.append("%s was fitted to another base topology (%s..)" % (gid, garment["base_topology_fingerprint"][:12]))
+    ## A definition fitted to more than one base (a hairstyle the builder fits to each
+    ## resolved head) lists the others in `also_fitted`; it must name this one.
+    fitted = [(garment["base_id"], garment["base_topology_fingerprint"])]
+    fitted += [(b.get("base_id"), b.get("base_topology_fingerprint")) for b in garment.get("also_fitted", [])]
+    ids = [b for b, _f in fitted]
+    if base["id"] not in ids:
+        out.append("%s is fitted to %s, not %s" % (gid, ", ".join(ids), base["id"]))
+    elif (base["id"], base["topology_fingerprint"]) not in fitted:
+        out.append("%s was fitted to another base topology (%s..)" % (gid, dict(fitted)[base["id"]][:12]))
     if regions.get("topology_fingerprint") not in (None, base["topology_fingerprint"]):
         out.append("the fitting regions describe another base topology")
     skeleton = manifest["skeleton"]
@@ -81,6 +111,8 @@ def problems(garment, manifest, regions, worn_with=()):
         out.append("%s: layer %s is not a garment layer" % (gid, garment["layer"]))
     if kind == "hair":
         out += _hair_problems(gid, garment)
+    elif kind == "facial_hair":
+        out += _facial_hair_problems(gid, garment, regions)
     else:
         out += _upper_boundary_problems(gid, garment)
     out += _clearance_problems(gid, garment, regions)
@@ -97,9 +129,16 @@ def problems(garment, manifest, regions, worn_with=()):
     unsupported = [c for c in manifest["physique"]["supported_configurations"] if c not in garment["supported_configurations"]]
     if unsupported:
         out.append("%s does not support the character's configurations %s" % (gid, unsupported))
-    hidden = [r for r in garment.get("coverage", {}).get("hides", []) if r not in garment["regions"]]
+    coverage = garment.get("coverage", {})
+    hidden = [r for r in coverage.get("hides", []) if not covers(garment, r, regions)]
     if hidden:
         out.append("%s hides regions it does not cover %s" % (gid, hidden))
+    unknown = [r for r in coverage.get("hides", []) + coverage.get("preserves", []) if r not in regions["regions"]]
+    if unknown:
+        out.append("%s: coverage names unknown regions %s" % (gid, unknown))
+    both = sorted(set(coverage.get("hides", [])) & set(coverage.get("preserves", [])))
+    if both:
+        out.append("%s both hides and preserves %s" % (gid, both))
     slots = set(manifest["materials"]["intrinsic"]) | set(manifest["materials"]["costume"])
     stray = [m for m in garment["materials"] if m not in slots]
     if stray:
@@ -122,6 +161,8 @@ def _hair_problems(gid, hair):
         out.append("%s: a hairstyle names its style (design.style)" % gid)
     if design.get("method") not in HAIR_METHODS:
         out.append("%s: design.method must be one of %s (opaque sculpted hair; no strands or cards)" % (gid, HAIR_METHODS))
+    if not design.get("variant") and hair["source"]["object"] not in HAIR_V001_VARIANTS:
+        out.append("%s: a hairstyle names the builder variant it builds (design.variant)" % gid)
     if HAIR_SCALP not in regions:
         out.append("%s: a hairstyle is built on a %s region" % (gid, HAIR_SCALP))
     if design.get("primary") not in regions:
@@ -136,6 +177,36 @@ def _hair_problems(gid, hair):
     ## surface regions by surface_integration.relationship_problems (the audit and tests).
     if not (hair.get("surfaces") or {}).get("relationships"):
         out.append("%s: a hairstyle declares how it meets the body (surfaces.relationships)" % gid)
+    return out
+
+
+def covers(garment, region, regions):
+    """Whether `garment` occupies `region`: it names it, or the region's parent."""
+    entry = regions["regions"].get(region, {})
+    return region in garment["regions"] or entry.get("parent") in garment["regions"]
+
+
+## Facial hair (CHARACTER-GROOMING-001): modeled masses fitted to the face's growth regions
+## (`design.growth`: head sub-regions, each with its thickness), the intrinsic `hair` slot,
+## rigid on Head (no jaw yet) or skinned; it may never hide the mouth.
+FACIAL_HAIR_PRESERVED = ("mouth",)
+
+
+def _facial_hair_problems(gid, hair, regions):
+    out = []
+    if hair["materials"] != [HAIR_SLOT]:
+        out.append("%s: facial hair wears only the intrinsic %s slot (has %s)" % (gid, HAIR_SLOT, hair["materials"]))
+    if HAIR_REGION not in hair["regions"]:
+        out.append("%s: facial hair sits on the %s region" % (gid, HAIR_REGION))
+    growth = hair["design"].get("growth") or {}
+    if not growth:
+        out.append("%s: facial hair names its growth regions (design.growth)" % gid)
+    stray = sorted(r for r in growth if regions["regions"].get(r, {}).get("parent") != HAIR_REGION)
+    if stray:
+        out.append("%s: growth regions %s are not head sub-regions" % (gid, stray))
+    missing = sorted(set(FACIAL_HAIR_PRESERVED) - set(hair["coverage"].get("preserves", [])))
+    if missing:
+        out.append("%s: facial hair preserves %s" % (gid, missing))
     return out
 
 
@@ -219,12 +290,15 @@ def outfit_problems(garments, manifest, regions):
     return out
 
 
-def hidden_vertices(garments, regions):
-    """Base vertex indices the outfit hides: the union of every garment's `hides` regions."""
+def hidden_vertices(garments, regions, target=BODY_OBJECT):
+    """Vertex indices of `target` (the body when None, else a region document's `object`,
+    such as the head) the outfit hides: the union of every garment's `hides` regions on it."""
     hidden = set()
     for garment in garments:
         for region in garment.get("coverage", {}).get("hides", ()):
-            hidden.update(regions["regions"][region]["vertices"])
+            entry = regions["regions"][region]
+            if entry.get("object") == target:
+                hidden.update(entry["vertices"])
     return hidden
 
 

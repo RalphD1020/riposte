@@ -1,0 +1,11 @@
+{
+ "roughness": 0.75,
+ "schema": "riposte.skin_tone",
+ "srgb": [
+  0.973,
+  0.863,
+  0.776
+ ],
+ "swatch": "skin_02",
+ "swatches": "game/content/characters/wolf.character.json"
+}

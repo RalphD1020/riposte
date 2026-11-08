@@ -1,0 +1,184 @@
+{
+ "assets": {
+  "default_face": {
+   "category": "face",
+   "current": "v002",
+   "origin": "default_foundation",
+   "subtype": "face",
+   "uuid": "08af6208-1fc2-5deb-a3ed-57d287ebff10",
+   "versions": {
+    "v001": {
+     "sha256": "40c76aace12d85e82c92d34dfda522d202e3d9dfa9b2a9e895ea19be7b46cadb",
+     "status": "superseded"
+    },
+    "v002": {
+     "sha256": "c1879f2fdffa90beb8ff6d25097fce2f5176955e8c4b11edf1a5c0e85d85313c",
+     "status": "approved"
+    }
+   }
+  },
+  "male_base_foundation": {
+   "category": "foundation",
+   "current": "v002",
+   "origin": "default_foundation",
+   "subtype": "body",
+   "uuid": "2dd37eb7-8190-5a9a-bdb1-e7590c779632",
+   "versions": {
+    "v001": {
+     "sha256": "87bed1130bf62f6c15222d60b8d20318feab1f3e1fcc5b973b182e86fcb73849",
+     "status": "superseded"
+    },
+    "v002": {
+     "sha256": "786f773b744d8d70ca361f5070187e94360c8961f1936ac67d81cac2e9d15e9b",
+     "status": "approved"
+    }
+   }
+  },
+  "male_base_variants": {
+   "category": "foundation",
+   "current": "v001",
+   "origin": "default_foundation",
+   "subtype": "variant_generation",
+   "uuid": "1ceed312-8726-55a9-886a-a048a2dd4530",
+   "versions": {
+    "v001": {
+     "sha256": "b7425bb7a28250eaf7ca18779bf35a4fd443914bd25b2c09997b439cd8c1da0d",
+     "status": "approved"
+    }
+   }
+  },
+  "wolf_face": {
+   "category": "face",
+   "current": "v001",
+   "origin": "wolf",
+   "subtype": "face",
+   "uuid": "5aeb98bc-5195-50f1-8965-acc7573ecafa",
+   "versions": {
+    "v001": {
+     "sha256": "63afd01096a72059e11ad402c065255ce798a11252f1bfb1c3179e992214f884",
+     "status": "approved"
+    }
+   }
+  },
+  "wolf_hair_ranger": {
+   "category": "hair",
+   "current": "v001",
+   "origin": "wolf",
+   "subtype": "hairstyle",
+   "uuid": "8728154d-8e65-55b2-a1ab-5ee962ad9633",
+   "versions": {
+    "v001": {
+     "sha256": "6f4339a860f896833bfafd3ff37be54cdd8aa3ff2dd6dafa9c9a5e8591f43bc5",
+     "status": "approved"
+    }
+   }
+  },
+  "wolf_hair_training": {
+   "category": "hair",
+   "current": "v001",
+   "origin": "wolf",
+   "subtype": "hairstyle",
+   "uuid": "b3b0e81e-ff8a-5010-bd54-a61d6a95b19d",
+   "versions": {
+    "v001": {
+     "sha256": "c0d09b330b074880900a3903bd1b64a9f2d3d1737a906bcba641057e84aacfaa",
+     "status": "approved"
+    }
+   }
+  },
+  "wolf_skin": {
+   "category": "skin",
+   "current": "v001",
+   "origin": "wolf",
+   "subtype": "tone",
+   "uuid": "6ec7ad85-2eb4-53b5-8b03-3329693ff4d2",
+   "versions": {
+    "v001": {
+     "sha256": "22f7a36577eced2c6ca886656bb4d03ab50ac1b1c0d93ec916488625c5517e6b",
+     "status": "approved"
+    }
+   }
+  }
+ },
+ "categories": {
+  "attire": [
+   "top",
+   "trousers",
+   "armour",
+   "footwear",
+   "belt",
+   "accessory"
+  ],
+  "face": [
+   "face",
+   "eyes",
+   "brows",
+   "nose",
+   "expressions"
+  ],
+  "facial_hair": [
+   "beard",
+   "moustache",
+   "sideburns",
+   "stubble"
+  ],
+  "foundation": [
+   "body",
+   "variant_generation",
+   "head",
+   "skeleton",
+   "landmarks",
+   "regions"
+  ],
+  "hair": [
+   "hairstyle"
+  ],
+  "rigging": [
+   "fit_profile",
+   "weights",
+   "corrective"
+  ],
+  "skin": [
+   "tone",
+   "material"
+  ]
+ },
+ "origins": {
+  "default_foundation": {
+   "categories": {
+    "attire": [],
+    "face": [
+     "default_face"
+    ],
+    "facial_hair": [],
+    "foundation": [
+     "male_base_foundation",
+     "male_base_variants"
+    ],
+    "hair": [],
+    "rigging": [],
+    "skin": []
+   }
+  },
+  "wolf": {
+   "categories": {
+    "attire": [],
+    "face": [
+     "wolf_face"
+    ],
+    "facial_hair": [],
+    "foundation": [],
+    "hair": [
+     "wolf_hair_ranger",
+     "wolf_hair_training"
+    ],
+    "rigging": [],
+    "skin": [
+     "wolf_skin"
+    ]
+   }
+  }
+ },
+ "schema": "riposte.asset_library",
+ "version": 1
+}

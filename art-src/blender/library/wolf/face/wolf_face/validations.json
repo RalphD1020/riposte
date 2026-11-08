@@ -1,0 +1,13 @@
+{
+ "asset": "wolf_face",
+ "records": [
+  {
+   "configuration": "h1.80_f1.000_m1.000",
+   "date": "2026-11-06",
+   "evidence": "Wolf's face approved 2026-11-06 at the reference (iteration 20261106_2215_wolf_face: candidate r2, eye_final)",
+   "foundation": "character.male_base.foundation",
+   "version": "v001"
+  }
+ ],
+ "schema": "riposte.library_validations"
+}

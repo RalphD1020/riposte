@@ -1,0 +1,9 @@
+{
+ "category": "skin",
+ "origin": "wolf",
+ "schema": "riposte.library_category",
+ "subtypes": [
+  "tone",
+  "material"
+ ]
+}

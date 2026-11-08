@@ -9,10 +9,11 @@ v1's rig, built in stages from `male_base.blend` (v1, never edited) and saved as
   proportions as broad fields (w1, `HERO`: shoulder girdle, ribcage, arms, thighs, calves,
   neck, trapezius, upper back, lats, glutes). b1's surface is stored on the object
   (`riposte_b1_co`) for comparison.
-- `HeadV2`: v1's head island with its face subdivided (f0, no shape change; stored as
-  `riposte_f0_co`), then the face construction on the original mask (f1: `FACE_FORMS` and
-  `NOSE` strengthened by `FACE_ADJUST`: brow ridge over hooded eyes, cheekbones, an angular
-  nose tip, the chin), plane turns over `FACE_ADJUST["edge_deg"]` shaded as edges.
+- `HeadV2`: the approved head (2026-10-31, FACE-IDENTITY-001): v1's head island with its
+  face subdivided (f0, no shape change) is the construction surface; the paneled mask face
+  (`character_modeling.face_mask`) is built as its own topology on it and zipped to the
+  skull (f2, `build_face`). The construction surface stays on the head (`riposte_f0_co`):
+  hair and attachments frame on it, never on the face.
 
 `Body` (v1: skinned, 16 physique keys) stays in the file as the rig's reference: weights
 and configuration keys transfer from it. Nothing here moves a bone, the rest or the bind.
@@ -24,6 +25,12 @@ drift apart silently.
 
     blender --background --factory-startup --python tools/blender/authoring/male_base_v2.py -- --build
     blender --background --factory-startup --python tools/blender/authoring/male_base_v2.py -- --verify
+    blender --background --factory-startup --python tools/blender/authoring/male_base_v2.py -- --foundation
+    blender --background --factory-startup --python tools/blender/authoring/male_base_v2.py -- --verify-foundation
+
+`--foundation` builds the default foundation's base (`male_base.foundation.json`: this build
+with its mask and body studies) into its own source and record; `--verify-foundation`
+rebuilds it in memory and compares.
 """
 
 import hashlib
@@ -41,9 +48,25 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 CHARACTERS = os.path.join(ROOT, "art-src", "blender", "characters")
 MASTER_V1 = os.path.join(CHARACTERS, "male_base.blend")
 CANDIDATE = os.path.join(CHARACTERS, "male_base.v2.blend")
+## A review build of the base (an iteration folder's blend) that the fitting tools read in
+## place of the approved source; `--build` refuses while it is set.
+REVIEW_BASE = os.environ.get("RIPOSTE_BASE_REVIEW", "")
+if REVIEW_BASE:
+    CANDIDATE = REVIEW_BASE
 RECORD = os.path.join(CHARACTERS, "male_base.v2.record.json")
+## The default foundation (CHARACTER-FOUNDATION-001): its base is this build with the
+## foundation's mask and body studies, saved as the foundation's own source and record. The
+## document is the library's current `male_base_foundation` version's
+## (`asset_library.current_foundation_document`), or a review copy of it (a candidate's, in
+## its iteration folder) that the variation builder reads in its place and that never
+## writes the lock.
+REVIEW_FOUNDATION = os.environ.get("RIPOSTE_FOUNDATION_REVIEW", "")
 SCULPT = "BodyV2"
 STUDY = "HeadV2"
+HEAD_APPROVAL = ("2026-10-31 (iteration 20261031_2057_head_v1_shape: the mask face on v1's head shape); "
+                 "2026-11-01 bridge and brow ridge softened (face_mask.SOFT_EDGES, iteration 20261101_0640_soft_bridge_brow)")
+## f0's construction head: built, framed on, and removed inside one build.
+CONSTRUCTION_HEAD = "HeadConstruction"
 COLLECTION = "V2"
 AUTHORING_POSE = "riposte_authoring_pose"
 HEAD = "Head"
@@ -62,10 +85,6 @@ FINGERPRINT_DECIMALS = 5
 
 def _sculpt():
     return bpy.data.objects[SCULPT]
-
-
-def _study():
-    return bpy.data.objects[STUDY]
 
 
 def _rig():
@@ -111,7 +130,10 @@ def _set_active(obj):
 
 def _apply(obj, modifier):
     _set_active(obj)
-    bpy.ops.object.modifier_apply(modifier=modifier.name)
+    ## The object passed explicitly: an interactive session (the Blender MCP) has no object
+    ## context of its own for the operator.
+    with bpy.context.temp_override(object=obj, active_object=obj, selected_objects=[obj], selected_editable_objects=[obj]):
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
 
 
 def _smooth(obj, factor, repeat):
@@ -361,16 +383,11 @@ def _store_f0(obj):
         a.vector = v.co
 
 
-def _restore_f0(obj):
-    attribute = obj.data.attributes[F0_ATTRIBUTE]
-    for v, a in zip(obj.data.vertices, attribute.data):
-        v.co = a.vector
-
-
 def f0():
-    """HeadStudy: the head island copied, its face triangles subdivided (no shape change)."""
-    if STUDY in bpy.data.objects:
-        raise SystemExit("RIPOSTE_HEAD_STUDY: %s exists; f0 runs once" % STUDY)
+    """The construction head: the head island copied, its face triangles subdivided (no
+    shape change), its surface stored (`riposte_f0_co`)."""
+    if STUDY in bpy.data.objects or CONSTRUCTION_HEAD in bpy.data.objects:
+        raise SystemExit("RIPOSTE_HEAD: %s exists; f0 runs once" % STUDY)
     body = _body()
     head = body.vertex_groups[HEAD].index
     world = body.matrix_world
@@ -390,7 +407,7 @@ def f0():
         edges = list({e for f in faces for e in f.edges})
         bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, use_grid_fill=True)
         bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3])
-    data = bpy.data.meshes.new(STUDY)
+    data = bpy.data.meshes.new(CONSTRUCTION_HEAD)
     bm.to_mesh(data)
     bm.free()
     for p in data.polygons:
@@ -398,114 +415,12 @@ def f0():
     collection = bpy.data.collections.get(COLLECTION) or bpy.data.collections.new(COLLECTION)
     if collection.name not in bpy.context.scene.collection.children:
         bpy.context.scene.collection.children.link(collection)
-    obj = bpy.data.objects.new(STUDY, data)
+    obj = bpy.data.objects.new(CONSTRUCTION_HEAD, data)
     collection.objects.link(obj)
     _store_f0(obj)
     kept = sum(1 for v in data.vertices if tuple(round(c, 6) for c in v.co) in before)
     return {"vertices": len(data.vertices), "faces": len(data.polygons), "original_vertices_kept": kept,
             "frame": {k: round(v, 4) for k, v in frame.items()}}
-
-
-## The face construction, metres in the head's frame (x from the centre line, z world
-## height; the head island runs 1.522..1.7985 m, half-width 0.108, the face line at
-## y -0.135). `move` is the displacement at the form's centre (x outward, y back),
-## `radii` its Gaussian extent across and up. Mirrored: one side authored.
-FACE_FORMS = {
-    ## Brow: a raised supraorbital ridge, strongest at the inner end, angled down toward
-    ## the nose, tapering to the temple (three overlapping masses along it).
-    "brow_ridge_inner": {"at": (0.021, 1.696), "radii": (0.015, 0.009), "move": (0.0, -0.0075)},
-    "brow_ridge_mid": {"at": (0.046, 1.701), "radii": (0.017, 0.009), "move": (0.0, -0.0058)},
-    "brow_ridge_outer": {"at": (0.072, 1.705), "radii": (0.015, 0.008), "move": (0.001, -0.003)},
-    "glabella": {"at": (0.0, 1.699), "radii": (0.007, 0.009), "move": (0.0, 0.002)},
-    ## Eyes: a recessed orbit under the brow and an upper lid fold just above the eye,
-    ## well below the ridge (the eye stays readable; the brow never buries it).
-    "orbit": {"at": (0.0363, 1.671), "radii": (0.02, 0.013), "move": (0.0, 0.0042)},
-    "upper_lid_fold": {"at": (0.037, 1.6795), "radii": (0.017, 0.0035), "move": (0.0, -0.0018)},
-    ## Cheekbones: the widest forward-facing landmarks, lateral and slightly forward,
-    ## sloping in toward the nose; a soft hollow below them into the jaw.
-    "cheekbone": {"at": (0.063, 1.641), "radii": (0.019, 0.016), "move": (0.004, -0.0065)},
-    "cheekbone_inner_plane": {"at": (0.036, 1.638), "radii": (0.014, 0.014), "move": (0.0, -0.0025)},
-    "cheek_hollow": {"at": (0.058, 1.597), "radii": (0.017, 0.013), "move": (0.0, 0.0028)},
-    ## Chin: defined, slightly rounded forward projection.
-    "chin": {"at": (0.0, 1.548), "radii": (0.022, 0.017), "move": (0.0, -0.0045)},
-}
-
-
-## The nose: a raised angular bridge from the glabella to the tip, continuous with the
-## forehead (forward projection by height, a tent across x so its two lateral planes
-## meet at the centre line), a small rounded tip, a restrained transition below.
-NOSE = {"root": (1.696, 0.003, 0.011), "tip": (1.627, 0.016, 0.017), "base": (1.604, 0.0, 0.013),
-        "tip_ball": {"at": (0.0, 1.628), "radii": (0.010, 0.008), "move": (0.0, -0.003)}}
-
-
-## Forms act on the face only: full in front of FRONT_M (y), fading to nothing by FADE_M behind it.
-FRONT_M = -0.095
-
-
-FADE_M = 0.03
-
-
-def _gauss(x, z, form):
-    (cx, cz), (rx, rz) = form["at"], form["radii"]
-    return math.exp(-0.5 * (((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2))
-
-
-def _nose(x, z, nose):
-    """Forward projection of the bridge at height z and offset x (metres, positive)."""
-    (z_root, p_root, w_root), (z_tip, p_tip, w_tip), (z_base, p_base, w_base) = nose["root"], nose["tip"], nose["base"]
-    if z > z_root or z < z_base:
-        return 0.0
-    if z >= z_tip:
-        t = (z_root - z) / (z_root - z_tip)
-        p, w = p_root + (p_tip - p_root) * t ** 1.3, w_root + (w_tip - w_root) * t
-    else:
-        t = (z_tip - z) / (z_tip - z_base)
-        p, w = p_tip + (p_base - p_tip) * t ** 0.7, w_tip + (w_base - w_tip) * t
-    return p * max(0.0, 1.0 - x / w)
-
-
-def f1(forms, nose):
-    """The face construction (`forms` as FACE_FORMS, `nose` as NOSE) on the f0 surface."""
-    obj = _study()
-    if F0_ATTRIBUTE not in obj.data.attributes:
-        raise SystemExit("RIPOSTE_V2: %s has no f0 surface stored" % STUDY)
-    _restore_f0(obj)
-    report = {}
-    for v in obj.data.vertices:
-        p = v.co
-        mask = 1.0 if p.y <= FRONT_M else max(0.0, 1.0 - (p.y - FRONT_M) / FADE_M)
-        if mask <= 0.0:
-            continue
-        x, side = abs(p.x), (1.0 if p.x >= 0.0 else -1.0)
-        dx = dy = 0.0
-        for form in list(forms.values()) + [nose["tip_ball"]]:
-            g = _gauss(x, p.z, form)
-            dx += form["move"][0] * g
-            dy += form["move"][1] * g
-        dy -= _nose(x, p.z, nose)
-        if dx or dy:
-            p.x += side * dx * mask
-            p.y += dy * mask
-            moved = math.hypot(dx, dy) * mask
-            report["max_move_m"] = max(report.get("max_move_m", 0.0), moved)
-    obj.data.update()
-    report["max_move_m"] = round(report.get("max_move_m", 0.0), 4)
-    report["front_m"] = round(min(v.co.y for v in obj.data.vertices), 4)
-    return report
-
-
-## F1: changes to f1b's own named forms (FACE_FORMS / NOSE), nothing added. `scale` on a
-## form multiplies its move; the nose loses its rounded tip ball (the tent's tip stays an
-## angular point) and projects a little further.
-FACE_ADJUST = {
-    "forms": {"brow_ridge_inner": 1.25, "brow_ridge_mid": 1.25, "brow_ridge_outer": 1.15,
-              "upper_lid_fold": 1.3, "cheekbone": 1.35, "cheekbone_inner_plane": 1.2, "chin": 1.15},
-    "nose_tip_ball": 0.0,
-    "nose_projection": 1.12,
-    ## Plane changes steeper than this shade as edges; gentler ones stay smooth, so the
-    ## mask's panels read flat and its folds read angular.
-    "edge_deg": 34.0,
-}
 
 
 ## W1: the hero proportions on b1, as broad fields (metres, A-pose world).
@@ -537,6 +452,88 @@ HERO = {
 }
 
 
+## Foundation design studies of the body (CHARACTER-PHYSIQUE-ART-001): candidate revisions
+## of the approved reference, never a configuration. 0 is the approved body; a candidate
+## names values (`--body-study`), each scaling its extra HERO shifts (left side, mirrored)
+## and multiplying its radial scales. Once one is approved it joins HERO (with a new body
+## approval and fingerprint) and its entry here is removed. `heroic_profile` (2026-11-01):
+## the side profile read slender and, after a glute-only pass, feminine (hips deeper than a
+## shallow upper torso, a pointed glute). A heroic male profile carries its depth in the
+## upper torso and the legs: a thick upper back, traps and lats with the chest, deltoid
+## mass, quadriceps projecting to the front and side, hamstrings, calves; the glutes one
+## broad low mass flowing into the hamstrings, never a point.
+BODY_STUDY = {
+    "heroic_profile": {
+        "shift": {
+            "upper_back_depth": ((0.09, 0.14, 1.31), 0.12, (0.1, 1.0, 0.15), 0.018),
+            "trapezius_mass": ((0.10, 0.07, 1.45), 0.07, (0.2, 0.5, 1.0), 0.014),
+            "lat_flare": ((0.17, 0.06, 1.22), 0.09, (1.0, 0.3, 0.0), 0.012),
+            "chest_depth": ((0.09, -0.15, 1.29), 0.10, (0.1, -1.0, 0.1), 0.008),
+            "deltoid_mass": ((0.22, 0.0, 1.38), 0.07, (1.0, 0.0, 0.2), 0.010),
+            "glute_broad": ((0.09, 0.13, 0.83), 0.11, (0.1, 1.0, -0.2), 0.010),
+            "hamstring_depth": ((0.115, 0.10, 0.66), 0.10, (0.0, 1.0, 0.0), 0.012),
+            "quad_front": ((0.12, -0.075, 0.64), 0.10, (0.0, -1.0, 0.0), 0.016),
+            "vastus_lateral": ((0.175, -0.01, 0.60), 0.08, (1.0, 0.0, 0.0), 0.008),
+            "calf_back": ((0.12, 0.10, 0.30), 0.07, (0.0, 1.0, 0.0), 0.008),
+        },
+        "radial": {"upper_arm": 1.05, "forearm": 1.05},
+    },
+    ## `chest_profile` (2026-11-01, on heroic_profile): in profile the pectoral peaked low
+    ## (its apex at the nipple line) and fell away above it, a breast-like curve. The mass
+    ## moves up and spreads over a taller band: the upper pectoral fills under the clavicle
+    ## and the lower pectoral's downward bulge tucks up into a defined lower boundary. The
+    ## pectoral's width and front view are unchanged; local soft masses, never planes.
+    "chest_profile": {
+        "shift": {
+            "pec_upper_fill": ((0.085, -0.165, 1.395), 0.045, (0.1, -1.0, 0.25), 0.016),
+            "pec_lower_tuck": ((0.095, -0.17, 1.205), 0.035, (0.0, 1.0, 0.35), 0.009),
+        },
+    },
+    ## `upper_thorax` (on chest_profile): in profile the torso was a lens, its front and
+    ## back both deepest at the nipple line and falling away evenly to the neck and the
+    ## waist, a bust over a barrel. A heroic thorax is deepest high: the rib cage itself
+    ## widens and deepens from the armpits up to the clavicles (`thorax`: z band, x scale,
+    ## front and back depth scales about the torso's axis, weighted by the spine and chest),
+    ## fading out above the lower pectoral so the waist and the lower chest keep theirs.
+    "upper_thorax": {
+        "thorax": {"rib_cage": ((1.26, 1.36, 1.46, 1.53), 1.05, 1.06, 1.02)},
+    },
+    ## `pectoral_sweep` (on upper_thorax): the pectoral as the fan it is, its clavicular
+    ## fibres running from the sternum's top out under the clavicle into the anterior
+    ## deltoid (`capsule`: a soft mass along a segment, never a point or a plane), so the
+    ## upper and outer chest are full and the shoulder leads into it; the sternum's centre
+    ## stays shallow.
+    "pectoral_sweep": {
+        "capsule": {"clavicular_pec": ((0.045, -0.15, 1.425), (0.19, -0.075, 1.405), 0.032, (0.25, -1.0, 0.1), 0.008),
+                    "anterior_deltoid": ((0.19, -0.075, 1.405), (0.225, -0.04, 1.36), 0.03, (0.6, -1.0, 0.0), 0.006)},
+    },
+    ## `upper_chest_depth` (on pectoral_sweep): a little more front depth of the upper
+    ## rib cage alone.
+    "upper_chest_depth": {
+        "thorax": {"rib_cage_front": ((1.28, 1.37, 1.45, 1.52), 1.0, 1.03, 1.0)},
+    },
+}
+
+def study_fields(study):
+    """HERO plus the named body studies (their shifts scaled by the value, their radial
+    scales' growth scaled by it)."""
+    fields = {"radial": dict(HERO["radial"]), "shift": dict(HERO["shift"]), "thorax": {}, "capsule": {}}
+    for key, value in (study or {}).items():
+        if key not in BODY_STUDY:
+            raise SystemExit("RIPOSTE_V2: unknown body study %s (known: %s)" % (key, sorted(BODY_STUDY)))
+        for name, (centre, radius, direction, amount) in BODY_STUDY[key].get("shift", {}).items():
+            fields["shift"]["%s.%s" % (key, name)] = (centre, radius, direction, amount * value)
+        for name, (band, sx, front, back) in BODY_STUDY[key].get("thorax", {}).items():
+            fields["thorax"]["%s.%s" % (key, name)] = (band, 1.0 + (sx - 1.0) * value, 1.0 + (front - 1.0) * value,
+                                                      1.0 + (back - 1.0) * value)
+        for name, (a, b, radius, direction, amount) in BODY_STUDY[key].get("capsule", {}).items():
+            fields["capsule"]["%s.%s" % (key, name)] = (a, b, radius, direction, amount * value)
+        for name, extra in BODY_STUDY[key].get("radial", {}).items():
+            bones, band, scale = fields["radial"][name]
+            fields["radial"][name] = (bones, band, 1.0 + (scale * (1.0 + (extra - 1.0) * value) - 1.0))
+    return fields
+
+
 B1_ATTRIBUTE = "riposte_b1_co"
 
 
@@ -549,25 +546,19 @@ def _store(obj):
     return co.reshape(-1, 3)
 
 
-def _approved_face():
-    """FACE_FORMS and NOSE with FACE_ADJUST applied (the approved F1 face)."""
-    forms = {k: dict(v) for k, v in FACE_FORMS.items()}
-    nose = {k: (dict(v) if isinstance(v, dict) else v) for k, v in NOSE.items()}
-    for name, scale in FACE_ADJUST["forms"].items():
-        forms[name]["move"] = tuple(c * scale for c in forms[name]["move"])
-    nose["tip_ball"]["move"] = tuple(c * FACE_ADJUST["nose_tip_ball"] for c in nose["tip_ball"]["move"])
-    for key in ("root", "tip", "base"):
-        z, projection, width = nose[key]
-        nose[key] = (z, projection * FACE_ADJUST["nose_projection"], width)
-    return forms, nose
-
-
-def w1():
-    """The heroic proportions on b1 (HERO): radial scales along segments and broad shifts."""
-    import numpy as np
+def w1(body_study=None):
+    """The heroic proportions on b1 (HERO, plus a candidate's `body_study`): radial scales
+    along segments and broad shifts."""
     apose()
     obj = _sculpt()
     co = _store(obj)
+    return _proportion_fields(obj, co, study_fields(body_study))
+
+
+def _proportion_fields(obj, co, fields):
+    """Apply proportion `fields` (HERO's form: radial scales along segments, broad shifts)
+    to `obj` whose A-pose points are `co`, weighted by v1's transferred skin weights."""
+    import numpy as np
     weights = _transfer_weights([tuple(c) for c in co])
     p = co.copy()
     sign = np.where(p[:, 0] < 0.0, -1.0, 1.0)
@@ -582,7 +573,7 @@ def w1():
                 total += weights.get(name[:-2] + ".R", 0.0)
         return np.minimum(total, 1.0)
 
-    for _name, (bones, band, scale) in HERO["radial"].items():
+    for _name, (bones, band, scale) in fields.get("radial", {}).items():
         w = weight(bones)
         if bones[0] in ("Spine", "Chest"):
             t = p[:, 2]
@@ -597,7 +588,20 @@ def w1():
             t = along / np.linalg.norm(tail - head)
             radial = p - (head + along[:, None] * a)
         out += (w * _window(np, t, band) * (scale - 1.0))[:, None] * radial
-    for _name, (centre, radius, direction, amount) in HERO["shift"].items():
+    torso = weight(("Spine", "Chest"))
+    axis_y = np.median(p[torso > 0.5, 1])
+    for _name, (band, sx, front, back) in fields.get("thorax", {}).items():
+        w = torso * _window(np, p[:, 2], band)
+        ry = p[:, 1] - axis_y
+        out[:, 0] += w * (sx - 1.0) * p[:, 0]
+        out[:, 1] += w * np.where(ry < 0.0, front - 1.0, back - 1.0) * ry
+    for _name, (a, b, radius, direction, amount) in fields.get("capsule", {}).items():
+        a, b = np.array(a), np.array(b)
+        d = np.array(direction) / np.linalg.norm(direction)
+        s = np.clip((p - a) @ (b - a) / np.dot(b - a, b - a), 0.0, 1.0)
+        r = np.linalg.norm(p - (a + s[:, None] * (b - a)), axis=1)
+        out += (amount * np.exp(-0.5 * (r / radius) ** 2))[:, None] * d
+    for _name, (centre, radius, direction, amount) in fields.get("shift", {}).items():
         d = np.array(direction) / np.linalg.norm(direction)
         r = np.linalg.norm(p - np.array(centre), axis=1)
         out += (amount * np.exp(-0.5 * (r / radius) ** 2))[:, None] * d
@@ -607,12 +611,168 @@ def w1():
     return {"max_move_mm": round(float(np.linalg.norm(out - co, axis=1).max()) * 1000, 1)}
 
 
-def build():
-    """Every stage, from the open v1 master, in order. Returns the stage reports."""
-    report = {"b0": b0(), "b1": b1(), "w1": w1(), "f0": f0()}
-    forms, nose = _approved_face()
-    report["f1"] = f1(forms, nose)
-    _study().data.set_sharp_from_angle(angle=math.radians(FACE_ADJUST["edge_deg"]))
+## n1 (candidate, not a build stage until approved), the neck seated in the head
+## (CHARACTER-VARIATION-001). The neck's upper termination
+## overlaps the head on purpose: under the jaw and at the nape, the seam. Where it would
+## instead come through the jaw's sides or the face above its lower edge row (a body face
+## crossing a DEFECT_CLASSES head face, `head_face_classes`), the neck narrows there toward its own axis (the Neck bone,
+## horizontally) just enough to pass NECK_SEAT_M inside that head face. The narrowing is one
+## smooth field: each body vertex takes the strongest Gaussian-weighted (NECK_EASE_M)
+## requirement of the crossing vertices around it, relaxed over the mesh (NECK_RELAX
+## rounds, never below a crossing vertex's own requirement): a local narrowing just under
+## the jaw, never a dent or a fold, and the intended overlap stays. Every resolved head and body (every
+## configuration) is seated the same way, in the authoring A-pose.
+NECK_SEAT_M = 0.002
+## A poking vertex is never more than this outside the jaw (beyond it is the shoulder).
+NECK_REACH_M = 0.015
+## The poking patch: body vertices this near a crossing.
+NECK_PATCH_M = 0.012
+NECK_EASE_M = 0.012
+NECK_RELAX = 12
+NECK_PASSES = 8
+## A head face whose normal points down more steeply than this is the underside (the seam).
+UNDERSIDE_NORMAL_Z = 0.5
+## A narrowing toward the axis that meets the crossed face this obliquely is not used.
+MIN_APPROACH = 0.2
+
+
+## Where the body may cross the head (the intended seam) and where it may not.
+SEAM_CLASSES = ("underside", "nape", "jaw_edge")
+## The neck covers the jaw's lower edge row by at most this (outside the row's faces);
+## more is the neck showing over the jaw, a defect.
+JAW_EDGE_COVER_M = 0.005
+DEFECT_CLASSES = ("side", "front", "up")
+
+
+def seam_face(normal):
+    """A head face where the neck may overlap it: the underside or the nape."""
+    return normal.z < -UNDERSIDE_NORMAL_Z or (normal.y > abs(normal.x) and normal.y > 0.3)
+
+
+def head_face_classes(head):
+    """Each head face's class for head-neck integration (CHARACTER-VARIATION-001): by its
+    facing, `underside` (under the jaw), `nape` (the lower occiput, facing back), `front`,
+    `up` or `side`; a side or front face sharing a vertex with the underside is the jaw's
+    lower edge row, `jaw_edge`: the neck covering it is what keeps the junction clean, so
+    it is seam with the underside and nape (SEAM_CLASSES); the rest are DEFECT_CLASSES."""
+    rotation = head.matrix_world.to_3x3()
+    normals = [(rotation @ p.normal).normalized() for p in head.data.polygons]
+    classes = []
+    for n in normals:
+        if n.z < -UNDERSIDE_NORMAL_Z:
+            classes.append("underside")
+        elif n.y > abs(n.x) and n.y > 0.3:
+            classes.append("nape")
+        elif n.y < -abs(n.x):
+            classes.append("front")
+        elif n.z > UNDERSIDE_NORMAL_Z:
+            classes.append("up")
+        else:
+            classes.append("side")
+    under = {v for p, kind in zip(head.data.polygons, classes) if kind == "underside" for v in p.vertices}
+    for i, p in enumerate(head.data.polygons):
+        if classes[i] in ("side", "front") and under.intersection(p.vertices):
+            classes[i] = "jaw_edge"
+    return classes
+
+
+def seat_neck(body, head):
+    """Seat `body`'s neck inside `head` where it would come through the jaw's sides or the
+    face. Returns {"moved_vertices", "eased_vertices", "max_move_mm", "passes", "crossings_left"}."""
+    from mathutils.kdtree import KDTree
+    head_world, rotation = head.matrix_world, head.matrix_world.to_3x3()
+    head_tree = BVHTree.FromPolygons([head_world @ v.co for v in head.data.vertices], [list(p.vertices) for p in head.data.polygons])
+    normals = [(rotation @ p.normal).normalized() for p in head.data.polygons]
+    seam = [kind in SEAM_CLASSES for kind in head_face_classes(head)]
+    centres = [sum((head_world @ head.data.vertices[i].co for i in p.vertices), Vector()) / len(p.vertices) for p in head.data.polygons]
+    world, inverse = body.matrix_world, body.matrix_world.inverted()
+    _m, neck_head, neck_tail = bone_frame("Neck")
+    axis = (neck_tail - neck_head).normalized()
+    neighbours = {}
+    for edge in body.data.edges:
+        a, b = edge.vertices
+        neighbours.setdefault(a, []).append(b)
+        neighbours.setdefault(b, []).append(a)
+    report = {"moved_vertices": 0, "eased_vertices": 0, "max_move_mm": 0.0, "passes": []}
+
+    def crossings(points):
+        tree = BVHTree.FromPolygons(points, [list(p.vertices) for p in body.data.polygons])
+        return [(h, b) for h, b in head_tree.overlap(tree) if not seam[h]]
+
+    def inward(p):
+        """The horizontal direction from `p` to the neck's axis."""
+        on_axis = neck_head + axis * (p - neck_head).dot(axis)
+        d = on_axis - p
+        d.z = 0.0
+        return d.normalized() if d.length > 1e-6 else None
+
+    for _pass in range(NECK_PASSES):
+        points = [world @ v.co for v in body.data.vertices]
+        moves = {}
+        for h, b in crossings(points):
+            frontier, seen = list(body.data.polygons[b].vertices), set()
+            origin = sum((points[i] for i in frontier), Vector()) / len(frontier)
+            while frontier:
+                i = frontier.pop()
+                if i in seen:
+                    continue
+                seen.add(i)
+                depth = (points[i] - centres[h]).dot(normals[h])
+                if depth <= -NECK_SEAT_M or (points[i] - origin).length > NECK_PATCH_M:
+                    continue
+                d = inward(points[i])
+                approach = -d.dot(normals[h]) if d is not None else 0.0
+                if depth < NECK_REACH_M and approach > MIN_APPROACH:
+                    move = d * ((depth + NECK_SEAT_M) / approach)
+                    if i not in moves or move.length > moves[i].length:
+                        moves[i] = move
+                frontier += neighbours.get(i, [])
+        if not moves:
+            break
+        kd = KDTree(len(moves))
+        for k, i in enumerate(moves):
+            kd.insert(points[i], k)
+        kd.balance()
+        keys = list(moves)
+        need = {i: m.length for i, m in moves.items()}
+        amount = {}
+        for i, p in enumerate(points):
+            best = need.get(i, 0.0)
+            for _co, k, distance in kd.find_range(p, 2.5 * NECK_EASE_M):
+                best = max(best, need[keys[k]] * math.exp(-(distance / NECK_EASE_M) ** 2))
+            if best > 1e-5:
+                amount[i] = best
+        for _round in range(NECK_RELAX):
+            relaxed = {}
+            for i, value in amount.items():
+                around = [amount.get(j, 0.0) for j in neighbours.get(i, ())]
+                mean = 0.5 * value + 0.5 * sum(around) / max(1, len(around))
+                relaxed[i] = max(mean, need.get(i, 0.0))
+            amount = relaxed
+        eased = {i: v for i, v in amount.items() if i not in moves}
+        for i, value in amount.items():
+            d = inward(points[i])
+            if d is not None:
+                body.data.vertices[i].co = inverse @ (points[i] + d * value)
+        body.data.update()
+        report["passes"].append([len(moves), len(crossings([world @ v.co for v in body.data.vertices]))])
+        report["moved_vertices"] += len(moves)
+        report["eased_vertices"] += len(eased)
+        report["max_move_mm"] = max(report["max_move_mm"], round(max(m.length for m in moves.values()) * 1000, 2))
+    report["crossings_left"] = len(crossings([world @ v.co for v in body.data.vertices]))
+    return report
+
+
+def build(mask_study=None, body_study=None):
+    """Every stage, from the open v1 master, in order. Returns the stage reports.
+    `mask_study`: a candidate's foundation design study values (`face_mask.MASK_STUDY`,
+    `EDGE_SOFTNESS`); `body_study` the body's (`BODY_STUDY`); None is the approved one."""
+    report = {"b0": b0(), "b1": b1(), "w1": w1(body_study), "f0": f0()}
+    _head, report["f2"] = build_face(source=CONSTRUCTION_HEAD, name=STUDY, parameters=mask_study)
+    construction = bpy.data.objects[CONSTRUCTION_HEAD]
+    mesh = construction.data
+    bpy.data.objects.remove(construction, do_unlink=True)
+    bpy.data.meshes.remove(mesh)
     return report
 
 
@@ -721,11 +881,11 @@ def _skinning(names):
     return np.stack(out)
 
 
-def _joined():
-    """BodyV2 and HeadV2 as one surface (A-pose world): points, faces, and the
-    construction surface (the head's f0 skull, the body's own points)."""
+def _joined(body_name=SCULPT, head_name=STUDY):
+    """A body and a head (BodyV2 and HeadV2 by default) as one surface (A-pose world):
+    points, faces, and the construction surface (the head's skull, the body's own points)."""
     import numpy as np
-    body, head = _sculpt(), _study()
+    body, head = bpy.data.objects[body_name], bpy.data.objects[head_name]
     points = np.concatenate([_points(body), _points(head)])
     stored = np.array([tuple(a.vector) for a in head.data.attributes[F0_ATTRIBUTE].data])
     m = np.array(head.matrix_world)
@@ -738,11 +898,11 @@ def _joined():
     return points, faces, construction, smooth, {tuple(sorted(k)) for k, s in sharp if s}
 
 
-def bind():
+def bind(body_name=SCULPT, head_name=STUDY):
     """The bound body `Body` (v1's `Body` kept as `BodyV1`): returns the round-trip report."""
     import numpy as np
     apose()
-    points, faces, construction, smooth, sharp = _joined()
+    points, faces, construction, smooth, sharp = _joined(body_name, head_name)
     weights = _transfer_weights([tuple(p) for p in points])
     names, table = sparse_weights(weights)
     mesh = bpy.data.meshes.new(BOUND)
@@ -784,13 +944,624 @@ def bind():
     error = float(np.linalg.norm(_evaluated_points(obj) - points, axis=1).max())
     for pose_bone in _rig().pose.bones:
         pose_bone.matrix_basis.identity()
-    for name in (SCULPT, STUDY, V1_REFERENCE):
+    for name in {SCULPT, STUDY, V1_REFERENCE, body_name, head_name}:
         bpy.data.objects[name].hide_render = True
         bpy.data.objects[name].hide_set(True)
     influences = (table > 0.0).sum(axis=1)
     return {"vertices": len(points), "bones": names, "round_trip_max_mm": round(error * 1000, 4),
             "influences": {str(k): int((influences == k).sum()) for k in range(1, MAX_INFLUENCES + 1)},
             "keys": sorted(deltas)}
+
+
+## The heroic paneled mask (FACE-IDENTITY-001, `character_modeling.face_mask`): the face's
+## own topology on the head's construction surface.
+## The face's panel turns shade as edges only above this angle: softened, never razor-sharp
+## (the geometry carries the turn).
+FACE_EDGE_DEG = 40.0
+## A skull vertex is on the front sheet (the face's chart covers it) within this of the
+## front-most surface at its (x, z).
+FRONT_SHEET_M = 0.002
+## The seam between the face and the skull is refined until no edge is longer than this,
+## every new vertex put back on the construction surface (a chord across the skull's
+## curvature would cut inside it and print a crease).
+SEAM_EDGE_M = 0.008
+SEAM_PASSES = 6
+## The face eases into the skull: vertices within BLEND_M of the boundary (both sides) are
+## relaxed, fully at the boundary and not at all at BLEND_M, so no perimeter reads; the
+## panel turns inside stay as built.
+BLEND_M = 0.015
+BLEND_PASSES = 12
+## With `face_mask.LOWER_CONTOUR`: under the jaw (the boundary below the jaw's corner plus
+## LOWER_BLEND_ABOVE_M) the face meets the skull at an angle (the corner under the chin at
+## chin_low, the border's dip at jaw_low, its step at jaw_angle: HEAD-CONTOUR-001), so the
+## band there is widened by LOWER_BLEND_M per unit of the study (at most one unit).
+LOWER_BLEND_M = 0.015
+LOWER_BLEND_ABOVE_M = 0.004
+## With it the lower face is split LOWER_CUTS times per edge, smoothly (`subdivide_edges`
+## smooth: the new vertices follow the vertex normals, a curve through the old ones).
+LOWER_CUTS = 2
+LOWER_SMOOTH = 1.0
+## The skull's underside (`_underside`): below UNDERSIDE_V of the head's height (mid-ear: a
+## rim at the ear lobe crossed the jaw's rear rise in view, a crease against the coarse
+## facets above), edges over UNDERSIDE_EDGE_M split flat, then UNDERSIDE_PASSES Taubin
+## passes (LAMBDA smooths, MU inflates back; 12 left ripples at the coarse triangles' ~3 cm
+## spacing on the jaw's side), the weight rising over UNDERSIDE_FADE_M.
+UNDERSIDE_V = 0.50
+## And in front of UNDERSIDE_DEPTH of the head's depth: the jaw and the junction, never the
+## nape the hair hangs from (smoothing it moved the hanging hair into the body).
+UNDERSIDE_DEPTH = 0.75
+UNDERSIDE_EDGE_M = 0.008
+UNDERSIDE_PASSES = 30
+UNDERSIDE_LAMBDA = 0.5
+UNDERSIDE_MU = -0.53
+UNDERSIDE_FADE_M = 0.025
+UNDERSIDE_IN_M = 0.001
+## The skull's hole keeps at least this distance from the face boundary (a hole vertex on
+## the boundary would zip into needle triangles).
+SEAM_GAP_M = 0.003
+## The skull and seam triangles this near the boundary are re-triangulated for even angles
+## (edge rotation only: no vertex moves or is added; the face's panels are never touched).
+BEAUTIFY_M = 0.07
+
+
+def _mask_module():
+    sys.path.insert(0, os.path.join(ROOT, "tools", "character_modeling"))
+    from character_modeling import face_mask
+    return face_mask
+
+
+class _Construction:
+    """A head's construction surface in its chart: the front-most point at (u, v) and the
+    smoothed normal there (vertex normals interpolated across the hit triangle)."""
+
+    def __init__(self, points, faces):
+        import numpy as np
+        self.co = np.asarray(points, dtype=float)
+        self.faces = faces
+        self.low, self.top = float(self.co[:, 2].min()), float(self.co[:, 2].max())
+        self.height = self.top - self.low
+        self.half_width = float(np.abs(self.co[:, 0]).max())
+        self.front, self.back = float(self.co[:, 1].min()), float(self.co[:, 1].max())
+        self.centre = Vector((0.0, (self.front + self.back) / 2.0, self.low + self.height / 2.0))
+        normals = np.zeros_like(self.co)
+        for f in faces:
+            a, b, c = (self.co[i] for i in f[:3])
+            normals[list(f)] += np.cross(b - a, c - a)
+        self.normals = normals / np.linalg.norm(normals, axis=1)[:, None]
+        self.tree = BVHTree.FromPolygons([Vector(p) for p in self.co], faces)
+
+    def chart(self, p):
+        return p[0] / self.half_width, (p[2] - self.low) / self.height
+
+    def hit(self, x, z):
+        location, _normal, index, _d = self.tree.ray_cast(Vector((x, self.front - 1.0, z)), Vector((0.0, 1.0, 0.0)))
+        return location, index
+
+    def onto(self, p):
+        """`p` moved onto the surface along the smoothed normal at its nearest point (a
+        nearest-point snap would collapse neighbours onto one facet's edge)."""
+        nearest, _normal, index, _d = self.tree.find_nearest(p)
+        corners = self.faces[index][:3]
+        weights = _barycentric_3d(nearest, *(Vector(self.co[i]) for i in corners))
+        normal = sum((Vector(self.normals[i]) * w for i, w in zip(corners, weights)), Vector()).normalized()
+        location, _n, _i, _d = self.tree.ray_cast(p + normal * 0.03, -normal, 0.06)
+        return location if location is not None else nearest
+
+    def at(self, u, v, name=""):
+        location, index = self.hit(u * self.half_width, self.low + v * self.height)
+        if location is None:
+            raise SystemExit("RIPOSTE_FACE: %s (u %.3f, v %.3f) is off the head's front" % (name, u, v))
+        corners = self.faces[index][:3]
+        a, b, c = (Vector(self.co[i]) for i in corners)
+        weights = _barycentric_3d(location, a, b, c)
+        normal = sum((Vector(self.normals[i]) * w for i, w in zip(corners, weights)), Vector())
+        return location, normal.normalized()
+
+
+## A placed control's construction point lies this near its chart position (face vertices
+## along a panel edge are a third of the edge apart, ~10 mm).
+CONTROL_MATCH_M = 0.004
+
+
+## A resolved head (a morphed copy of the built head, one topology) carries its control
+## vertices' indices, found on the head it was copied from (`face_control_indices`): a
+## morph moves the chart frame (a taller cranium, a shorter face), so a chart lookup on
+## the morphed head would miss them.
+CONTROL_INDICES = "riposte_control_vertices"
+## On a built head, each control vertex's (1 + index in sorted control names); 0 elsewhere.
+CONTROL_ATTRIBUTE = "riposte_control"
+
+
+def face_controls(head, names, parameters=None):
+    """World positions of `face_mask` control vertices `names` (".R": the -x twin) on a head
+    built by `build_face`: the control as placed (its construction point plus its lift), so a
+    feature attaches to the crease the head has. A resolved head uses its stored indices."""
+    if CONTROL_INDICES in head:
+        known = json.loads(head[CONTROL_INDICES])
+        if all(n in known for n in names):
+            return {n: head.matrix_world @ head.data.vertices[known[n]].co for n in names}
+    return {n: head.matrix_world @ head.data.vertices[i].co for n, i in face_control_indices(head, names, parameters).items()}
+
+
+def face_control_indices(head, names, parameters=None):
+    """The vertex index of each control vertex `names` on a head built by `build_face`: the
+    head's own vertex whose stored construction point lies at the control's chart position
+    on the front of the head."""
+    from mathutils.kdtree import KDTree
+    face_mask = _mask_module()
+    tag = head.data.attributes.get(CONTROL_ATTRIBUTE)
+    if tag is not None:
+        names_all = sorted(face_mask.control_points(None))
+        found = {names_all[a.value - 1]: i for i, a in enumerate(tag.data) if a.value > 0}
+        missing = [n for n in names if n not in found]
+        if missing:
+            raise SystemExit("RIPOSTE_FACE: controls %s are not tagged on %s" % (missing, head.name))
+        return {n: found[n] for n in names}
+    stored = [head.matrix_world @ Vector(a.vector) for a in head.data.attributes[F0_ATTRIBUTE].data]
+    low = min(p.z for p in stored)
+    height = max(p.z for p in stored) - low
+    half_width = max(abs(p.x) for p in stored)
+    centre_y = 0.5 * (min(p.y for p in stored) + max(p.y for p in stored))
+    front = [i for i, p in enumerate(stored) if p.y < centre_y]
+    kd = KDTree(len(front))
+    for k, i in enumerate(front):
+        kd.insert(Vector((stored[i].x, 0.0, stored[i].z)), k)
+    kd.balance()
+    controls = face_mask.control_points(parameters)
+    out = {}
+    for name in names:
+        u, v = controls[name][:2]
+        _co, k, distance = kd.find(Vector((u * half_width, 0.0, low + v * height)))
+        if distance > CONTROL_MATCH_M:
+            raise SystemExit("RIPOSTE_FACE: control %s has no vertex on %s (%.1f mm off)" % (name, head.name, distance * 1000))
+        out[name] = front[k]
+    return out
+
+
+def _barycentric_3d(p, a, b, c):
+    v0, v1, v2 = b - a, c - a, p - a
+    d00, d01, d11, d20, d21 = v0.dot(v0), v0.dot(v1), v1.dot(v1), v2.dot(v0), v2.dot(v1)
+    den = d00 * d11 - d01 * d01
+    wb = (d11 * d20 - d01 * d21) / den
+    wc = (d00 * d21 - d01 * d20) / den
+    return 1.0 - wb - wc, wb, wc
+
+
+def _inside(point, polygon):
+    x, y = point
+    inside = False
+    for (x1, y1), (x2, y2) in zip(polygon, polygon[1:] + polygon[:1]):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def _border_loop(bm, verts):
+    """The one closed loop of boundary edges among `verts`, in walking order."""
+    edges = [e for e in bm.edges if e.is_boundary and e.verts[0] in verts and e.verts[1] in verts]
+    neighbours = {}
+    for e in edges:
+        a, b = e.verts
+        neighbours.setdefault(a, []).append(b)
+        neighbours.setdefault(b, []).append(a)
+    if not neighbours or any(len(n) != 2 for n in neighbours.values()):
+        raise SystemExit("RIPOSTE_FACE: the border is not one simple loop (%d edges)" % len(edges))
+    start = next(iter(neighbours))
+    loop, previous = [start], None
+    while True:
+        here = loop[-1]
+        nxt = neighbours[here][0] if neighbours[here][0] is not previous else neighbours[here][1]
+        if nxt is start:
+            break
+        previous = here
+        loop.append(nxt)
+    if len(loop) != len(neighbours):
+        raise SystemExit("RIPOSTE_FACE: %d border vertices in more than one loop" % len(neighbours))
+    return loop
+
+
+def _boundary_keys(triangles):
+    """The refined face's border (edges of one triangle only) as one ordered loop of keys."""
+    uses = {}
+    for _region, (a, b, c) in triangles:
+        for edge in ((a, b), (b, c), (c, a)):
+            edge = tuple(sorted(edge))
+            uses[edge] = uses.get(edge, 0) + 1
+    neighbours = {}
+    for (a, b), count in uses.items():
+        if count == 1:
+            neighbours.setdefault(a, []).append(b)
+            neighbours.setdefault(b, []).append(a)
+    start = next(iter(neighbours))
+    loop, previous = [start], None
+    while True:
+        here = loop[-1]
+        nxt = neighbours[here][0] if neighbours[here][0] != previous else neighbours[here][1]
+        if nxt == start:
+            return loop
+        previous = here
+        loop.append(nxt)
+
+
+def _zip(bm, inner, outer):
+    """Triangles between two closed loops on the skull: each walked from its point nearest
+    the other's start, in the same direction, advancing whichever is behind — `inner` by
+    its arc length, each `outer` point by where it projects onto `inner` (kept monotone),
+    so a jagged hole never folds the strip."""
+    def signed(loop):
+        return sum(a.co.x * b.co.z - b.co.x * a.co.z for a, b in zip(loop, loop[1:] + loop[:1]))
+
+    if (signed(inner) > 0) != (signed(outer) > 0):
+        outer = outer[::-1]
+    first = min(range(len(outer)), key=lambda i: (outer[i].co - inner[0].co).length)
+    outer = outer[first:] + outer[:first]
+
+    def params(loop):
+        lengths = [(b.co - a.co).length for a, b in zip(loop, loop[1:] + loop[:1])]
+        total, run, out = sum(lengths), 0.0, []
+        for length in lengths:
+            out.append(run / total)
+            run += length
+        return out + [1.0]
+
+    ti = params(inner)
+    span = ti[1:] + [1.0 + ti[1]]
+
+    def projected(point):
+        best = None
+        for k, a in enumerate(inner):
+            b = inner[(k + 1) % len(inner)]
+            ab = b.co - a.co
+            t = max(0.0, min(1.0, (point - a.co).dot(ab) / ab.length_squared))
+            d = (a.co + ab * t - point).length
+            if best is None or d < best[0]:
+                best = (d, ti[k] + t * (span[k] - ti[k]))
+        return best[1]
+
+    to, running = [], 0.0
+    for o in outer:
+        x = projected(o.co)
+        x = min((x - 1.0, x, x + 1.0), key=lambda c: abs(c - running))
+        running = max(running, min(1.0, x))
+        to.append(running)
+    to[0] = 0.0
+    to.append(1.0)
+    i = j = 0
+    made = []
+    while i < len(inner) or j < len(outer):
+        if j >= len(outer) or (i < len(inner) and ti[i + 1] <= to[j + 1]):
+            made.append(bm.faces.new((inner[i], inner[(i + 1) % len(inner)], outer[j % len(outer)])))
+            i += 1
+        else:
+            made.append(bm.faces.new((inner[i % len(inner)], outer[(j + 1) % len(outer)], outer[j])))
+            j += 1
+    return made
+
+
+def _split_triangle(a, b, c, mab, mbc, mca):
+    """Red-green refinement of triangle (a, b, c) at the given edge midpoints (None: kept),
+    winding preserved; never a straight-angle polygon, so never a zero-area triangle."""
+    m = (mab, mbc, mca)
+    k = sum(x is not None for x in m)
+    if k == 3:
+        return [(a, mab, mca), (mab, b, mbc), (mca, mbc, c), (mab, mbc, mca)]
+    ## Rotate so the split edges come first.
+    corners = [a, b, c]
+    while m[0] is None or (k == 2 and m[1] is None):
+        corners, m = corners[1:] + corners[:1], m[1:] + m[:1]
+    a, b, c = corners
+    if k == 1:
+        return [(a, m[0], c), (m[0], b, c)]
+    mab, mbc = m[0], m[1]
+    quad = [(a, mab, mbc), (a, mbc, c)] if (a.co - mbc.co).length <= (mab.co - c.co).length else [(a, mab, c), (mab, mbc, c)]
+    return [(mab, b, mbc)] + quad
+
+
+def _refine_seam(bm, layer, surface):
+    """Split the long edges of the faces marked in `layer` (the face's boundary edges too:
+    they lie on the skull), each new vertex on the construction surface, neighbours closed
+    red-green; returns the longest seam edge left (m)."""
+    for _pass in range(SEAM_PASSES):
+        edges = list(dict.fromkeys(e for f in bm.faces if f[layer] for e in f.edges if e.calc_length() > SEAM_EDGE_M))
+        if not edges:
+            break
+        mid = {e: bm.verts.new(surface.onto((e.verts[0].co + e.verts[1].co) / 2.0)) for e in edges}
+        affected = list(dict.fromkeys(f for e in edges for f in e.link_faces))
+        rebuilt = []
+        for f in affected:
+            loops = list(f.loops)
+            corners = [l.vert for l in loops]
+            splits = [mid.get(l.edge) for l in loops]
+            rebuilt += [(t, f[layer]) for t in _split_triangle(*corners, *splits)]
+        bmesh.ops.delete(bm, geom=affected, context="FACES_ONLY")
+        for tri, flag in rebuilt:
+            bm.faces.new(tri)[layer] = flag
+        bmesh.ops.delete(bm, geom=[e for e in edges if e.is_valid and not e.link_faces], context="EDGES")
+    return max((e.calc_length() for f in bm.faces if f[layer] for e in f.edges), default=0.0)
+
+
+def _distance_to_loop(p, loop):
+    best = None
+    for i, a in enumerate(loop):
+        ab = loop[(i + 1) % len(loop)] - a
+        t = max(0.0, min(1.0, (p - a).dot(ab) / ab.length_squared))
+        d = (a + ab * t - p).length
+        best = d if best is None else min(best, d)
+    return best
+
+
+def _distance_to_run(p, run):
+    """Distance from `p` to the open polyline `run`."""
+    best = None
+    for a, b in zip(run, run[1:]):
+        ab = b - a
+        t = max(0.0, min(1.0, (p - a).dot(ab) / ab.length_squared)) if ab.length_squared else 0.0
+        d = (a + ab * t - p).length
+        best = d if best is None else min(best, d)
+    return best
+
+
+def _blend(bm, boundary, face_verts, surface, lower=None):
+    """Relax the band around the closed polyline `boundary` (smoothstep weight on the
+    distance to it), the skull's side kept on the construction surface (relaxing alone
+    shrinks the band into a groove): the face's outer ring eases into the skull. `lower`
+    ((run, width)): along that open run of the boundary the band is `width` wide."""
+    weight = {}
+    for v in bm.verts:
+        d = _distance_to_loop(v.co, boundary)
+        w = 0.0
+        if d < BLEND_M:
+            x = 1.0 - d / BLEND_M
+            w = x * x * (3.0 - 2.0 * x)
+        if lower is not None:
+            run, width = lower
+            d = _distance_to_run(v.co, run)
+            if d < width:
+                x = 1.0 - d / width
+                w = max(w, x * x * (3.0 - 2.0 * x))
+        if w > 0.0:
+            weight[v] = w
+    for k in range(BLEND_PASSES):
+        verts = [v for v, w in weight.items() if w > k / BLEND_PASSES]
+        bmesh.ops.smooth_vert(bm, verts=verts, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        for v in verts:
+            if v not in face_verts:
+                v.co = surface.onto(v.co)
+    return len(weight)
+
+
+def _underside(bm, face_index, count, surface):
+    """The skull's own lower half (UNDERSIDE_V: under the jaw, the jaw's run back to the
+    ear, where the neck enters) is the construction head's 2-4 cm triangles,
+    so the jawline and the head-neck junction were polygons across them. Its long edges are
+    split flat (resolution, no shape), then Taubin-smoothed (a smoothing step and an
+    inflating step per pass: facet corners go, volume stays), fading to nothing at the
+    region's rim and never put back on the coarse construction surface. The seam's zip
+    along the jaw's lower edge is in the region (split flat, smoothed); the face's own faces
+    are not."""
+    floor = surface.low + UNDERSIDE_V * surface.height
+    rear = surface.front + UNDERSIDE_DEPTH * (surface.back - surface.front)
+    bm.verts.index_update()
+
+    def low_front(f):
+        centre = f.calc_center_median()
+        return centre.z < floor and centre.y < rear
+
+    def skull_or_seam(f, split_from):
+        ## The skull's own faces and the seam's (a face vertex and a skull vertex: the zip
+        ## along the jaw's lower edge, the last coarse strip); never the face's own.
+        face = [v.index in face_index or count <= v.index < split_from for v in f.verts]
+        return not all(face)
+    faces = {f for f in bm.faces if low_front(f) and skull_or_seam(f, len(bm.verts))}
+    edges = [e for e in dict.fromkeys(e for f in faces for e in f.edges)
+             if all(g in faces for g in e.link_faces) and e.calc_length() > UNDERSIDE_EDGE_M]
+    before = len(bm.verts)
+    bmesh.ops.subdivide_edges(bm, edges=edges, cuts=LOWER_CUTS, smooth=0.0, use_grid_fill=False)
+    bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3])
+    bm.verts.index_update()
+    ## The region again (its new vertices are skull vertices, index >= before).
+    faces = {f for f in bm.faces if low_front(f) and skull_or_seam(f, before)}
+    verts = {v for f in faces for v in f.verts}
+    ## The rim is where the region meets the rest of the skull; the face's own faces beside
+    ## the seam are no rim (the seam itself is what is smoothed).
+    rim = {v for v in verts if any(g not in faces and skull_or_seam(g, before) for g in v.link_faces)}
+    ## Weight: distance from the rim, smoothstep over UNDERSIDE_FADE_M (a fade counted in
+    ## rings is ~1 cm on the split mesh: a ridge where the smoothing stops).
+    from mathutils.kdtree import KDTree
+    tree = KDTree(len(rim))
+    for i, v in enumerate(rim):
+        tree.insert(v.co, i)
+    tree.balance()
+    weight = {}
+    for v in verts - rim:
+        x = min(1.0, tree.find(v.co)[2] / UNDERSIDE_FADE_M)
+        weight[v] = x * x * (3.0 - 2.0 * x)
+    bm.normal_update()
+    start = {v: (v.co.copy(), v.normal.copy()) for v in weight}
+    for _pass in range(UNDERSIDE_PASSES):
+        for factor in (UNDERSIDE_LAMBDA, UNDERSIDE_MU):
+            moved = {}
+            for v, w in weight.items():
+                around = [e.other_vert(v).co for e in v.link_edges]
+                mean = sum(around, Vector()) / len(around)
+                moved[v] = v.co + (mean - v.co) * (factor * w)
+            for v, co in moved.items():
+                v.co = co
+    ## Never more than UNDERSIDE_IN_M inward of where it was (a facet corner cut deeper let
+    ## the tall lean neck show through the head's side).
+    for v, (co, normal) in start.items():
+        inward = (v.co - co).dot(normal)
+        if inward < -UNDERSIDE_IN_M:
+            v.co = v.co + normal * (-UNDERSIDE_IN_M - inward)
+    return len(weight)
+
+
+def build_face(source=CONSTRUCTION_HEAD, name=STUDY, parameters=None):
+    """The face as its own topology (FACE-IDENTITY-001): `face_mask`'s control vertices on
+    `source`'s construction surface become mesh vertices and its panels faces (refined
+    `face_mask.REFINE` times, each panel the plane of its corners bent by `follow` onto the
+    skull, with a convex swell); the skull's front sheet inside the designed boundary is
+    removed and the face is zipped to what remains, the seam refined onto the skull: one
+    closed surface."""
+    face_mask = _mask_module()
+    head = bpy.data.objects[source]
+    stored = head.data.attributes[F0_ATTRIBUTE]
+    faces = [tuple(p.vertices) for p in head.data.polygons]
+    skull = [head.matrix_world @ Vector(a.vector) for a in stored.data]
+    surface = _Construction([tuple(p) for p in skull], faces)
+    controls = face_mask.control_points(parameters)
+    placed = {}
+    for cname, (u, v, lift, _follow) in controls.items():
+        location, normal = surface.at(u, v, cname)
+        placed[cname] = location + normal * lift
+    points, triangles = face_mask.refined()
+    lower = (parameters or {}).get(face_mask.LOWER_CONTOUR, 0.0)
+    positions = {}
+    for key, (weights, swell, _region) in points.items():
+        u = sum(w * controls[n][0] for n, w in weights.items())
+        v = sum(w * controls[n][1] for n, w in weights.items())
+        lift = sum(w * controls[n][2] for n, w in weights.items())
+        follow = sum(w * controls[n][3] for n, w in weights.items())
+        planar = sum((placed[n] * w for n, w in weights.items()), Vector())
+        if follow > 0.0:
+            location, normal = surface.at(u, v, str(key))
+            planar = planar.lerp(location + normal * lift, follow)
+        if lower and v < controls["mouth"][1]:
+            ## Below the mouth the rounding and the smooth split carry the curvature; a
+            ## swell per panel stacked panel-sized bulges on it (a lumpy lower jaw).
+            swell = 0.0
+        if swell > 0.0:
+            a, b, c = (placed[n] for n in weights)
+            normal = (b - a).cross(c - a).normalized()
+            if normal.dot(planar - surface.centre) < 0.0:
+                normal = -normal
+            size = max((b - a).length, (c - b).length, (a - c).length)
+            planar = planar + normal * face_mask.SWELL * size * swell
+        positions[key] = planar
+    ## The bridge and the brow ridge rounded (face_mask.SOFT_EDGES), the boundary held.
+    soft = face_mask.soft_keys(points)
+    order = _boundary_keys(triangles)
+    rounded = face_mask.soften({k: tuple(p) for k, p in positions.items()}, triangles, soft, frozenset(order), parameters)
+    if lower:
+        lower_soft = face_mask.soft_keys(points, face_mask.LOWER_SOFT_EDGES)
+        ## The under-jaw boundary corners round with it (jaw_low pointed down 3-5 mm below
+        ## the border either side of it); the skull is cut and zipped to the boundary as
+        ## rounded, so the seam follows.
+        free = {((n, face_mask.REFINE),) for n in face_mask.LOWER_FREE_BOUNDARY}
+        free |= {((face_mask.mirrored(n), face_mask.REFINE),) for n in face_mask.LOWER_FREE_BOUNDARY}
+        rounded = face_mask.soften(rounded, triangles, lower_soft, frozenset(order) - free,
+                                   amount=face_mask.SOFTEN * lower, passes=face_mask.LOWER_SOFTEN_PASSES)
+        ## Rounded edges shade smooth, as the bridge's do.
+        soft = soft | lower_soft
+    positions = {k: Vector(p) for k, p in rounded.items()}
+    ## The skull: the construction surface minus its front sheet inside the boundary.
+    bm = bmesh.new()
+    skull = [bm.verts.new(Vector(p)) for p in surface.co]
+    for f in faces:
+        bm.faces.new([skull[i] for i in f])
+    outline = [controls[n][:2] for n in face_mask.boundary_loop()]
+    start = order.index((("hairline", face_mask.REFINE),))
+    order = order[start:] + order[:start]
+    boundary = [positions[k] for k in order]
+
+    def covered(p):
+        location, _index = surface.hit(p.x, p.z)
+        return location is not None and p.y <= location.y + FRONT_SHEET_M and _inside(surface.chart(p), outline)
+
+    removed = [f for f in bm.faces if any(covered(v.co) or _distance_to_loop(v.co, boundary) < SEAM_GAP_M for v in f.verts)
+               or covered(f.calc_center_median())]
+    bmesh.ops.delete(bm, geom=removed, context="FACES_ONLY")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    skull_loop = _border_loop(bm, set(bm.verts))
+    ## The face, zipped to the hole; the seam refined onto the skull.
+    verts = {key: bm.verts.new(p) for key, p in positions.items()}
+    for _region, keys in triangles:
+        bm.faces.new([verts[k] for k in keys])
+    face_verts = set(verts.values())
+    layer = bm.faces.layers.int.new("riposte_seam")
+    for f in _zip(bm, [verts[k] for k in order], skull_loop):
+        f[layer] = 1
+    seam_mm = _refine_seam(bm, layer, surface) * 1000.0
+    bm.faces.layers.int.remove(layer)
+    near = [f for f in bm.faces if not all(v in face_verts for v in f.verts)
+            and _distance_to_loop(f.calc_center_median(), boundary) < BEAUTIFY_M]
+    inside = set(near)
+    bmesh.ops.beautify_fill(bm, faces=near, edges=list(dict.fromkeys(e for f in near for e in f.edges if not e.is_boundary
+                                                                    and all(g in inside for g in e.link_faces))))
+    wide = None
+    if lower:
+        ## The under-jaw run of the boundary (chin_low and back to each jaw corner).
+        floor = placed["jaw_angle"].z + LOWER_BLEND_ABOVE_M
+        under = [i for i, p in enumerate(boundary) if p.z <= floor]
+        if under:
+            wide = ([boundary[i] for i in range(under[0], under[-1] + 1)], BLEND_M + LOWER_BLEND_M * min(1.0, lower))
+    blended = _blend(bm, boundary, face_verts, surface, wide)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    open_edges = sum(1 for e in bm.edges if not e.is_manifold)
+    bm.verts.index_update()
+    rounded_verts = {verts[k].index for k in soft}
+    rounded_verts |= {n.index for k in soft for e in verts[k].link_edges for n in e.verts}
+    names = sorted(controls)
+    control_index = {i + 1: verts[((n, face_mask.REFINE),)].index for i, n in enumerate(names) if ((n, face_mask.REFINE),) in verts}
+    face_index = {v.index for v in face_verts}
+    data = bpy.data.meshes.new(name)
+    bm.to_mesh(data)
+    bm.free()
+    split = 0
+    if lower:
+        ## The lower face's panel edges (below the mouth, the seam under the jaw included)
+        ## split smoothly: the new vertices on a curve through the existing ones, none of
+        ## which moves, every existing index kept (HEAD-CONTOUR-001: an 11 mm edge cannot
+        ## carry the chin's turn).
+        count = len(data.vertices)
+        sub = bmesh.new()
+        sub.from_mesh(data)
+        sub.verts.ensure_lookup_table()
+        ceiling = placed["mouth"].z
+        ## Inside the mask only: on the seam the face's and the skull's normals disagree and
+        ## a smooth split ripples the jaw's lower edge (seen from the front).
+        region = {f for f in sub.faces if f.calc_center_median().z < ceiling and all(v.index in face_index for v in f.verts)}
+        edges = list(dict.fromkeys(e for f in region for e in f.edges if all(g in region for g in e.link_faces)))
+        bmesh.ops.subdivide_edges(sub, edges=edges, cuts=LOWER_CUTS, smooth=LOWER_SMOOTH, use_grid_fill=False)
+        bmesh.ops.triangulate(sub, faces=[f for f in sub.faces if len(f.verts) > 3])
+        _underside(sub, face_index, count, surface)
+        bmesh.ops.recalc_face_normals(sub, faces=sub.faces[:])
+        open_edges = sum(1 for e in sub.edges if not e.is_manifold)
+        ## The split region shades smooth: its form is rounded, never creased.
+        sub.verts.index_update()
+        rounded_verts |= {v.index for f in sub.faces if f.calc_center_median().z < ceiling
+                          and any(v.index in face_index or v.index >= count for v in f.verts) for v in f.verts}
+        sub.to_mesh(data)
+        sub.free()
+        split = len(data.vertices) - count
+    for polygon in data.polygons:
+        polygon.use_smooth = True
+    data.set_sharp_from_angle(angle=math.radians(FACE_EDGE_DEG))
+    ## The softened edges shade smooth (never a hard line), as the nose tip does.
+    sharp = data.attributes["sharp_edge"]
+    for edge in data.edges:
+        if rounded_verts.issuperset(edge.vertices):
+            sharp.data[edge.index].value = False
+    obj = bpy.data.objects.new(name, data)
+    (head.users_collection[0] if head.users_collection else bpy.context.scene.collection).objects.link(obj)
+    ## Its construction surface (hair and attachments frame on it, never on the face).
+    construction = data.attributes.new(F0_ATTRIBUTE, "FLOAT_VECTOR", "POINT")
+    for v, a in zip(data.vertices, construction.data):
+        a.vector = surface.tree.find_nearest(v.co)[0]
+    ## Its control vertices tagged (CONTROL_ATTRIBUTE): a rounded control moves off its chart
+    ## position, so the chart lookup would miss it.
+    tag = data.attributes.new(CONTROL_ATTRIBUTE, "INT", "POINT")
+    for value, index in control_index.items():
+        tag.data[index].value = value
+    forward = min(placed, key=lambda n: placed[n].y)
+    depth = {n: round(-placed[n].y * 1000.0, 1) for n in ("nose_peak", "bridge_root", "brow_inner", "brow_mid", "shelf_mid",
+                                                           "eye_low", "cheekbone", "chin")}
+    return obj, {"vertices": len(data.vertices), "faces": len(data.polygons), "panels": len(face_mask.panels()),
+                 "face_vertices": len(face_verts), "skull_faces_removed": len(removed),
+                 "seam_longest_edge_mm": round(seam_mm, 1), "blended_vertices": blended, "non_manifold_edges": open_edges,
+                 "lower_split_vertices": split,
+                 "forward_control": forward, "control_depth_mm": depth,
+                 "frame": [round(surface.low, 4), round(surface.height, 4), round(surface.half_width, 4)]}
 
 
 def fingerprint(obj):
@@ -806,6 +1577,7 @@ def fingerprint(obj):
 def record():
     return {"schema": "riposte.male_base_v2_record", "version": 1, "approved": "2026-10-31 (review r1)",
             "source": "male_base.blend (v1)", "builder": "tools/blender/authoring/male_base_v2.py",
+            "head_approved": HEAD_APPROVAL,
             "objects": {name: fingerprint(bpy.data.objects[name]) for name in (SCULPT, STUDY)}}
 
 
@@ -813,22 +1585,102 @@ def _open_master():
     bpy.ops.wm.open_mainfile(filepath=MASTER_V1)
 
 
+def foundation_document():
+    """(the foundation module, the checked foundation document)."""
+    sys.path.insert(0, os.path.join(ROOT, "tools", "character_modeling"))
+    from character_modeling import asset_library, foundation
+    document = foundation.load(REVIEW_FOUNDATION or asset_library.current_foundation_document())
+    problems = foundation.problems(document)
+    if problems:
+        raise SystemExit("RIPOSTE_FOUNDATION: " + "; ".join(problems))
+    return foundation, document
+
+
+def foundation_source():
+    foundation, document = foundation_document()
+    return foundation.path_of(document, "source", os.path.dirname(CHARACTERS))
+
+
+def _foundation(verify):
+    """Build the foundation's base from the v1 master with its studies; save the source and
+    its record, or (`verify`) compare the rebuild with the record and the saved source."""
+    foundation, document = foundation_document()
+    blender = os.path.dirname(CHARACTERS)
+    source = foundation.path_of(document, "source", blender)
+    record_path = foundation.path_of(document, "record", blender)
+    if os.path.abspath(foundation.path_of(document["base"], "master", blender)) != os.path.abspath(MASTER_V1):
+        raise SystemExit("RIPOSTE_FOUNDATION: the foundation's master is not %s" % MASTER_V1)
+    _open_master()
+    report = build(document["base"]["mask_study"], document["base"]["body_study"])
+    built = {"schema": "riposte.character_foundation_record", "version": 1, "foundation": document["id"],
+             "approved": document.get("approved"), "builder": "tools/blender/authoring/male_base_v2.py --foundation",
+             "objects": {name: fingerprint(bpy.data.objects[name]) for name in (SCULPT, STUDY)}}
+    if not verify:
+        from character_modeling import asset_library
+        for path in (source, record_path):
+            asset_library.refuse_overwrite(path)
+        bpy.ops.wm.save_as_mainfile(filepath=source)
+        with open(record_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(built, indent=2) + "\n")
+        print("RIPOSTE_FOUNDATION_BUILD", json.dumps({"stages": report, "record": built}))
+        return
+    with open(record_path, encoding="utf-8") as handle:
+        recorded = json.load(handle)["objects"]
+    bpy.ops.wm.open_mainfile(filepath=source)
+    saved = {name: fingerprint(bpy.data.objects[name]) for name in (SCULPT, STUDY)}
+    problems = ["%s: rebuild %s != record %s" % (n, built["objects"][n], recorded[n])
+                for n in recorded if built["objects"][n] != recorded[n]]
+    problems += ["%s: saved %s != record %s" % (n, saved[n], recorded[n]) for n in recorded if saved[n] != recorded[n]]
+    print("RIPOSTE_FOUNDATION_VERIFY", json.dumps({"ok": not problems, "problems": problems}))
+    if problems:
+        raise SystemExit(1)
+
+
+def _iteration_out(path):
+    """An output path inside one iteration folder (ART-ITERATION-001), or refused."""
+    sys.path.insert(0, os.path.join(ROOT, "tools", "character_modeling"))
+    from character_modeling import iterations
+    problems = iterations.path_problems(path, ROOT)
+    if problems:
+        raise SystemExit("RIPOSTE_ITERATION: " + "; ".join(problems))
+    return os.path.abspath(path)
+
+
 def main():
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if "--bind" in args:
         ## A working blend for the deformation review: never the source (the bound body
         ## becomes the master only at promotion, after its deformation is approved).
-        out = os.path.abspath(args[args.index("--bind") + 1])
+        out = _iteration_out(args[args.index("--bind") + 1])
         bpy.ops.wm.open_mainfile(filepath=CANDIDATE)
         report = bind()
         os.makedirs(os.path.dirname(out), exist_ok=True)
         bpy.ops.wm.save_as_mainfile(filepath=out, copy=True)
         print("RIPOSTE_V2_BIND", json.dumps(dict(report, blend=out)))
         return
+    if "--foundation" in args or "--verify-foundation" in args:
+        if REVIEW_BASE:
+            raise SystemExit("RIPOSTE_V2: the foundation builds from the master; unset RIPOSTE_BASE_REVIEW")
+        _foundation("--verify-foundation" in args)
+        return
+    study = None
+    if "--mask-study" in args:
+        ## key=value pairs, comma-separated (survives every shell's quoting).
+        study = {k: float(v) for k, v in (pair.split("=") for pair in args[args.index("--mask-study") + 1].split(","))}
+    if study and "--candidate" not in args:
+        raise SystemExit("RIPOSTE_V2: --mask-study builds candidates only (the approved mask is CONTROL)")
     _open_master()
-    report = build()
+    report = build(study)
     built = record()
+    if "--candidate" in args:
+        out = _iteration_out(args[args.index("--candidate") + 1])
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        bpy.ops.wm.save_as_mainfile(filepath=out, copy=True)
+        print("RIPOSTE_V2_CANDIDATE", json.dumps({"stages": report, "record": built, "mask_study": study, "blend": out}))
+        return
     if "--build" in args:
+        if REVIEW_BASE:
+            raise SystemExit("RIPOSTE_V2: --build writes the approved source; unset RIPOSTE_BASE_REVIEW")
         bpy.ops.wm.save_as_mainfile(filepath=CANDIDATE)
         with open(RECORD, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(built, indent=2) + "\n")
@@ -846,7 +1698,7 @@ def main():
         if problems:
             raise SystemExit(1)
         return
-    raise SystemExit("pass --build or --verify")
+    raise SystemExit("pass --build, --verify or --candidate <iteration>/<name>.blend")
 
 
 if __name__ == "__main__":
