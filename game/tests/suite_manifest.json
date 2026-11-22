@@ -92,6 +92,30 @@
       "budget_ms": 2000
     },
     {
+      "name": "QUICK-90",
+      "path": "res://tests/domain/test_quick90.gd",
+      "tier": "gate",
+      "budget_ms": 5000
+    },
+    {
+      "name": "ENERGY-AUDIT",
+      "path": "res://tests/domain/test_energy_audit.gd",
+      "tier": "gate",
+      "budget_ms": 5000
+    },
+    {
+      "name": "GUARD-45",
+      "path": "res://tests/domain/test_guard45.gd",
+      "tier": "gate",
+      "budget_ms": 3000
+    },
+    {
+      "name": "GUARD-EXPOSURE",
+      "path": "res://tests/domain/test_guard_exposure.gd",
+      "tier": "gate",
+      "budget_ms": 30000
+    },
+    {
       "name": "SHAPE",
       "path": "res://tests/domain/test_shape.gd",
       "tier": "focused",
@@ -365,7 +389,7 @@
       "name": "PRES-RIG",
       "path": "res://tests/presentation/test_rig.gd",
       "tier": "focused",
-      "budget_ms": 4000
+      "budget_ms": 5000
     },
     {
       "name": "PRES-PRODUCTION",
@@ -549,6 +573,10 @@
         "src/domain/combat/fighter_pose.gd"
       ],
       "suites": [
+        "QUICK-90",
+        "ENERGY-AUDIT",
+        "GUARD-45",
+        "GUARD-EXPOSURE",
         "KINEMATICS",
         "SHAPE",
         "ATTACK",
@@ -577,6 +605,7 @@
         "src/domain/rules/stage_object_def.gd"
       ],
       "suites": [
+        "ENERGY-AUDIT",
         "CONTACT",
         "STRUCTURE",
         "MANIFOLD",
@@ -602,7 +631,7 @@
         "src/domain/combat/threat_continuation.gd",
         "src/domain/combat/exposure_model.gd"
       ],
-      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT", "LINE-GAME", "GRIP"]
+      "suites": ["DAMAGE", "CPU", "PRES-SNAPSHOT", "LINE-GAME", "GRIP", "GUARD-EXPOSURE"]
     },
     "cpu": {
       "paths": ["src/application/cpu/"],
