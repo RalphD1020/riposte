@@ -28,6 +28,9 @@ import bpy  # noqa: E402
 
 import character_assembly  # noqa: E402
 
+sys.path.insert(0, os.path.join(HERE, "..", "..", "character_modeling"))
+from character_modeling import body_regions  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 BASE = os.path.join(ROOT, "art-src", "blender", "characters", "male_base.blend")
 OUT = os.path.join(ROOT, "art-src", "blender", "characters", "male_base.regions.json")
@@ -36,24 +39,8 @@ SHOULDER_SHARE = 0.10
 CLEARANCE_M = {"fitted": [0.003, 0.02], "structured": [0.008, 0.05], "loose": [0.015, 0.12]}
 
 ## region id: (dominant bone families, bones that may influence it, physique parameters, neighbours, stressing clips)
-REGIONS = {
-    ## The head is the head island (HeadSkin); the neck rings below it ride Neck and Head.
-    "head": ((), ("Head",), (), ("neck",), ("idle", "death")),
-    "neck": (("Neck", "Head"), ("Neck", "Head", "Chest"), ("mass", "shoulders"), ("head", "upper_torso", "shoulder.L", "shoulder.R"), ("idle", "charge_support", "death")),
-    "upper_torso": (("Chest",), ("Chest", "Spine", "Shoulder.L", "Shoulder.R", "Neck"), ("mass", "chest", "upper_body", "definition"), ("neck", "shoulder.L", "shoulder.R", "waist"), ("charge_support", "swing_support", "overswing", "dash_forward")),
-    "waist": (("Spine",), ("Spine", "Chest", "Hips"), ("mass", "waist", "definition"), ("upper_torso", "pelvis"), ("dash_forward", "walk_forward", "death")),
-    "pelvis": (("Hips",), ("Hips", "Spine", "UpperLeg.L", "UpperLeg.R"), ("mass",), ("waist", "upper_leg.L", "upper_leg.R"), ("walk_forward", "dash_forward", "death")),
-}
-for side in ("L", "R"):
-    REGIONS.update({
-        "shoulder.%s" % side: ((), ("Shoulder.%s" % side, "Chest", "UpperArm.%s" % side), ("mass", "shoulders", "upper_body"), ("upper_torso", "neck", "upper_arm.%s" % side), ("charge_support", "swing_support", "overswing")),
-        "upper_arm.%s" % side: (("UpperArm.%s" % side,), ("UpperArm.%s" % side, "Shoulder.%s" % side, "Forearm.%s" % side), ("mass", "arms", "upper_body"), ("shoulder.%s" % side, "forearm.%s" % side), ("charge_support", "swing_support", "overswing")),
-        "forearm.%s" % side: (("Forearm.%s" % side,), ("Forearm.%s" % side, "UpperArm.%s" % side, "Hand.%s" % side), ("mass", "arms"), ("upper_arm.%s" % side, "hand.%s" % side), ("charge_support", "swing_support")),
-        "hand.%s" % side: (("Hand.%s" % side,), ("Hand.%s" % side, "Forearm.%s" % side), (), ("forearm.%s" % side,), ("charge_support",)),
-        "upper_leg.%s" % side: (("UpperLeg.%s" % side,), ("UpperLeg.%s" % side, "Hips", "LowerLeg.%s" % side), ("mass", "legs"), ("pelvis", "lower_leg.%s" % side), ("walk_forward", "dash_forward", "death")),
-        "lower_leg.%s" % side: (("LowerLeg.%s" % side,), ("LowerLeg.%s" % side, "UpperLeg.%s" % side, "Foot.%s" % side), ("mass", "legs"), ("upper_leg.%s" % side, "foot.%s" % side), ("walk_forward", "dash_forward")),
-        "foot.%s" % side: (("Foot.%s" % side,), ("Foot.%s" % side, "LowerLeg.%s" % side), (), ("lower_leg.%s" % side,), ("walk_forward",)),
-    })
+## The one definition is the canonical vocabulary's (CHARACTER-REGIONS-001).
+REGIONS = body_regions.fitting_table()
 
 
 ## The head's sub-regions (the foundation's head object): windows in the head's
@@ -161,7 +148,8 @@ def foundation_regions():
     body, head = bpy.data.objects[v2.SCULPT], bpy.data.objects[v2.STUDY]
     if v2.fingerprint(body)["sha256"] != record["objects"][v2.SCULPT]["sha256"]:
         raise SystemExit("RIPOSTE_REGIONS: the foundation source does not match its record")
-    raw = v2._transfer_weights([tuple(c) for c in mv._coords(body)])
+    raw = (v2.stored_weights() if document["resolution"].get("symmetric")
+           else v2._transfer_weights([tuple(c) for c in mv._coords(body)]))
     edges = np.array([tuple(e.vertices) for e in body.data.edges])
     weights = mv.smoothed_weights(raw, edges, len(body.data.vertices), document["resolution"]["rig_weight_smooth_iterations"])
     names = sorted(weights)

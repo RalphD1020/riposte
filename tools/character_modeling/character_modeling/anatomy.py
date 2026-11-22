@@ -20,6 +20,21 @@ import math
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from . import body_regions
+
+## The muscle / shape groups and the deformation vocabulary live in `body_regions`
+## (CHARACTER-REGIONS-001); the creation regions below are the v1 study's surface classes and
+## each maps onto one canonical deformation region (`deformation_region`).
+SHAPE_GROUPS = body_regions.SHAPE_GROUP_IDS
+
+
+def deformation_region(region):
+    """The canonical deformation region a creation region belongs to."""
+    if region not in REGIONS:
+        raise KeyError("anatomy: unknown creation region %r" % region)
+    return body_regions.canonical(region)
+
+
 REGIONS = (
     "head_face", "head_crown", "head_jaw", "neck",
     "chest", "abdomen", "back_upper", "back_lower",

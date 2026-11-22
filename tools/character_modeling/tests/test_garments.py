@@ -90,6 +90,7 @@ class GarmentContract(unittest.TestCase):
             ("deformation", {"method": "rigid"}, "names its one bone"),
             ("supported_configurations", ["default"], "does not support the character's configurations"),
             ("materials", ["velvet"], "material slots outside"),
+            ("slot", "backplate", "unknown slot"),
         ]
         for key, value, expected in cases:
             ## PERTURB
@@ -101,6 +102,21 @@ class GarmentContract(unittest.TestCase):
             found = garments.problems(garment, m, r)
             ## ASSERT
             self.assertTrue(any(expected in p for p in found), (key, value, found))
+
+    def test_an_optional_slot_is_validated_and_indexed(self):
+        ## ARRANGE: the fixture gambeson in a valid equipment slot.
+        m, r = manifest(), regions()
+        garment = gambeson(m)
+        garment["slot"] = "outer_torso"
+        ## ACT / ASSERT: a known slot is accepted and read back; absence is None.
+        self.assertEqual(garments.problems(garment, m, r), [])
+        self.assertEqual(garments.slot_of(garment), "outer_torso")
+        self.assertIsNone(garments.slot_of(gambeson(m)))
+        ## PERTURB: a hairstyle's slot is intrinsic regardless of a `slot` field.
+        self.assertEqual(garments.slot_of({"type": "hair", "id": "h"}), "hair")
+        ## ASSERT: the slot-indexed view groups ids by slot and skips the unslotted.
+        index = garments.slots_in_outfit([garment, {"type": "hair", "id": "h"}, gambeson(m)])
+        self.assertEqual(index, {"outer_torso": ["fixture_gambeson"], "hair": ["h"]})
 
     def test_a_garment_reaching_the_neck_declares_its_upper_boundary(self):
         ## ARRANGE: the fixture gambeson grows a collar onto the neck.
@@ -245,18 +261,19 @@ class HairContract(unittest.TestCase):
         self.assertTrue(any("names the builder variant" in p for p in garments.problems(hair, m, r)))
 
     def test_a_hairstyle_version_builds_the_variant_it_was_approved_with(self):
-        ## ARRANGE: Wolf's two shipped definitions and their v001 library copies (approved
-        ## before design.variant existed), and a candidate naming its own variant.
+        ## ARRANGE: Wolf's two shipped definitions (v002, naming their variants), their v001
+        ## library copies (approved before design.variant existed), and a candidate.
         from character_modeling import asset_library
         shipped = {s: garments.load(CHARACTERS.parent / "garments" / ("wolf_hair_%s.garment.json" % s)) for s in ("ranger", "training")}
-        library = {s: asset_library.payload("wolf_hair_%s" % s, "wolf_hair_%s.garment.json" % s, "v001") for s in ("ranger", "training")}
+        library = {v: {s: asset_library.payload("wolf_hair_%s" % s, "wolf_hair_%s.garment.json" % s, v) for s in ("ranger", "training")}
+                   for v in ("v001", "v002")}
         candidate = copy.deepcopy(shipped["ranger"])
-        candidate["design"]["variant"] = "F"
-        ## ACT / ASSERT: v001 rebuilds D and E whatever the builder's default; a named
-        ## variant wins; an unknown object without one fails closed.
-        for source in (shipped, library):
-            self.assertEqual((garments.hair_variant(source["ranger"]), garments.hair_variant(source["training"])), ("D", "E"))
-        self.assertEqual(garments.hair_variant(candidate), "F")
+        candidate["design"]["variant"] = "B"
+        ## ACT / ASSERT: v001 rebuilds D and E whatever the builder's default; v002 (shipped)
+        ## G and F; a named variant wins; an unknown object without one fails closed.
+        for source, expected in ((library["v001"], ("D", "E")), (library["v002"], ("G", "F")), (shipped, ("G", "F"))):
+            self.assertEqual((garments.hair_variant(source["ranger"]), garments.hair_variant(source["training"])), expected)
+        self.assertEqual(garments.hair_variant(candidate), "B")
         unnamed = dict(candidate, source={"object": "HairOther"}, design={})
         with self.assertRaisesRegex(ValueError, "names no design.variant"):
             garments.hair_variant(unnamed)

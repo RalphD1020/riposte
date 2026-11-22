@@ -25,6 +25,7 @@
     "test:balance:accept": "turbo test:balance:accept",
     "test:balance:audit": "turbo test:balance:audit",
     "test:contact:ship": "turbo test:contact:ship",
+    "test:candidate": "turbo test:candidate",
     "test:focused": "turbo run test:focused --",
     "test:changed": "turbo run test:changed --",
     "test:perf": "turbo test:perf",

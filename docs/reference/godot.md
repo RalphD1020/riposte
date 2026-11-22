@@ -102,6 +102,37 @@ Rules for anything authored later:
 - **Modifier output exists only during the skeleton update.** Godot applies `SkeletonModifier3D` results for the update and reverts them after, so a test reads the modified pose inside `Skeleton3D.skeleton_updated` (with `modifier_callback_mode_process = MANUAL` and `advance()`), never after it.
 - **Imported loops are set where they belong.** Looping clips are flagged from `PresentationKit.LOOPING_SEMANTICS` when the proxy builds; looping audio is `loop=true` in the take's `.mp3.import`.
 
+## Anatomical alignment (Blender → Godot)
+
+CHARACTER-ALIGNMENT-001. The body anatomy, the deform skeleton, the skin binding, the Blender-authored animation and the Godot import are five contracts that must resolve against the same landmarks and one rest pose — treated as one pipeline, not three independently tuned systems. We use the existing WolfRigNeutral, the symmetric A-pose, standard GLB export and Godot's `Skeleton3D`; the improvement is making alignment a formal, testable requirement, not a new rig or conversion system.
+
+| Property        | Blender authoring | Godot / glTF              |
+| --------------- | ----------------- | ------------------------- |
+| Up              | +Z                | +Y                        |
+| Character front | −Y                | +Z (asset-model front)    |
+| Right           | +X                | +X                        |
+| Unit            | 1 = 1 m           | 1 = 1 m                   |
+| Stature         | 1.80 m            | 1.80 m after conversion   |
+| Rest            | symmetric A-pose  | equivalent imported rests |
+
+The canonical glTF exporter performs the axis conversion. Do not rotate the body independently of the armature, apply a −90°/180° fix or non-uniform/negative scale in the fighter wrapper to hide a source mismatch; establish clean transforms before binding, or convert in a staged step that updates rests, binds and weights together — never apply a transform onto an already bound rig. Bones are centres of articulation (`character_modeling.physique` landmarks), not the mesh contour: never move a joint pivot to flatter one rest render, and keep the deltoid/upper-arm, elbow, hip, knee and neck surface continuous through the joint at rest and deformed. Preserve WolfRigNeutral's names, hierarchy, rests and bone rolls; matching endpoints does not prove matching local axes, so validate axial twist apart from world rotation, and never run Godot's humanoid Rest Fixer / T-pose rest-axis replacement on this A-pose rig.
+
+Diagnose at the owning layer (`character_modeling.alignment.classify` / `fix_order`), never compensate at a later one:
+
+- **Offset in Godot** → rest and bind transforms before the vertices.
+- **Correct at rest, wrong when posed** → bone rotation, weights, joint topology before moving the skeleton.
+- **Right in Blender, wrong in Godot** → import settings, animation sampling, inverse binds and runtime modifiers before the art.
+
+**The game's poses are the deformation authority (CHARACTER-ALIGNMENT-001).** Blender authors the mesh, weights, clips and face; whether the body deforms correctly is judged on what Godot displays: the imported clip as Godot samples it, and the final modifier stack (combat pose, clavicle, arm IK, grip hands) at 60 Hz. When the sword is held the IK owns the arms, so a Blender clip's arms are not the arms the game shows. Measuring the mesh in Blender on Godot's bone poses is valid once Godot's skinning of those poses is shown to match Blender's; normals, materials, LOD and visibility still need Godot-rendered frames. A pose fault is fixed in its owner — transport, grip, IK, girdle response or clip — never by reshaping the body or hiding it under clothing. To find the owner, switch the stack on stage by stage (clip only, + `KineticChain`, + `ArmIK`, + `GripHands`; each `SkeletonModifier3D.active`) and read the first stage that introduces the fault.
+
+**Animation transport (ANIM-TRANSPORT-001).** The production candidate exports every frame of its 60 Hz actions with `export_anim_slide_to_zero` and imports at `animation/fps` 60: on the naked d6 candidate that holds every authored frame within about 10 mm (most clips under 1 mm), keeps every last frame, and gives cyclic clips their authored period, for about 5 % more file and imported size. The shipping fighters' `export_frame_step` 2 with a 30 Hz re-bake lands between the exported keys and smooths fast clips by hundreds of millimetres; it stays for v002 only. Godot's per-animation import optimizer and Blender's animation-size optimizer were measured as lossless here. Sampling at 60 Hz is authoring fidelity, not a rendering rate: Godot interpolates the tracks at whatever time a frame renders. Accept on contact-critical landmarks (feet, hands, `SwordMount`) at frames, half-frames and loop seams; record other residuals.
+
+**Where a joint loses volume.** A thinning wrist, elbow or shoulder is traced to the first stage at which it appears, on one mesh and rig: rest (the approved processed surface, the production mesh undeformed, and at neutral rest), the clip alone, after the arm IK, and after the grip pass. Cross-sections are measured perpendicular to the segment's joint-to-joint axis in that bone's own frame. A thin rest surface is a source-shape fix; a good rest that collapses only under rotation is a pose or weight fix, because linear-blend skinning keeps only about `|cos(φ/2)|` of a two-bone vertex's radius at a relative rotation φ (90° → 71 %, 140° → 34 %). Correct the pose first (the grip's roll, the elbow plane), the joint's weight transition second, a twist distribution only if a correct reachable pose still collapses, and local geometry last. Blender's Preserve Volume is not a fix: Godot skins linearly and must agree with Blender.
+
+**Girdle protraction (PRES-CLAVICLE-001).** A two-handed grip in front of the chest needs the shoulders to come forward with the arms. `ClavicleResponse.max_protraction_deg` (0 by default, so every existing body is unchanged) lets a body's wrapper declare it; the combat pass then turns each clavicle forward by the arm's forward-and-across reach before the IK solves. The response is continuous in the arm's direction, so it never steps at a guard or attack-state boundary. The ceiling is chosen as the lowest value that reads as a natural reach without a new deformation problem (deltoid/chest stretch, shoulder asymmetry, neck continuity), compared against 0 under identical IK targets; clearing the most intersections is not the criterion, and the protraction does not compensate for a grip target the arm cannot reach.
+
+Imported-animation parity and final runtime-pose parity are separate tests: Godot runs `SkeletonModifier3D` after the `AnimationMixer`, so compare both the raw imported clip and the evaluated pose with combat pose correction and grip IK active (a released-weapon fall is not overridden by grip IK). Every deforming component references the one armature with ≤ 4 normalized influences, excludes `Root`/`SwordMount` from body skinning, and is mirrored by construction.
+
 ## Harness
 
 `godot --headless --fixed-fps 60 --path game res://tests/harness/run_headless.tscn` (`pnpm --filter @riposte/game test`). `RIPOSTE_SUITE=<name>` runs one suite. See [docs/reference/testing.md](./testing.md).

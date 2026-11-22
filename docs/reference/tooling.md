@@ -24,6 +24,7 @@ pnpm test:balance      # CPU balance smoke (CPU-BALANCE), own process + progress
 pnpm test:balance:audit  # CPU tuning-corpus report (40 seeds), a line per duel; never a gate
 pnpm test:balance:accept # CPU held-out ladder (CPU-ACCEPT), run once after a tuning pass
 pnpm test:contact:ship  # contact ship + development corpora (CONTACT-INTEGRITY-SHIP), audit only
+pnpm test:candidate     # the real game with the local P3 presentation candidate (CANDIDATE-E2E); fails closed if it is absent
 pnpm test:perf         # frame-cost report, never a gate
 pnpm test:changed      # suites owning the changed files (TEST-TIER-001), no import
 pnpm test:focused <area|SUITE>…  # one area or named suites; imports only when a required glb's bytes changed

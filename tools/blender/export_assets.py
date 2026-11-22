@@ -120,9 +120,11 @@ def _export_kwargs(path, kind):
         "export_influence_nb": 4,
         "export_all_influences": False,
         "export_force_sampling": True,
-        ## 30 Hz keys, linearly interpolated: the rigid block rig reads the
-        ## same, and the fast sword motion is procedural (carriage, IK), not
-        ## clip keys. Keeps the fighter under the integrity size limit.
+        ## 30 Hz keys, linearly interpolated: the shipping v002 transport, chosen
+        ## for the rigid block rig (fast sword motion is procedural). It smooths
+        ## fast authored clips on a continuous skin; the production candidate's
+        ## contract is every frame at 60 Hz (ANIM-TRANSPORT-001). The repository
+        ## size limit exempts generated assets, so it is not what holds this.
         "export_frame_step": 2,
         ## Drop sampled keys a held pose repeats (lossless for linear
         ## interpolation), so holds — a stab's impaled beat, a victory's load —

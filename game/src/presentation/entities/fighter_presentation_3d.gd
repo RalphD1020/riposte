@@ -117,6 +117,13 @@ var _carriage_phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL
 var _carriage_committed: bool = false
 var _carry_lift := Vector3.ZERO
 var _shown_lift := Vector3.ZERO
+## The body's hand-back to the stance (`BodySupportPose.settled`) is carried
+## across the same boundaries, so the arms and torso never pop between the cut
+## and guard support (a recovery handing over to the guard, a commit) wherever
+## the blade stopped.
+var _carry_settled: float = 0.0
+var _settled_phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL
+var _settled_committed: bool = false
 ## Whether the last frame's sword was anchored at a contact.
 var _anchored: bool = false
 ## Target bearing τ minus combat heading φ this frame (+ to the left).
@@ -242,19 +249,23 @@ func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: Present
 	var progress := row.swing_progress if is_nan(lift_progress) else lift_progress
 	var charge := row.charge if is_nan(lift_charge) else lift_charge
 	_field.sample(weapon_angle, _planar.carriage_y, _planar.carriage_x, row.phase, progress, charge, row.swing_charge, _weapon_kit.blade_height, row.cut_dir, committed)
-	var anchored := not is_nan(contact_height)
+	## A combat-aligned sword is already level at the interaction height: the
+	## contact changes its motion, not its drawn place (no anchoring snap).
+	var anchored := not is_nan(contact_height) and not _field.combat_aligned
 	if anchored:
 		## CONTACT-PRESENTATION-001: level at the shared contact height. The
 		## carriage and yaw stay the authoritative ones; roll is untouched.
 		_field.raise = contact_height - position.y - _visual_root.transform.origin.y - _weapon_kit.blade_height
 		_field.pitch = 0.0
 	_carry(row.phase, delta, anchored, committed)
+	## The elbows inflect on the blade's beat: the cut's own hand-back to the
+	## stance (its ends and the committed rise) is theirs too.
+	var cut := CutPresentationCurve.cut_angle(weapon_angle, row.cut_dir)
+	var settled := _carry_settled_for(row.phase, progress, cut, committed, delta)
 	if _rig != null:
-		## The elbows inflect on the blade's beat: the cut's own hand-back to
-		## the stance (its ends and the committed rise) is theirs too.
-		var cut := CutPresentationCurve.cut_angle(weapon_angle, row.cut_dir)
-		var settled := maxf(_field.stance_weight, CutPresentationCurve.stance_share(cut, committed))
-		_rig.pose_sword(_support.sample(weapon_angle, row.phase, _guard.side(), _field.carriage_point.x, _field.gather, settled, cut))
+		_support.sample(weapon_angle, row.phase, _guard.side(), _field.carriage_point.x, _field.gather, settled, cut, row.cut_dir)
+		_support.clip_owns_arms = not row.is_alive() or row.is_falling or row.body_over_edge
+		_rig.pose_sword(_support)
 		## The head faces the combat heading, where the weapon window is, and
 		## only glances toward the target bearing: a committed fighter who has
 		## not yet turned back onto the opponent reads that way.
@@ -409,6 +420,27 @@ func _carry(phase: CombatPhase.Id, delta: float, anchored: bool = false, committ
 	_field.compose()
 	_shown_lift = Vector3(_field.raise, _field.pitch, _field.roll)
 	_carriage_node.transform = _field.transform
+
+
+## The body's hand-back to the stance this frame (`BodySupportPose.settled`):
+## the stance weight of `phase` or the cut's own hand-back, whichever is more.
+static func settled_for(phase: CombatPhase.Id, progress: float, cut: float, committed: bool) -> float:
+	return maxf(CombatPresentationField.stance_weight_for(phase, progress), CutPresentationCurve.stance_share(cut, committed))
+
+
+## `settled_for` carried across a phase or commit boundary: only the jump the
+## boundary itself makes — the old branch minus the new one at this very angle
+## and progress — is carried and decays like the sword's lift, never the
+## blade's own travel since the last frame, so the body keeps pace with a fast
+## cut and still never pops where the branches disagree.
+func _carry_settled_for(phase: CombatPhase.Id, progress: float, cut: float, committed: bool, delta: float) -> float:
+	var target := settled_for(phase, progress, cut, committed)
+	if phase != _settled_phase or committed != _settled_committed:
+		_carry_settled += settled_for(_settled_phase, progress, cut, _settled_committed) - target
+		_settled_phase = phase
+		_settled_committed = committed
+	_carry_settled *= exp(-maxf(delta, 0.0) / CARRY_BLEND_SECONDS)
+	return clampf(target + _carry_settled, 0.0, 1.0)
 
 
 ## World positions of the displayed blade's hilt and tip (for trails and
@@ -716,6 +748,11 @@ func _build_scene() -> void:
 	## stays off — it is a read-through marker, not a solid form.
 	set_shadow_casting(model, true)
 	_rig = model as SwordRig3D
+	if _rig != null:
+		_field.configure_centre(_rig.centre_raise_delta, _rig.centre_pitch_delta_deg)
+		_field.configure_projection(_rig.combat_aligned_projection, _rig.interaction_raise)
+		_field.configure_load(_rig.load_raise, _rig.load_pitch_deg, _rig.load_roll_authored, _rig.load_roll_deg, _rig.load_roll_left_correction_deg)
+		_field.configure_edge(_rig.edge_leads_motion, _rig.edge_strike_from_carriage, SwordGripFrame.edge_normal(_rig.cutting_edge))
 	_animation = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _animation != null:
 		## Clips play on Godot's own process step, ahead of the skeleton's

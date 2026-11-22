@@ -67,6 +67,12 @@ var _next_set_id: int = 0
 ## `MatchComposer.compose(config, human, telemetry)` — so a scenario can stand a
 ## scripted opponent opposite the real human pipeline. Production never sets it.
 var compose_session: Callable
+## Test seam, like `compose_session`: per slot, a fighter skin that dresses that
+## participant over whatever settings or a palette chose, so a scenario can put
+## an unshipped presentation candidate into a real match beside the shipping
+## look. Applied where the kits are resolved, before anything is instantiated;
+## skins are never read by the simulation (DuelKits). Production never sets it.
+var fighter_skin_override: Array[FighterSkinKit] = [null, null]
 
 
 func attach(mount: Node3D, rig: DuelCameraRig, ui_root: Control) -> void:
@@ -301,6 +307,9 @@ func resolve_kits(config: MatchConfig) -> DuelKits:
 		fighters = RiposteKits.costume_fighter_skins(config.palette_slot)
 		weapons = RiposteKits.costume_weapon_skins(config.palette_slot)
 	var kits := DuelKits.resolve(kit_catalog, config.rules, fighters, weapons)
+	for slot in mini(fighter_skin_override.size(), kits.combatants.size()):
+		if fighter_skin_override[slot] != null:
+			kits.combatant(slot).fighter_skin = fighter_skin_override[slot]
 	if kits.is_complete():
 		kits.match_loadout = RiposteKits.match_loadout(kits.arena)
 	return kits

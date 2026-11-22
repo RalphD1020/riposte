@@ -12,11 +12,11 @@ Minimalist dark fantasy: stylized, sculpted, intentional character art with rest
 
 The references have one job each, and none of them sets head-to-body proportion by itself:
 
-| Reference                   | Its job                                                                                                         | Not its job                                         |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| All Might (My Hero Academia) | Primary physique and masculine anatomy: heroic silhouette, jaw, cheekbones, brow musculature, neck into trapezius | His measurements (2.20 m) or his caricature         |
-| Dark-fantasy action RPGs    | World and material language: restrained colour, ruggedness, functional layering, weathered materials            | Realistic human anatomy                             |
-| Fire Emblem (3D)            | Construction of a stylized anime head: simplified planes, readable features, clean three-quarter transitions     | Physique, slender proportions, a softer jaw         |
+| Reference                    | Its job                                                                                                           | Not its job                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| All Might (My Hero Academia) | Primary physique and masculine anatomy: heroic silhouette, jaw, cheekbones, brow musculature, neck into trapezius | His measurements (2.20 m) or his caricature |
+| Dark-fantasy action RPGs     | World and material language: restrained colour, ruggedness, functional layering, weathered materials              | Realistic human anatomy                     |
+| Fire Emblem (3D)             | Construction of a stylized anime head: simplified planes, readable features, clean three-quarter transitions      | Physique, slender proportions, a softer jaw |
 
 "Anime" means the facial design, not a slender figure: never a smaller body under a larger skull, larger eyes or a softer jaw. The head is a proportionate rounded cranium carrying a substantial masculine facial mask, designed around the locked eyes and brows, measured at the 1.80 m reference and verified across the sweep. Lean (ectomorphic, visibly athletic), reference (a balanced Olympic weightlifter) and strongman (heavier frame, thick forearms, calves and neck, definition kept) are one heroic language. Keep one body reference board and a separate head and face board, so a request about the face is never read as a request about the physique.
 
@@ -34,6 +34,8 @@ The references have one job each, and none of them sets head-to-body proportion 
 | Geometry    | Topology appropriate to the art; smooth curves, bevels and subdivision where they serve it                                                         |
 | Performance | Mobile-first budgets measured per asset; a triangle count is never a proxy for quality                                                             |
 | Physics     | Completely independent of visual geometry                                                                                                          |
+
+**Weapon sizing.** A weapon has one authored size, dimension and shape, the same in every wielder's hands. It is chosen between historical accuracy and dark-fantasy heroic exaggeration, leaning about 85 % historical and 15 % heroic. Dimensions and mass stay inside the cited museum range; the heroic share lives in design language (silhouette clarity, faceted metal, restrained dark-fantasy detail, materials), never in length, mass or size, and it is not a 15 % enlargement. Wolf's bastard sword (1.22 m overall, a 0.97 m blade, 1.60 kg) sits beside a measured German hand-and-a-half sword of 1400–1430 (Metropolitan Museum 2006.564: 1.248 m, a 0.978 m blade, 1.56 kg). A taller fighter reaches further because his skeleton carries the weapon further, never because the weapon grows. Weapon geometry is the combat authority; the hand adapts to the handle, never the handle to the hand.
 
 The authored body is sculpted silhouettes, heroic action-figure anatomy, restrained surface detail, and Hades II's painterly light. Neither reference is a claim that its models are this game's. Detail concentrates at identity features rather than spreading evenly, and it never means a figure assembled from blocks. Smooth means the chest, waist, pelvis, deltoid, and thigh change into each other on purpose. A planned facet, such as the cranium, can stay. An accidental ridge, gap, or primitive intersection cannot.
 

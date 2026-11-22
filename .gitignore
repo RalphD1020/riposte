@@ -74,6 +74,9 @@ __pycache__/
 
 # Godot generated / import cache
 game/.godot/
+# Disposable review imports: a staged candidate GLB run through the project's real editor
+# import (never shipped, never committed; approved assets live in game/assets/generated/).
+game/assets/candidates/
 **/.godot/export_credentials.cfg
 .import/
 .nomedia

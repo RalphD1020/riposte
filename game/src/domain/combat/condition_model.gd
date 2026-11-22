@@ -1,7 +1,9 @@
 class_name ConditionModel
 extends RefCounted
 
-## Physical capability (CONDITION-001, rules 45; STAMINA-004, rules 53). One
+## Physical capability (CONDITION-001, rules 45; STAMINA-004, rules 53). Injury
+## lowers every capability: the more injured a fighter, the less force, speed
+## and tracking every voluntary actuator produces (COMBAT-CORE-001). One
 ## damage fraction feeds three linear ranges, each with its own authored
 ## floor, and start-of-tick stamina feeds the force term alone:
 ##

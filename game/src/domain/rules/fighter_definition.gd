@@ -121,8 +121,8 @@ var stagger_tracking: float = 0.0
 ## Burst footwork (COMBAT §25.2). A double tap in one duel direction buys a
 ## short, hard, bounded push. Spam control is physical — the intent has to
 ## return to neutral before a new gesture is even recognized, and a burst
-## cannot be reversed while it runs — so there is no stamina bar and no
-## cooldown.
+## cannot be reversed while it runs — so there is no cooldown. A dash's start
+## is also paid from stamina, once (STAMINA-004).
 ##
 ## Hysteresis band for reading a cardinal sector out of the intent: a clear
 ## deflection enters one, a near-centred stick leaves it. Without the gap an

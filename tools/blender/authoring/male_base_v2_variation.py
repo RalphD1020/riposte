@@ -55,14 +55,18 @@ import face_surface  # noqa: E402
 import male_base_v2 as v2  # noqa: E402
 import face_features  # noqa: E402
 import facial_hair  # noqa: E402
+import garment_builder  # noqa: E402
+import pose_fixture  # noqa: E402
 import wolf_hair  # noqa: E402
-from character_modeling import appearance, chest_profile, face_mapping, foundation, garments, rig_regions, silhouette, variation  # noqa: E402
+from character_modeling import appearance, chest_profile, face_mapping, foundation, garments, ownership, pose_suite, rig_regions, silhouette, variation  # noqa: E402
 
 CONFIGURATION = os.path.join(v2.CHARACTERS, "male_base.v2.configuration.json")
 ## Wolf, the first character on the foundation (`--set wolf`); the default sets never read it.
-## A review copy of his manifest (a candidate identity) replaces it through
-## RIPOSTE_CHARACTER_REVIEW.
-WOLF = os.environ.get("RIPOSTE_CHARACTER_REVIEW") or os.path.join(v2.CHARACTERS, "wolf", "wolf.assembly.json")
+## The canonical manifest, or a staged candidate through the explicit `--manifest <path>` arg
+## (set in main()) — one build route. A candidate is the same canonical build reading a staged
+## manifest.
+CANONICAL_WOLF = os.path.join(v2.CHARACTERS, "wolf", "wolf.assembly.json")
+WOLF = CANONICAL_WOLF
 ## Smoothing of the transferred key deltas over BodyV2 (v1's facets are ~40 mm wide).
 DELTA_SMOOTH_ITERATIONS = 40
 NECK_BAND = (-0.3, 0.0, 0.7, 1.0)
@@ -116,6 +120,32 @@ def _identity(character=None):
 def _wolf():
     with open(WOLF, encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _canonical_wolf():
+    return os.path.normcase(os.path.realpath(WOLF)) == os.path.normcase(os.path.realpath(CANONICAL_WOLF))
+
+
+def _foundation_path():
+    """The foundation document this build reads: a review copy, else the library's current."""
+    from character_modeling import asset_library
+    return v2.REVIEW_FOUNDATION or asset_library.current_foundation_document()
+
+
+def _provenance(rows, reports):
+    """Each built skin's provenance (`ownership.provenance`), against the canonical character's
+    published revisions: a candidate's edited owners record no revision."""
+    _, _, snap = ownership.load(WOLF, _foundation_path())
+    record = ownership.releases_path(CANONICAL_WOLF)
+    releases = None
+    if os.path.exists(record):
+        with open(record, encoding="utf-8") as handle:
+            releases = json.load(handle)
+    builder = ownership.builder_sha256(ROOT)
+    for name, _definition, _hair, _marks, _character, layers in rows:
+        if layers and name in reports:
+            reports[name]["provenance"] = ownership.provenance(snap, releases, layers["plan"]["outfit"], builder,
+                                                               reports[name]["canonical_geometry"])
 
 
 def _coords(obj):
@@ -555,20 +585,23 @@ def fit_face(head, chart, resolved, collection, prefix, identity=None):
         marks = variation.responded_marks(marks, variation.face_response(resolved))
     made = face_features.place_marks(collection, tree, chart[0], chart[1], chart[2], marks,
                                      resolved["face"]["eye_spacing_u"], resolved["face"]["brow_tilt_deg"],
-                                     mask_parameters=mask, ridge=face_features.ridge_lines(v2.face_controls, head, parameters=mask))
-    character_assembly.dress_face(made, character_assembly.palette_materials(manifest, ROOT))
+                                     mask_parameters=mask, ridge=face_features.ridge_lines(v2.face_controls, head, parameters=mask),
+                                     head=head)
+    character_assembly.dress_face(made, character_assembly.palette_materials(manifest, ROOT), marks.get("Eye"))
     for obj, _component, _side in made:
         obj.name = "%s.%s" % (prefix, obj.name)
     return character_assembly.face_checks(made, tree)
 
 
-def fit_hair(head, body, which, collection, prefix):
+def fit_hair(head, body, which, collection, prefix, ear_rings=None, ear_around=None):
     """The hairstyle `which` (a style, or (style, variant) from its definition) fitted to
-    the resolved head."""
+    the resolved head. `ear_rings`/`ear_around` are the ear grid density the ears were built
+    with (so the free-rim indices address the actual ear mesh)."""
     style, variant = which if isinstance(which, tuple) else (which, None)
     ## The head map's components: this character's resolved ears and brows (HAIR-FIT).
     parts = [o for o in collection.objects if o.type == "MESH"]
-    ears = [(o, ear_component.free_rim()) for o in parts if o.name.startswith("%s.Ear." % prefix)]
+    rim = ear_component.free_rim(ear_rings or ear_component.ear.RINGS, ear_around or ear_component.ear.AROUND)
+    ears = [(o, rim) for o in parts if o.name.startswith("%s.Ear." % prefix)]
     brows = [o for o in parts if o.name.startswith("%s.Brow." % prefix)]
     frame = wolf_hair.head_frame_of(head, body, ears, brows)
     obj = wolf_hair.build_style(frame, style, variant)
@@ -675,7 +708,7 @@ def smoothed_weights(weights, edges, count, iterations):
     return {n: table[:, j] for j, n in enumerate(names)}
 
 
-def fit_rig(body, weights, collection, name, smooth_iterations=0):
+def fit_rig(body, weights, collection, name, smooth_iterations=0, rig_name="Armature"):
     """The character's own armature (CHARACTER-RIG-FIT): a copy of the shared rig whose
     joints follow the character's shaped mesh. Each bone end moves by the mean displacement,
     from the base sculpt to this body, of the vertices around it (a Gaussian of their rest
@@ -683,9 +716,10 @@ def fit_rig(body, weights, collection, name, smooth_iterations=0):
     regressor derives joints from the shaped surface: one resolved body drives mesh and
     joints alike. Its rest is the authoring A-pose the mesh is built in (the shared rig's
     pose applied), so the body's armature modifier is the identity at rest. The body gets
-    the skin weights as vertex groups and an armature modifier on its armature."""
+    the skin weights as vertex groups and an armature modifier on its armature. A symmetric
+    foundation's bind rig (`rig_name`) already rests in that A-pose, so applying it is a no-op."""
     import numpy as np
-    shared = next(o for o in bpy.data.objects if o.type == "ARMATURE" and o.name == "Armature")
+    shared = bpy.data.objects[rig_name]
     rig = shared.copy()
     rig.data = shared.data.copy()
     rig.name = rig.data.name = "%s.Armature" % name
@@ -728,6 +762,23 @@ def fit_rig(body, weights, collection, name, smooth_iterations=0):
     return rig
 
 
+def stamp_regions(obj, regions, on_head):
+    """The foundation's fitting regions on this character's own body or head copy, before
+    any trimming (`riposte_region` per vertex, names in `obj["riposte_regions"]`), so the
+    final derived mesh still knows its anatomy (the exposure check reads it). On the head,
+    a sub-region (mouth, chin, ...) takes its vertices from the whole-head region."""
+    names = sorted(n for n, r in regions["regions"].items() if bool(r.get("object")) == on_head)
+    order = sorted(names, key=lambda n: bool(regions["regions"][n].get("parent")))
+    tags = [-1] * len(obj.data.vertices)
+    for n in order:
+        for i in regions["regions"][n]["vertices"]:
+            if i < len(tags):
+                tags[i] = names.index(n)
+    attr = obj.data.attributes.get("riposte_region") or obj.data.attributes.new("riposte_region", "INT", "POINT")
+    attr.data.foreach_set("value", tags)
+    obj["riposte_regions"] = names
+
+
 def mask_layer(obj, hidden, margin, coverers, reach_m):
     """Remove from `obj` (a character's own copy, never a source) the faces its covering
     layers hide (`garments.masked_faces`, `margin` rings inside the covered area), and count
@@ -763,9 +814,186 @@ def apply_layers(layers, head, chart, collection, prefix, identity):
         made.append(obj)
         report[definition["id"]] = fit
     regions = layers["regions"]
+    stamp_regions(head, regions, True)
     hidden = appearance.hidden_vertices(layers["plan"], regions, v2.STUDY)
     margin = layers["plan"]["visibility"]["margin_rings"].get(v2.STUDY, 1)
     report["head_mask"] = mask_layer(head, hidden, margin, made, COVER_REACH_M)
+    return report
+
+
+## A covered vertex: a ray along its normal meets a garment above it within this reach.
+COVER_RAY_M = 0.06
+## A covered point is covered along its normal and SIGHT_RAYS sightlines SIGHT_TILT_DEG off it.
+## GARMENT-VALIDATION-001: this sightline fan is the one kept multi-ray heuristic and it is
+## scoped to CUFF_REGIONS only (skin seen down a cuff opening); the angles are provisional and
+## validated against the gameplay camera, not a global coverage guarantee. Do not widen it
+## beyond cuffs without a demonstrated consumer and test case.
+SIGHT_TILT_DEG = 60.0
+SIGHT_RAYS = 6
+## Regions a cuff opens onto.
+CUFF_REGIONS = ("forearm.",)
+## A masked body or garment edge must lie within this distance of a covering garment: the
+## reach coverage was proven at (loose cloth hangs further off than a fitted sleeve).
+GARMENT_REACH_M = COVER_RAY_M
+
+
+def _costume_materials(identity, outfit):
+    """The outfit's costume slots from its palette ({slot: {srgb, roughness[, metallic]}})."""
+    palette = (identity or {}).get("outfits", {}).get(outfit, {}).get("palette", {})
+    return {slot: character_assembly.material("%s.%s" % (outfit, slot), entry["srgb"], entry.get("roughness", 0.8),
+                                              entry.get("metallic", 0.0))
+            for slot, entry in palette.items()}
+
+
+## The pose envelope coverage is proven over (GARMENT-COVER-001): a face is trimmed only if
+## a garment above covers it in every one of these. The clips move the body and legs (the
+## arms follow the simulated sword in the game), so the arm poses are the pose suite's
+## (POSE-SUITE-001, `character_modeling.pose_suite`, diagnostics included: the conservative
+## side) at ENVELOPE_FRACTIONS of each motion.
+POSE_CLIPS = (("swing_support", 14), ("overswing", 20), ("dash_forward", 15), ("hurt_heavy", 13))
+ENVELOPE_FRACTIONS = (0.5, 1.0)
+
+
+def _pose_envelope(rig):
+    """Generator: sets each pose of the envelope on `rig` (rest first) and yields its name."""
+    yield "rest"
+    if rig is None:
+        return
+    rig.animation_data_create()
+    for name, frame in POSE_CLIPS:
+        action = bpy.data.actions.get(name)
+        if action is None:
+            continue
+        euler = {f.data_path.split('"')[1] for layer in action.layers for strip in layer.strips for slot in action.slots
+                 for f in (strip.channelbag(slot).fcurves if strip.channelbag(slot) else ()) if f.data_path.endswith(".rotation_euler")}
+        for pb in rig.pose.bones:
+            pb.rotation_mode = "XYZ" if pb.name in euler else "QUATERNION"
+        rig.animation_data.action = action
+        if getattr(action, "slots", None):
+            rig.animation_data.action_slot = action.slots[0]
+        bpy.context.scene.frame_set(frame)
+        yield "%s@%d" % (name, frame)
+    rig.animation_data.action = None
+    for sample in pose_suite.samples():
+        if sample["t"] not in ENVELOPE_FRACTIONS:
+            continue
+        pose_fixture.apply(rig, sample)
+        bpy.context.view_layer.update()
+        yield "%s@%.2f" % (sample["id"], sample["t"])
+    for pb in rig.pose.bones:
+        pb.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
+        pb.rotation_euler = (0.0, 0.0, 0.0)
+        pb.location = (0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
+
+
+def _posed_mesh(obj):
+    """(world points, world normals, polygons) of `obj` as the current pose deforms it."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    e = obj.evaluated_get(dg)
+    mesh = e.to_mesh()
+    world = obj.matrix_world
+    rot = world.to_3x3()
+    out = ([world @ v.co for v in mesh.vertices], [(rot @ v.normal).normalized() for v in mesh.vertices],
+           [list(p.vertices) for p in mesh.polygons])
+    e.to_mesh_clear()
+    return out
+
+
+def _sightlines(normal):
+    """The directions a surface point is seen from: its normal and SIGHT_RAYS directions
+    tilted SIGHT_TILT_DEG off it (skin inside a cuff is seen down the opening, not along its
+    normal)."""
+    side = normal.cross(Vector((0.0, 0.0, 1.0)) if abs(normal.z) < 0.9 else Vector((1.0, 0.0, 0.0))).normalized()
+    up = normal.cross(side)
+    tilt = math.radians(SIGHT_TILT_DEG)
+    return [normal] + [(normal * math.cos(tilt) + (side * math.cos(a) + up * math.sin(a)) * math.sin(tilt)).normalized()
+                       for a in (2.0 * math.pi * n / SIGHT_RAYS for n in range(SIGHT_RAYS))]
+
+
+def _covered(obj, coverers, candidates, rig, sighted=()):
+    """Vertices of `obj` among `candidates` that a ray along their normal sends into a
+    garment of `coverers` in every pose of the envelope; those in `sighted` (skin a cuff
+    opens onto) every sightline too (`_sightlines`). Returns (covered, {pose: lost})."""
+    covered, lost = set(candidates), {}
+    for pose in _pose_envelope(rig):
+        bpy.context.view_layer.update()
+        points, normals, _polys = _posed_mesh(obj)
+        cover_points, cover_polys = [], []
+        for c in coverers:
+            p, _n, polys = _posed_mesh(c)
+            start = len(cover_points)
+            cover_points += p
+            cover_polys += [[start + i for i in poly] for poly in polys]
+        tree = BVHTree.FromPolygons(cover_points, cover_polys)
+        before = len(covered)
+        covered = {i for i in covered
+                   if all(tree.ray_cast(points[i] + normals[i] * 0.0005, d, COVER_RAY_M)[0] is not None
+                          for d in (_sightlines(normals[i]) if i in sighted else (normals[i],)))}
+        lost[pose] = before - len(covered)
+    return covered, lost
+
+
+def apply_garments(layers, body, rig, collection, prefix, identity):
+    """The plan's garments, innermost first, each fitted to this body and rig over the ones
+    before it (`garment_builder`), then coverage (one system, the plan's): the body loses the faces of
+    its hidden regions that a garment actually covers, and each garment the faces of its
+    `hidden_garment_regions` that a garment above it covers, `margin_rings` inside, on this
+    character's own copies; every mask's exposed edges are counted."""
+    plan, regions = layers["plan"], layers["regions"]
+    stamp_regions(body, regions, False)
+    frame = garment_builder.body_frame(body, rig, regions)
+    materials = _costume_materials(identity, plan["outfit"])
+    built, report, under = [], {}, []
+    head = bpy.data.objects.get("%s.Head" % prefix)
+    for definition in layers["garments"]:
+        ## Each garment is fitted over the body and every garment built before it (beneath it);
+        ## neckwear (`design.fit_head`) over the head too, rigid on Head.
+        fit_frame = garment_builder.with_surface(frame, head, "Head", "head") if definition["design"].get("fit_head") and head else frame
+        obj, fit = garment_builder.build(fit_frame, definition, materials, "%s.%s" % (prefix, definition["source"]["object"]), under)
+        under.append(obj)
+        collection.objects.link(obj)
+        obj.modifiers.new("Armature", "ARMATURE").object = rig
+        built.append((definition["id"], obj))
+        report[definition["id"]] = fit
+    ## Relationships between components where they overlap (`relationships`): a garment
+    ## `beneath` another component (the hair over a scarf) moves it outside itself there.
+    others = {d["id"]: d for d in layers.get("hair", [])}
+    for definition, (_gid, obj) in zip(layers["garments"], built):
+        for rel in definition.get("relationships", ()):
+            other = others.get(rel["with"])
+            target = bpy.data.objects.get("%s.%s" % (prefix, other["source"]["object"])) if other else None
+            if rel.get("relation") == "beneath" and target is not None:
+                report[definition["id"]]["%s_moved_over" % rel["with"]] = garment_builder.lie_beneath(obj, target, rel.get("depth_m", 0.03))
+    ## A diagnostic build (RIPOSTE_GARMENT_MASK=0) keeps every face: fit defects apart from
+    ## coverage defects.
+    if not built or os.environ.get("RIPOSTE_GARMENT_MASK") == "0":
+        return report
+    margin = plan["visibility"]["margin_rings"].get("body", 1)
+    hidden = appearance.hidden_vertices(plan, regions, "body")
+    coverers = [obj for _gid, obj in built]
+    ## Coverage is measured for every layer first (poses move all of them), then masked.
+    ## The forearm is seen down a cuff: kept wherever a sightline leaves through the opening.
+    names = list(body.get("riposte_regions", ()))
+    tags = body.data.attributes.get("riposte_region")
+    sighted = {i for i, t in enumerate(tags.data) if 0 <= t.value < len(names) and names[t.value].startswith(CUFF_REGIONS)} if tags else set()
+    covered, lost = _covered(body, coverers, hidden, rig, sighted)
+    plans = [("body", body, covered, coverers, lost, len(hidden))]
+    for n, (gid, obj) in enumerate(built):
+        lower_regions = plan["visibility"]["hidden_garment_regions"].get(gid)
+        above = [o for _g, o in built[n + 1:]]
+        if not lower_regions or not above:
+            continue
+        names = list(obj["riposte_regions"])
+        tags = obj.data.attributes["riposte_region"].data
+        candidates = {i for p, t in zip(obj.data.polygons, tags) if names[t.value] in lower_regions for i in p.vertices}
+        mine, lost = _covered(obj, above, candidates, rig)
+        plans.append((gid, obj, mine, above, lost, len(candidates)))
+    for gid, obj, mine, cover, lost, permitted in plans:
+        key = "body_mask" if gid == "body" else "%s_mask" % gid
+        report[key] = dict(mask_layer(obj, mine, margin, cover, GARMENT_REACH_M), permitted=permitted, lost_in_pose=lost)
+    report["visible_triangles"] = {o.name.split(".", 1)[1]: sum(len(p.vertices) - 2 for p in o.data.polygons)
+                                   for o in [body] + coverers}
     return report
 
 
@@ -781,13 +1009,16 @@ def build_character(resolved, deltas, weights, name, hair_style, x, seat=False, 
     collection.objects.link(body)
     collection.objects.link(head)
     if resolved.get("rig_fit"):
-        fit_rig(body, weights, collection, name, resolved.get("rig_weight_smooth_iterations") or 0)
+        fit_rig(body, weights, collection, name, resolved.get("rig_weight_smooth_iterations") or 0,
+                v2.bind_rig_name(resolved))
     neck = v2.seat_neck(body, head) if seat or resolved.get("seat_neck") else None
     face = fit_face(head, chart, resolved, collection, name, identity)
     ears = (ear_component.build_ears(head, chart, collection, name, head.data.materials[0],
-                                     resolved.get("ear_flare_deg", ear_component.ear.FLARE_DEG), resolved.get("ear_scale", 1.0))
+                                     resolved.get("ear_flare_deg", ear_component.ear.FLARE_DEG), resolved.get("ear_scale", 1.0),
+                                     resolved.get("ear_rings", ear_component.ear.RINGS), resolved.get("ear_around", ear_component.ear.AROUND))
             if resolved.get("ears") else [])
-    hair = fit_hair(head, body, hair_style, collection, name) if hair_style else None
+    hair = fit_hair(head, body, hair_style, collection, name,
+                    resolved.get("ear_rings"), resolved.get("ear_around")) if hair_style else None
     if hair is not None:
         ## Dressed in the identity's hair material (the palette a review judges).
         hair.data.materials.clear()
@@ -799,13 +1030,33 @@ def build_character(resolved, deltas, weights, name, hair_style, x, seat=False, 
     report["face_marks"] = face
     report["neck_seat"] = neck
     if ears:
-        report["ears"] = ear_component.ear_report(ears, head, hair)
+        report["ears"] = ear_component.ear_report(ears, head, hair,
+                                                  resolved.get("ear_rings", ear_component.ear.RINGS),
+                                                  resolved.get("ear_around", ear_component.ear.AROUND))
     if layers:
         report["layers"] = apply_layers(layers, head, chart, collection, name, identity)
-    ## The lock (CHARACTER-FOUNDATION-001): every built mesh's fingerprint, before the root
-    ## places the character (the meshes' own coordinates).
-    report["fingerprints"] = {obj.name: v2.fingerprint(obj)["sha256"] for obj in sorted(collection.objects, key=lambda o: o.name)
-                              if obj.type == "MESH"}
+        if layers.get("garments"):
+            rig = bpy.data.objects.get("%s.Armature" % name)
+            report["garments"] = apply_garments(layers, body, rig, collection, name, identity)
+    ## Two mesh identities, before the root places the character (the meshes' own
+    ## coordinates): `fingerprints` is the byte-level digest the foundation lock pins (face
+    ## order included); `canonical_geometry` is the order-independent production identity
+    ## (CHARACTER-BUILD-001), which `ownership.provenance` hashes into the geometry_hash so a
+    ## harmless rim face reorder is not read as a geometry change.
+    meshes = [obj for obj in sorted(collection.objects, key=lambda o: o.name) if obj.type == "MESH"]
+    report["fingerprints"] = {obj.name: v2.fingerprint(obj)["sha256"] for obj in meshes}
+    report["canonical_geometry"] = {obj.name: v2.canonical_geometry(obj)["sha256"] for obj in meshes}
+    ## The head and what rides on it (face features, hair) follow the Head bone rigidly, so a
+    ## posed review shows the assembled character; the skinned body and garments already
+    ## deform. After the identities above: binding changes no mesh.
+    rig = bpy.data.objects.get("%s.Armature" % name)
+    if rig is not None:
+        for obj in meshes:
+            if not any(m.type == "ARMATURE" for m in obj.modifiers):
+                group = obj.vertex_groups.get(v2.HEAD) or obj.vertex_groups.new(name=v2.HEAD)
+                group.add(range(len(obj.data.vertices)), 1.0, "REPLACE")
+                obj.modifiers.new("Armature", "ARMATURE").object = rig
+        report["bindings"], report["binding_problems"] = assembly_bindings(meshes, rig, head, hair)
     root = bpy.data.objects.new("%s.Root" % name, None)
     collection.objects.link(root)
     h = resolved["stature_scale"]
@@ -815,6 +1066,33 @@ def build_character(resolved, deltas, weights, name, hair_style, x, seat=False, 
             obj.parent = root
     report["figure_height_scaled_m"] = round(report["figure_height_m"] * h, 4)
     return report
+
+
+## The parts that ride the head bone alone: the approved head and everything placed on it.
+HEAD_RIDERS = ("Eye", "EyeIris", "EyeLine", "EyeMask", "Brow", "DeadEye", "Ear")
+
+
+def assembly_bindings(meshes, rig, head, hair):
+    """The complete assembly's bindings (what the geometry fingerprints do not see): each mesh's
+    rig and the bones that actually move it, and why the head-borne parts are not bound to the
+    Head bone alone on this character's rig (a missing or misattached head fails here)."""
+    out, problems = {}, []
+    rig_bones = {b.name for b in rig.data.bones}
+    for obj in meshes:
+        modifier = next((m for m in obj.modifiers if m.type == "ARMATURE"), None)
+        ## Only groups naming a bone deform; others (an ear's `EarRoot` selection) are data.
+        names = {g.index: g.name for g in obj.vertex_groups if g.name in rig_bones}
+        bones = sorted({names[g.group] for v in obj.data.vertices for g in v.groups if g.weight > 0.0 and g.group in names})
+        out[obj.name] = {"rig": modifier.object.name if modifier and modifier.object else None, "bones": bones}
+        part = obj.name.split(".", 1)[-1]
+        riders = obj is head or obj is hair or part.split(".")[0] in HEAD_RIDERS
+        if riders and (out[obj.name]["rig"] != rig.name or bones != [v2.HEAD]):
+            problems.append("%s rides %s on %s, not Head alone on %s" % (obj.name, bones, out[obj.name]["rig"], rig.name))
+        elif not riders and out[obj.name]["rig"] != rig.name:
+            problems.append("%s is not bound to %s" % (obj.name, rig.name))
+    if head is None or head.name not in out:
+        problems.append("the approved head is missing from the assembly")
+    return out, problems
 
 
 def _definitions(which, document):
@@ -883,6 +1161,16 @@ def wolf_rows(document):
     for gid in sorted(ids):
         with open(os.path.join(library, "%s.garment.json" % gid), encoding="utf-8") as handle:
             definitions[gid] = json.load(handle)
+    owned = ownership.problems(wolf, definitions, canonical=_canonical_wolf())
+    if owned:
+        raise SystemExit("RIPOSTE_OWNERSHIP: " + "; ".join(owned))
+    ## The pin names the foundation he was approved on; a staged foundation review builds him
+    ## on the candidate as a migration (CHARACTER-RELEASE-001), never silently.
+    pinned = ownership.pin_problems(wolf, _foundation_path())
+    if pinned and not v2.REVIEW_FOUNDATION:
+        raise SystemExit("RIPOSTE_FOUNDATION_PIN: " + "; ".join(pinned))
+    if pinned:
+        print("RIPOSTE_FOUNDATION_MIGRATION", json.dumps(pinned))
     rows = []
     for outfit, entry in sorted(wolf["outfits"].items()):
         ## The style and the builder variant its definition pins (garments.hair_variant).
@@ -892,7 +1180,9 @@ def wolf_rows(document):
             continue
         plan = appearance.resolve(wolf, outfit, definitions, regions, target)
         layers = {"plan": plan, "regions": regions,
-                  "facial_hair": [definitions[c["id"]] for c in plan["components"] if c["type"] == "facial_hair"]}
+                  "facial_hair": [definitions[c["id"]] for c in plan["components"] if c["type"] == "facial_hair"],
+                  "hair": [definitions[c["id"]] for c in plan["components"] if c["type"] == "hair"],
+                  "garments": [definitions[c["id"]] for c in plan["components"] if c["type"] == "garment"]}
         rows.append(("wolf_%s" % outfit, {"body": dict(wolf["foundation"]["body"])}, hair, marks, wolf, layers))
     return rows
 
@@ -1009,6 +1299,11 @@ def main():
                                                        os.path.abspath(args[args.index("--out") + 1]), views, frame, gameplay, only)))
         return
     which = args[args.index("--set") + 1]
+    ## Explicit candidate manifest: a candidate builds the same canonical path, differing only
+    ## in which manifest it reads.
+    if "--manifest" in args:
+        global WOLF
+        WOLF = os.path.abspath(args[args.index("--manifest") + 1])
     out_dir = os.path.abspath(args[args.index("--out") + 1])
     document = _document()
     base = _foundation()
@@ -1022,6 +1317,9 @@ def main():
     ## The foundation's base source, or a review build of it (RIPOSTE_BASE_REVIEW).
     bpy.ops.wm.open_mainfile(filepath=v2.REVIEW_BASE or foundation.path_of(base, "source", blender))
     v2.apose()
+    if base["resolution"].get("symmetric"):
+        deltas, weights = v2.stored_deltas(), v2.stored_weights()
+    else:
     deltas = key_deltas()
     weights = v2._transfer_weights([tuple(c) for c in _coords(bpy.data.objects[v2.SCULPT])])
     if which == "wolf":
@@ -1050,8 +1348,15 @@ def main():
         reports[name] = report
         print("RIPOSTE_VARIANT", name, json.dumps({k: report[k] for k in ("mass_kg", "heads_tall", "neck_through_head_vertices")}
                                                   | {k: report.get(k) for k in ("hair_inside_head", "hair_inside_body")}
-                                                  | {"landmark_problems": len(report["landmark_problems"])}))
-    for name in ("Body", v2.SCULPT, v2.STUDY):
+                                                  | {"landmark_problems": len(report["landmark_problems"]),
+                                                     "binding_problems": report.get("binding_problems", [])}))
+    unbound = {n: r["binding_problems"] for n, r in reports.items() if r.get("binding_problems")}
+    if unbound:
+        raise SystemExit("RIPOSTE_ASSEMBLY_BINDINGS: %s" % json.dumps(unbound))
+    if which == "wolf":
+        _provenance(rows, reports)
+    for name in ("Body", v2.SCULPT, v2.STUDY, v2.BIND_FIELDS):
+        if name in bpy.data.objects:
         bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
     os.makedirs(out_dir, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, "%s.blend" % which), copy=True)

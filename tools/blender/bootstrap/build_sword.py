@@ -44,8 +44,10 @@ GRIP_OFFHAND = POMMEL_LENGTH + HAND_HALF_WIDTH + 0.005
 def build(variant):
     rb.reset_scene()
     training = variant == "training"
-    # Clone Drone block language: chunky solids, bright edge bevels over a dark
-    # core, restrained emission. Not a laser sword — it still reads as steel.
+    # Placeholder blockout materials only (ART-STYLE-001 updated target is smooth stylized dark
+    # fantasy, not block language): desaturated cold steel, dark iron, restrained emission. This
+    # bootstrap mesh is the dimensional reference until the W7 sculpted dark-fantasy longsword
+    # replaces it; it is not the art target.
     steel = rb.material("steel", (0.82, 0.84, 0.88), roughness=0.3, metallic=0.9)
     spine_iron = rb.material("spine_iron", (0.1, 0.1, 0.12), roughness=0.5, metallic=0.85)
     iron = rb.material("metal", (0.16, 0.15, 0.15), roughness=0.55, metallic=0.85, emission=(0.35, 0.22, 0.08), emission_strength=0.08)

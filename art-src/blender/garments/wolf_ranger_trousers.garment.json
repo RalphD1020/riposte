@@ -1,0 +1,120 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_trousers",
+  "category": "fitted",
+  "layer": 1,
+  "regions": [
+    "pelvis",
+    "upper_leg.L",
+    "upper_leg.R",
+    "lower_leg.L",
+    "lower_leg.R"
+  ],
+  "materials": ["wool"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerTrousers"
+  },
+  "coverage": {
+    "hides": [
+      "pelvis",
+      "upper_leg.L",
+      "upper_leg.R",
+      "lower_leg.L",
+      "lower_leg.R"
+    ],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Seat",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.6
+          },
+          {
+            "bone": "Hips",
+            "at": -1.1
+          }
+        ],
+        "hull_below": {
+          "bone": "Hips",
+          "at": -0.35
+        },
+        "around": 24,
+        "rows": 6,
+        "ease_m": [
+          [0.0, 0.01],
+          [0.6, 0.014],
+          [1.0, 0.018]
+        ],
+        "thickness_m": 0.002,
+        "material": "wool"
+      },
+      {
+        "name": "Trousers.{s}",
+        "sides": ["L", "R"],
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "UpperLeg.{s}",
+            "at": 0.2
+          },
+          {
+            "bone": "UpperLeg.{s}",
+            "at": 1.0
+          },
+          {
+            "bone": "LowerLeg.{s}",
+            "at": 0.8
+          }
+        ],
+        "centre_on": ["upper_leg.{s}", "lower_leg.{s}"],
+        "section": ["upper_leg.{s}", "lower_leg.{s}"],
+        "around": 14,
+        "rows": 12,
+        "thickness_m": 0.002,
+        "material": "wool",
+        "ease_m": [
+          [0.0, 0.014],
+          [0.25, 0.018],
+          [0.45, 0.018],
+          [0.55, 0.015],
+          [0.66, 0.016],
+          [0.71, 0.012],
+          [0.76, 0.005],
+          [1.0, 0.004]
+        ],
+        "folds": {
+          "count": 2,
+          "amp_m": 0.003,
+          "from": 0.35
+        }
+      }
+    ]
+  },
+  "notes": "Dark wool trousers with moderate fullness through the thigh and knee, gathered above the boot cuffs and tucked into the boots.",
+  "slot": "legs"
+}

@@ -86,7 +86,7 @@ func test_tiers_partition_the_suites() -> void:
 	assert_true(paths.size() > 40, "fixture: the manifest registers the suites (%d)" % paths.size())
 	for path in paths:
 		var tiers := 0
-		for tier: String in [HeadlessRunner.TIER_GATE, HeadlessRunner.TIER_BALANCE, HeadlessRunner.TIER_ACCEPT, HeadlessRunner.TIER_SHIP]:
+		for tier: String in [HeadlessRunner.TIER_GATE, HeadlessRunner.TIER_BALANCE, HeadlessRunner.TIER_ACCEPT, HeadlessRunner.TIER_SHIP, HeadlessRunner.TIER_CANDIDATE]:
 			tiers += 1 if HeadlessRunner.in_tier(path, tier) else 0
 		assert_eq(tiers, 1, "%s runs in exactly one process" % path)
 		assert_eq(HeadlessRunner.in_tier(path, ""), HeadlessRunner.in_tier(path, HeadlessRunner.TIER_GATE), "%s: an unset tier is the gating tier" % path)
@@ -94,6 +94,8 @@ func test_tiers_partition_the_suites() -> void:
 	assert_true(HeadlessRunner.in_tier("res://tests/application/test_cpu_accept.gd", HeadlessRunner.TIER_ACCEPT), "CPU-ACCEPT runs only when asked for")
 	assert_true(HeadlessRunner.in_tier("res://tests/domain/test_contact_ship.gd", HeadlessRunner.TIER_SHIP), "the contact corpora run only when asked for")
 	assert_true(HeadlessRunner.in_tier("res://tests/domain/test_contact_integrity.gd", HeadlessRunner.TIER_GATE), "the contact witnesses stay in the gate")
+	assert_true(HeadlessRunner.in_tier("res://tests/application/test_candidate_e2e.gd", HeadlessRunner.TIER_CANDIDATE), "the unshipped candidate runs only when asked for")
+	assert_false(HeadlessRunner.in_tier("res://tests/application/test_candidate_e2e.gd", HeadlessRunner.TIER_GATE), "and never in the gate, which a fresh checkout without it must pass")
 
 
 ## TEST-TIER-001: the manifest is the truth the selectors act on. Each entry is
@@ -110,7 +112,7 @@ func test_the_suite_manifest_is_complete_and_truthful() -> void:
 			continue
 		var suite := script.new() as TestCase
 		assert_eq(suite.suite_name, String(entry["name"]), "%s is registered under its own name" % entry["path"])
-		assert_true(["fast", "focused", "gate", "balance", "accept", "ship"].has(String(entry["tier"])), "%s has a known size (%s)" % [entry["name"], entry["tier"]])
+		assert_true(["fast", "focused", "gate", "balance", "accept", "ship", "candidate"].has(String(entry["tier"])), "%s has a known size (%s)" % [entry["name"], entry["tier"]])
 		assert_true(int(entry["budget_ms"]) > 0, "%s has a budget" % entry["name"])
 		names.append(String(entry["name"]))
 	var prefixes := PackedStringArray()

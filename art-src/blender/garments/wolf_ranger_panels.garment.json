@@ -1,0 +1,148 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_panels",
+  "category": "loose",
+  "layer": 2,
+  "regions": ["pelvis", "upper_leg.L", "upper_leg.R"],
+  "materials": ["cloth"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerPanels"
+  },
+  "coverage": {
+    "hides": [],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Girdle",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.3
+          },
+          {
+            "bone": "Hips",
+            "at": 0.02
+          }
+        ],
+        "arcs": [
+          [-58.0, 58.0],
+          [128.0, 232.0]
+        ],
+        "columns": 10,
+        "rows": 2,
+        "hull": true,
+        "ease_m": 0.008,
+        "thickness_m": 0.003,
+        "material": "cloth"
+      },
+      {
+        "name": "PanelLong",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.12
+          },
+          {
+            "bone": "Hips",
+            "at": -1.12
+          }
+        ],
+        "arcs": [[-44.0, -5.0]],
+        "columns": 5,
+        "rows": 6,
+        "hull": true,
+        "end": {
+          "round": 0.05,
+          "s1": 0.03
+        },
+        "ease_m": 0.011,
+        "flare_m": 0.035,
+        "drape_from": 0.0,
+        "thickness_m": 0.003,
+        "material": "cloth"
+      },
+      {
+        "name": "PanelShort",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.12
+          },
+          {
+            "bone": "Hips",
+            "at": -0.92
+          }
+        ],
+        "arcs": [[3.0, 34.0]],
+        "columns": 5,
+        "rows": 6,
+        "hull": true,
+        "end": {
+          "round": 0.05,
+          "s1": 0.02
+        },
+        "ease_m": 0.011,
+        "flare_m": 0.035,
+        "drape_from": 0.0,
+        "thickness_m": 0.003,
+        "material": "cloth"
+      },
+      {
+        "name": "PanelBack",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.12
+          },
+          {
+            "bone": "Hips",
+            "at": -1.02
+          }
+        ],
+        "arcs": [
+          [150.0, 178.0],
+          [182.0, 210.0]
+        ],
+        "columns": 5,
+        "rows": 6,
+        "hull": true,
+        "end": {
+          "round": 0.05
+        },
+        "ease_m": 0.011,
+        "flare_m": 0.035,
+        "drape_from": 0.0,
+        "thickness_m": 0.003,
+        "material": "cloth"
+      }
+    ]
+  },
+  "notes": "A short cloth girdle under the belt with split panels hanging from it: two front of uneven length, a back pair; their tops joined under the belt.",
+  "slot": "waist"
+}

@@ -198,13 +198,20 @@ def identity_materials(manifest, repo):
                  for slot in (identity_profile.SKIN, "hair"))
 
 
-def material(name, srgb, roughness, metallic=0.0):
+def material(name, srgb, roughness, metallic=0.0, emission=None, emission_strength=0.0):
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     mat.use_nodes = True
     shader = mat.node_tree.nodes.get("Principled BSDF")
     shader.inputs["Base Color"].default_value = (*linear(srgb), 1.0)
     shader.inputs["Roughness"].default_value = roughness
     shader.inputs["Metallic"].default_value = metallic
+    ## Emission (a glow eye's `eye_glow`): the emission colour and strength the glTF exporter
+    ## writes (KHR_materials_emissive_strength when > 1), rendered as a luminous surface in
+    ## Godot. Default off, so every other material is unchanged.
+    emit = linear(emission) if emission is not None else (0.0, 0.0, 0.0)
+    if "Emission Color" in shader.inputs:
+        shader.inputs["Emission Color"].default_value = (*emit, 1.0)
+        shader.inputs["Emission Strength"].default_value = emission_strength
     mat.diffuse_color = (*linear(srgb), 1.0)
     return mat
 
@@ -498,17 +505,20 @@ def palette_materials(manifest, repo):
     eye, iris, pupil and catchlight from the palette): {slot: material}."""
     swatches = identity_profile.load_swatches(manifest, repo)
     palette = manifest["identity"]["palette"]
-    return {slot: material(slot, identity_profile.palette_srgb(manifest, slot, swatches), palette[slot]["roughness"])
+    return {slot: material(slot, identity_profile.palette_srgb(manifest, slot, swatches), palette[slot]["roughness"],
+                           palette[slot].get("metallic", 0.0), palette[slot].get("emission"),
+                           palette[slot].get("emission_strength", 0.0))
             for slot in manifest["materials"]["intrinsic"]}
 
 
-def dress_face(made, materials):
-    """The face features' material slots by component (`eye_assembly.MATERIALS`; the dead X
-    in hair, hidden from renders: it shows only for `dead`)."""
+def dress_face(made, materials, eye_profile=None):
+    """The face features' material slots by component (`eye_assembly.component_materials`,
+    which gives a glow eye its emissive `eye_glow`; the dead X in hair, hidden from renders:
+    it shows only for `dead`)."""
     from character_modeling import eye_assembly
     for obj, component, _side in made:
         obj.data.materials.clear()
-        for slot in eye_assembly.MATERIALS.get(component, ("hair",)):
+        for slot in eye_assembly.component_materials(component, eye_profile):
             obj.data.materials.append(materials[slot])
         slots = obj.data.attributes.get("riposte_material_slot")
         if slots is not None:
@@ -577,6 +587,14 @@ def face_checks(made, head_tree):
     def evaluated(obj):
         mesh = obj.evaluated_get(depsgraph).data
         return [obj.matrix_world @ v.co for v in mesh.vertices], [list(p.vertices) for p in mesh.polygons]
+
+    ## A glow eye has no iris/white/lash/mask, so the iris-coverage checks do not apply; it is
+    ## checked by its own aperture and brow (symmetry, clearance, blink closure elsewhere).
+    if not any(component == "iris" for _o, component, _s in made):
+        set_face(made, "neutral")
+        bpy.context.view_layer.update()
+        return {"states": 0, "glow": True,
+                "clearance_mm": {o.name: _clearance(o, head_tree) for o, c, _s in made if c in ("brow", "eye", "dead")}}
 
     states = [("neutral", None, 1.0, 0.0), ("neutral", None, 1.0, 0.5)]
     states += [(n, g, k, 0.0) for n in expressions.KEYED for k in FACE_CHECK_SCALES for g in FACE_CHECK_GAZES]
@@ -649,7 +667,7 @@ def fit_identity(head, body, manifest, hair_styles, prefix):
     face = bpy.data.collections.new("%s.Face" % prefix)
     bpy.context.scene.collection.children.link(face)
     made = face_features.place_marks(face, head_tree, low, height, half_width, identity["face"]["marks"], ridge=controls)
-    dress_face(made, materials)
+    dress_face(made, materials, identity["face"]["marks"].get("Eye"))
     report["faces"] = face_checks(made, head_tree)
     objects += [obj for obj, _c, _s in made]
     report["ridge_line_below_crest_mm"] = {n: round(min((p - q).length for _u, q in controls[1.0 if u >= 0 else -1.0]) * 1000, 1)

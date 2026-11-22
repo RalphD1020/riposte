@@ -44,26 +44,11 @@
         "depth_m": 0.0075,
         "height": 0.056,
         "profile": [
-          [
-            -0.5,
-            1.0
-          ],
-          [
-            -0.3,
-            1.06
-          ],
-          [
-            0.1,
-            1.0
-          ],
-          [
-            0.32,
-            0.82
-          ],
-          [
-            0.5,
-            0.5
-          ]
+          [-0.5, 1.0],
+          [-0.3, 1.06],
+          [0.1, 1.0],
+          [0.32, 0.82],
+          [0.5, 0.5]
         ],
         "proud_m": 0.005,
         "tilt_deg": -2.5,
@@ -72,133 +57,61 @@
       "Eye": {
         "line": {
           "thickness": [
-            [
-              -0.5,
-              0.16
-            ],
-            [
-              -0.3,
-              0.25
-            ],
-            [
-              0.2,
-              0.3
-            ],
-            [
-              0.38,
-              0.3
-            ],
-            [
-              0.5,
-              0.2
-            ]
+            [-0.5, 0.16],
+            [-0.3, 0.25],
+            [0.2, 0.3],
+            [0.38, 0.3],
+            [0.5, 0.2]
           ]
         },
         "upper": [
-          [
-            -0.5,
-            -0.06
-          ],
-          [
-            -0.45,
-            0.15
-          ],
-          [
-            -0.35,
-            0.28
-          ],
-          [
-            -0.2,
-            0.36
-          ],
-          [
-            0.0,
-            0.39
-          ],
-          [
-            0.2,
-            0.37
-          ],
-          [
-            0.35,
-            0.3
-          ],
-          [
-            0.45,
-            0.19
-          ],
-          [
-            0.5,
-            0.04
-          ]
+          [-0.5, -0.06],
+          [-0.45, 0.15],
+          [-0.35, 0.28],
+          [-0.2, 0.36],
+          [0.0, 0.39],
+          [0.2, 0.37],
+          [0.35, 0.3],
+          [0.45, 0.19],
+          [0.5, 0.04]
         ]
       }
     }
   },
   "identity": {
     "source": "characters/wolf/wolf_attire.blend",
-    "collections": [
-      "Face"
-    ],
+    "collections": ["Face"],
     "palette": {
       "skin": {
         "swatch": "skin_02",
         "roughness": 0.75
       },
       "hair": {
-        "roughness": 0.9,
-        "srgb": [
-          0.1,
-          0.075,
-          0.06
-        ]
+        "roughness": 0.6,
+        "srgb": [0.17, 0.115, 0.08]
       },
       "eye": {
-        "srgb": [
-          0.86,
-          0.82,
-          0.74
-        ],
+        "srgb": [0.86, 0.82, 0.74],
         "roughness": 0.6
       },
       "iris": {
         "roughness": 0.4,
-        "srgb": [
-          0.3,
-          0.32,
-          0.34
-        ]
+        "srgb": [0.3, 0.32, 0.34]
       },
       "pupil": {
-        "srgb": [
-          0.03,
-          0.03,
-          0.035
-        ],
+        "srgb": [0.03, 0.03, 0.035],
         "roughness": 0.35
       },
       "catchlight": {
-        "srgb": [
-          0.92,
-          0.9,
-          0.85
-        ],
+        "srgb": [0.92, 0.9, 0.85],
         "roughness": 0.2
       },
       "iris_rim": {
         "roughness": 0.45,
-        "srgb": [
-          0.11,
-          0.12,
-          0.13
-        ]
+        "srgb": [0.11, 0.12, 0.13]
       },
       "lid_line": {
-        "srgb": [
-          0.13,
-          0.1,
-          0.09
-        ],
+        "srgb": [0.13, 0.1, 0.09],
         "roughness": 0.8
       }
     },
@@ -212,103 +125,43 @@
           "height": 0.064,
           "tilt_deg": 9.0,
           "upper": [
-            [
-              -0.5,
-              0.03
-            ],
-            [
-              -0.4,
-              0.27
-            ],
-            [
-              -0.08,
-              0.44
-            ],
-            [
-              0.24,
-              0.5
-            ],
-            [
-              0.44,
-              0.3
-            ],
-            [
-              0.5,
-              0.02
-            ]
+            [-0.5, 0.03],
+            [-0.4, 0.27],
+            [-0.08, 0.44],
+            [0.24, 0.5],
+            [0.44, 0.3],
+            [0.5, 0.02]
           ],
           "lower": [
-            [
-              -0.5,
-              -0.03
-            ],
-            [
-              -0.3,
-              -0.17
-            ],
-            [
-              0.05,
-              -0.21
-            ],
-            [
-              0.34,
-              -0.14
-            ],
-            [
-              0.5,
-              -0.01
-            ]
+            [-0.5, -0.03],
+            [-0.3, -0.17],
+            [0.05, -0.21],
+            [0.34, -0.14],
+            [0.5, -0.01]
           ],
           "iris": {
-            "centre": [
-              0.04,
-              0.1
-            ],
+            "centre": [0.04, 0.1],
             "width": 0.42,
             "height": 0.92,
             "rim": 0.8,
             "pupil": 0.45,
             "pupil_aspect": 1.15,
             "catchlight": {
-              "offset": [
-                0.3,
-                0.4
-              ],
+              "offset": [0.3, 0.4],
               "size": 0.2
             }
           },
           "line": {
             "thickness": [
-              [
-                -0.5,
-                0.08
-              ],
-              [
-                -0.35,
-                0.22
-              ],
-              [
-                0.0,
-                0.3
-              ],
-              [
-                0.3,
-                0.24
-              ],
-              [
-                0.5,
-                0.1
-              ]
+              [-0.5, 0.08],
+              [-0.35, 0.22],
+              [0.0, 0.3],
+              [0.3, 0.24],
+              [0.5, 0.1]
             ],
             "overlap": 0.03,
-            "wing": [
-              0.12,
-              0.14
-            ],
-            "inner": [
-              0.015,
-              -0.03
-            ],
+            "wing": [0.12, 0.14],
+            "inner": [0.015, -0.03],
             "lower": {
               "from": 0.1,
               "thickness": 0.08
@@ -338,52 +191,22 @@
           "inset": 0.8,
           "lift": 0.0,
           "profile": [
-            [
-              -0.5,
-              0.8
-            ],
-            [
-              -0.25,
-              0.82
-            ],
-            [
-              0.15,
-              1.08
-            ],
-            [
-              0.5,
-              0.24
-            ]
+            [-0.5, 0.8],
+            [-0.25, 0.82],
+            [0.15, 1.08],
+            [0.5, 0.24]
           ],
           "settle_m": 0.002,
           "section": {
             "crest": [
-              [
-                -0.5,
-                0.42
-              ],
-              [
-                0.15,
-                0.58
-              ],
-              [
-                0.5,
-                0.5
-              ]
+              [-0.5, 0.42],
+              [0.15, 0.58],
+              [0.5, 0.5]
             ],
             "depth": [
-              [
-                -0.5,
-                1.3
-              ],
-              [
-                0.15,
-                1.15
-              ],
-              [
-                0.5,
-                0.6
-              ]
+              [-0.5, 1.3],
+              [0.15, 1.15],
+              [0.5, 0.6]
             ],
             "lower_edge": 0.55,
             "upper_edge": 0.45
@@ -399,38 +222,17 @@
           "tilt_deg": 40.0,
           "inset": 0.8,
           "outline": [
-            [
-              -0.5,
-              0.0
-            ],
-            [
-              -0.22,
-              -0.5
-            ],
-            [
-              0.22,
-              -0.5
-            ],
-            [
-              0.5,
-              0.0
-            ],
-            [
-              0.22,
-              0.5
-            ],
-            [
-              -0.22,
-              0.5
-            ]
+            [-0.5, 0.0],
+            [-0.22, -0.5],
+            [0.22, -0.5],
+            [0.5, 0.0],
+            [0.22, 0.5],
+            [-0.22, 0.5]
           ]
         }
       },
       "clearance": {
-        "band": [
-          0.44,
-          0.7
-        ],
+        "band": [0.44, 0.7],
         "width": 0.6,
         "reach_m": 0.04
       }
@@ -467,37 +269,28 @@
       "ranger": {
         "identity": "field adventurer: experienced, rugged, practical, quietly intimidating",
         "hair": "wolf_hair_ranger",
-        "hair_regions": [
-          "scalp",
-          "front_sweep",
-          "temples",
-          "rear_tie"
-        ],
+        "hair_regions": ["scalp", "front_sweep", "temples", "rear_tie"],
         "construction": [
           "fitted",
           "padded",
           "structured",
           "fur",
           "rigid",
-          "accessory"
+          "accessory",
+          "loose"
         ],
         "shoulder_reinforcement": "integrated_mantle"
       },
       "training": {
         "identity": "practical swordsman: athletic, disciplined, approachable; shows more of the anatomy",
         "hair": "wolf_hair_training",
-        "hair_regions": [
-          "scalp",
-          "front_sweep",
-          "rear_tie",
-          "side_locks",
-          "rear_mass"
-        ],
+        "hair_regions": ["scalp", "front_sweep", "rear_tie", "rear_mass"],
         "construction": [
           "padded",
           "fitted",
           "structured",
-          "accessory"
+          "accessory",
+          "loose"
         ],
         "shoulder_reinforcement": "none"
       }
@@ -515,13 +308,19 @@
       "lid_line"
     ],
     "costume": [
-      "fabric",
+      "bronze",
       "cloth",
-      "leather",
-      "mantle",
+      "fabric",
       "fur",
+      "leather",
+      "linen",
+      "mantle",
       "metal",
-      "side_accent"
+      "scarf",
+      "side_accent",
+      "trim",
+      "wool",
+      "wrap"
     ]
   },
   "outfits": {
@@ -534,31 +333,175 @@
       "collections": [],
       "body_mask": null,
       "garments": [
-        "wolf_hair_ranger"
+        "wolf_hair_ranger",
+        "wolf_ranger_undertunic",
+        "wolf_ranger_trousers",
+        "wolf_ranger_vest",
+        "wolf_ranger_panels",
+        "wolf_ranger_shoulder",
+        "wolf_ranger_bracers",
+        "wolf_ranger_boots",
+        "wolf_ranger_belt",
+        "wolf_ranger_neckwrap"
       ],
-      "complete": false
+      "complete": false,
+      "exposure": {
+        "must_cover": [
+          "neck",
+          "upper_torso",
+          "waist",
+          "pelvis",
+          "shoulder.L",
+          "shoulder.R",
+          "upper_arm.L",
+          "upper_arm.R",
+          "upper_leg.L",
+          "upper_leg.R",
+          "lower_leg.L",
+          "lower_leg.R",
+          "foot.L",
+          "foot.R",
+          "mouth",
+          "upper_lip",
+          "chin",
+          {
+            "region": "forearm.L",
+            "until": ["Forearm.L", 0.85],
+            "opening": ["Forearm.L", 0.7]
+          },
+          {
+            "region": "forearm.R",
+            "until": ["Forearm.R", 0.85],
+            "opening": ["Forearm.R", 0.7]
+          }
+        ],
+        "must_remain_visible": ["Eye.", "EyeIris."],
+        "cuff_interior": "contiguous_with_hand"
+      },
+      "palette": {
+        "fabric": {
+          "srgb": [0.2078, 0.2314, 0.2667],
+          "roughness": 0.85
+        },
+        "wool": {
+          "srgb": [0.1333, 0.1451, 0.1647],
+          "roughness": 0.9
+        },
+        "leather": {
+          "srgb": [0.3059, 0.2314, 0.1882],
+          "roughness": 0.6
+        },
+        "trim": {
+          "srgb": [0.4784, 0.3686, 0.2824],
+          "roughness": 0.55
+        },
+        "cloth": {
+          "srgb": [0.2745, 0.3137, 0.2471],
+          "roughness": 0.85
+        },
+        "metal": {
+          "srgb": [0.5412, 0.5255, 0.4902],
+          "roughness": 0.35,
+          "metallic": 0.8
+        },
+        "bronze": {
+          "srgb": [0.5882, 0.4627, 0.3137],
+          "roughness": 0.4,
+          "metallic": 0.8
+        },
+        "scarf": {
+          "srgb": [0.1725, 0.1804, 0.2],
+          "roughness": 0.92
+        }
+      }
     },
     "training": {
       "collections": [],
       "body_mask": null,
       "garments": [
-        "wolf_hair_training"
+        "wolf_hair_training",
+        "wolf_training_undershirt",
+        "wolf_training_trousers",
+        "wolf_training_tunic",
+        "wolf_training_vest",
+        "wolf_training_bindings",
+        "wolf_training_boots",
+        "wolf_training_belt",
+        "wolf_training_scarf"
       ],
-      "complete": false
+      "complete": false,
+      "exposure": {
+        "must_cover": [
+          "neck",
+          "upper_torso",
+          "waist",
+          "pelvis",
+          "shoulder.L",
+          "shoulder.R",
+          "upper_arm.L",
+          "upper_arm.R",
+          "upper_leg.L",
+          "upper_leg.R",
+          "lower_leg.L",
+          "lower_leg.R",
+          "foot.L",
+          "foot.R",
+          "mouth",
+          "upper_lip",
+          "chin",
+          {
+            "region": "forearm.L",
+            "until": ["Forearm.L", 0.85],
+            "opening": ["Forearm.L", 0.55]
+          },
+          {
+            "region": "forearm.R",
+            "until": ["Forearm.R", 0.85],
+            "opening": ["Forearm.R", 0.55]
+          }
+        ],
+        "must_remain_visible": ["Eye.", "EyeIris."],
+        "cuff_interior": "contiguous_with_hand"
+      },
+      "palette": {
+        "scarf": {
+          "srgb": [0.549, 0.4627, 0.3765],
+          "roughness": 0.92
+        },
+        "linen": {
+          "srgb": [0.7608, 0.7098, 0.6118],
+          "roughness": 0.9
+        },
+        "fabric": {
+          "srgb": [0.4196, 0.2902, 0.1961],
+          "roughness": 0.85
+        },
+        "leather": {
+          "srgb": [0.2431, 0.1686, 0.1255],
+          "roughness": 0.6
+        },
+        "trim": {
+          "srgb": [0.4157, 0.3137, 0.251],
+          "roughness": 0.6
+        },
+        "wool": {
+          "srgb": [0.3529, 0.3216, 0.2824],
+          "roughness": 0.9
+        },
+        "wrap": {
+          "srgb": [0.349, 0.2627, 0.2471],
+          "roughness": 0.85
+        }
+      }
     }
   },
-  "weapons": [
-    "weapon.bastard_sword",
-    "weapon.bastard_sword.training"
-  ],
+  "weapons": ["weapon.bastard_sword", "weapon.bastard_sword.training"],
   "budget": {
     "review_triangles": 4000,
     "max_triangles": 8000,
     "note": "Measured performance, never art direction (ART-STYLE-001). review_triangles is the review reference: above it the export says so and a person looks at where the geometry went. max_triangles is the per-fighter performance limit, provisional at twice the review reference until the character rendering benchmark (one fighter, two, two plus arena, two plus crowd, both skins, Compatibility, target devices) measures the device budget."
   },
-  "validation": [
-    "validate_character"
-  ],
+  "validation": ["validate_character"],
   "exports": [
     {
       "id": "character.wolf.bare",

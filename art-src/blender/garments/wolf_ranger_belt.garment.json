@@ -1,0 +1,76 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_belt",
+  "category": "structured",
+  "layer": 4,
+  "regions": ["waist", "pelvis"],
+  "materials": ["leather", "trim", "bronze"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerBelt"
+  },
+  "coverage": {
+    "hides": ["waist", "pelvis"],
+    "margin_rings": 1
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Belt",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.55
+          },
+          {
+            "bone": "Hips",
+            "at": 0.15
+          }
+        ],
+        "around": 24,
+        "rows": 3,
+        "start": {
+          "c1": -0.014
+        },
+        "end": {
+          "c1": -0.014
+        },
+        "ease_m": 0.006,
+        "thickness_m": 0.005,
+        "material": "leather",
+        "edge_material": "trim"
+      },
+      {
+        "name": "Buckle",
+        "kind": "plate",
+        "bone": "Hips",
+        "at": 0.35,
+        "toward": [0.0, -1.0, 0.0],
+        "size": [0.06, 0.048, 0.012],
+        "material": "bronze"
+      }
+    ]
+  },
+  "notes": "Broad functional belt with one aged-bronze fastening.",
+  "slot": "waist"
+}

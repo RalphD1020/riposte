@@ -256,15 +256,20 @@ class Shipped(unittest.TestCase):
 
     def test_the_shipped_validations_are_what_was_approved(self):
         ## ASSERT: the default bodies and face validated on the sweep, each version on its own
-        ## evidence; Wolf's skin and face at the reference; his hairstyles only compatible by
-        ## contract on the foundation.
+        ## evidence; Wolf's skin and face at the reference; his v002 hairstyles validated on
+        ## the whole sweep (mapped to every variant, HAIR-FIT-001), v001 only by contract.
         envelope = {"height_m": (1.6, 2.0), "frame_build": (0.85, 1.15), "muscularity": (0.8, 1.25)}
         reference = {"height_m": 1.8, "frame_build": 1.0, "muscularity": 1.0}
+        off_sweep = {"height_m": 1.75, "frame_build": 1.0, "muscularity": 1.0}
         fid = "character.male_base.foundation"
         self.assertEqual(lib.compatibility("default_face", fid, reference, envelope), lib.VALIDATED)
         self.assertEqual(lib.compatibility("wolf_skin", fid, reference, envelope), lib.VALIDATED)
         self.assertEqual(lib.compatibility("wolf_face", fid, reference, envelope), lib.VALIDATED)
-        self.assertEqual(lib.compatibility("wolf_hair_ranger", fid, reference, envelope), lib.BY_CONTRACT)
+        for hair in ("wolf_hair_ranger", "wolf_hair_training"):
+            self.assertEqual(lib.compatibility(hair, fid, reference, envelope), lib.VALIDATED)
+            self.assertEqual(lib.compatibility(hair, fid, reference, envelope, version="v001"), lib.BY_CONTRACT)
+            self.assertEqual(lib.compatibility(hair, fid, off_sweep, envelope), lib.BY_CONTRACT)
+            self.assertEqual(len([r for r in lib.validations(hair) if r["version"] == "v002"]), 15, hair)
         for asset_id in ("default_face", "male_base_foundation"):
             for version in ("v001", "v002"):
                 self.assertEqual(len([r for r in lib.validations(asset_id) if r["version"] == version]), 15, (asset_id, version))

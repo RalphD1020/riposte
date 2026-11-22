@@ -545,6 +545,96 @@ func _sweep(rows: Array[PresentationFighter], refine: int, legs: bool = false) -
 ## refinement quadruples — or be under a centimetre to begin with. And at every
 ## phase change the legs hold: the right foot leads, the feet never swap
 ## sides, the ankles stay up.
+func test_the_body_hands_back_to_the_guard_wherever_the_blade_stops() -> void:
+	## ARRANGE: a real tap, and a full-charge cut arrested at the centre and at
+	## +45° (a bind, or the intended endpoint): held still there through one
+	## overswing tick, a recovery and back to the guard, never travelling on.
+	var tap := _cut_rows_at(0.0)
+	var full := _cut_rows_at(1.0)
+	var cases: Array[Array] = [["tap", tap, INF], ["arrested at 0°", _arrested_rows(full, 0.0), 0.0], ["arrested at +45°", _arrested_rows(full, 45.0), 45.0]]
+	var held: Array[PresentationFighter] = cases[2][1]
+	assert_eq(held[held.size() - 1].phase, CombatPhase.Id.NEUTRAL, "fixture: the arrested cut ends back in the guard")
+	## The raw hand-back target jumps where recovery hands over to the guard: the
+	## failure this carries (0 in recovery at +45°, 1 in the guard).
+	var raw_recovery := maxf(CombatPresentationField.stance_weight_for(CombatPhase.Id.RECOVERY, 1.0), CutPresentationCurve.stance_share(45.0, false))
+	var raw_guard := maxf(CombatPresentationField.stance_weight_for(CombatPhase.Id.NEUTRAL, 1.0), CutPresentationCurve.stance_share(45.0, false))
+	assert_near(raw_guard - raw_recovery, 1.0, 1e-9, "fixture: unsmoothed, the body would pop from cut to guard support")
+	var proxy := _proxy()
+	for case: Array in cases:
+		var label: String = case[0]
+		var rows: Array[PresentationFighter] = case[1]
+		var stop: float = case[2]
+		## ACT: drawn one frame per tick.
+		var previous := NAN
+		var previous_phase := rows[0].phase
+		var previous_committed := false
+		var reach := -INF
+		var boundaries := 0
+		for row in rows:
+			proxy.apply_pose(Vector3.ZERO, PI * 0.5, row.weapon_angle, row, 1.0 / 60.0)
+			var settled := proxy.rig().combat_pose().support.settled
+			var cut := CutPresentationCurve.cut_angle(row.weapon_angle, row.cut_dir)
+			var committed := proxy.is_cut_committed()
+			reach = maxf(reach, cut)
+			## ASSERT: a phase or commit boundary passes at most one tick of decay
+			## of the jump between the two branches (the old branch read at this
+			## very angle), plus what is left of earlier boundaries' carries: the
+			## body's own travel with the blade is not held back.
+			if not is_nan(previous) and (row.phase != previous_phase or committed != previous_committed):
+				boundaries += 1
+				var old_branch := FighterPresentation3D.settled_for(previous_phase, row.swing_progress, cut, previous_committed)
+				var new_branch := FighterPresentation3D.settled_for(row.phase, row.swing_progress, cut, committed)
+				assert_true(absf(settled - old_branch) <= 0.25 * absf(new_branch - old_branch) + 0.05, "%s: entering %s the support keeps the old branch's %.2f (shown %.2f, new branch %.2f)" % [label, CombatPhase.Id.keys()[row.phase], old_branch, settled, new_branch])
+			previous = settled
+			previous_phase = row.phase
+			previous_committed = committed
+		assert_true(boundaries >= 3, "fixture: %s crossed its phase boundaries (%d)" % [label, boundaries])
+		assert_true(previous >= 0.95, "%s: the body is back in the guard's support (%.3f)" % [label, previous])
+		assert_true(reach <= stop + 1e-6, "%s: without the blade travelling on (%.1f°)" % [label, reach])
+	proxy.queue_free()
+
+
+func _cut_rows_at(charge: float) -> Array[PresentationFighter]:
+	var rig := WeaponRig.create(_rules)
+	rig.press()
+	while rig.fighter.weapon.charge < charge and rig.tick < 240:
+		rig.step()
+	rig.release()
+	var rows: Array[PresentationFighter] = []
+	for _i in 240:
+		var row := SnapshotProjector._fighter(rig.fighter, rig.opponent, _rules)
+		row.target_bearing = PI * 0.5
+		rows.append(row)
+		if row.phase == CombatPhase.Id.NEUTRAL and rows.size() > 30:
+			break
+		rig.step()
+	return rows
+
+
+## `rows` up to the cut angle `stop_degrees`, then the blade held still there
+## through one overswing tick, a 6-tick recovery and 20 ticks of guard.
+func _arrested_rows(rows: Array[PresentationFighter], stop_degrees: float) -> Array[PresentationFighter]:
+	var out: Array[PresentationFighter] = []
+	var last: PresentationFighter = null
+	for row in rows:
+		if CombatPresentationField.is_swing(row.phase) and CutPresentationCurve.cut_angle(row.weapon_angle, row.cut_dir) >= stop_degrees:
+			last = row
+			break
+		out.append(row)
+	var angle := deg_to_rad(stop_degrees) * (1.0 if last.cut_dir >= 0.0 else -1.0)
+	for spec: Array in [[CombatPhase.Id.OVERSWING, 1], [CombatPhase.Id.RECOVERY, 6], [CombatPhase.Id.NEUTRAL, 20]]:
+		for _i in int(spec[1]):
+			var row := PresentationFighter.new()
+			for property in last.get_property_list():
+				if property["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
+					row.set(property["name"], last.get(property["name"]))
+			row.weapon_angle = angle
+			row.weapon_speed = 0.0
+			row.phase = spec[0]
+			out.append(row)
+	return out
+
+
 func test_a_cut_is_continuous_through_every_phase_and_the_legs_hold() -> void:
 	var rows := _cut_rows()
 	var phases := {}
@@ -1248,6 +1338,539 @@ func _penetration(skeleton: Skeleton3D, _pose: Dictionary, point: Vector3, requi
 
 func _clearance() -> SelfClearanceProfile:
 	return RiposteKits.build_catalog().resolve(ContentIds.FIGHTER_DUELIST, PresentationKit.PRIMITIVE_FIGHTER).stance.self_clearance()
+
+
+## PRES-GRIP-001 diagonal grip: the handle may cross the palm up to the declared
+## limit off the knuckle line, taking that much of the hand's roll against its
+## forearm back out; the hand's long axis (the wrist's bend) never moves, and a
+## body that declares no limit (every shipping body) is untouched.
+func test_an_authored_contact_puts_the_handle_on_its_station_once() -> void:
+	## ARRANGE: a contact 60 mm along the hand and 26 mm palmward, the handle turned
+	## 15° off the hand's radial axis (P3's authored grip), and a station on the sword.
+	var radial := Vector3(0.8156, 0.0, -0.5787)
+	var axis := (radial * cos(deg_to_rad(15.0)) + Vector3.UP * sin(deg_to_rad(15.0))).normalized()
+	var contact := SwordGripFrame.contact_frame(axis, radial.cross(Vector3.UP), Vector3(0.0185, 0.06, 0.0261))
+	var station := Vector3(0.0, 0.0, 0.1865)
+	## ACT
+	var hand := SwordGripFrame.contact_target(station, contact)
+	## ASSERT: the handle's centre lands on the station, its axis on the sword's
+	## +Z and its edge on +X; the frame is a right-handed rotation (det +1).
+	var centre_in_sword := hand * contact.origin
+	assert_true(centre_in_sword.is_equal_approx(station), "the contact's handle centre sits on the station")
+	assert_true((hand.basis * contact.basis.z).is_equal_approx(Vector3.BACK), "the handle axis runs down the sword")
+	assert_true((hand.basis * contact.basis.x).is_equal_approx(Vector3.RIGHT), "the edge axis is the sword's")
+	assert_near(contact.basis.determinant(), 1.0, 1e-5, "the contact frame is a rotation")
+	## PERTURB: the legacy grip places the wrist on the bone axis instead: the two
+	## placements differ by the authored offset, so the contact is not applied twice.
+	var legacy_wrist := Transform3D(Basis.IDENTITY, station) * SwordGripFrame.wrist_offset(0.06)
+	assert_true(hand.origin.distance_to(legacy_wrist) > 0.01, "the authored contact replaces the legacy wrist placement")
+
+
+func test_an_authored_elbow_sets_the_bend_plane_and_a_straight_arm_falls_back() -> void:
+	## ARRANGE: a shoulder, a wrist target 0.6 m forward, and an authored elbow hanging
+	## 0.2 m below the line between them; the guide field's own pole as the fallback.
+	var s := Vector3(0.0, 1.4, 0.0)
+	var w := Vector3(0.0, 1.2, 0.6)
+	var e := Vector3(0.0, 1.05, 0.3)
+	var fallback := Vector3(0.5, 1.5, 0.3)
+	## ACT
+	var pole := ElbowGuideField.clip_pole(s, e, w, 0.3, fallback)
+	## ASSERT: the pole lies beyond the elbow, 0.3 m off it, on the elbow's side of the
+	## shoulder->target line and in the plane of shoulder, elbow and target.
+	var d := (w - s).normalized()
+	var v := (e - s) - d * (e - s).dot(d)
+	assert_near(pole.distance_to(e), 0.3, 1e-5, "the pole sits the declared offset beyond the elbow")
+	assert_true((pole - e).normalized().dot(v.normalized()) > 0.9999, "the pole continues the elbow's own bend")
+	assert_near((pole - s).dot(d.cross(v).normalized()), 0.0, 1e-5, "the pole stays in the authored bend plane")
+	## PERTURB: an elbow on the shoulder->target line (a straight arm) has no bend plane.
+	var straight := ElbowGuideField.clip_pole(s, s.lerp(w, 0.5), w, 0.3, fallback)
+	assert_true(straight.is_equal_approx(fallback), "a straight arm keeps the field's pole instead of whirling")
+	var slight := ElbowGuideField.clip_pole(s, s.lerp(w, 0.5) + Vector3.DOWN * ElbowGuideField.SOFT_BEND * 0.5, w, 0.3, fallback)
+	assert_true(slight.distance_to(fallback) > 0.01 and slight.distance_to(fallback) < fallback.distance_to(s.lerp(w, 0.5) + Vector3.DOWN * 0.3), "a barely bent arm blends from the fallback")
+	var rig := SwordRig3D.new()
+	assert_false(rig.elbow_from_clip, "shipping bodies keep the guide field's poles")
+	rig.free()
+
+
+func test_a_declared_centre_moves_only_its_own_long_guard_key() -> void:
+	## ARRANGE: the shipping field, a field configured with zero deltas, and a
+	## candidate centre 0.15 m lower with 3° more point; the shipping rig default.
+	var shipping := CombatPresentationField.new()
+	var zero := CombatPresentationField.new()
+	zero.configure_centre(0.0, 0.0)
+	var candidate := CombatPresentationField.new()
+	candidate.configure_centre(-0.15, 3.0)
+	var rig := SwordRig3D.new()
+	assert_eq(rig.centre_raise_delta, 0.0, "shipping bodies keep the shared centre height")
+	assert_eq(rig.centre_pitch_delta_deg, 0.0, "and the shared centre pitch")
+	rig.free()
+	## ACT / ASSERT: zero deltas reproduce the shipping lift at every guard and phase.
+	for degrees: float in [-135.0, -90.0, -45.0, -20.0, 0.0, 20.0, 45.0, 90.0, 135.0]:
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.RECOVERY]:
+			var a := deg_to_rad(degrees)
+			shipping.sample(a, 0.1, 0.6, phase, 0.4, 0.5, 0.5, 1.0)
+			zero.sample(a, 0.1, 0.6, phase, 0.4, 0.5, 0.5, 1.0)
+			assert_true(shipping.transform.is_equal_approx(zero.transform), "zero deltas are the shared lift at %.0f° (phase %d)" % [degrees, phase])
+	## PERTURB: the candidate centre in the guard.
+	var centre := shipping.sample(0.0, 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	var raise0 := centre.raise
+	var pitch0 := centre.pitch
+	candidate.sample(0.0, 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	assert_near(candidate.raise, raise0 - 0.15, 1e-9, "the candidate's centre hands sit 0.15 m lower")
+	assert_near(rad_to_deg(candidate.pitch - pitch0), 3.0, 1e-9, "with 3° more point")
+	assert_true(candidate.carriage_point.x == shipping.carriage_point.x and candidate.carriage_point.z == shipping.carriage_point.z, "the carriage stays the authoritative one")
+	for degrees: float in [-45.0, 45.0, 90.0]:
+		shipping.sample(deg_to_rad(degrees), 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+		candidate.sample(deg_to_rad(degrees), 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+		assert_true(shipping.transform.is_equal_approx(candidate.transform), "the Ready and wider keys are untouched at %.0f°" % degrees)
+	shipping.sample(deg_to_rad(22.5), 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	candidate.sample(deg_to_rad(22.5), 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	var gap := shipping.raise - candidate.raise
+	assert_true(gap > 0.0 and gap < 0.15, "between centre and Ready the lift eases from one key to the other (%.3f m)" % gap)
+
+
+func test_authored_guard_arms_ease_between_their_keys() -> void:
+	## ARRANGE: keys at -45 / 0 / +45 for the six arm bones, each key a distinct turn
+	## about one axis; the shipping rig default.
+	var degrees := PackedFloat64Array([-45.0, 0.0, 45.0])
+	var rotations: Array[Quaternion] = []
+	for key in 3:
+		for bone in CombatPoseModifier3D.ARM_KEY_BONES.size():
+			rotations.append(Quaternion(Vector3.UP, deg_to_rad(10.0 * (key - 1) + bone)))
+	var rig := SwordRig3D.new()
+	assert_true(rig.arm_guard_degrees.is_empty() and rig.arm_guard_rotations.is_empty(), "shipping bodies author no guard arms")
+	rig.free()
+	## ACT / ASSERT: exact at a key, eased between keys, held beyond the end keys.
+	for bone in CombatPoseModifier3D.ARM_KEY_BONES.size():
+		assert_true(CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, bone, 0.0).is_equal_approx(rotations[6 + bone]), "bone %d sits on its centre key at 0°" % bone)
+		assert_true(CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, bone, 45.0).is_equal_approx(rotations[12 + bone]), "and on its +45 key at 45°")
+		assert_true(CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, bone, 120.0).is_equal_approx(rotations[12 + bone]), "held at the end key beyond it")
+		assert_true(CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, bone, -90.0).is_equal_approx(rotations[bone]), "on both sides")
+	## PERTURB: between the centre and +45 keys the rotation eases (smoothstep) from one to the other.
+	var mid := CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, 0, 22.5)
+	assert_near(rad_to_deg(mid.get_angle()), 5.0, 1e-3, "halfway in angle is halfway between the keys (smoothstep 0.5)")
+	var early := CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, 0, 5.0)
+	assert_true(rad_to_deg(early.get_angle()) < 10.0 * 5.0 / 45.0, "and eases out of the key rather than turning linearly")
+
+
+func test_the_grip_contract_rejects_partial_or_doubled_settings() -> void:
+	## ARRANGE: a shipping rig (legacy grip, no authored-pose settings) and a
+	## well-formed candidate (two proper contacts, clip elbows, three guard keys).
+	var shipping := SwordRig3D.new()
+	var candidate := SwordRig3D.new()
+	var proper := Transform3D(Basis(Vector3(0.2, 0.9, 0.1).normalized(), 0.6), Vector3(0.02, 0.06, 0.03))
+	candidate.grip_contacts = [proper, proper.rotated_local(Vector3.UP, 0.4)]
+	candidate.elbow_from_clip = true
+	candidate.arm_guard_degrees = PackedFloat64Array([-45.0, 0.0, 45.0])
+	var rotations: Array[Quaternion] = []
+	rotations.resize(18)
+	rotations.fill(Quaternion.IDENTITY)
+	candidate.arm_guard_rotations = rotations
+	## ACT / ASSERT: both hold the contract.
+	assert_eq(shipping.contract_problems().size(), 0, "every shipping body passes: the legacy grip, nothing authored")
+	assert_eq(candidate.contract_problems().size(), 0, "a well-formed candidate passes")
+	## PERTURB: each broken setting is named.
+	candidate.grip_diagonal_deg = 15.0
+	assert_true(candidate.contract_problems().size() == 1, "a diagonal on top of authored contacts corrects the grip twice")
+	candidate.grip_diagonal_deg = 0.0
+	candidate.arm_guard_degrees = PackedFloat64Array([0.0, -45.0, 45.0])
+	assert_true(candidate.contract_problems().size() == 1, "guard keys must ascend")
+	candidate.arm_guard_degrees = PackedFloat64Array([-45.0, 0.0])
+	assert_true(candidate.contract_problems().size() == 1, "and hold six rotations per key")
+	candidate.arm_guard_degrees = PackedFloat64Array([-45.0, 0.0, 45.0])
+	candidate.grip_contacts = [proper, Transform3D(Basis.FLIP_X, Vector3.ZERO)]
+	assert_true(candidate.contract_problems().size() == 1, "a reflected contact is not a rotation")
+	candidate.grip_contacts = []
+	assert_eq(candidate.contract_problems().size(), 2, "clip elbows and guard arms without contacts are both rejected")
+	shipping.elbow_from_clip = true
+	assert_eq(shipping.contract_problems().size(), 1, "and so is a legacy body switching on clip elbows")
+	shipping.free()
+	candidate.free()
+
+
+func test_each_hand_lands_on_its_one_resolved_target() -> void:
+	## ARRANGE: the shipping fighter bound to its sword.
+	var proxy := _proxy()
+	var rig := proxy.rig()
+	for degrees: float in [-45.0, 0.0, 45.0]:
+		## ACT
+		var pose: Dictionary = await _settle(proxy, deg_to_rad(degrees))
+		var targets := rig.hand_targets()
+		## ASSERT: one resolved record per hand, built from the weapon's grip frames,
+		## and the final hand on it — the IK's wrist and the hand pass's orientation.
+		assert_eq(targets.size(), 2, "both hands resolve a target")
+		for index in 2:
+			var resolved: ResolvedHandTarget = targets[index]
+			var grip := rig.grip_target(index)
+			var wrist := grip.get_node("Wrist") as Node3D
+			var hand: Transform3D = pose["Hand.R" if index == 0 else "Hand.L"]
+			assert_true(resolved.valid, "%.0f°: hand %d's target is resolved" % [degrees, index])
+			assert_true(resolved.target.origin.is_equal_approx(wrist.global_position), "%.0f°: hand %d's target is its grip's wrist" % [degrees, index])
+			assert_true(resolved.target.basis.is_equal_approx(grip.global_transform.basis.orthonormalized()), "and its grip frame's orientation")
+			assert_near(resolved.influence, rig.grip_influence(), 1e-6, "carrying the one grip influence")
+			assert_true(resolved.feasible and resolved.reach > 0.0, "%.0f°: hand %d's wrist is within its arm's reach (%.3f)" % [degrees, index, resolved.reach])
+			assert_true(hand.origin.distance_to(resolved.target.origin) < GRIP_TOLERANCE, "%.0f°: hand %d's wrist reaches its target" % [degrees, index])
+			assert_true(hand.basis.orthonormalized().is_equal_approx(resolved.target.basis), "%.0f°: hand %d turns to its target" % [degrees, index])
+			assert_true(is_finite(resolved.predicted_wrist_bend) and is_finite(resolved.orientation_residual), "and reports its predicted bend and the residual it applied")
+	## PERTURB: a released grip carries influence 0 in the same record.
+	rig.set_grip_influence(0.0)
+	await _settle(proxy, 0.0)
+	assert_near(rig.hand_targets()[0].influence, 0.0, 1e-6, "a released hand's target says so")
+	proxy.queue_free()
+
+
+func test_a_combat_aligned_sword_meets_in_3d_where_the_plane_says() -> void:
+	## ARRANGE: two combat-aligned fields at one interaction height and a shipping
+	## field (the shared lifts), the shipping rig default.
+	var a := CombatPresentationField.new()
+	var b := CombatPresentationField.new()
+	a.configure_projection(true, 0.04)
+	b.configure_projection(true, 0.04)
+	var shipping := CombatPresentationField.new()
+	var rig := SwordRig3D.new()
+	assert_false(rig.combat_aligned_projection, "shipping bodies keep the shared lifts")
+	rig.free()
+	## ACT / ASSERT: at every θ and phase an aligned sword is level at the one height,
+	## its carriage the authoritative one, so any two points on two aligned blades
+	## share a height — a contact the plane reports is a contact in 3D.
+	for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.RECOVERY]:
+		for degrees: float in [-135.0, -45.0, 0.0, 30.0, 90.0]:
+			a.sample(deg_to_rad(degrees), 0.1, 0.6, phase, 0.5, 1.0, 1.0, 1.0, 1.0)
+			b.sample(deg_to_rad(-degrees * 0.5), -0.1, 0.5, phase, 0.3, 0.0, 0.0, 1.0, -1.0)
+			shipping.sample(deg_to_rad(degrees), 0.1, 0.6, phase, 0.5, 1.0, 1.0, 1.0, 1.0)
+			assert_true(a.pitch == 0.0 and a.roll == 0.0 and is_equal_approx(a.raise, 0.04), "%.0f° (phase %d): level at the interaction height" % [degrees, phase])
+			assert_true(is_equal_approx(a.carriage_point.x, shipping.carriage_point.x) and is_equal_approx(a.carriage_point.z, shipping.carriage_point.z), "the carriage stays the authoritative one")
+			var near_a := (a.transform * Vector3(0.0, 0.0, 0.3)).y
+			var far_b := (b.transform * Vector3(0.0, 0.0, 1.1)).y
+			assert_near(near_a, far_b, 1e-9, "a hilt-side point on one blade and a point-side point on the other share a height")
+	## PERTURB: the shared lifts pitch the blade, so the same two blade stations sit
+	## at different heights — the gap a horizontal footprint test cannot see.
+	shipping.sample(0.0, 0.1, 0.6, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	var rise := (shipping.transform * Vector3(0.0, 0.0, 1.22)).y - (shipping.transform * Vector3(0.0, 0.0, 0.25)).y
+	assert_true(rise > 0.1, "a pitched shipping blade rises %.3f m from hilt to point" % rise)
+
+
+func test_the_arms_follow_the_cut_by_its_angle_not_a_clock() -> void:
+	## ARRANGE / ACT: the shares the guard and cut profiles take of the arms.
+	var settled_guard := CombatPoseModifier3D.authored_arm_shares(1.0, 0.0, true, true)
+	var gathering := CombatPoseModifier3D.authored_arm_shares(1.0, 1.0, true, true)
+	var cutting := CombatPoseModifier3D.authored_arm_shares(0.0, 0.0, true, true)
+	var leaving := CombatPoseModifier3D.authored_arm_shares(0.4, 0.0, true, true)
+	var guard_only := CombatPoseModifier3D.authored_arm_shares(0.0, 0.0, true, false)
+	## ASSERT: the guard owns the settled stance, the charge clip the gather, the cut
+	## profile the cut, the two shares fill the arms between, and a profile not
+	## authored leaves its share to the clip.
+	assert_true(settled_guard.is_equal_approx(Vector2(1.0, 0.0)), "settled in the guard: the guard keys")
+	assert_true(gathering.is_equal_approx(Vector2.ZERO), "gathering to the load: the charge clip")
+	assert_true(cutting.is_equal_approx(Vector2(0.0, 1.0)), "mid cut: the cut keys")
+	assert_near(leaving.x + leaving.y, 1.0, 1e-6, "leaving the guard the two profiles fill the arms between them")
+	assert_true(guard_only.is_equal_approx(Vector2.ZERO), "no cut keys: the cut's share stays the clip's")
+	## PERTURB: the cut keys are read at the blade's own cut angle — the same angle
+	## gives the same pose however long the cut took to get there.
+	var degrees := PackedFloat64Array([-135.0, -20.0, 0.0, 30.0, 45.0])
+	var rotations: Array[Quaternion] = []
+	for key in 5:
+		for bone in CombatPoseModifier3D.ARM_KEY_BONES.size():
+			rotations.append(Quaternion(Vector3.RIGHT, deg_to_rad(5.0 * key)))
+	var early := CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, 0, 15.0)
+	var again := CombatPoseModifier3D.guard_arm_rotation(degrees, rotations, 0, 15.0)
+	assert_true(early.is_equal_approx(again), "one cut angle, one arm pose")
+	var aligned := SwordRig3D.new()
+	aligned.combat_aligned_projection = true
+	aligned.centre_raise_delta = -0.15
+	assert_true(aligned.contract_problems().size() == 1, "a combat-aligned body cannot also move its centre key")
+	aligned.free()
+
+
+func test_a_declared_high_guard_loads_each_side_by_gather_without_a_jump() -> void:
+	## ARRANGE: the shipping field, a field configured with the shared load, and
+	## a high guard (hands 0.45 m, pitch 80°, roll +150° at the right load, the
+	## left its mirror with a +10° right-handed correction).
+	var shipping := CombatPresentationField.new()
+	var shared := CombatPresentationField.new()
+	shared.configure_load(CombatPresentationField.LOAD_RAISE, CombatPresentationField.LOAD_PITCH_DEGREES)
+	var high := CombatPresentationField.new()
+	high.configure_load(0.45, 80.0, true, 150.0, 10.0)
+	var rig := SwordRig3D.new()
+	assert_eq(rig.load_raise, CombatPresentationField.LOAD_RAISE, "shipping bodies keep the shared load height")
+	assert_false(rig.load_roll_authored, "and the side-signed guard roll")
+	## ACT / ASSERT: the shared load reproduces the shipping lift in every phase.
+	for degrees: float in [-135.0, -60.0, 0.0, 60.0, 135.0]:
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_THREAT]:
+			var a := deg_to_rad(degrees)
+			var dir := 1.0 if degrees <= 0.0 else -1.0
+			shipping.sample(a, 0.1, 0.4, phase, 0.2, 0.7, 0.7, 1.0, dir)
+			shared.sample(a, 0.1, 0.4, phase, 0.2, 0.7, 0.7, 1.0, dir)
+			assert_true(shipping.transform.is_equal_approx(shared.transform), "the shared load is the shipping lift at %.0f° (phase %d)" % [degrees, phase])
+	## PERTURB: full gather on each side.
+	high.sample(deg_to_rad(-135.0), 0.16, 0.33, CombatPhase.Id.CHARGING, 0.0, 1.0, 0.0, 1.0, 1.0)
+	assert_near(high.raise, 0.45, 1e-9, "a full right load lifts the hands to the declared height")
+	assert_near(rad_to_deg(high.pitch), 80.0, 1e-6, "with the declared pitch")
+	assert_near(rad_to_deg(high.roll), 150.0, 1e-6, "and the right load's own roll")
+	high.sample(deg_to_rad(135.0), -0.16, 0.33, CombatPhase.Id.CHARGING, 0.0, 1.0, 0.0, 1.0, -1.0)
+	assert_near(rad_to_deg(high.roll), -140.0, 1e-6, "the left load is the right's mirror (-150°) plus its small correction")
+	## Symmetry by construction: a correction past the limit is clamped, never a
+	## second independent pose.
+	var limit := CombatPresentationField.LOAD_ROLL_CORRECTION_LIMIT
+	assert_near(rad_to_deg(CombatPresentationField.mirrored_load_roll(deg_to_rad(150.0), 0.0)), -150.0, 1e-9, "no correction: the exact mirror")
+	assert_near(rad_to_deg(CombatPresentationField.mirrored_load_roll(deg_to_rad(150.0), deg_to_rad(55.0))), -150.0 + limit, 1e-9, "a 55° 'correction' (an independent left pose) is clamped to %.0f°" % limit)
+	## The lift and roll follow the blade's angle as the charge winds it back
+	## (the shared X projection): monotone, small steps, never a jump.
+	var previous_roll := NAN
+	var previous_raise := NAN
+	for step in 21:
+		var winding := -45.0 - 90.0 * step / 20.0
+		high.sample(deg_to_rad(winding), 0.16, 0.33, CombatPhase.Id.CHARGING, 0.0, step / 20.0, 0.0, 1.0, 1.0)
+		if not is_nan(previous_roll):
+			var delta := rad_to_deg(high.roll - previous_roll)
+			assert_true(delta >= 0.0 and delta < 12.0, "at %.0f° the roll turns continuously toward the load (%.2f°)" % [winding, delta])
+			assert_true(high.raise >= previous_raise - 1e-9, "and the hands rise with the wind-back (%.3f m)" % high.raise)
+		previous_roll = high.roll
+		previous_raise = high.raise
+	assert_true(absf(high.carriage_point.x - 0.16) < 1e-6 and absf(high.carriage_point.z - 0.33) < 1e-6, "the carriage stays the authoritative one")
+	## Where the blade is decides the high guard, not whether it is charging.
+	high.sample(deg_to_rad(-135.0), 0.16, 0.33, CombatPhase.Id.NEUTRAL, 1.0, 0.0, 0.0, 1.0, 1.0)
+	assert_near(high.raise, 0.45, 1e-9, "an uncharged blade wound to -135° is drawn in the same high guard")
+	assert_near(CombatPresentationField.high_share(90.0), 0.52, 1e-9, "the gather landmark is 52 % of the way from Ready to the high guard")
+	## The far side of a cut in flight keeps the shared low lift (the X's lower half).
+	shipping.sample(deg_to_rad(100.0), -0.12, 0.40, CombatPhase.Id.OVERSWING, 1.0, 0.0, 1.0, 1.0, 1.0)
+	high.sample(deg_to_rad(100.0), -0.12, 0.40, CombatPhase.Id.OVERSWING, 1.0, 0.0, 1.0, 1.0, 1.0)
+	assert_near(high.raise, shipping.raise, 1e-9, "a right-origin cut overswinging to +100° is not lifted into a high guard")
+	assert_near(high.roll, shipping.roll, 1e-9, "nor rolled toward the left load")
+	## The load arms own the gather's share of the guard; none without a profile.
+	assert_near(CombatPoseModifier3D.authored_load_share(1.0, 0.75, true), 0.75, 1e-9, "three-quarter gather, three-quarter load arms")
+	assert_eq(CombatPoseModifier3D.authored_load_share(1.0, 0.75, false), 0.0, "no load profile: the charge clip keeps it")
+	var guard_and_load := CombatPoseModifier3D.authored_arm_shares(1.0, 0.75, true, true)
+	assert_near(guard_and_load.x + CombatPoseModifier3D.authored_load_share(1.0, 0.75, true), 1.0, 1e-9, "guard and load fill the settled arms")
+	## The contract: a high guard on a combat-aligned body, or an over-turned roll.
+	rig.load_roll_authored = true
+	rig.load_roll_deg = 190.0
+	assert_true(rig.contract_problems().size() == 1, "a load roll beyond one turn is rejected")
+	rig.load_roll_deg = 150.0
+	rig.load_roll_left_correction_deg = 55.0
+	assert_true(rig.contract_problems().size() == 1, "an independent left load (a correction past the limit) is rejected")
+	rig.load_roll_left_correction_deg = 0.0
+	rig.combat_aligned_projection = true
+	assert_true(rig.contract_problems().size() == 1, "a combat-aligned body cannot also declare a high guard")
+	rig.free()
+
+
+## The sword-only gate (art plan p3-sword-only-hema): with the long edge
+## declared to lead, the long edge (local +X) faces the strike region's actual
+## direction of travel through both full-charge diagonals.
+func _edge_alignment(field: CombatPresentationField, side: float) -> Array:
+	var spec := _rules.combatant(0)
+	var motor := WeaponRig.create(_rules)
+	motor.fighter.weapon.reset(spec.weapon.guard_angle * side)
+	motor.press()
+	while motor.fighter.weapon.charge < 1.0 and motor.tick < 240:
+		motor.step()
+	motor.release()
+	var readings := []
+	var previous := Vector3.INF
+	for _i in 30:
+		var row := SnapshotProjector._fighter(motor.fighter, motor.opponent, _rules)
+		var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, row.weapon_angle, spec, BladePose.new())
+		field.sample(row.weapon_angle, pose.carriage_left, pose.carriage_forward, row.phase, row.swing_progress, row.charge, row.swing_charge, 1.0, row.cut_dir)
+		var strike := field.transform * Vector3(0.0, 0.0, 0.864)
+		if previous != Vector3.INF and (CombatPresentationField.is_swing(row.phase)):
+			var axis := field.transform.basis.z.normalized()
+			var travel := strike - previous
+			travel -= axis * travel.dot(axis)
+			if travel.length() / SimulationTimebase.TICK_SECONDS > 1.0:
+				readings.append([rad_to_deg(row.weapon_angle), field.transform.basis.x.normalized().dot(travel.normalized()), rad_to_deg(field.roll)])
+		previous = strike
+		motor.step()
+	return readings
+
+
+func test_the_long_edge_leads_both_diagonals_when_declared() -> void:
+	## ARRANGE: the candidate's lift (centre -0.15 / +3°, high guard 0.50 m / 80°)
+	## with the edge declared to lead, and the same lift without it.
+	var leading := CombatPresentationField.new()
+	leading.configure_centre(-0.15, 3.0)
+	leading.configure_load(0.5, 80.0, true, 150.0)
+	leading.configure_edge(true, 0.6765)
+	var heuristic := CombatPresentationField.new()
+	heuristic.configure_centre(-0.15, 3.0)
+	heuristic.configure_load(0.5, 80.0, true, 150.0)
+	## The cutting edge is a declared sword-frame edge, not an axis name: edge B
+	## leading is the same blade half a turn over.
+	var edge_b := CombatPresentationField.new()
+	edge_b.configure_centre(-0.15, 3.0)
+	edge_b.configure_load(0.5, 80.0, true, 150.0)
+	edge_b.configure_edge(true, 0.6765, SwordGripFrame.edge_normal(SwordGripFrame.Edge.B))
+	leading.sample(deg_to_rad(-60.0), -0.1, 0.5, CombatPhase.Id.ACTIVE_EARLY, 0.4, 0.0, 1.0, 1.0, 1.0)
+	edge_b.sample(deg_to_rad(-60.0), -0.1, 0.5, CombatPhase.Id.ACTIVE_EARLY, 0.4, 0.0, 1.0, 1.0, 1.0)
+	assert_near(absf(wrapf(edge_b.roll - leading.roll, -PI, PI)), PI, 1e-9, "edge B leads with the blade half a turn from edge A")
+	leading = CombatPresentationField.new()
+	leading.configure_centre(-0.15, 3.0)
+	leading.configure_load(0.5, 80.0, true, 150.0)
+	leading.configure_edge(true, 0.6765)
+	var rig := SwordRig3D.new()
+	assert_eq(rig.cutting_edge, SwordGripFrame.Edge.A, "the long edge under the approved front-hand grip is edge A")
+	assert_false(rig.edge_leads_motion, "shipping bodies keep the side-signed roll")
+	rig.edge_leads_motion = true
+	rig.combat_aligned_projection = true
+	assert_true(rig.contract_problems().size() >= 1, "a level, roll-0 body cannot also have the edge lead")
+	rig.free()
+	for side: float in [-1.0, 1.0]:
+		## ACT: a full-charge cut from each side.
+		var led := _edge_alignment(leading, side)
+		var shared := _edge_alignment(heuristic, side)
+		assert_true(led.size() > 8, "fixture: the %s cut travels (%d moving ticks)" % ["right-origin" if side < 0.0 else "left-origin", led.size()])
+		## ASSERT: the long edge leads through the whole moving swing, and the
+		## roll turns continuously (never a spin between two samples).
+		var worst := 1.0
+		var largest_turn := 0.0
+		for index in led.size():
+			var reading: Array = led[index]
+			worst = minf(worst, reading[1])
+			if index > 0:
+				largest_turn = maxf(largest_turn, absf(reading[2] - led[index - 1][2]))
+		assert_true(largest_turn < 90.0, "%s: the roll turns at most %.1f° between frames" % ["right-origin" if side < 0.0 else "left-origin", largest_turn])
+		assert_true(worst > 0.9, "%s: the long edge leads everywhere (worst alignment %.3f)" % ["right-origin" if side < 0.0 else "left-origin", worst])
+		## PERTURB: the heuristic roll lets the short edge or the flat lead somewhere.
+		var heuristic_worst := 1.0
+		for reading: Array in shared:
+			heuristic_worst = minf(heuristic_worst, reading[1])
+		assert_true(heuristic_worst < 0.0, "without it the short edge leads somewhere (%.3f)" % heuristic_worst)
+
+
+func test_the_rear_hand_turns_about_the_handle_on_its_fixed_station() -> void:
+	## ARRANGE: a sword pose, the off hand's station on the handle, an authored
+	## contact (the handle's frame in the hand) and an elbow off the handle's line.
+	var sword := Transform3D(Basis(Vector3(0.3, 1.0, 0.2).normalized(), 0.7), Vector3(-0.2, 1.3, 0.35))
+	var station := Vector3(0.0, 0.0, 0.06)
+	var contact := SwordGripFrame.contact_frame(Vector3(0.55, 0.3, 0.78), Vector3(0.6, -0.8, 0.1), Vector3(0.02, 0.06, 0.03))
+	var inverse := contact.affine_inverse()
+	var elbow := sword * Vector3(0.25, -0.35, -0.2)
+	## ACT
+	var turn := CombatPoseModifier3D.best_shaft_turn(sword, station, inverse, elbow)
+	var chosen := CombatPoseModifier3D.grip_wrist_bend(sword, CombatPoseModifier3D.shaft_turned(station, inverse, turn), elbow)
+	## ASSERT: the hand keeps its place on the handle — the contact's handle point
+	## lands on the station whatever the turn — and the chosen turn bends the
+	## wrist no more than the authored grip or any other sampled turn.
+	for degrees in range(-180, 180, 30):
+		var grip := CombatPoseModifier3D.shaft_turned(station, inverse, deg_to_rad(degrees))
+		assert_true((grip * contact.origin).is_equal_approx(station), "the station holds at a %d° turn" % degrees)
+		assert_true(chosen <= CombatPoseModifier3D.grip_wrist_bend(sword, grip, elbow) + 1e-6, "the chosen turn bends the wrist least (vs %d°)" % degrees)
+	assert_true(chosen <= CombatPoseModifier3D.grip_wrist_bend(sword, CombatPoseModifier3D.shaft_turned(station, inverse, 0.0), elbow) + 1e-9, "never more than the authored grip")
+	## PERTURB: the same pose gives the same turn (no history).
+	assert_eq(CombatPoseModifier3D.best_shaft_turn(sword, station, inverse, elbow), turn, "one pose, one turn")
+	var rig := SwordRig3D.new()
+	assert_false(rig.rear_hand_pivot, "shipping bodies keep both hands rigid")
+	rig.rear_hand_pivot = true
+	assert_true(rig.contract_problems().size() == 1, "a pivot without authored contacts is rejected")
+	rig.free()
+
+
+func test_a_death_or_a_fall_owns_the_arms_over_authored_keys() -> void:
+	## ARRANGE: the shipping fighter, living, at Ready.
+	var proxy := _proxy()
+	proxy.apply_pose(Vector3.ZERO, 0.0, -PhysicalBaseline.GUARD_ANGLE_RAD, _row(-PhysicalBaseline.GUARD_ANGLE_RAD), 1.0 / 60.0)
+	var support := proxy.rig().combat_pose().support
+	## ASSERT: a living duelist's authored arm keys may own the arms.
+	assert_false(support.clip_owns_arms, "living: the authored keys may hold the arms")
+	assert_true(CombatPoseModifier3D.authored_arms_own(support), "so the modifier applies them")
+	## PERTURB / ACT: the same sword angle, now dead; then falling.
+	var dead := _row(-PhysicalBaseline.GUARD_ANGLE_RAD, CombatPhase.Id.DEAD)
+	dead.health = 0.0
+	proxy.apply_pose(Vector3.ZERO, 0.0, -PhysicalBaseline.GUARD_ANGLE_RAD, dead, 1.0 / 60.0)
+	support = proxy.rig().combat_pose().support
+	assert_true(support.clip_owns_arms, "dead: the death clip owns the arms")
+	assert_false(CombatPoseModifier3D.authored_arms_own(support), "and the authored keys step aside")
+	var falling := _row(-PhysicalBaseline.GUARD_ANGLE_RAD)
+	falling.is_falling = true
+	proxy.apply_pose(Vector3.ZERO, 0.0, -PhysicalBaseline.GUARD_ANGLE_RAD, falling, 1.0 / 60.0)
+	support = proxy.rig().combat_pose().support
+	assert_true(support.clip_owns_arms, "falling: the fall clip owns the arms")
+	proxy.queue_free()
+
+
+func test_a_body_without_contacts_keeps_the_legacy_grip() -> void:
+	## ARRANGE: a rig with no authored contacts (every shipping body) and one with two.
+	var legacy := SwordRig3D.new()
+	var authored := SwordRig3D.new()
+	authored.grip_contacts = [Transform3D.IDENTITY, Transform3D.IDENTITY]
+	## ACT / ASSERT: only a full pair switches the grip to authored contacts.
+	assert_false(legacy.has_contacts(), "shipping bodies keep the legacy grip")
+	assert_true(authored.has_contacts(), "two contacts switch both hands to them")
+	authored.grip_contacts = [Transform3D.IDENTITY]
+	assert_false(authored.has_contacts(), "one contact is not a grip")
+	legacy.free()
+	authored.free()
+
+
+func test_a_diagonal_grip_takes_back_only_the_declared_roll() -> void:
+	## ARRANGE: a hand bent 30° off its rest and rolled 120° about its own axis.
+	var rest := Quaternion(Vector3(0.3, 0.2, 0.9).normalized(), 0.7)
+	var bend := Quaternion(Vector3.RIGHT, deg_to_rad(30.0))
+	var local := rest * bend * Quaternion(Vector3.UP, deg_to_rad(120.0))
+	assert_near(rad_to_deg(GripHandsModifier3D.twist_of(local, rest)), 120.0, 0.01, "fixture: the hand is rolled 120°")
+	## ACT / ASSERT: no limit leaves it; a limit takes back exactly that much, never more.
+	assert_true(GripHandsModifier3D.untwisted(local, rest, 0.0).is_equal_approx(local), "no declared limit leaves the hand as the grip set it")
+	for limit_deg: float in [35.0, 200.0]:
+		var out := GripHandsModifier3D.untwisted(local, rest, deg_to_rad(limit_deg))
+		var expected := maxf(120.0 - limit_deg, 0.0)
+		assert_near(rad_to_deg(GripHandsModifier3D.twist_of(out, rest)), expected, 0.01, "a %.0f° limit leaves %.0f° of roll" % [limit_deg, expected])
+		var axis_before := Basis(local) * Vector3.UP
+		var axis_after := Basis(out) * Vector3.UP
+		assert_true(axis_before.is_equal_approx(axis_after), "the hand's long axis (the wrist's bend) does not move (limit %.0f°)" % limit_deg)
+	## PERTURB: the opposite roll is taken back the other way.
+	var negative := rest * bend * Quaternion(Vector3.UP, deg_to_rad(-80.0))
+	assert_near(rad_to_deg(GripHandsModifier3D.twist_of(GripHandsModifier3D.untwisted(negative, rest, deg_to_rad(35.0)), rest)), -45.0, 0.01, "a -80° roll keeps -45° at a 35° limit")
+	## The shipping rig declares no diagonal.
+	var proxy := _proxy()
+	assert_near(proxy.rig().grip_hands().diagonal_limit, 0.0, 1e-9, "the shipping body's grip keeps the knuckle line on the handle")
+
+
+## PRES-CLAVICLE-001 protraction: the girdle comes forward only for an arm that
+## reaches forward and across, bounded by the declared ceiling; a response that
+## declares none (every shipping body) never moves the clavicle.
+func test_the_girdle_protracts_only_for_a_forward_reach_and_only_when_declared() -> void:
+	## ARRANGE: a fighter's left side (+X is the fighter's left, +Z forward).
+	var up := Vector3.UP
+	var outward := Vector3.RIGHT
+	var forward := outward.cross(up)
+	assert_true(forward.is_equal_approx(Vector3.BACK), "fixture: left × up is the fighter's forward (+Z)")
+	var declared := ClavicleResponse.new()
+	declared.max_protraction_deg = 30.0
+	var silent := ClavicleResponse.new()
+	## ACT: the reach of an arm out to the side, straight ahead, across the chest,
+	## hanging, and behind the body.
+	var side := ClavicleResponse.arm_reach_across(up, outward, forward, outward)
+	var ahead := ClavicleResponse.arm_reach_across(up, outward, forward, Vector3(0.0, -0.2, 1.0))
+	var across := ClavicleResponse.arm_reach_across(up, outward, forward, Vector3(-0.5, 0.0, 0.87))
+	var hanging := ClavicleResponse.arm_reach_across(up, outward, forward, Vector3.DOWN)
+	var behind := ClavicleResponse.arm_reach_across(up, outward, forward, Vector3(0.3, 0.0, -1.0))
+	## ASSERT: a bounded, monotone response that ignores hanging and rearward arms.
+	assert_near(declared.protraction(side), 0.0, 1e-6, "an arm out to the side keeps the girdle back")
+	assert_true(declared.protraction(ahead) > 0.0, "reaching ahead brings the girdle forward")
+	assert_true(declared.protraction(across) > declared.protraction(ahead), "reaching across brings it further")
+	assert_true(declared.protraction(across) <= deg_to_rad(30.0) + 1e-6, "never past the declared ceiling")
+	assert_near(declared.protraction(hanging), 0.0, 1e-6, "a hanging arm does not pull the girdle")
+	assert_near(declared.protraction(behind), 0.0, 1e-6, "an arm behind the body does not protract it")
+	## PERTURB: the shipping default declares no protraction.
+	assert_near(silent.protraction(across), 0.0, 1e-9, "a body that declares no protraction is unchanged")
+	## ACT / ASSERT: protract turns each clavicle's lateral end toward forward, both sides.
+	for hand_side: float in [1.0, -1.0]:
+		var skeleton := Skeleton3D.new()
+		var chest := skeleton.add_bone("Chest")
+		var collar := skeleton.add_bone("Shoulder")
+		skeleton.set_bone_parent(collar, chest)
+		## The clavicle's +Y runs out to this side.
+		var rest := Basis(Vector3(0.0, 0.0, 1.0), -hand_side * PI * 0.5)
+		skeleton.set_bone_rest(collar, Transform3D(rest, Vector3.ZERO))
+		skeleton.reset_bone_poses()
+		var lateral := hand_side * Vector3.RIGHT
+		var front := lateral.cross(up) * hand_side
+		assert_true((rest * Vector3.UP).is_equal_approx(lateral), "fixture: the clavicle points out to its side")
+		ClavicleResponse.protract(skeleton, collar, deg_to_rad(20.0), Transform3D.IDENTITY, front)
+		var along := (Basis(skeleton.get_bone_pose_rotation(collar)) * Vector3.UP).normalized()
+		assert_near(rad_to_deg(along.angle_to(lateral)), 20.0, 0.01, "the clavicle turned by the angle asked")
+		assert_true(along.dot(front) > 0.3, "its lateral end came forward, not back (side %+.0f)" % hand_side)
+		skeleton.free()
 
 
 ## PRES-POSE-001's body gate on the authoritative orbit: across the guard field,

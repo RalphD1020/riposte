@@ -67,11 +67,16 @@ func _scenario(hold: float, charging: bool, distance: float, bearing: float, att
 
 
 func _sweep(hold: float, charging: bool) -> Dictionary:
-	var tally := {"steel": 0, "flesh": 0, "miss": 0}
+	var tally := {"steel": 0, "flesh": 0, "miss": 0, "by_attack": {}}
 	for distance: float in DISTANCES:
 		for bearing: float in BEARINGS:
 			for attack: float in ATTACKS:
-				tally[_scenario(hold, charging, distance, bearing, attack)] += 1
+				var outcome := _scenario(hold, charging, distance, bearing, attack)
+				tally[outcome] += 1
+				## Directional coverage: which incoming side the blade covers.
+				var side: Dictionary = tally["by_attack"].get(attack, {"steel": 0, "flesh": 0, "miss": 0})
+				side[outcome] += 1
+				tally["by_attack"][attack] = side
 	var threats: int = tally["steel"] + tally["flesh"]
 	tally["threats"] = threats
 	tally["G"] = float(tally["steel"]) / float(threats) if threats > 0 else NAN
@@ -97,6 +102,14 @@ func test_static_coverage_is_measured_on_the_real_solver_and_mirrors() -> void:
 	for reading: Array in [["Ready -45", ready], ["gathered -80", gathered], ["wound -135", wound]]:
 		var tally: Dictionary = reading[1]
 		assert_true(tally["threats"] > 0, "%s: G = %.2f (%d steel / %d flesh / %d miss)" % [reading[0], tally["G"], tally["steel"], tally["flesh"], tally["miss"]])
+		## Directional coverage, reported per incoming cut (an aggregate hides a
+		## blade that shields one flank and leaves the other open).
+		for attack: float in ATTACKS:
+			var side: Dictionary = tally["by_attack"][attack]
+			assert_eq(side["steel"] + side["flesh"] + side["miss"], DISTANCES.size() * BEARINGS.size(), "%s, cut from the attacker's %+.0f°: %d steel / %d flesh / %d miss" % [reading[0], attack, side["steel"], side["flesh"], side["miss"]])
+	## The mirror holds per side too: the right Ready against one cut is the left
+	## Ready against the mirrored cut.
+	assert_eq(ready["by_attack"][-45.0]["steel"], mirrored["by_attack"][45.0]["steel"], "directional coverage mirrors")
 
 
 func test_charging_through_an_angle_is_more_exposed_than_holding_it() -> void:

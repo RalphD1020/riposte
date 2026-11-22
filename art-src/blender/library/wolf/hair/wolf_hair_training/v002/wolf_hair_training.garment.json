@@ -1,0 +1,137 @@
+{
+  "schema": "riposte.garment",
+  "type": "hair",
+  "base_id": "character.male_base",
+  "base_topology_fingerprint": "ea08f9e93cef77ba1c687d9286bbe216b4590109d6f710b783f38611ff75ac5d",
+  "also_fitted": [
+    {
+      "base_id": "character.male_base.foundation",
+      "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332"
+    }
+  ],
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "materials": [
+    "hair"
+  ],
+  "id": "wolf_hair_training",
+  "category": "loose",
+  "regions": [
+    "head",
+    "neck"
+  ],
+  "source": {
+    "blend": "characters/wolf/wolf_attire.blend",
+    "object": "HairTraining"
+  },
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "clearance": {
+    "face": true,
+    "crown_max_m": 0.06
+  },
+  "clearance_m": {
+    "neck": [
+      0.0,
+      0.12
+    ]
+  },
+  "notes": "Training v002 (builder variant F): Ranger v002's roots, hairline and front; tie masses over the parting; four loose masses behind the ears weighted Head -> Neck by height. Authored by tools/blender/authoring/wolf_hair.py.",
+  "design": {
+    "style": "half_up_shoulder_length",
+    "method": "sculpted_mesh",
+    "primary": "scalp",
+    "regions": {
+      "scalp": [
+        "Cap"
+      ],
+      "front_sweep": [
+        "Sweep.*",
+        "Crown.*",
+        "Temple.*"
+      ],
+      "rear_tie": [
+        "Nape.*",
+        "Bun.*"
+      ],
+      "rear_mass": [
+        "Fall.*"
+      ]
+    },
+    "scalp_attachment": "the same ray-grid scalp foundation, on Ranger's hairline and roots, fitted to the head map of the resolved head (wolf_hair HAIR-FIT): the hairline and every mass clear each ear's helix and lower ear (only its attachment may lie under the hair), the front hairline follows the resolved brow, the cap and shell tuck under the masses",
+    "flow_guides": "Ranger's flow masses for the upper head into a smaller knot at the same gather point; loose masses draped from below the parting behind the resolved ears",
+    "surface_detail": "the shared front masses; tie masses over the parting; four loose masses (two beside the neck, two behind it, layered) each ending in one chevron, no row of teeth",
+    "deformation_regions": {
+      "Head": "scalp, tied upper hair and the knot (rigid)",
+      "Head->Neck": "the loose hair by height (HEAD_ONLY 0.35 to NECK_FULL -0.35 head heights)"
+    },
+    "silhouette": "Ranger's front and three-quarter; behind, a small knot over loose masses behind the neck, never wider than the head; the face, ears and sword arm clear",
+    "intent": "relaxed half-up: the upper hair swept back into a small knot, the lower rear released into a few overlapping masses to the base of the neck; no face-framing hooks, no curtain, no sharp projections; on a thicker neck the loose masses rest further out (never longer or wider)",
+    "variant": "F"
+  },
+  "surfaces": {
+    "notes": "Half up: the scalp cap attaches; the loose masses drape the occiput and the nape hollow with their own volume and end at the base of the neck; they clear the jaw and the side of the neck.",
+    "relationships": [
+      {
+        "region": "scalp",
+        "relationship": "attach",
+        "design_regions": [
+          "scalp"
+        ],
+        "severity": "hard"
+      },
+      {
+        "region": "temple",
+        "relationship": "clearance",
+        "design_regions": [
+          "front_sweep"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "jaw",
+        "relationship": "clearance",
+        "design_regions": [
+          "rear_mass"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "neck_side",
+        "relationship": "clearance",
+        "design_regions": [
+          "rear_mass"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "occiput",
+        "relationship": "drape",
+        "design_regions": [
+          "rear_mass"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "nape",
+        "relationship": "drape",
+        "design_regions": [
+          "rear_mass"
+        ],
+        "severity": "warning"
+      }
+    ]
+  }
+}

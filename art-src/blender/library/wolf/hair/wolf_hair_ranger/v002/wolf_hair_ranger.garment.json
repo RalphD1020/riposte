@@ -1,0 +1,129 @@
+{
+  "schema": "riposte.garment",
+  "type": "hair",
+  "base_id": "character.male_base",
+  "base_topology_fingerprint": "ea08f9e93cef77ba1c687d9286bbe216b4590109d6f710b783f38611ff75ac5d",
+  "also_fitted": [
+    {
+      "base_id": "character.male_base.foundation",
+      "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332"
+    }
+  ],
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "materials": [
+    "hair"
+  ],
+  "id": "wolf_hair_ranger",
+  "category": "structured",
+  "regions": [
+    "head"
+  ],
+  "source": {
+    "blend": "characters/wolf/wolf_attire.blend",
+    "object": "HairRanger"
+  },
+  "deformation": {
+    "method": "rigid",
+    "bone": "Head",
+    "physique": "none"
+  },
+  "clearance": {
+    "face": true,
+    "crown_max_m": 0.06
+  },
+  "notes": "Ranger v002 (builder variant G): the v001 design (D) rebuilt as flow masses fitted to the resolved head's map. Rigid on Head; the head region has no physique parameter. Authored by tools/blender/authoring/wolf_hair.py.",
+  "clearance_m": {
+    "default": [
+      0.0,
+      0.1
+    ]
+  },
+  "design": {
+    "style": "tied_back",
+    "method": "sculpted_mesh",
+    "primary": "scalp",
+    "regions": {
+      "scalp": [
+        "Cap"
+      ],
+      "front_sweep": [
+        "Sweep.*",
+        "Crown.*"
+      ],
+      "temples": [
+        "Temple.*"
+      ],
+      "rear_tie": [
+        "Nape.*",
+        "Bun.*"
+      ]
+    },
+    "scalp_attachment": "a ray-grid scalp foundation on the base's skull down to the Ranger hairline fitted to the head map of the resolved head (wolf_hair HAIR-FIT): the hairline and every mass clear each ear's helix and lower ear (only its attachment may lie under the hair), the front hairline follows the resolved brow, the cap and shell tuck under the masses",
+    "flow_guides": "great-circle arcs from hairline roots to the gather point at the rear (azimuth 180), evaluated at a resolution set by length and turning, independent of the authored controls",
+    "surface_detail": "a few broad convex flow masses (crown, temples, front sweeps, nape) with three secondary locks and one short right-temple accent over a smooth shell; smooth normals along masses, creases only at mass boundaries",
+    "deformation_regions": {
+      "Head": "everything (rigid)"
+    },
+    "silhouette": "compact, narrow and controlled; the forehead open, the ears and neck readable; a compact folded knot",
+    "intent": "combat-ready warrior's bun: broad swept-back masses converging at a compact, folded knot high on the back of the head; a quiet face, the ears a facing cue, a clean nape",
+    "variant": "G"
+  },
+  "surfaces": {
+    "notes": "Tied for combat: the scalp cap and every root attach to the scalp; the tied hair and bun clear the occiput, temples and jaw; the nape stays bare.",
+    "relationships": [
+      {
+        "region": "scalp",
+        "relationship": "attach",
+        "design_regions": [
+          "scalp"
+        ],
+        "severity": "hard"
+      },
+      {
+        "region": "temple",
+        "relationship": "clearance",
+        "design_regions": [
+          "front_sweep",
+          "temples"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "occiput",
+        "relationship": "clearance",
+        "design_regions": [
+          "front_sweep",
+          "temples",
+          "rear_tie"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "jaw",
+        "relationship": "clearance",
+        "design_regions": [
+          "temples"
+        ],
+        "severity": "warning"
+      },
+      {
+        "region": "nape",
+        "relationship": "clearance",
+        "design_regions": [
+          "rear_tie"
+        ],
+        "severity": "warning"
+      }
+    ]
+  }
+}

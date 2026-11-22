@@ -117,6 +117,21 @@ class Apply(unittest.TestCase):
         revised["resolution"]["seat_neck"] = "yes"
         self.assertIn("seat_neck is a switch (true or false)", foundation.problems(revised))
 
+    def test_the_symmetric_foundation_is_a_switch_absent_in_every_approved_version(self):
+        ## ARRANGE: the approved foundation predates the bilateral build (CHARACTER-SYMMETRY-001).
+        doc = document()
+        resolved = {"body": dict(REFERENCE), "parameters": {"mass": 0.0}}
+        self.assertNotIn("symmetric", doc["resolution"])
+        ## ACT / ASSERT: absent resolves off, so its build (and lock) are unchanged.
+        self.assertIs(foundation.apply(resolved, doc)["symmetric"], False)
+        ## PERTURB: a candidate turns it on; then a non-boolean value.
+        revised = copy.deepcopy(doc)
+        revised["resolution"]["symmetric"] = True
+        self.assertEqual(foundation.problems(revised), [])
+        self.assertIs(foundation.apply(resolved, revised)["symmetric"], True)
+        revised["resolution"]["symmetric"] = "yes"
+        self.assertIn("symmetric is a switch (true or false)", foundation.problems(revised))
+
     def test_the_ear_flare_follows_the_build_only_with_a_head_design(self):
         ## ARRANGE: a lean body; the document without, then with, a head design.
         from character_modeling import ear

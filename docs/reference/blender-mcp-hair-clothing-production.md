@@ -1,5 +1,10 @@
 # Blender MCP hair and clothing production
 
+> **Read [blender-art-iteration-protocol.md](./blender-art-iteration-protocol.md) first.** It is the short standing
+> workflow (image-study loop, the three test levels, the five heuristics, layer-by-layer validation, the design/fit/motion
+> split, the equipment architecture, LOD-profile-first, evidence consolidation). This document is the detailed contract it
+> references — read for normative detail, do not restate it in prompts.
+>
 > See also: [docs/reference/blender-mcp-character-art-direction.md](./blender-mcp-character-art-direction.md) (Wolf's identity standard and the master prompt every task inherits), [docs/concepts/character-modeling.md](../concepts/character-modeling.md) (the garment system), [docs/reference/testing.md](./testing.md) (gates and the test-change policy), [spec/invariants.md](../../spec/invariants.md#character-source-001).
 
 Hair and clothing are two related production disciplines on the approved anatomical foundation. The male base is not redesigned and no other procedural character builder is created. The goal is professionally finished minimalist dark-fantasy characters (ART-STYLE-001, not low-poly) whose hair and clothing look like intentional extensions of their anatomy: hair sculpted and flowing, clothing tailored, only the face keeping its geometric language.
@@ -17,13 +22,13 @@ Blender MCP creates the asset; it is an execution interface, not an art director
 5. **Material separation creates readability.** Wool, leather, fur, steel and skin are distinguishable without texture detail.
 6. **One coherent sculpture.** No disconnected cubes, floating accessories or arbitrary protrusions.
 
-| Principle | For Riposte |
-| --- | --- |
-| Shape language | Large recognizable masses; smooth where the form flows, angular where the design draws an edge |
-| Anatomical continuity | Hair and clothing follow the head, shoulders, chest and limbs |
-| Controlled exaggeration | Exaggerate the important shapes without losing the anatomy |
-| Functional topology | Edge flow supports the actual deformation |
-| Material economy | Few materials, strong value separation, restrained surface detail |
+| Principle               | For Riposte                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| Shape language          | Large recognizable masses; smooth where the form flows, angular where the design draws an edge |
+| Anatomical continuity   | Hair and clothing follow the head, shoulders, chest and limbs                                  |
+| Controlled exaggeration | Exaggerate the important shapes without losing the anatomy                                     |
+| Functional topology     | Edge flow supports the actual deformation                                                      |
+| Material economy        | Few materials, strong value separation, restrained surface detail                              |
 
 Every geometric feature contributes to silhouette, material identity, construction or deformation, or it is removed.
 
@@ -66,12 +71,12 @@ Make bounded, reversible changes; save new versions at milestones; never overwri
 
 **The production hair model: four levels that read as one hairstyle.**
 
-| Level | Purpose | Construction |
-| --- | --- | --- |
-| 1. Scalp foundation | Hairline, coverage, the skin-to-hair transition | A fitted covering on the actual head with a clean hairline — never a separate helmet |
-| 2. Primary masses | The silhouette: swept crown, side and rear volume, the bun | Continuous sculpted forms following the flow, never detached cylinders |
-| 3. Secondary locks | Direction, layering, overlap, variation | A limited number of tapered sections that emerge from the primary masses along the same flow |
-| 4. Surface detail | The impression of strands | Grooves and ridges between overlapping clumps and narrow locks following the flow; never repetitive cable-like grooves |
+| Level               | Purpose                                                    | Construction                                                                                                           |
+| ------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1. Scalp foundation | Hairline, coverage, the skin-to-hair transition            | A fitted covering on the actual head with a clean hairline — never a separate helmet                                   |
+| 2. Primary masses   | The silhouette: swept crown, side and rear volume, the bun | Continuous sculpted forms following the flow, never detached cylinders                                                 |
+| 3. Secondary locks  | Direction, layering, overlap, variation                    | A limited number of tapered sections that emerge from the primary masses along the same flow                           |
+| 4. Surface detail   | The impression of strands                                  | Grooves and ridges between overlapping clumps and narrow locks following the flow; never repetitive cable-like grooves |
 
 **Pipeline.**
 
@@ -95,18 +100,18 @@ What each earlier construction taught: independent similar masses read as dreadl
 
 **Hair heuristics and who decides.** Measured where measurable, never invented as an artistic verdict.
 
-| Heuristic | Prevents | Kind |
-| --- | --- | --- |
-| Root attachment | Floating hair | Technical (audit: contact) |
-| Root coverage | Exposed scalp gaps | Technical (audit: scalp coverage) |
-| Flow continuity | Disconnected-looking locks | Technical (audit: contact, design regions) |
-| Width variation | The uniform dreadlock look | Design heuristic (`hair_design`) |
-| Tip taper | Blunt cylindrical ends | Design heuristic (`hair_design`) |
-| Curvature variation | Repetitive artificial shapes | Design heuristic (`hair_design`) |
-| Layer hierarchy | Hair reading as separate blocks | Design heuristic and review |
-| Silhouette variation | Helmet-like hair | Review (captures) |
-| Surface direction | Hair that reads as clay | Review |
-| Overlap control | Excessive bulk | Advisory (audit: buried masses) |
+| Heuristic            | Prevents                        | Kind                                       |
+| -------------------- | ------------------------------- | ------------------------------------------ |
+| Root attachment      | Floating hair                   | Technical (audit: contact)                 |
+| Root coverage        | Exposed scalp gaps              | Technical (audit: scalp coverage)          |
+| Flow continuity      | Disconnected-looking locks      | Technical (audit: contact, design regions) |
+| Width variation      | The uniform dreadlock look      | Design heuristic (`hair_design`)           |
+| Tip taper            | Blunt cylindrical ends          | Design heuristic (`hair_design`)           |
+| Curvature variation  | Repetitive artificial shapes    | Design heuristic (`hair_design`)           |
+| Layer hierarchy      | Hair reading as separate blocks | Design heuristic and review                |
+| Silhouette variation | Helmet-like hair                | Review (captures)                          |
+| Surface direction    | Hair that reads as clay         | Review                                     |
+| Overlap control      | Excessive bulk                  | Advisory (audit: buried masses)            |
 
 **Three classes of finding, never mixed.** A technical failure blocks (a root off the scalp, hair in the neck during a death clip, a garment through the elbow). A design heuristic warns and asks for a look (uniform widths everywhere, blunt tips). An art-direction finding is a person's (the hair reads as dreadlocks; Ranger and Training silhouettes look alike). A passing intersection test never proves a good hairstyle.
 
@@ -116,11 +121,11 @@ What each earlier construction taught: independent similar masses read as dreadl
 
 **Deformation.**
 
-| Component | Deformation |
-| --- | --- |
-| Scalp, front sweep, temples, crown, bun | Head |
-| Hanging hair beside the head | Head |
-| Hanging hair resting on the body | From Head into the weights of the body surface beneath it (Head at the jaw, mostly Head at the nape, Neck and Chest on the trapezius), smoothed along the hair |
+| Component                               | Deformation                                                                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scalp, front sweep, temples, crown, bun | Head                                                                                                                                                           |
+| Hanging hair beside the head            | Head                                                                                                                                                           |
+| Hanging hair resting on the body        | From Head into the weights of the body surface beneath it (Head at the jaw, mostly Head at the nape, Neck and Chest on the trapezius), smoothed along the hair |
 
 Rigid on Head is the default; skin only what the animation actually requires, with the existing WolfRig. Never spread hair across the skeleton because bones exist. Hair that rests on the body moves with the surface it rests on: weighted to Neck by height alone, hair beside the jaw was entered by the head in a death fall, and weighted partly to Head, tips on the upper back swung into it as the head fell back. The weights come from the base body, never from a garment.
 
@@ -135,31 +140,31 @@ Rigid on Head is the default; skin only what the animation actually requires, wi
 
 **A designed hairstyle, not a clump generator.** Procedural construction serves repeatability and fitting: scalp-local attachment, region masks, guide placement, deterministic generation of the final mesh. The hero silhouette is directed: guides are shaped and the silhouette edited on purpose, and no seed or random spread decides it. Three visual levels read as one style: primary masses establish the silhouette, secondary locks emerge from them (never glued onto a helmet), and a few deliberate accents finish tips and separations. A lock follows a curved guide with tangent continuity and a variable elliptical, softly flattened section that is convex on top, rounds into its sides, changes width and thickness gradually, blends its root into the mass and tapers its end (not necessarily to a sharp triangle). Never rectangular extrusions, constant-width pipes, flat plates, many deep grooves, uniform clumps, or strand count standing in for design. Before adding geometry, separate the cause: if the silhouette and clay are smooth but the light shows patches, the fault is normals or material, and polygons do not fix it. Blender's clump and Geometry Nodes hair tools may build guides; they do not replace authored shapes, and experimental hair dynamics stay out of the production path.
 
-| Procedural failure | Prevention |
-| --- | --- |
-| Hair cap | Hairline and skull coverage validated from every angle |
-| Floating roots | Scalp-local attachment coordinates, reprojected after any head change |
-| Bald gaps | Root distribution and coverage checked in posed states |
-| Spaghetti locks | The primary / secondary / accent hierarchy enforced |
-| Blocky clumps | Cross-sections, curvature and normals measured |
-| Identical clumps | Controlled deterministic variation by region |
-| Spikes | Tip curvature and silhouette review |
-| Intersections | Scalp, face, ears, neck and clothing checked |
-| Unstable results | Fixed seeds and stable guide identities |
-| Cost | Mesh budgets, LODs and performance measurements |
+| Procedural failure | Prevention                                                            |
+| ------------------ | --------------------------------------------------------------------- |
+| Hair cap           | Hairline and skull coverage validated from every angle                |
+| Floating roots     | Scalp-local attachment coordinates, reprojected after any head change |
+| Bald gaps          | Root distribution and coverage checked in posed states                |
+| Spaghetti locks    | The primary / secondary / accent hierarchy enforced                   |
+| Blocky clumps      | Cross-sections, curvature and normals measured                        |
+| Identical clumps   | Controlled deterministic variation by region                          |
+| Spikes             | Tip curvature and silhouette review                                   |
+| Intersections      | Scalp, face, ears, neck and clothing checked                          |
+| Unstable results   | Fixed seeds and stable guide identities                               |
+| Cost               | Mesh budgets, LODs and performance measurements                       |
 
 Ranger: keep the hairline and bun position; make the gathered hair visibly converge on the bun in broad overlapping locks from the temples and crown; give the bun a layered, irregular silhouette, not a sphere; improve the rear and three-quarter transitions. Training: keep the bun and the shoulder-length arrangement; split the loose rear hair into a few broad organic masses of controlled curvature and varied lengths; connect the half-up transition; no rigid curtain and no disconnected hanging clumps. Facial hair is revisited after the head shape is stable, because the jaw is its attachment surface.
 
 **Surface integration (ART-SURFACE-001).** The geometry of a hairstyle can be finished while its integration with the body is not; [docs/concepts/character-art.md](../concepts/character-art.md#character-surface-integration-art-surface-001) defines attach, clearance and drape, the anatomical regions and the severities. Blender techniques and their place:
 
-| Technique | Use |
-| --- | --- |
-| Sculpting and proportional editing | Shape the nape, hairline and transitions |
-| Shrinkwrap (offset, vertex group) | Fit selected roots or regions to the scalp — never the whole hairstyle |
-| Solidify | Controlled thickness of a shell that is already a good form; it does not rescue a flat one |
-| Armature deformation | The runtime solution: follow the head and neck |
-| Surface Deform | Optional offline deformation transfer, never a runtime dependency |
-| Weighted vertex groups | How each hair region follows the skeleton |
+| Technique                          | Use                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| Sculpting and proportional editing | Shape the nape, hairline and transitions                                                   |
+| Shrinkwrap (offset, vertex group)  | Fit selected roots or regions to the scalp — never the whole hairstyle                     |
+| Solidify                           | Controlled thickness of a shell that is already a good form; it does not rescue a flat one |
+| Armature deformation               | The runtime solution: follow the head and neck                                             |
+| Surface Deform                     | Optional offline deformation transfer, never a runtime dependency                          |
+| Weighted vertex groups             | How each hair region follows the skeleton                                                  |
 
 Blender MCP shapes and inspects; the scripts make it reproducible. Never change a procedural parameter blind: every change is reviewed in captures before the next.
 
@@ -192,15 +197,15 @@ Clothing establishes identity and preserves the anatomical silhouette and moveme
 
 **Construction types.** Each has its own expectations for thickness, clearance and deformation, so no single clearance applies to everything:
 
-| Construction | Examples | Expected behavior |
-| --- | --- | --- |
-| `fitted` | Gambeson, trousers, sleeves | Close anatomical correspondence, clean joint topology |
-| `padded` | Training jacket, padded collar | Consistent thickness and controlled volume |
-| `structured` | Leather mantle, chest protection, bracers, boots | A stable, deliberate outer silhouette; some sections rigid |
-| `rigid` | Buckle, knee plate | One bone, or controlled rigid deformation |
-| `fur` | Ranger's collar | A few large directional clumps, may overlap what it frames |
-| `loose` | Skirt panels, hanging cloth | Controlled clearance and authored movement; never runtime cloth |
-| `accessory` | Pouch, small fittings | Hard pieces attached to a bone or a garment |
+| Construction | Examples                                         | Expected behavior                                               |
+| ------------ | ------------------------------------------------ | --------------------------------------------------------------- |
+| `fitted`     | Gambeson, trousers, sleeves                      | Close anatomical correspondence, clean joint topology           |
+| `padded`     | Training jacket, padded collar                   | Consistent thickness and controlled volume                      |
+| `structured` | Leather mantle, chest protection, bracers, boots | A stable, deliberate outer silhouette; some sections rigid      |
+| `rigid`      | Buckle, knee plate                               | One bone, or controlled rigid deformation                       |
+| `fur`        | Ranger's collar                                  | A few large directional clumps, may overlap what it frames      |
+| `loose`      | Skirt panels, hanging cloth                      | Controlled clearance and authored movement; never runtime cloth |
+| `accessory`  | Pouch, small fittings                            | Hard pieces attached to a bone or a garment                     |
 
 A definition's `category` is one of these, and the contract accepts the ones whose clearance profile exists in `male_base.regions.json` (`fitted`, `structured`, `loose` today). `padded`, `rigid`, `fur` and `accessory` enter that list with their profile, calibrated on the first asset of the construction (the padded profile with the gambeson or the Training jacket); no profile is invented before an approved asset can calibrate it. An outfit's art profile lists the constructions its garments may use.
 
@@ -218,16 +223,16 @@ The garment is fitted to the body, not a copy of it: a gambeson has padding, a m
 
 **Garments have their own topology profile.** A garment does not inherit the anatomy's topology; geometry goes where it changes the silhouette or the deformation.
 
-| Region | Topology intent |
-| --- | --- |
-| Chest | Broad surfaces, no unnecessary density |
-| Shoulder | Enough loops for arm elevation |
-| Armpit | Controlled compression and stretch |
-| Elbow | Directional deformation loops |
-| Waist | A smooth transition round the torso |
-| Hip | Loops that accommodate leg separation |
-| Hem | A stable, deliberate edge silhouette |
-| Rigid leather | Stable panels with minimal bending |
+| Region        | Topology intent                        |
+| ------------- | -------------------------------------- |
+| Chest         | Broad surfaces, no unnecessary density |
+| Shoulder      | Enough loops for arm elevation         |
+| Armpit        | Controlled compression and stretch     |
+| Elbow         | Directional deformation loops          |
+| Waist         | A smooth transition round the torso    |
+| Hip           | Loops that accommodate leg separation  |
+| Hem           | A stable, deliberate edge silhouette   |
+| Rigid leather | Stable panels with minimal bending     |
 
 **Thickness.** Not one large uniform Solidify. Consistent inward or outward thickness, clean openings, intentional hems, defined edges, the right padding volume and correct normals — padded fabric reads as padding, leather as an edge with thickness. Shrinkwrap, Surface Deform and Data Transfer never substitute for modeling the garment and validating its deformation.
 
@@ -235,42 +240,88 @@ The garment is fitted to the body, not a copy of it: a gambeson has padding, a m
 
 **Folds communicate forces.**
 
-| Situation | Result |
-| --- | --- |
-| Fabric stretched across the chest | Broad, relatively smooth surface |
-| Compressed under the arm | Small controlled folds |
-| A sleeve bending at the elbow | Directional compression folds |
-| A belt compressing the waist | Folds radiating from the belt |
-| A skirt hanging from the waist | Vertical gravity folds |
-| Shoulder movement | Tension changes across the mantle |
+| Situation                         | Result                            |
+| --------------------------------- | --------------------------------- |
+| Fabric stretched across the chest | Broad, relatively smooth surface  |
+| Compressed under the arm          | Small controlled folds            |
+| A sleeve bending at the elbow     | Directional compression folds     |
+| A belt compressing the waist      | Folds radiating from the belt     |
+| A skirt hanging from the waist    | Vertical gravity folds            |
+| Shoulder movement                 | Tension changes across the mantle |
 
 Three levels: **primary** folds (large changes of surface direction, part of the silhouette), **secondary** folds (smaller changes showing the material) and **tertiary** detail (seams, stitching, straps, small accents). Riposte garments use mostly the first two: a wool gambeson reads through broad padded planes, a leather mantle through angular surfaces and reinforced edges — never procedural noise or random wrinkles.
 
-**Wolf.**
+**Wolf (F9 design, 2026-11-07).** Three or four major forms establish each skin, with restrained secondary detail and one focal accent; the sword, hands, head and facing stay readable at the match camera.
 
-| Ranger, the field swordsman | Treatment |
-| --- | --- |
-| Gambeson | Fitted dark wool, broad padded planes |
-| Chest protection | Contoured leather panels following the chest |
-| Shoulder mantle | Integrated asymmetric leather reinforcement: two or three large surfaces, a defined outer edge, a little asymmetric detail; reinforces the broad shoulders without oversizing them |
-| Collar | Restrained fur, framing rather than hiding the neck |
-| Belt | Broad leather with a designed buckle |
-| Pouch | One prominent functional pouch |
-| Bracers | Sculpted leather with reinforced edge planes |
-| Trousers | Fitted, controlled knee folds |
-| Boots | Strong toe, cuff, layered sole |
+| Ranger, the northern duelist | Treatment                                                                                     | Layer |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ----- |
+| Under-tunic                  | Close-fitting charcoal long-sleeve, crew neck at the neck base                                | 1     |
+| Trousers                     | Tapered dark trousers, clean folds at the knee (shared with Training)                         | 1     |
+| Vest                         | Dark leather, one continuous chest shape, open V front, low open collar at the back and sides | 2     |
+| Panels                       | Two short split tunic panels, front and back, to the upper thigh                              | 2     |
+| Shoulder                     | One modest reinforced leather panel (left), a steel fastening; the other shoulder unarmored   | 3     |
+| Bracers                      | Simple leather forearm bracers; elbow, wrist and hand clear                                   | 3     |
+| Boots                        | Mid-calf leather boots with broad, simple cuffs                                               | 3     |
+| Belt                         | Broad functional belt, one aged-bronze fastening                                              | 4     |
 
-| Training, Wolf without field equipment | Treatment |
-| --- | --- |
-| Jacket | Fitted padded training jacket, broad padded planes, no leather armor |
-| Shoulders | The exposed anatomical shoulder silhouette |
-| Collar | Simple padded collar |
-| Arms | Fitted sleeves and cloth wraps |
-| Waist | Simple belt, short cloth tabs |
-| Trousers | Practice trousers with directional folds |
-| Boots | Simpler low boots |
+| Training, the casual swordsman (revised at Gate 1, 2026-11-07) | Treatment                                                                                                                  | Layer |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Undershirt                                                     | Loose light linen, long full sleeves gathered at the wrist, narrow collar with a short V; torso and sleeves one garment    | 1     |
+| Trousers                                                       | Relaxed warm gray-brown trousers: fuller thigh, gently tapered calf, gathered at the boot                                  | 1     |
+| Tunic                                                          | Warm-brown, sleeveless over the undershirt, shaped V, gentle waist, soft rounded hem at the upper thigh, a few broad folds | 2     |
+| Vest                                                           | Darker brown flexible leather, sleeveless, close over the chest, finishing at the waist; no plates                         | 3     |
+| Bindings                                                       | Restrained forearm bindings over the sleeve cuffs; the hands clear                                                         | 4     |
+| Boots                                                          | Light leather training boots, lower and simpler than Ranger's                                                              | 3     |
+| Belt                                                           | A narrow leather belt at the tunic's waist                                                                                 | 4     |
 
-Ranger wears protective equipment; Training wears clothing made for unrestricted movement. Both are the same person.
+**Neckwear (2026-11-08).** Every playable character's final appearance wears an approved mouth-and-neck covering: the mouth concealed, the eyes, brows, nose and ears clear. It is a garment in the outfit, never part of the anatomical foundation, which stays uncovered for authoring and QA. Ranger wears a thick charcoal gaiter-scarf (two broad folds, a diagonal lower edge); Training a soft warm-taupe scarf with looser folds gathering toward one shoulder. Both sit outside the collar and vest, and the hair lies over them where they meet.
+
+- Fitted to the visible head as well as the body (`design.fit_head`): the head joins the fitting surface, and the body's neck seat enclosed by the head is left out, because rays from the neck axis would otherwise stop on it inside the face.
+- The top edge runs just under the nose, below the ear lobes and below the hairline (`end` curves, with `s1` for a diagonal); the lower edge rests over the collar, lower at the back so a bowed head never opens the nape.
+- `reach_m` caps each row's distance from the neck axis, so the lower rows span over the sloping shoulder instead of flaring out along it into a cowl.
+- The wrap above the chin is rigid on Head (`design.weights.rigid_above`), blended into the skin's weights below, so a turned or bowed head never slides the covering off the mouth. Only existing bones; no runtime cloth.
+  - `rigid_above.over` names the fitting regions the head-rigid cloth must lie over (`["head"]`, the head surface the neckwear is fitted to). The mouth and jaw wrap follows the head; the drape lying on the shoulders at the same height follows the chest and shoulder skin. Height alone cannot tell the two apart, and the regions are anatomy, so the rule holds on every physique. The weight smoothing blends the edge, so no hinge forms.
+- Layering is a local relationship, never a global offset: the scarf declares itself `beneath` the hairstyle (`relationships`), and the build moves the hair outside the scarf only where they overlap (`garment_builder.lie_beneath`, on the character's own copy; the approved hair source is untouched).
+- The scarf hides only the body's neck under it (pose-envelope proven); it never trims the head, because only facial hair counts as covering the head.
+
+Training reads from the game camera as light sleeves, brown tunic, darker leather vest: the comfortable version of Ranger, not Ranger with the armor removed. The first Training candidate (a sleeveless taupe shell over bare arms and tight trousers) read as a tank top and apron and was rejected.
+
+Palettes are per outfit (the manifest's `outfits.<skin>.palette`, costume slots): Ranger charcoal `#292D32`, worn leather `#3B3433`, forest slate `#41483F`, weathered steel `#77736B`, aged bronze `#967650`; Training linen `#BFB29A`, warm brown `#6B4A32`, dark leather `#3E2B20`, gray-brown wool `#5E554B`, binding `#59433F`. Metal stays at the shoulder fastening and the belt. Ranger wears protective equipment; Training wears clothing made for unrestricted movement. Both are the same person.
+
+**The garment builder.** `tools/blender/authoring/garment_builder.py` builds each garment as its own low-resolution basemesh on the resolved body and its fitted rig, so one definition fits every height and build. It never offsets the body's surface. Pieces:
+
+- `torso`: rings round the spine from the hem to the chest, then a yoke of rays from the chest centre over the shoulders.
+- `tube`: rings along a bone path, closed or over azimuth arcs. Trouser legs, belts, bracers, boots with a closed toe, and panels are tubes.
+- `cap`: rays from a joint within a cone, for a fitted shoulder reinforcement.
+- `plate`: a rigid fitting seated on the garment beneath.
+
+Each ring's radius is the smoothed upper envelope of the body's cross-section, plus the piece's ease, so cloth spans hollows instead of tracing muscle. Over a lower garment, the radius is lifted onto that garment's outer surface plus a layer gap. Openings are exact isolines cut through the grid's edges, never stair-stepped face deletions. Thickness is a rim and an inward lip at every opening. Weights are the body's own (at most four), sampled at each vertex's construction anchor (the skin point its ray was cast to) and interpolated over that body face; a plate's are on its one bone. Faces carry their piece (`riposte_mass`) and the body region beneath (`riposte_region`). The builder is the reproducible authoring path for candidates; a hand-modeled garment goes through the same definition and checks.
+
+**Construction rules the Gate 1 rework established.** Each rule fixes a defect that was measured, not guessed:
+
+- **Armscye.** A sleeved shirt's arm opening is a plane across the upper arm's own axis at the shoulder joint (`arms.armscye_m`), bounded by a cone about the shoulder. A cone about the chest-to-shoulder line is tilted against an arm hanging in the rest pose: its edge does not wind once round the arm, and any sleeve attached to it folds into shards at the front of the armpit. A sleeveless outer layer (vest, tunic) keeps the cone; its finished armhole lies over the sleeve.
+- **Set-in sleeve.** With `set_in: "bridge"`, the opening's loop is the sleeve's first ring: one column per armhole vertex in its own order, rows graded towards the shoulder, and the radius blended out of the armhole's own over the first few centimetres. Shirt and sleeve are one continuous surface. A sleeve tucked under the yoke as a second layer steps out of it where the yoke turns.
+- **Clearance on faces, not only vertices.** No vertex, face centre or edge midpoint may lie nearer the skin than the gap. Only skin facing the same way as the cloth counts (between the thighs, the nearest skin can be the other leg). A sparse ring's chord otherwise dips into a convex muscle between its vertices, and the skin shows through the cloth on the deltoid.
+- **Trousers are a seat and two legs.** One seat ring runs from the waist to below the crotch, and two straight leg tubes start inside its lower edge. The leg tops must reach the gluteal fold: starting them too low leaves skin under the seat, and starting them at the hip joint flares their top ring out past the seat.
+- **Boots close beyond the toes.** The foot path runs past the end of the foot bone, which ends at the ball, before the toe cap.
+- **Fit, ease and clearance are three things.** A piece's `ease_m` is its fit; `allowance` is movement room where a joint needs it, the procedural gusset: extra ease over a span of the piece, facing a body-relative direction (x mirrored on the right), fading out round it (the sleeve cap front and back, and the torso before and behind each armhole, for a forward reach); the layer gap is clearance over what lies beneath. None of them grows into a global offset.
+- **The sleeve cap has rows where it bends.** A cap face spanning the shoulder joint (about 19 cm on the 12-row sleeve) is flat while the skin under it articulates: in a forward reach the skin moved 81 mm where the face moved 48, and passed through it. Set-in sleeves carry 16 rows graded toward the shoulder (`cap_grade` 1.4).
+
+**Common garment defects and where they come from.**
+
+| What you see                                  | Usual source                                                                                                                     | Fix at the source                                                                   |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Ragged, stair-stepped collar, armhole or hem  | An opening cut by deleting whole faces of a grid                                                                                 | Cut along the exact boundary curve, then smooth the loop                            |
+| Clothing "in tatters", shards at a seam       | Two surfaces meeting at mismatched angles or densities (a tucked sleeve stepping out of the yoke, a leg top flaring past a seat) | One continuous surface at the seam, or an overlap whose edges follow the same curve |
+| Skin showing through cloth on a convex muscle | Flat faces between sparse vertices cutting the body                                                                              | Face-level clearance, or density where the silhouette turns                         |
+| A dark gap at the armpit                      | An opening whose edge does not wind round the limb, or a crease no surface spans                                                 | Plane-across-the-limb armscye and a set-in sleeve                                   |
+| Plates, shelves and stacked cylinders         | Rigid uniform-thickness pieces with horizontal edges                                                                             | Shaped hems (`hem` curves), curved boundaries, broad deliberate folds               |
+| A thick, dense mesh that still looks faceted  | Density spread uniformly instead of at joints and silhouette edges                                                               | Fewer rings on broad panels, more at shoulder, elbow, knee and curved edges         |
+| Outer layer piercing an inner one             | Each layer fitted to bare skin                                                                                                   | Fit each layer over the layers beneath it, plus a gap                               |
+
+Smooth shading never changes a mesh's outline: a faceted edge is a geometry problem. Never decimate or globally smooth an assembled outfit to hide one.
+
+**Review evidence.** Every candidate set has each garment isolated, the assembly with and without coverage trimming, wireframe, front, side, rear and three-quarter views, raised-arm and guard poses, the gameplay camera, and a coverage measure: body vertices in each band (shoulders, hips, feet) whose surface normal reaches no garment. A rising count is read against the renders, because a crease deep under a sleeve counts without being visible.
 
 ## Skinning and physique
 
@@ -278,6 +329,12 @@ Ranger wears protective equipment; Training wears clothing made for unrestricted
 - Support only the declared configurations. Transfer the base's key deltas as a start, correct where the construction differs (structured leather does not deform like skin), and inspect the combined body and garment for every one. Data Transfer, Surface Deform and Solidify never replace inspection.
 - Hair follows head shape and clearance; it is not assumed to need clothing's physique corrections. A hair or garment covering only regions no physique parameter shapes declares `"physique": "none"`.
 - Never modify the base to accommodate a garment.
+
+**Garment weights follow the construction, not the skin nearest the cloth (`design.weights`).** Sampled at the skin nearest a cloth vertex, the body's weights jump across a crease: at the armpit a torso vertex takes the arm's weights, and one garment edge between an arm-weighted and a chest-weighted vertex stretches into a web when the arm rises (the Ranger vest's batwing measured 38× edge stretch at the raise, 62× overhead, against the bare body's 3.4× and 5×). Every garment vertex therefore records the skin point its ray was cast to (`riposte_anchor`, a construction attribute dropped after weighting), and its weights are sampled there: a torso vertex reads torso skin, a sleeve vertex arm skin. Smoothing over the garment's own edges (`design.weights.smooth`, default `WEIGHT_SMOOTH_PASSES`) is not a substitute: on a coarse sleeve it carried the shoulder's weights halfway down the arm (53% UpperArm where the skin is 100%), the sleeve lagged a forward reach and the skin passed through it, and no smoothing radius fixed both the raise and the reach. Fitted shirts use one pass; a torso garment over a shirt caps the arm chain (`design.weights.arm_max`: vests and tunics 0.1, a pauldron 0.6), moving the excess to Chest and a share (`ARM_TO_CLAVICLE`) to that side's clavicle. The acceptance reading is the garment against the bare body in the same pose: a torso garment's worst edge stretch at or below the body's.
+
+**The pose suite (POSE-SUITE-001, `character_modeling.pose_suite`).** Versioned stress fixtures (arms horizontal, raise, overhead, one arm up, arms forward, guard with the elbows bent, a torso twist with the arm raised, head turned, bowed and raised (the neck taking `NECK_SHARE` of the motion), a turned head over a turned torso with the sword arm raised, and the diagnostic raise with the shoulder girdle locked), each sampled at a quarter, half and full motion, applied in Blender by one applier (`tools/blender/authoring/pose_fixture.py`). An acceptance raise moves the clavicle with the arm (about a third of the elevation, as a real shoulder girdle does); the upper arm alone is the diagnostic worst case, never the acceptance pose. The coverage envelope trims a face only if it stays covered at the half and full sample of every fixture (diagnostics included, the conservative side), and a review build is read for: per garment and pose, max and 99th-percentile edge stretch, edges that grew more than 20 mm, collapsed faces and new creases, each against the bare body; the trimmed body's hole boundary uncovered in each sample (the quarter samples are outside the envelope, so they test it); and the A–F layer captures (bare body, each garment alone, both unmasked, both masked, the full assembly).
+
+**Construction status (2026-11-09).** The set-in sleeve cap is now designed on the shoulder (seam positions blend onto the arm-cast sleeve surface with a short tangential relaxation pass that carries the skinning anchor with it), and the forward-reach / guard underarm closed by anchoring the underside cloth to its nearest body skin rather than the arm. The `death_stab` throat gap closed by lowering the scarf into a skirt over the collar. Remaining residuals are bounded: the `ring_fall` full-overhead underarm (a recorded visibility exception — not observable at the gameplay camera, submerged after water entry) and the strongman crotch-seat ~57 mm interior overlap (a recorded concealed-overlap exception). Both are in [blender-art-iteration-protocol.md](./blender-art-iteration-protocol.md#bounded-recorded-exceptions-do-not-reopen-without-new-contrary-evidence); do not reopen without new contrary evidence. A cinch gathers only the rows it falls on; the row count can cancel it silently.
 
 ## Animation inspection
 
@@ -287,30 +344,40 @@ Real production clips: idle guard, forward and backward movement, the forward an
 
 Record: triangles, vertices, mesh islands, material slots, bone influences, weight normalization, surface clearance, body and garment intersections, hair and face clearance, physique compatibility, deformation results. Tolerances are per asset — a fitted gambeson, a fur collar and a structured mantle have different intended clearances, a loose rear lock may move centimetres while an eye may not be entered by a millimetre — and intentional overlaps are declared, never tolerated silently.
 
-| Hair test | Expected |
-| --- | --- |
-| Scalp coverage | No exposed scalp where the style covers the head |
-| Face clearance | No intrusion into the eyes or brows |
-| Head deformation | Hair follows Head |
-| Neck clearance | No penetration during head turns |
-| Shoulder clearance | Training's hair does not enter the shoulders |
-| Crown bounds | Correct overall height |
-| Design regions | Every tagged mass in exactly one declared region; every declared mass present |
-| Root-to-tip continuity | No mass that touches no other mass |
-| Silhouette | No unintended change against the approved captures |
-| Material integrity | The `hair` slot only |
-| Import integrity | Correct skeleton and mesh bindings |
+| Hair test              | Expected                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| Scalp coverage         | No exposed scalp where the style covers the head                              |
+| Face clearance         | No intrusion into the eyes or brows                                           |
+| Head deformation       | Hair follows Head                                                             |
+| Neck clearance         | No penetration during head turns                                              |
+| Shoulder clearance     | Training's hair does not enter the shoulders                                  |
+| Crown bounds           | Correct overall height                                                        |
+| Design regions         | Every tagged mass in exactly one declared region; every declared mass present |
+| Root-to-tip continuity | No mass that touches no other mass                                            |
+| Silhouette             | No unintended change against the approved captures                            |
+| Material integrity     | The `hair` slot only                                                          |
+| Import integrity       | Correct skeleton and mesh bindings                                            |
 
-| Clothing test | Expected |
-| --- | --- |
-| Anatomical fit | The intended clearance |
-| Skinning | Valid normalized weights |
-| Joint deformation | No unacceptable folds or separation |
-| Layering | No unintended garment intersections |
-| Body masking | No exposed hidden geometry |
-| Physique | Valid on every supported configuration |
-| Animation | No critical penetration or floating |
-| Import | WolfRig and the right materials |
+| Clothing test     | Expected                               |
+| ----------------- | -------------------------------------- |
+| Anatomical fit    | The intended clearance                 |
+| Skinning          | Valid normalized weights               |
+| Joint deformation | No unacceptable folds or separation    |
+| Layering          | No unintended garment intersections    |
+| Body masking      | No exposed hidden geometry             |
+| Physique          | Valid on every supported configuration |
+| Animation         | No critical penetration or floating    |
+| Import            | WolfRig and the right materials        |
+
+**Where skin may show (GARMENT-COVERAGE, `tools/blender/inspect/exposure_check.py`).** Coverage trimming answers which hidden faces may be removed; this answers what the final, posed character shows. An outfit declares its exposure policy in the character manifest (`outfits.<skin>.exposure`): `must_cover` foundation regions (a region may be bounded along a bone, `until: [bone, fraction]`, and may name the band just inside an opening, `opening: [bone, fraction]`, the wrist inside a cuff) and `must_remain_visible` features (the eyes); everything else may show. The derived body and head carry their foundation regions per vertex (`riposte_region`, stamped before trimming), so the policy reads the final meshes. For each pose-suite sample and view the check renders a flat surface-ID pass with no antialiasing (must-cover skin red, permitted skin green, opening skin yellow, must-remain-visible blue, every other surface its own grey), with the head's rigid parts bound to Head as the shipping assembly binds them. Classification is by surface identity, never by colour: Training's linen is near skin tone.
+
+- A forbidden blob fails when it covers at least one pixel of the 1080p gameplay camera at the capture's scale (16 capture pixels at 2.1 m over 900 px); smaller blobs are below what a player can see.
+- Opening skin passes only where it is continuous with permitted skin beyond it (seen through the cuff); the same band seen anywhere else (a gap, a sleeve slid up) fails. A loose sleeve shows deeper into it than a fitted one, so the opening band follows the sleeve's ease (Ranger 0.7 of the forearm, Training 0.55).
+- A must-remain-visible feature fails when less than 90% of it shows, compared with the same view without the outfit.
+- Run it on the trimmed build and on the untrimmed one (`RIPOSTE_GARMENT_MASK=0`): skin through a garment in both is a fit or deformation defect; skin only after trimming means the coverage metadata is too aggressive. Never delete more body faces to hide a defect.
+- Each failing render is its own diagnostic overlay (`<sample>_<t>_<view>.png`), with the counts in `exposure.json`.
+
+The gate found what numeric mesh tests had passed: body poke-through at the sleeve junction (the shirt continuous, the skin outside it), the mouth exposed by a neck-weighted wrap, the wrist seen through a short sleeve inside a flared binding, and the nape opening under a bowed head.
 
 **Test the garment stack, not the garment.** The gambeson alone, then gambeson + chest protection, then + mantle, then the complete Ranger and the complete Training: the complete stack is what ships. Intentional overlaps are declared so the validator does not fight the design (the fur collar over the gambeson, the mantle over the chest protection).
 
@@ -318,25 +385,25 @@ Record: triangles, vertices, mesh islands, material slots, bone influences, weig
 
 **Five kinds of evidence, never merged.** A clean deformation report does not establish that a hairstyle is aesthetically right.
 
-| Validation | What it proves | Who decides |
-| --- | --- | --- |
-| Structural | Masses attached and mapped, geometry valid, no mass buried in another | The audit |
-| Deformation | The asset follows the rig through the matrix without unacceptable intersections | The audit |
-| Silhouette | The asset matches the approved design | A person (captures; image differences only flag change) |
-| Identity | Wolf's face and anatomy remain recognizable | A person, with the identity checks guarding drift |
-| Presentation | Features read at the gameplay camera | A person, from Godot captures |
+| Validation   | What it proves                                                                  | Who decides                                             |
+| ------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Structural   | Masses attached and mapped, geometry valid, no mass buried in another           | The audit                                               |
+| Deformation  | The asset follows the rig through the matrix without unacceptable intersections | The audit                                               |
+| Silhouette   | The asset matches the approved design                                           | A person (captures; image differences only flag change) |
+| Identity     | Wolf's face and anatomy remain recognizable                                     | A person, with the identity checks guarding drift       |
+| Presentation | Features read at the gameplay camera                                            | A person, from Godot captures                           |
 
 **Two sampling tiers.** The iteration envelope (`--clips envelope`: 10 clips × 4 frames × every configuration, 287 samples) for each change; the acceptance matrix (`--clips all --frame-step 2`: every production clip at every second frame × every configuration, about 4,150 samples) before a gate. The matrix reports failures by clip and the worst sample per region. The envelope alone is not acceptance: on Wolf's hair it was clean while the matrix found the ring falls and a death clip.
 
 **Five validation groups.**
 
-| Group | Protects | State |
-| --- | --- | --- |
-| Identity | Face, anatomy, head, the art profile across outfits | Built: `identity.py`, the base fingerprint, the rig digest, the face marks |
-| Hair | Scalp, clearance, design regions, continuity, silhouette, deformation | Built except the silhouette comparison |
-| Clothing | Fit, thickness, topology, layering, masking, physique | Fit, weights, masking and physique built; stack, thickness and per-region deformation planned |
-| Art direction | Silhouette, material hierarchy, detail economy | Captures and the review table; measurements planned |
-| Runtime | Imported asset, rig, clips, grips, presentation | The Godot suites, after the first garment GLB |
+| Group         | Protects                                                              | State                                                                                         |
+| ------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Identity      | Face, anatomy, head, the art profile across outfits                   | Built: `identity.py`, the base fingerprint, the rig digest, the face marks                    |
+| Hair          | Scalp, clearance, design regions, continuity, silhouette, deformation | Built except the silhouette comparison                                                        |
+| Clothing      | Fit, thickness, topology, layering, masking, physique                 | Fit, weights, masking and physique built; stack, thickness and per-region deformation planned |
+| Art direction | Silhouette, material hierarchy, detail economy                        | Captures and the review table; measurements planned                                           |
+| Runtime       | Imported asset, rig, clips, grips, presentation                       | The Godot suites, after the first garment GLB                                                 |
 
 Godot is the final runtime authority: the validated GLB is checked there for skeleton binding, meshes and materials, clips and `RESET`, four influences, the wrapper and `SwordRig3D` attachment, costume selection, no missing resources, and Compatibility rendering. Blender's analysis is an early warning and a diagnosis, never a substitute.
 
@@ -364,7 +431,7 @@ Each task delivers the versioned Blender source, the asset definition, a candida
 - **Physique correspondence** — `tools/blender/authoring/garment_physique.py` gives an asset a key per base physique key (same names), each vertex taking the key's displacement at its nearest point on the base's rest surface. A start, not the answer.
 - **Audit** — `tools/blender/inspect/garment_audit.py`: weights and static fit against the asset's own clearance; with `--configurations all --clips envelope` the body and the asset posed together through every supported configuration and the envelope clips, every penetrating sample named with its worst vertex, the region under it and the likely owning layer (rest at default: fit or topology; a configuration only: the asset's physique shape; a pose only: weights or topology at a joint). For hair, with `--manifest`, it checks the face-clearance volume, scalp coverage, the crown bound, the tagged masses against `design.regions`, each mass's contact with the rest of the hairstyle (a mass passing through another surface counts as attached), and for every pair of masses the share of one inside the other (advisory: a mass mostly buried in another shapes nothing; the scalp cap lies under the masses by contract). In memory only, it makes a linked base posable, borrows the base's clips when the attire blend has none, and binds the asset as its definition says.
 - **Design heuristics** — `tools/character_modeling/character_modeling/hair_design.py` (tests in `tests/test_hair_design.py`) measures the recorded profiles per design region: width variation, blunt visible tips, straight or repetitive curvature of hanging locks (tied hair combed to one point is meant to flow alike). Provisional design warnings, reported by the audit as `design_heuristics`, never failures. The buried-mass check considers only closed masses as containers (open shell bands and the cap have no inside); on the shell construction it still over-reports and awaits calibration.
-- **Budget** — the character manifest's `budget`: above `review_triangles` (4,000) the export prints `RIPOSTE_BUDGET_REVIEW` for a person to look at where the geometry went; above `max_triangles` (8,000, provisional until the character rendering benchmark) it fails. A triangle count is a performance measurement, never an art-direction ceiling.
+- **Budget** — the character manifest's `budget`: above `review_triangles` the export prints `RIPOSTE_BUDGET_REVIEW` for a person to look at where the geometry went. The old 8,000-triangle hard gate reflected an earlier blockier art direction and is **retired as an unconditional failure** (kept only as archived history); it is replaced by a profile-first budget — measure the final-equivalent fighter in Godot (two fighters, arena, shadows, spectators, automatic LOD on vs off), then calibrate per-fighter LOD budgets on target hardware (provisional references LOD0 30-50k / LOD1 15-30k / LOD2 6-12k). A triangle count is a performance measurement, never an art-direction ceiling, and no numeric limit silently fails the art before profiling. See [blender-art-iteration-protocol.md](./blender-art-iteration-protocol.md#lod-profile-before-building-a-pipeline).
 - **Identity** — `tools/character_modeling/character_modeling/identity.py` (tests in `tests/test_identity.py`) checks the manifest's `art` profile: the four anchors, every complete outfit profiled, the intrinsic palette, no costume palette naming an intrinsic material, and, for the outfit being assembled, that it wears its profiled hairstyle with exactly the profiled design regions and only garments of its declared constructions. `character_assembly.assemble` refuses an outfit that fails it, and assigns intrinsic materials after the costume's so a costume can never recolor identity.
 - **Assembly** — `character_assembly.assemble` attaches each outfit asset from its source blend (skinned on WolfRig, or rigid on one bone), bakes its keys with the body's configuration when it follows physique, applies the outfit's costume palette, refuses material slots the definition does not declare, removes the covered body faces in the export copy only (a margin ring kept under every garment edge) and refuses the export if a mask edge is not covered.
 

@@ -1,7 +1,9 @@
 class_name ExposureModel
 extends RefCounted
 
-## Exposure as a reading of the physics (v36, COMBAT-009): how open a fighter
+## Exposure is the gap in time a commitment opens — from committing to an attack
+## until the fighter can defend or threaten again (COMBAT-CORE-001). It is a
+## reading of the physics (v36, COMBAT-009), never a factor: how open a fighter
 ## is right now is how far behind their opponent they are in time-to-threat —
 ## their own readiness (weapon state, heading, the sweep onto the line,
 ## closing) against the opponent's actual threat from their geometry and

@@ -1,0 +1,141 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_training_undershirt",
+  "category": "fitted",
+  "layer": 1,
+  "regions": [
+    "neck",
+    "upper_torso",
+    "waist",
+    "shoulder.L",
+    "shoulder.R",
+    "pelvis",
+    "upper_arm.L",
+    "upper_arm.R",
+    "forearm.L",
+    "forearm.R"
+  ],
+  "materials": ["linen"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "TrainingUndershirt"
+  },
+  "coverage": {
+    "hides": [
+      "upper_torso",
+      "waist",
+      "shoulder.L",
+      "shoulder.R",
+      "upper_arm.L",
+      "upper_arm.R",
+      "forearm.L",
+      "forearm.R"
+    ],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Undershirt",
+        "kind": "torso",
+        "spine": [
+          {
+            "bone": "Hips",
+            "at": 0.1
+          },
+          {
+            "bone": "Chest",
+            "at": 0.35
+          }
+        ],
+        "around": 28,
+        "rows": 7,
+        "yoke_rows": 7,
+        "neck": {
+          "deg": 24.0,
+          "v_deg": 9.0,
+          "v_width_deg": 24.0
+        },
+        "arms": {
+          "deg": 45.0,
+          "armscye_m": 0.01,
+          "sides": ["L", "R"]
+        },
+        "sleeves": {
+          "sides": ["L", "R"],
+          "path": [
+            {
+              "bone": "UpperArm.{s}",
+              "at": 0.0
+            },
+            {
+              "bone": "UpperArm.{s}",
+              "at": 1.0
+            },
+            {
+              "bone": "Forearm.{s}",
+              "at": 0.9
+            }
+          ],
+          "centre_on": ["upper_arm.{s}", "forearm.{s}"],
+          "section": ["shoulder.{s}", "upper_arm.{s}", "forearm.{s}"],
+          "set_in": "bridge",
+          "lead": 0.008,
+          "cap_grade": 1.4,
+          "rows": 16,
+          "ease_m": [
+            [0.0, 0.014],
+            [0.3, 0.02],
+            [0.5, 0.02],
+            [0.6, 0.024],
+            [0.78, 0.022],
+            [0.84, 0.012],
+            [0.94, 0.003],
+            [1.0, 0.002]
+          ],
+          "folds": {
+            "count": 4,
+            "amp_m": 0.005,
+            "from": 0.5
+          }
+        },
+        "ease_m": [
+          [0.0, 0.009],
+          [0.5, 0.008],
+          [1.0, 0.006]
+        ],
+        "thickness_m": 0.002,
+        "material": "linen"
+      }
+    ],
+    "weights": {
+      "smooth": 1
+    }
+  },
+  "notes": "Loose light linen undershirt: long full set-in sleeves with broad folds from the elbow, gathered at the wrist; a narrow collar with a short V.",
+  "upper_boundary": {
+    "collar_height_m": 0.02,
+    "collar_opening_m": 0.13,
+    "contact": "clearance"
+  },
+  "slot": "inner_torso"
+}

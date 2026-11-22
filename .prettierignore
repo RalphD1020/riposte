@@ -27,3 +27,13 @@ game/addons/
 
 # Godot Web export staged for /play (engine output, not our source)
 apps/web/public/game/
+
+# Versioned art records pinned by their exact bytes (asset_library sha256, ownership
+# file_sha256) or written by their tools (ownership releases): reformatting one would
+# break the approval that pins it. Authored art definitions (garments, assemblies) are
+# formatted like any other source.
+art-src/blender/library/
+art-src/blender/characters/**/*.record.json
+art-src/blender/characters/**/*.lock.json
+art-src/blender/characters/**/*.regions.json
+art-src/blender/characters/**/*.releases.json

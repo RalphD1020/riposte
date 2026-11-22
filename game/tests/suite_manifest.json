@@ -98,6 +98,18 @@
       "budget_ms": 5000
     },
     {
+      "name": "CANDIDATE-E2E",
+      "path": "res://tests/application/test_candidate_e2e.gd",
+      "tier": "candidate",
+      "budget_ms": 60000
+    },
+    {
+      "name": "CHARGE-BOUNDARY",
+      "path": "res://tests/domain/test_charge_boundary.gd",
+      "tier": "gate",
+      "budget_ms": 3000
+    },
+    {
       "name": "ENERGY-AUDIT",
       "path": "res://tests/domain/test_energy_audit.gd",
       "tier": "gate",

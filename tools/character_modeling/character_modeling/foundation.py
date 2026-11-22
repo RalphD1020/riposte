@@ -33,8 +33,18 @@ RESOLUTION_KEYS = ("head_study", "silhouette_study", "chest_study", "glute_study
 ## `seat_neck`: every resolved body's neck seated inside its head where it would come
 ## through the jaw's sides or the face (`male_base_v2.seat_neck`; nothing moves where
 ## nothing crosses).
-OPTIONAL_RESOLUTION_KEYS = ("ears", "head_design", "seat_neck")
-SWITCHES = ("ears", "seat_neck")
+## `ear_rings` / `ear_around`: the foundation's ear mesh density (the ear component's grid),
+## a per-version parameter. Absent means the component's historical default
+## (`ear.RINGS` / `ear.AROUND` = 18 / 56), so an approved foundation that predates the
+## parameter keeps its exact geometry and lock; a later version may request the leaner
+## gameplay-stylized ear (e.g. 8 / 14) without retroactively changing older versions.
+## `symmetric`: the bilateral foundation (CHARACTER-SYMMETRY-001). Its source holds a
+## Symmetrized sculpt, the neutral bilateral bind rig and the mirrored skin fields
+## (`foundation_symmetric.py`), which the builder binds with in place of the v1 transfer and
+## the shared rig's authoring pose. Absent means off: an older foundation keeps its build.
+OPTIONAL_RESOLUTION_KEYS = ("ears", "head_design", "seat_neck", "ear_rings", "ear_around", "symmetric")
+EAR_DENSITY_KEYS = ("ear_rings", "ear_around")
+SWITCHES = ("ears", "seat_neck", "symmetric")
 STATUSES = ("candidate", "approved")
 ## Variant generation (three approval scopes: the canonical foundation; how its derived
 ## height and build variants are generated; a character's identity). These switches change
@@ -103,6 +113,10 @@ def problems(document):
     iterations = resolution.get("rig_weight_smooth_iterations")
     if not isinstance(iterations, int) or iterations < 0:
         out.append("rig_weight_smooth_iterations is a count of passes")
+    for key in EAR_DENSITY_KEYS:
+        value = resolution.get(key)
+        if value is not None and (not isinstance(value, int) or value < 3):
+            out.append("%s is an ear grid count (>= 3)" % key)
     out += _identity_problems(document)
     reference = document["reference"]
     mass = resolve_physique({k: reference[k] for k in ("height_m", "frame_build", "muscularity")})["mass_kg"]
@@ -141,6 +155,12 @@ def apply(resolved, document, marks=None, variants=None):
     coordinate = variation.design_coordinate(resolved["body"]) if design else 0.0
     out["ear_flare_deg"] = ear.design_flare(coordinate) if design else ear.FLARE_DEG
     out["ear_scale"] = ear.design_scale(coordinate) if design else 1.0
+    ## Ear density is a per-version parameter: carried into the resolved build only when the
+    ## document names it, so an older foundation resolves to the component's historical default
+    ## and its fingerprints/lock are unchanged.
+    for key in EAR_DENSITY_KEYS:
+        if key in document["resolution"]:
+            out[key] = document["resolution"][key]
     if design:
         study = dict(out["head_study"] or {})
         for name, value in variation.designed_study(design, resolved["body"]).items():

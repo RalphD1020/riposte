@@ -175,6 +175,14 @@ def follow_weight(a):
     return _smooth(ROOT_A - ROOT_BLEND, ROOT_A, a)
 
 
+## Ear grid density. These are the HISTORICAL defaults (the ~3,920-tri/ear design-reference
+## density); they are NOT changed globally, because older library/foundation versions must
+## reproduce byte-identically (CHARACTER-SOURCE reproducibility). Ear density is an explicit
+## per-version parameter instead: a foundation document sets `ear_rings`/`ear_around`
+## (threaded through `ear_component.build_ears`), so a version resolves its own geometry. The
+## gameplay-stylized lean ear (EARS_ARE_SECONDARY_DETAIL, CHARACTER-GEOMETRY-PRIORITY-001) is
+## `ear_rings: 8` / `ear_around: 14` (~420 tris/ear, ~840 both) set by a new staged foundation
+## candidate, never by editing these globals.
 RINGS = 18
 AROUND = 56
 

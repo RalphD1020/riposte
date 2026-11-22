@@ -1,0 +1,120 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_training_trousers",
+  "category": "fitted",
+  "layer": 1,
+  "regions": [
+    "pelvis",
+    "upper_leg.L",
+    "upper_leg.R",
+    "lower_leg.L",
+    "lower_leg.R"
+  ],
+  "materials": ["wool"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "TrainingTrousers"
+  },
+  "coverage": {
+    "hides": [
+      "pelvis",
+      "upper_leg.L",
+      "upper_leg.R",
+      "lower_leg.L",
+      "lower_leg.R"
+    ],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Seat",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Hips",
+            "at": 0.6
+          },
+          {
+            "bone": "Hips",
+            "at": -1.1
+          }
+        ],
+        "hull_below": {
+          "bone": "Hips",
+          "at": -0.35
+        },
+        "around": 24,
+        "rows": 6,
+        "ease_m": [
+          [0.0, 0.01],
+          [0.6, 0.014],
+          [1.0, 0.02]
+        ],
+        "thickness_m": 0.002,
+        "material": "wool"
+      },
+      {
+        "name": "Trousers.{s}",
+        "sides": ["L", "R"],
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "UpperLeg.{s}",
+            "at": 0.2
+          },
+          {
+            "bone": "UpperLeg.{s}",
+            "at": 1.0
+          },
+          {
+            "bone": "LowerLeg.{s}",
+            "at": 0.8
+          }
+        ],
+        "centre_on": ["upper_leg.{s}", "lower_leg.{s}"],
+        "section": ["upper_leg.{s}", "lower_leg.{s}"],
+        "around": 14,
+        "rows": 12,
+        "thickness_m": 0.002,
+        "material": "wool",
+        "ease_m": [
+          [0.0, 0.014],
+          [0.25, 0.022],
+          [0.45, 0.024],
+          [0.58, 0.02],
+          [0.74, 0.017],
+          [0.82, 0.019],
+          [0.87, 0.008],
+          [1.0, 0.006]
+        ],
+        "folds": {
+          "count": 3,
+          "amp_m": 0.005,
+          "from": 0.55
+        }
+      }
+    ]
+  },
+  "notes": "Relaxed warm gray-brown training trousers: a fuller thigh, tapered at the knee and ankle, gathered at the boots.",
+  "slot": "legs"
+}

@@ -24,7 +24,8 @@ def fixture():
     regions = load(Path(foundation.path_of(doc, "regions", BLENDER)))
     wolf = load(CHARACTERS / "wolf" / "wolf.assembly.json")
     wolf["foundation"]["facial_hair"] = ["fixture_beard"]
-    definitions = {g: load(BLENDER / "garments" / ("%s.garment.json" % g)) for g in ("wolf_hair_ranger", "wolf_hair_training")}
+    outfit_garments = {g for o in wolf["outfits"].values() for g in o.get("garments", [])}
+    definitions = {g: load(BLENDER / "garments" / ("%s.garment.json" % g)) for g in outfit_garments}
     definitions["fixture_beard"] = load(FIXTURES / "fixture_beard.garment.json")
     return wolf, definitions, regions, foundation.garment_target(doc, record, wolf)
 
@@ -42,8 +43,11 @@ def shirt(target, **coverage):
 
 class Plan(unittest.TestCase):
     def test_wolf_resolves_one_ordered_plan_per_outfit(self):
-        ## ARRANGE: the bearded character's identity and outfits on the foundation.
+        ## ARRANGE: the bearded character on a controlled hair-only outfit (this test exercises the
+        ## identity/hair ordering and the beard's head coverage, not Wolf's full attire).
         wolf, definitions, regions, target = fixture()
+        wolf["outfits"]["ranger"]["garments"] = ["wolf_hair_ranger"]
+        wolf["outfits"]["training"]["garments"] = ["wolf_hair_training"]
         ## ACT
         ranger = appearance.resolve(wolf, "ranger", definitions, regions, target)
         training = appearance.resolve(wolf, "training", definitions, regions, target)
@@ -64,16 +68,18 @@ class Plan(unittest.TestCase):
         wolf = load(CHARACTERS / "wolf" / "wolf.assembly.json")
         self.assertNotIn("facial_hair", wolf["foundation"])
         for outfit in ("ranger", "training"):
-            ## ACT
+            ## ACT: resolve Wolf's real full canonical attire.
             plan = appearance.resolve(wolf, outfit, definitions, regions, target)
-            ## ASSERT: no facial-hair layer and no head region hidden for one.
-            self.assertEqual([c["id"] for c in plan["components"]], ["wolf_hair_%s" % outfit])
-            self.assertEqual(plan["visibility"]["hidden_regions"], {})
-            self.assertEqual(plan["visibility"]["preserved_regions"], [])
+            ## ASSERT: the hairstyle is present, no facial-hair layer exists, and nothing hides a
+            ## head sub-region (only facial hair would) - Wolf is clean-shaven in every outfit.
+            self.assertIn("wolf_hair_%s" % outfit, [c["id"] for c in plan["components"]])
+            self.assertFalse(any(c["layer"] == appearance.FACIAL_HAIR for c in plan["components"]))
+            self.assertNotIn("HeadV2", plan["visibility"]["hidden_regions"])
 
     def test_body_coverage_lands_on_the_body_with_its_margin(self):
         ## ARRANGE: an underlayer added to the Ranger outfit.
         wolf, definitions, regions, target = fixture()
+        wolf["outfits"]["ranger"]["garments"] = ["wolf_hair_ranger"]
         definitions["fixture_shirt"] = shirt(target)
         wolf["outfits"]["ranger"]["garments"].append("fixture_shirt")
         wolf["art"]["outfits"]["ranger"]["construction"].append("fitted")
@@ -83,6 +89,28 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan["components"][-1]["layer"], "%s.1" % appearance.GARMENT)
         self.assertEqual(plan["visibility"]["hidden_regions"]["body"], ["upper_torso"])
         self.assertEqual(plan["visibility"]["margin_rings"]["body"], 2)
+
+    def test_an_outer_garment_hides_only_the_lower_garments_regions_it_hides(self):
+        ## ARRANGE: an underlayer shirt over the torso and arms, and an outer vest (layer 2)
+        ## hiding the torso only.
+        wolf, definitions, regions, target = fixture()
+        wolf["outfits"]["ranger"]["garments"] = ["wolf_hair_ranger"]
+        definitions["fixture_shirt"] = shirt(target)
+        definitions["fixture_shirt"]["regions"] = ["upper_torso", "upper_arm.L", "upper_arm.R"]
+        vest = copy.deepcopy(shirt(target))
+        vest.update(id="fixture_vest", layer=2, regions=["upper_torso"], coverage={"hides": ["upper_torso"], "margin_rings": 2})
+        definitions["fixture_vest"] = vest
+        wolf["outfits"]["ranger"]["garments"] += ["fixture_shirt", "fixture_vest"]
+        wolf["art"]["outfits"]["ranger"]["construction"].append("fitted")
+        ## ACT
+        plan = appearance.resolve(wolf, "ranger", definitions, regions, target)
+        ## ASSERT: the shirt may lose its torso faces under the vest, never its sleeves; the
+        ## vest, outermost, loses nothing; the body keeps the union of both garments' hides.
+        self.assertEqual(plan["visibility"]["hidden_garment_regions"], {"fixture_shirt": ["upper_torso"]})
+        self.assertEqual(plan["visibility"]["hidden_regions"]["body"], ["upper_torso"])
+        ## PERTURB: the vest hides nothing; ASSERT: the shirt keeps every face.
+        definitions["fixture_vest"]["coverage"] = {"hides": [], "margin_rings": 2}
+        self.assertEqual(appearance.resolve(wolf, "ranger", definitions, regions, target)["visibility"]["hidden_garment_regions"], {})
 
     def test_coverage_fails_closed_when_it_is_not_explicit_or_not_beneath(self):
         wolf, definitions, regions, target = fixture()

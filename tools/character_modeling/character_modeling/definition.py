@@ -287,6 +287,10 @@ def self_check():
     stale = physique_drift()
     if stale:
         raise SystemExit("physique: %s" % "; ".join(stale))
+    from .ownership import check_canonical
+    owned = check_canonical()
+    if owned:
+        raise SystemExit("ownership: %s" % "; ".join(owned))
     print("RIPOSTE_MODEL_OK", len(studies), "studies", len(SLIDERS), "sliders", len(BODY_INPUTS), "body inputs")
 
 

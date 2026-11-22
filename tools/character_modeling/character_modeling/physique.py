@@ -188,16 +188,23 @@ def drift(path, character_id, body):
     return []
 
 
-# Each resolved physique the game reads, and the profile whose body it comes
-# from. ``python -m character_modeling.physique`` regenerates them all.
+# Each resolved physique the game reads, and the character manifest whose identity body it
+# comes from. The one authored source of a character's height, build and muscularity is its
+# identity (`foundation.body`, identity-owned per CHARACTER-OWNERSHIP-001 - named under the
+# foundation block because it selects the foundation configuration, not because the foundation
+# owns it); that single source feeds both Blender visual generation and this resolver. This is
+# an OFFLINE writer: ``python -m character_modeling.physique`` regenerates the committed
+# ``game/content/characters/*.physique.json`` the catalog reads. The runtime loads only that
+# committed file (PHYSIQUE-001) and never a Blender assembly, so there is no match-time
+# dependency on art sources.
 PHYSIQUES = (
-    ("character.wolf", "wolf.physique.json", "male_base.json"),
+    ("character.wolf", "wolf.physique.json", "wolf/wolf.assembly.json"),
 )
+CHARACTERS = Path(__file__).resolve().parents[3] / "art-src" / "blender" / "characters"
 
 
-def _body_of(profile_name):
-    from .definition import PROFILES, load_profile
-    return load_profile(PROFILES / profile_name)["body"]
+def _body_of(manifest):
+    return json.loads((CHARACTERS / manifest).read_text(encoding="utf-8"))["foundation"]["body"]
 
 
 def physique_drift():

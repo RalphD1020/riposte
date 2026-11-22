@@ -19,6 +19,20 @@ extends RefCounted
 ##
 ## See also: /docs/concepts/presentation.md
 
+## Stable geometric labels of the sword frame. They name geometry only: which
+## edge is the long (true) edge is a property of the grip that holds the sword
+## (`SwordRig3D.cutting_edge`), never of an axis name.
+const BLADE_AXIS := Vector3(0.0, 0.0, 1.0)
+const CROSSGUARD_AXIS := Vector3(1.0, 0.0, 0.0)
+const FLAT_NORMAL := Vector3(0.0, 1.0, 0.0)
+enum Edge { A, B }
+
+
+## The outward normal of `edge` in the sword frame: edge A on +X, edge B on −X.
+static func edge_normal(edge: Edge) -> Vector3:
+	return CROSSGUARD_AXIS if edge == Edge.A else -CROSSGUARD_AXIS
+
+
 ## Wrist → palm in the sword frame at bind, before any arm reads it: the hand
 ## hangs under the handle, 67° off it toward the point.
 const COMMON_HAND_AXIS := Vector3(0.0, -0.92, 0.39)
@@ -72,5 +86,26 @@ static func aimed_hand_axis(arm: Vector3) -> Vector3:
 
 
 ## Where the wrist sits in the grip's own space: one hand back down the hand.
+## The legacy placement (a palm point assumed on the bone axis); an authored
+## contact (`contact_target`) replaces it.
 static func wrist_offset(hand_length: float) -> Vector3:
 	return Vector3(0.0, -hand_length, 0.0)
+
+
+## An authored hand contact (PRES-GRIP-001): the handle's own frame in the Hand
+## bone's space — `edge` the weapon's edge axis (sword +X), `axis` the handle
+## toward the point (sword +Z), `centre` where the handle's axis passes
+## through the gripping hand. Right-handed: +Y is the flat's normal (Z × X).
+static func contact_frame(axis: Vector3, edge: Vector3, centre: Vector3) -> Transform3D:
+	var z := axis.normalized()
+	var x := (edge - z * edge.dot(z)).normalized()
+	return Transform3D(Basis(x, z.cross(x), z), centre)
+
+
+## The Hand bone's transform in the sword frame for a grip station at
+## `station` held through `contact` (T_hand = T_grip · T_contact⁻¹): the
+## handle's frame lands on the station's (the sword's own axes), so the hand's
+## orientation and its origin — the wrist the IK reaches — both come from the
+## authored contact, applied once.
+static func contact_target(station: Vector3, contact: Transform3D) -> Transform3D:
+	return Transform3D(Basis.IDENTITY, station) * contact.affine_inverse()

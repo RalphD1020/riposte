@@ -32,6 +32,17 @@ COMPONENTS = {"eye": "Eye", "iris": "EyeIris", "line": "EyeLine", "brow": "Brow"
 ## Material slots per component, in face-index order (the identity palette names them).
 MATERIALS = {"eye": ("eye",), "iris": ("iris_rim", "iris", "pupil", "catchlight"), "line": ("lid_line",),
              "brow": ("hair",), "mask": ("skin",)}
+## The eye style (a profile's `style`). "anime" (default, absent) is the drawn graphic eye
+## above (eye-white + iris + pupil + catchlight + lash line). "glow" is the universal
+## pupil-less luminous eye (FACE-EYE-001, Soulstone Survivors x Hades II): one opaque emissive
+## aperture per side (the eye-white shape, keyed by the lids and blink, wearing `eye_glow`),
+## no iris, pupil, catchlight, lash line or mask. Expression is the aperture silhouette and the
+## brow; there is no pupil gaze. Absent means anime, so v002 and older candidates are unchanged.
+ANIME = "anime"
+GLOW = "glow"
+## A glow eye's only built component besides the separate brow; its emissive material slot.
+GLOW_COMPONENT = "eye"
+GLOW_MATERIAL = ("eye_glow",)
 ## Occlusion (a profile's `occlusion`): "clip" (the default) clips the iris to the aperture
 ## in every key; "mask" keeps the iris and pupil perfect circles (they only move with the
 ## gaze) and hides what falls outside the aperture under the eye mask, a skin layer over the
@@ -43,6 +54,15 @@ MASK = "mask"
 ## edges and keyed with them; "backing" (masked eyes) is fixed and the mask shapes it.
 APERTURE = "aperture"
 BACKING = "backing"
+## The catchlight's offset space (a profile's `iris.catchlight.space`). "outward" (the
+## default, the historical v002 behaviour) reads the offset in the eye's own design space,
+## outward positive on both sides, so the two glints mirror across the face. "screen" reads
+## x as toward the character's right (screen-left in the canonical front view) on BOTH eyes:
+## one shared light direction, the anime convention (CHARACTER-SYMMETRY-001: the eyes'
+## anatomy mirrors, the highlight does not). Absent means outward, so an approved profile that
+## predates the key keeps its exact geometry and lock.
+OUTWARD = "outward"
+SCREEN = "screen"
 ## The mask's outer bounds (eye heights): beyond any iris the gaze can carry.
 MASK_TOP = 0.62
 MASK_BOTTOM = -0.66
@@ -237,18 +257,45 @@ def iris_shape(profile, side, weights=None):
             p = (cx + ox * rx + rx * sx * math.cos(a), cy + oy * ry + ry * sy * math.sin(a))
             out.append(p if masked else _clip(profile, weights, clip_centre, p))
         return out
+    glint = iris["catchlight"]
+    gx, gy = catchlight_offset(glint, side)
+    glint_ring = ring(glint["size"], glint["size"] * iris["width"] / iris["height"] * 2.0, gx, gy, count=4, turn=math.pi / 4)
     if masked:
         return {"iris": ring(1.0, 1.0), "rim": ring(iris["rim"], iris["rim"]),
                 "pupil": ring(iris["pupil"], iris["pupil"] * iris.get("pupil_aspect", 1.0)), "pupil_centre": (cx, cy),
-                "catchlight": ring(iris["catchlight"]["size"], iris["catchlight"]["size"] * iris["width"] / iris["height"] * 2.0,
-                                   iris["catchlight"]["offset"][0], iris["catchlight"]["offset"][1], count=4, turn=math.pi / 4)}
+                "catchlight": glint_ring}
     pupil = iris["pupil"]
-    glint = iris["catchlight"]
     return {"iris": ring(1.0, 1.0), "rim": ring(iris["rim"], iris["rim"]),
             "pupil": ring(pupil, pupil * iris.get("pupil_aspect", 1.0)),
             "pupil_centre": _clip(profile, weights, clip_centre, (cx, cy)),
-            "catchlight": ring(glint["size"], glint["size"] * iris["width"] / iris["height"] * 2.0,
-                               glint["offset"][0], glint["offset"][1], count=4, turn=math.pi / 4)}
+            "catchlight": glint_ring}
+
+
+def style(profile):
+    return profile.get("style", ANIME)
+
+
+def is_glow(profile):
+    return style(profile) == GLOW
+
+
+def component_materials(component, profile):
+    """The material slots a built face component wears: the glow eye's single emissive
+    `eye_glow`, else the component's `MATERIALS`."""
+    if component == GLOW_COMPONENT and profile is not None and is_glow(profile):
+        return GLOW_MATERIAL
+    return MATERIALS.get(component, ("hair",))
+
+
+def catchlight_offset(glint, side):
+    """The catchlight's (x, y) offset in this eye's design space (outward positive). With
+    `space: screen` the authored x means toward the character's right on both eyes, so the
+    left eye (whose outward is the character's left) takes it negated: both glints sit on the
+    same side in the canonical front view instead of mirroring."""
+    x, y = glint["offset"]
+    if glint.get("space", OUTWARD) == SCREEN and side == "L":
+        x = -x
+    return x, y
 
 
 def fixed_white(profile):
@@ -320,18 +367,42 @@ def brow_delta(channel, t):
     return along, along + d.get("top_m", 0.0) * _inner(t), d.get("depth", 0.0) * _bump(t), d.get("inward_u", 0.0) * shape
 
 
-def profile_problems(profile):
-    """Why an eye profile cannot be built: missing blocks, edges that do not span the eye
-    corner to corner, a line without thickness."""
-    out = ["eye profile lacks %s" % k for k in ("upper", "lower", "iris", "line", "depth") if k not in profile]
-    if out:
-        return out
+def _edge_problems(profile):
+    out = []
     for name in ("upper", "lower"):
         line = profile[name]
         if abs(line[0][0] + 0.5) > 1e-9 or abs(line[-1][0] - 0.5) > 1e-9:
             out.append("the %s edge must run from x -0.5 to 0.5" % name)
         if any(b[0] <= a[0] for a, b in zip(line, line[1:])):
             out.append("the %s edge's x must increase" % name)
+    return out
+
+
+def glow_problems(profile):
+    """Why a glow eye profile (`style: glow`) cannot be built: it needs the aperture edges and
+    an aperture depth, and MUST NOT carry the anime iris/line/catchlight/occlusion blocks
+    (they are not built and have no consumer in a glow eye)."""
+    out = ["glow eye profile lacks %s" % k for k in ("upper", "lower", "depth") if k not in profile]
+    if out:
+        return out
+    out += _edge_problems(profile)
+    if "white_m" not in profile["depth"]:
+        out.append("a glow eye needs depth.white_m (the emissive aperture's depth)")
+    carried = sorted(k for k in ("iris", "line", "occlusion", "white") if k in profile)
+    if carried:
+        out.append("a glow eye must drop the anime blocks %s" % carried)
+    return out
+
+
+def profile_problems(profile):
+    """Why an eye profile cannot be built: missing blocks, edges that do not span the eye
+    corner to corner, a line without thickness. A glow profile is checked by `glow_problems`."""
+    if is_glow(profile):
+        return glow_problems(profile)
+    out = ["eye profile lacks %s" % k for k in ("upper", "lower", "iris", "line", "depth") if k not in profile]
+    if out:
+        return out
+    out += _edge_problems(profile)
     if any(t <= 0.0 for _x, t in profile["line"]["thickness"]):
         out.append("the lash line needs a positive thickness")
     d = profile["depth"]
@@ -348,6 +419,9 @@ def profile_problems(profile):
         out.append("white must be aperture or backing, not %s" % white)
     elif white == BACKING and occlusion != MASK:
         out.append("a backing white needs occlusion mask (the mask shapes it)")
+    space = profile["iris"].get("catchlight", {}).get("space", OUTWARD)
+    if space not in (OUTWARD, SCREEN):
+        out.append("catchlight space must be outward or screen, not %s" % space)
     return out
 
 

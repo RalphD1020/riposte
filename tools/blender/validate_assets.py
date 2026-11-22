@@ -39,8 +39,10 @@ STANCE_BONES = ["Hips", "UpperLeg.L", "LowerLeg.L", "Foot.L", "UpperLeg.R", "Low
 ## ~0.25 s (frame 16 at 60 fps).
 RING_FALL_CLIPS = ["ring_fall_a", "ring_fall_b", "ring_fall_c"]
 RING_FALL_ARMS_UP_BY = 16
-## The layered costume (cloak, chest layer, collar, waist, hair locks) is past the old 2000.
-## 2400 is the hero's cap. The crowd stays on its own budget. Raise it only from a measured export.
+## LEGACY-V1-ONLY (GARMENT-VALIDATION-001): the 2,400 hard cap is the blocky-era v1 shipping
+## fighter gate and is retired together with the v1 path. The foundation path uses the manifest's
+## profile-first `riposte_max_triangles` (a candidate warning, not a hard gate). Do not apply this
+## 2,400 cap to foundation-exported Wolf; it is removed when the v1 path is deleted.
 FIGHTER_TRIANGLES = 2400
 FIGHTER_HEIGHT = (1.70, 1.85)
 ## The usable handle and the hands on it mirror PhysicalBaseline
@@ -658,6 +660,10 @@ def validate_candidate():
 ## character manifest's (ART-STYLE-001: measured performance, never art
 ## direction): above `review_triangles` the export reports it for a person to
 ## look at; above `max_triangles`, the per-fighter performance limit, it fails.
+## GARMENT-VALIDATION-001: the old 8,000 hard gate is retired (archived history);
+## `max_triangles` is now a profile-first per-fighter performance limit, measured
+## in Godot before it is set, never an art-direction ceiling. Until a character's
+## Godot profile sets it, keep it generous rather than failing art pre-profile.
 CHARACTER_MARKS = ("Eye.L", "Eye.R", "Brow.L", "Brow.R", "DeadEye.L.A", "DeadEye.L.B", "DeadEye.R.A", "DeadEye.R.B")
 CHARACTER_SLOTS = ("skin", "hair")
 
@@ -722,7 +728,11 @@ def validate_character():
     if "riposte_max_triangles" not in scene:
         problems.append("the assembly recorded no triangle budget")
     elif tris > scene["riposte_max_triangles"]:
-        problems.append("triangles %d over the performance limit %d" % (tris, scene["riposte_max_triangles"]))
+        ## GARMENT-VALIDATION-001: `max_triangles` is a profile-first, provisional per-fighter
+        ## limit until the Godot character benchmark measures the real device budget. Over it is
+        ## a candidate-review WARNING, never a hard art gate (the blocky-era 8,000 hard failure is
+        ## retired). Production promotion reinstates a hard check against the benchmarked limit.
+        print("RIPOSTE_BUDGET_OVER %d triangles over the provisional performance limit %d (profile to set the real limit)" % (tris, scene["riposte_max_triangles"]))
     elif tris > scene["riposte_review_triangles"]:
         print("RIPOSTE_BUDGET_REVIEW %d triangles over the review reference %d" % (tris, scene["riposte_review_triangles"]))
     lo, hi = rb.world_bounds(meshes)

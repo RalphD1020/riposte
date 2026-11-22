@@ -27,6 +27,83 @@ def states():
     return out
 
 
+def front_x(side, x):
+    """An eye-design x (outward positive) as the character-frame x: +X is the character's left,
+    so outward is +X on the left eye and -X on the right."""
+    return x if side == "L" else -x
+
+
+def glow_eye():
+    """A glow eye profile: Wolf's aperture edges and depth, the anime blocks dropped."""
+    anime = wolf_eye()
+    return {"style": eye_assembly.GLOW, "x": anime["x"], "anchor": anime["anchor"],
+            "width": anime["width"], "height": anime["height"], "tilt_deg": anime["tilt_deg"],
+            "upper": anime["upper"], "lower": anime["lower"], "depth": {"white_m": anime["depth"]["white_m"]}}
+
+
+class Glow(unittest.TestCase):
+    """FACE-EYE-001 glow style: one pupil-less emissive aperture; no iris/line/catchlight."""
+
+    def test_style_defaults_to_anime_so_v002_is_unchanged(self):
+        # ARRANGE: the approved Wolf eye names no style. ASSERT: anime, not glow.
+        self.assertEqual(eye_assembly.style(wolf_eye()), eye_assembly.ANIME)
+        self.assertFalse(eye_assembly.is_glow(wolf_eye()))
+
+    def test_the_glow_eye_wears_the_emissive_slot_and_the_anime_eye_the_white(self):
+        # ACT / ASSERT: the eye component resolves to eye_glow for glow, eye for anime.
+        self.assertEqual(eye_assembly.component_materials("eye", glow_eye()), eye_assembly.GLOW_MATERIAL)
+        self.assertEqual(eye_assembly.component_materials("eye", wolf_eye()), eye_assembly.MATERIALS["eye"])
+        self.assertEqual(eye_assembly.component_materials("iris", glow_eye()), eye_assembly.MATERIALS["iris"])
+
+    def test_the_glow_aperture_keeps_the_lid_and_blink_keys_and_closes_on_a_blink(self):
+        # The aperture is keyed (it is the drawing now) and a full blink shuts it.
+        profile = glow_eye()
+        self.assertEqual(set(eye_assembly.component_keys(profile, "eye")), set(eye_assembly.APERTURE_CHANNELS))
+        for x, lo, hi in eye_assembly.white_strip(profile, {eye_assembly.BLINK: 1.0}):
+            self.assertLess(hi - lo, eye_assembly.BLINK_CLOSED, "closed at x %.2f" % x)
+
+    def test_a_clean_glow_profile_builds_and_a_dirty_one_is_refused(self):
+        # ARRANGE: a clean glow profile passes.
+        self.assertEqual(eye_assembly.profile_problems(glow_eye()), [])
+        # PERTURB: carrying the anime iris/line, or missing the aperture depth, is refused.
+        self.assertTrue(any("drop the anime blocks" in p for p in eye_assembly.profile_problems(dict(glow_eye(), iris=wolf_eye()["iris"]))))
+        self.assertTrue(any("drop the anime blocks" in p for p in eye_assembly.profile_problems(dict(glow_eye(), line=wolf_eye()["line"]))))
+        self.assertTrue(any("white_m" in p for p in eye_assembly.profile_problems(dict(glow_eye(), depth={}))))
+        self.assertTrue(any("lacks upper" in p for p in eye_assembly.profile_problems({k: v for k, v in glow_eye().items() if k != "upper"})))
+
+
+class Catchlight(unittest.TestCase):
+    """CHARACTER-SYMMETRY-001: eye anatomy mirrors; the highlight shares one light direction."""
+
+    def glint_x(self, profile, side):
+        points = eye_assembly.iris_shape(profile, side)["catchlight"]
+        centre = eye_assembly.iris_centre(profile, side)[0]
+        return front_x(side, sum(p[0] for p in points) / len(points) - centre)
+
+    def test_the_historical_default_mirrors_the_glints_across_the_face(self):
+        # ARRANGE: Wolf's approved (v002) eye, no `space` key. ASSERT: unchanged behaviour —
+        # the glints sit outward on each eye, i.e. on opposite sides of the face.
+        profile = wolf_eye()
+        self.assertNotIn("space", profile["iris"]["catchlight"])
+        self.assertLess(self.glint_x(profile, "L") * self.glint_x(profile, "R"), 0.0)
+
+    def test_screen_space_puts_both_glints_on_the_same_front_view_side(self):
+        # PERTURB: opt the profile into the shared light direction.
+        profile = wolf_eye()
+        profile["iris"]["catchlight"] = dict(profile["iris"]["catchlight"], space=eye_assembly.SCREEN)
+        left, right = self.glint_x(profile, "L"), self.glint_x(profile, "R")
+        self.assertGreater(left * right, 0.0)
+        self.assertAlmostEqual(left, right, places=9)
+        # The iris and pupil still mirror (only the highlight is shared).
+        self.assertAlmostEqual(eye_assembly.catchlight_offset(profile["iris"]["catchlight"], "R")[1],
+                               eye_assembly.catchlight_offset(profile["iris"]["catchlight"], "L")[1])
+
+    def test_an_unknown_catchlight_space_is_refused(self):
+        profile = wolf_eye()
+        profile["iris"]["catchlight"] = dict(profile["iris"]["catchlight"], space="mirrored")
+        self.assertTrue(any("catchlight space" in p for p in eye_assembly.profile_problems(profile)))
+
+
 class AnimeEye(unittest.TestCase):
 
     def test_wolf_profile_is_buildable_and_a_broken_one_is_not(self):

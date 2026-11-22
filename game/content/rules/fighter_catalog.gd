@@ -222,8 +222,10 @@ static func _semantics(fighter: FighterDefinition) -> void:
 	## fully committed fighter keeps whatever stride they had and loses two
 	## thirds of their ability to change it.
 	fighter.accel_commit_penalty = 0.66
-	## A fully committed cut keeps ~18 % of its turning authority: a side-step
-	## outside its heading stays outside long enough to punish (HEADING-001).
+	## Footwork authority never falls below a quarter, whatever the commitment.
+	## At full commitment `1 − accel_commit_penalty` already leaves 34 %, so this
+	## floor only binds if the penalty is retuned. Turning has its own floors
+	## (`CombatTuning.commit_turn_*`, DIRECTIONAL-COMMIT-001).
 	fighter.min_move_authority = 0.25
 	fighter.stability_floor = 0.35
 	fighter.stability_rate = 3.0

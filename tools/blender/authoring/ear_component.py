@@ -38,11 +38,13 @@ def root_of(head, chart, sign):
     return hit, ear.EAR_HEIGHT * height
 
 
-def build_ears(head, chart, collection, prefix, material, flare_deg=ear.FLARE_DEG, scale=1.0):
+def build_ears(head, chart, collection, prefix, material, flare_deg=ear.FLARE_DEG, scale=1.0, rings=ear.RINGS, around=ear.AROUND):
     """Ear.L and Ear.R on `head`, linked into `collection`, `scale` times the ear height about
-    its root (which stays on the skull); returns the objects."""
-    points, quads, tris = ear.grid(flare_deg=flare_deg)
-    blend = ear.root_blend()
+    its root (which stays on the skull); returns the objects. `rings`/`around` are the grid
+    density (default = the historical foundation ears); a version resolves its own via the
+    document's `ear_rings`/`ear_around`, so lowering the default never changes older versions."""
+    points, quads, tris = ear.grid(rings=rings, around=around, flare_deg=flare_deg)
+    blend = ear.root_blend(rings=rings, around=around)
     rig = next((o for o in collection.objects if o.type == "ARMATURE"), None)
     lean = Matrix.Rotation(-math.radians(ear.TILT_DEG), 3, "X")
     up, forward = lean @ Vector((0.0, 0.0, 1.0)), lean @ Vector((0.0, -1.0, 0.0))
@@ -97,22 +99,23 @@ def build_ears(head, chart, collection, prefix, material, flare_deg=ear.FLARE_DE
     return made
 
 
-def free_rim():
-    """The ear's free-rim (helix) vertex indices (one topology for every ear): its outline
+def free_rim(rings=ear.RINGS, around=ear.AROUND):
+    """The ear's free-rim (helix) vertex indices for a grid of this density: its outline
     where it is not attached."""
-    ring = list(ear.outline_indices())
+    ring = list(ear.outline_indices(rings, around))
     return [ring[k] for k in range(len(ring)) if ear.attachment(k / len(ring)) == 0.0]
 
 
-def ear_report(ears, head, hair=None):
+def ear_report(ears, head, hair=None, rings=ear.RINGS, around=ear.AROUND):
     """Per ear, over the whole outline: the attachment arc's vertices (`ear.attachment` at
     least one half) standing outside the skull (a visible seam) and the arc's shallowest
     burial; the free rim's vertices inside the skull (a rim through the head); the share of
     the ear inside the skull; with `hair`, ear vertices inside the hair (an ear through the
-    hairstyle)."""
+    hairstyle). `rings`/`around` are the ear's grid density (the same the ears were built
+    with), so the outline indices address the actual mesh."""
     _points, tree = _tree(head)
     hair_tree = _tree(hair)[1] if hair is not None else None
-    ring = list(ear.outline_indices())
+    ring = list(ear.outline_indices(rings, around))
     report = {}
     for obj in ears:
         world = [obj.matrix_world @ v.co for v in obj.data.vertices]

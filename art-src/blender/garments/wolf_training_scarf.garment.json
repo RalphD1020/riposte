@@ -1,0 +1,112 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_training_scarf",
+  "category": "loose",
+  "layer": 4,
+  "regions": ["neck", "head", "upper_torso"],
+  "materials": ["scarf"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "TrainingScarf"
+  },
+  "coverage": {
+    "hides": ["neck"],
+    "margin_rings": 1
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Wrap",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Neck",
+            "at": 0.4
+          },
+          {
+            "bone": "Neck",
+            "at": 1.0
+          },
+          {
+            "bone": "Head",
+            "at": 0.315
+          }
+        ],
+        "around": 26,
+        "rows": 14,
+        "start": {
+          "c1": -0.018,
+          "c2": -0.012,
+          "s1": 0.018
+        },
+        "end": {
+          "c1": 0.022,
+          "c2": -0.003
+        },
+        "ease_m": [
+          [0.0, 0.011],
+          [0.14, 0.014],
+          [0.3, 0.026],
+          [0.46, 0.012],
+          [0.6, 0.024],
+          [0.74, 0.012],
+          [0.88, 0.009],
+          [1.0, 0.006]
+        ],
+        "smooth": 4,
+        "reach_m": [
+          [0.0, 0.18],
+          [0.18, 0.14],
+          [0.35, 0.13],
+          [1.0, 0.25]
+        ],
+        "thickness_m": 0.004,
+        "material": "scarf"
+      }
+    ],
+    "weights": {
+      "rigid_above": {
+        "bone": "Head",
+        "from": {
+          "bone": "Head",
+          "at": 0.16
+        },
+        "blend_m": 0.06
+      }
+    },
+    "fit_head": true
+  },
+  "notes": "Soft warm taupe scarf wrapped once over the mouth and round the neck, a skirt draping low over the collar, looser folds toward one shoulder, outside the tunic and vest; hair falls over it.",
+  "upper_boundary": {
+    "collar_height_m": 0.11,
+    "collar_opening_m": 0.0,
+    "contact": "allowed"
+  },
+  "relationships": [
+    {
+      "with": "wolf_hair_training",
+      "relation": "beneath",
+      "depth_m": 0.04
+    }
+  ],
+  "slot": "neckwear"
+}

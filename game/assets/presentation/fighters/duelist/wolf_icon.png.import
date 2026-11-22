@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cbf1yu6q5dn6s"
-path="res://.godot/imported/wolf_symbol.png-fa8eabe554a752fdf7afe36cc7859ab6.ctex"
+uid="uid://buo5gvc7rkw2m"
+path="res://.godot/imported/wolf_icon.png-3808ff1e3305c4464f998376fb3960dc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/presentation/fighters/duelist/wolf_symbol.png"
-dest_files=["res://.godot/imported/wolf_symbol.png-fa8eabe554a752fdf7afe36cc7859ab6.ctex"]
+source_file="res://assets/presentation/fighters/duelist/wolf_icon.png"
+dest_files=["res://.godot/imported/wolf_icon.png-3808ff1e3305c4464f998376fb3960dc.ctex"]
 
 [params]
 

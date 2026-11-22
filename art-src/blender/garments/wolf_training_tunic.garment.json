@@ -1,0 +1,113 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_training_tunic",
+  "category": "loose",
+  "layer": 2,
+  "regions": [
+    "neck",
+    "upper_torso",
+    "waist",
+    "shoulder.L",
+    "shoulder.R",
+    "pelvis",
+    "upper_leg.L",
+    "upper_leg.R"
+  ],
+  "materials": ["fabric"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "TrainingTunic"
+  },
+  "coverage": {
+    "hides": ["upper_torso", "waist", "shoulder.L", "shoulder.R", "pelvis"],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Tunic",
+        "kind": "torso",
+        "spine": [
+          {
+            "bone": "Hips",
+            "at": -1.05
+          },
+          {
+            "bone": "Chest",
+            "at": 0.35
+          }
+        ],
+        "around": 32,
+        "rows": 9,
+        "yoke_rows": 8,
+        "hull_below": {
+          "bone": "Hips",
+          "at": -0.25
+        },
+        "hem": {
+          "c1": -0.012,
+          "c2": -0.03,
+          "s1": 0.006
+        },
+        "neck": {
+          "deg": 28.0,
+          "v_deg": 17.0,
+          "v_width_deg": 32.0
+        },
+        "arms": {
+          "deg": 28.0,
+          "sides": ["L", "R"]
+        },
+        "ease_m": [
+          [0.0, 0.004],
+          [0.6, 0.007],
+          [1.0, 0.024]
+        ],
+        "drape_from": 0.35,
+        "cinch": [
+          {
+            "t": 0.6,
+            "width": 0.12,
+            "ease_m": 0.006
+          }
+        ],
+        "folds": {
+          "count": 5,
+          "amp_m": 0.01,
+          "from": 0.65
+        },
+        "thickness_m": 0.003,
+        "material": "fabric"
+      }
+    ],
+    "weights": {
+      "arm_max": 0.1
+    }
+  },
+  "notes": "Warm-brown training tunic over the undershirt: a shaped V opening, gathered under the belt, a soft rounded hem at the upper thigh with a few broad folds.",
+  "upper_boundary": {
+    "collar_height_m": 0.02,
+    "collar_opening_m": 0.13,
+    "contact": "clearance"
+  },
+  "slot": "outer_torso"
+}

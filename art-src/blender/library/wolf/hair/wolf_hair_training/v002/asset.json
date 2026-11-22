@@ -1,0 +1,54 @@
+{
+ "approval": {
+  "by": "the person",
+  "date": "2026-11-07",
+  "evidence": "iteration .reports/art/iterations/20261107_1500_hair_polish: final pass (Wolf both skins; 15-configuration sweep and 5 head archetypes per hairstyle; production clips; match-camera facings and sword visibility)"
+ },
+ "category": "hair",
+ "compatibility": {
+  "foundation_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "foundations": [
+   "character.male_base.foundation"
+  ],
+  "regions": [
+   "head",
+   "neck"
+  ],
+  "skeleton": {
+   "contract": "game/content/characters/wolf.rig-contract.json",
+   "contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+   "id": "WolfRig"
+  }
+ },
+ "coverage": {},
+ "dependencies": [
+  {
+   "id": "male_base_foundation",
+   "version": "v002"
+  }
+ ],
+ "files": {
+  "wolf_hair_training.garment.json": {
+   "from": "art-src/blender/garments/wolf_hair_training.garment.json",
+   "sha256": "fd742320cc0dc9c5a41f21640b0ad7e67f2b2955814058a473b94e50ab4b1a22"
+  }
+ },
+ "id": "wolf_hair_training",
+ "notes": "Builder variant F: flow masses fitted to the resolved head's map (HAIR-FIT-001); v001 frozen.",
+ "origin": "wolf",
+ "protected": {},
+ "schema": "riposte.library_asset",
+ "sources": {
+  "tools/blender/authoring/wolf_hair.py": "2dbe614b4538e5a41ec5d2a79afaba7e881b34f6b5a3a1b5e20792c1ff696afb"
+ },
+ "status": "approved",
+ "subtype": "hairstyle",
+ "tags": [
+  "half_up",
+  "bun",
+  "loose",
+  "flow_masses",
+  "head_fit"
+ ],
+ "version": "v002"
+}

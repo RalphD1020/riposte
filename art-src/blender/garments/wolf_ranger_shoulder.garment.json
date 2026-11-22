@@ -1,0 +1,70 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_shoulder",
+  "category": "structured",
+  "layer": 3,
+  "regions": ["shoulder.L", "upper_arm.L"],
+  "materials": ["leather", "trim", "metal"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerShoulder"
+  },
+  "coverage": {
+    "hides": ["shoulder.L", "upper_arm.L"],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Pauldron",
+        "kind": "cap",
+        "centre": {
+          "bone": "UpperArm.L",
+          "at": 0.0
+        },
+        "axis": [0.5, 0.0, 0.87],
+        "deg": 42.0,
+        "rings": 4,
+        "around": 12,
+        "ease_m": 0.007,
+        "smooth": 10,
+        "thickness_m": 0.005,
+        "material": "leather",
+        "edge_material": "trim"
+      },
+      {
+        "name": "Fastening",
+        "kind": "plate",
+        "bone": "UpperArm.L",
+        "at": 0.05,
+        "toward": [0.35, -0.45, 0.82],
+        "size": [0.026, 0.02, 0.006],
+        "material": "metal"
+      }
+    ],
+    "weights": {
+      "arm_max": 0.6
+    }
+  },
+  "notes": "One compact fitted leather reinforcement on the left shoulder, a steel fastening.",
+  "slot": "shoulder"
+}

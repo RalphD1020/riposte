@@ -1,0 +1,122 @@
+{
+ "character": "character.wolf",
+ "identity": {
+  "current": "v001",
+  "versions": {
+   "v001": {
+    "approval": {
+     "appearance": {
+      "foundation_version": "v002",
+      "heads_tall": 6.68,
+      "mass_kg": 80.0,
+      "resolved_fingerprint": "d15ee9d20b07c97d"
+     },
+     "by": "person",
+     "date": "2026-11-09",
+     "evidence": "F9 attire look-approved, both skins, reference physique, rest pose",
+     "reference": {
+      "board": ".reports/art/iterations/20261108_1800_wolf_attire_final/board (regenerable from the pinned inputs; not committed)",
+      "iteration": "20261108_1800_wolf_attire_final"
+     }
+    },
+    "aspects": {
+     "direction": "3ebf1a3ffb31acd5",
+     "head": "18cedad392e59315",
+     "physique": "facd7bffc1c778ff",
+     "pigment": "bd2a6d72cc9b6fd6"
+    },
+    "digest": "a2012cc018a9ae05",
+    "foundation": {
+     "definition": "characters/male_base.foundation.v002.json",
+     "id": "character.male_base.foundation",
+     "record_sha256": "a41fb7611ad17dd8",
+     "sha256": "c2ab83f33389d248"
+    },
+    "rig": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+    "skins": {
+     "bare": "v001",
+     "ranger": "v001",
+     "training": "v001"
+    },
+    "stage": "art_reference"
+   }
+  }
+ },
+ "runtime": null,
+ "schema": "riposte.character_releases",
+ "skins": {
+  "bare": {
+   "current": "v001",
+   "versions": {
+    "v001": {
+     "approval": {
+      "appearance": {
+       "foundation_version": "v002",
+       "heads_tall": 6.68,
+       "mass_kg": 80.0,
+       "resolved_fingerprint": "d15ee9d20b07c97d"
+      },
+      "by": "person",
+      "date": "2026-11-09",
+      "evidence": "F9 attire look-approved, both skins, reference physique, rest pose",
+      "reference": {
+       "board": ".reports/art/iterations/20261108_1800_wolf_attire_final/board (regenerable from the pinned inputs; not committed)",
+       "iteration": "20261108_1800_wolf_attire_final"
+      }
+     },
+     "digest": "f1c6278282259d41",
+     "identity": "v001"
+    }
+   }
+  },
+  "ranger": {
+   "current": "v001",
+   "versions": {
+    "v001": {
+     "approval": {
+      "appearance": {
+       "foundation_version": "v002",
+       "heads_tall": 6.68,
+       "mass_kg": 80.0,
+       "resolved_fingerprint": "d15ee9d20b07c97d"
+      },
+      "by": "person",
+      "date": "2026-11-09",
+      "evidence": "F9 attire look-approved, both skins, reference physique, rest pose",
+      "reference": {
+       "board": ".reports/art/iterations/20261108_1800_wolf_attire_final/board (regenerable from the pinned inputs; not committed)",
+       "iteration": "20261108_1800_wolf_attire_final"
+      }
+     },
+     "digest": "89a91e47e34d6f6d",
+     "identity": "v001"
+    }
+   }
+  },
+  "training": {
+   "current": "v001",
+   "versions": {
+    "v001": {
+     "approval": {
+      "appearance": {
+       "foundation_version": "v002",
+       "heads_tall": 6.68,
+       "mass_kg": 80.0,
+       "resolved_fingerprint": "d15ee9d20b07c97d"
+      },
+      "by": "person",
+      "date": "2026-11-09",
+      "evidence": "F9 attire look-approved, both skins, reference physique, rest pose",
+      "reference": {
+       "board": ".reports/art/iterations/20261108_1800_wolf_attire_final/board (regenerable from the pinned inputs; not committed)",
+       "iteration": "20261108_1800_wolf_attire_final"
+      }
+     },
+     "digest": "3edf857efe9fd898",
+     "identity": "v001"
+    }
+   }
+  }
+ },
+ "version": 1
+}

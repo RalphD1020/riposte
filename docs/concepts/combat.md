@@ -1,12 +1,26 @@
 # Combat
 
-> See also: [spec/invariants.md](../../spec/invariants.md) — COMBAT-001 – COMBAT-011, PHYS-001 – PHYS-007, WEAPON-PATH-001 – WEAPON-PATH-003, CONTACT-ROLES-001, CONTACT-MANIFOLD-001, SIDE-001, CONTENT-002
+> See also: [spec/invariants.md](../../spec/invariants.md) — COMBAT-CORE-001, COMBAT-001 – COMBAT-011, PHYS-001 – PHYS-007, WEAPON-PATH-001 – WEAPON-PATH-003, CONTACT-ROLES-001, CONTACT-MANIFOLD-001, SIDE-001, CONTENT-002
 > See also: [docs/concepts/simulation.md](./simulation.md), [docs/concepts/controls.md](./controls.md), [docs/concepts/content.md](./content.md)
 > Source: `game/src/domain/combat/`, tuning values in `game/content/rules/`
 
 Two verbs (move, attack) and real steel. Every outcome comes from simulated bodies and blades; nothing is a canned animation. Numbers live in the rules content file; this doc names mechanisms, not values.
 
 > **Physics computes the fight once.** The deterministic combat plane owns all physical truth. 3D sword placement, body posture, VFX, audio, haptics, combat readability, accessibility cues and tactical labels never reinterpret that fight; they expose the same solved state — impulses, energy, slip, contact identity, blade velocity — through additional spatial and sensory projections (EMERGENT-COMBAT-001, CONTACT-PRESENTATION-001, COMBAT-READABILITY-001).
+
+## The core loop: commitment, exposure, recovery (COMBAT-CORE-001)
+
+**Commitment is the core mechanic.** Every attack is a trade: the harder you drive it, the more you spend of your ability to do anything else. The rest of this document is the physics of three words.
+
+- **Commitment** is what an attack costs you in redirect authority. It is physical: the momentum the blade and body carry, plus the force the motors are still putting in, against the brakes that would have to undo it. A charged cut carries more and costs more. It never delays or refuses an input — the fighter is always responsive, only less able to change course.
+- **Exposure** is the gap in time a commitment opens: from the moment you commit until you can defend or threaten again. It is measured as how far behind the opponent you are in time-to-threat, and it is a reading of that gap, never a damage multiplier. You are punished for over-committing because the opponent can physically get there first.
+- **Recovery** is getting the capability back, and it has two parts. The **blade** must come back under control, stopped by the attack's own brake torque (a cut that missed swings through further and takes longer). The **body** must turn to face the opponent again, at the turn torque the heading's commitment and your condition leave, against your own body inertia; a forward dash also ramps footwork back in progressively. Exposure ends only when both have recovered.
+
+**Capability is force production against mass.** Every voluntary motion — stepping, braking, dashing, turning, swinging — is `a = F/m` or `α = τ/I` from the fighter's own actuators and own mass. A heavier body is slower to start, stop and turn unless it is also stronger. **Injury lowers everything**: the more injured you are, the less force, speed and tracking you can produce, in every actuator. **Fatigue** lowers force, and the motors' own work is what drains stamina, so producing more force costs more.
+
+**Damage comes from the force the attack delivers.** Severity is solved from the contact itself — the relative speed at the contact point against the effective mass behind it (the driven blade and the body holding it). A faster, harder-driven, better-structured strike does more. Mass, size, exposure, stamina and injury never multiply damage; they change it only by changing the contact.
+
+Where this rules version still falls short of that loop — footwork commitment read from charge rather than produced force, stamina normalized per fighter, a flat dash cost, shared top speeds and turn caps for every build, and no explicit agility — is recorded in COMBAT-CORE-001 as design direction, to land as versioned rules changes.
 
 ## Swing semantics: describing a swing without deciding it (COMBAT-009)
 
@@ -74,9 +88,13 @@ This is the sword's own moment. The weapon coordinate θ has one inertia built o
 
 ### Force and torque: authored actuators
 
-Strength is authored as **force and torque**, never acceleration. A fighter's resolved actuators are `locomotion_force`, `braking_force`, `burst_force`, `turn_torque` and `weapon_torque_scale`; the accelerations are quotients against that fighter's own mass and inertia. Content authors them as three scales relative to the reference duelist (1.0 each) — `strength_scale` (weapon drive), `traction_scale` (locomotion, braking and burst force), `turn_support_scale` (heading turn torque) — and `FighterCatalog.resolve_actuators` turns them into newtons and newton-metres when the definition is built. The simulation never reads a scale. Strength is never inferred from size: a big fighter is strong only if it is authored strong. The old "larger is stronger but slower" laws (mass `s³`, force `s²`, so `a = F/m` goes as `1/s`) survive only as the explicit prototype generator `FighterCatalog.prototype_at(size)`. No speed penalty is authored anywhere, and none may be.
+Strength is authored as **force and torque**, never acceleration. A fighter's resolved actuators are `locomotion_force`, `braking_force`, `burst_force`, `turn_torque` and `weapon_torque_scale`; the accelerations are quotients against that fighter's own mass and inertia. Content authors them as three scales relative to the reference duelist (1.0 each) — `strength_scale` (weapon drive), `traction_scale` (locomotion, braking and burst force), `turn_support_scale` (heading turn torque) — and `FighterCatalog.resolve_actuators` turns them into newtons and newton-metres when the definition is built. The simulation never reads a scale. Strength is never inferred from size: a big fighter is strong only if it is authored strong. The old "larger is stronger but slower" laws (mass `s³`, force `s²`, so `a = F/m` goes as `1/s`) survive only as the explicit prototype generator `FighterCatalog.prototype_at(size)`. No speed penalty is authored anywhere, and in this rules version none may be: mass slows a fighter only by making the same force produce less acceleration, while the top-speed caps are shared. Scaling those caps with mass is recorded design direction (COMBAT-CORE-001) and would be a deliberate, versioned rules change.
 
 `weapon_torque_scale` is how the same sword behaves differently in different hands — it scales the wielder's applied torque. It never alters the weapon's mass or inertia, which are properties of the object.
+
+### Heavy power, light agility (design intent)
+
+Physique differences should come out of the physics, never a class bonus. Wolf (1.80 m, 80 kg, torque scale 1.0) is the reference. Muscle, not body mass, produces force; frame adds mass and hitbox without equal strength. A stronger build drives more torque and resists displacement better, but it also has more inertia to move, so a lighter build generally changes direction, re-faces and recovers sooner. Neither advantage is guaranteed: leverage in a bind (strong against weak of the blade), yielding against pressure, measure and tempo decide as much as raw force, and damage always comes from the collision. Strength should make a fighter dangerous when they commit it — a fully committed cut is easier to punish if it misses — not exposed for merely having it. Today one shared speed ceiling still compresses strength (every build reaches the same swing speed); the torque-speed actuator is the planned correction.
 
 ## One engine, any combatant (COMBATANT-GENERIC-001, LOADOUT-001)
 
@@ -220,6 +238,8 @@ Four consequences follow without a single special case:
 Preparation (`|angle| / guard_angle`, saturating at the canonical guard) is separate: it caps the angular velocity a swing can reach, is captured once at release as `launch_preparation`, and is never a damage multiplier. Inside ±`guard_angle` the blade is quick but under-loaded; outside it has full authority but a longer arc before it threatens. Neither is uniformly better. An idle blade, and a recovery that is back under control, is carried toward its committed guard by a capped pose tracker (GUARD-RETURN-001); the angle is never snapped. Each new steel episode dips that return by the sword's own change in angular velocity, down to a floor, and the deficit then fades at the return's natural frequency. A torso entry does not dip it. A later steel episode can dip it again (IMPACT-AUTHORITY-001). Preparation is **not readiness**: where a blade sits says nothing about which way it is moving (THREAT-READINESS-001, below).
 
 **The domain is not the attack (ATTACK-ARC-001).** The sword can turn anywhere in ±135° (270°), but one attack travels its `arc`: 90° for a tap, 180° at most for a full charge (`max_arc = π`). A full right attack runs −135° → +45°, a full left one +135° → −45°; together they cover the domain, and neither sweeps it.
+
+**Intended travel versus what physics does (COMBAT-001).** Because the arc grows one-for-one with earned wind-back, every cut released from the Ready guard aims at the opposite Ready guard: −45° − w → +45°. That is a control convention, not a force law — speed, work, energy, damage and recovery stay emergent. 180° is the *self-powered, unopposed* reference: today the blade's own brake carries a full charge on to about +107° (242° swept); the predictive-braking rules version will bring the unopposed sweep to its nominal objective. Contact never obeys that objective: a parry can stop a cut short, an assisting impact or the fighter's own advance or turn can carry it further, always inside that fighter's own heading-relative ±135°. The physics later versions add, and the planned rule that only the fighter's own motor-limited wind-back earns charge, are specified in `spec/invariants.md` (COMBAT-001).
 
 ## Guard classification (COMBAT-005)
 

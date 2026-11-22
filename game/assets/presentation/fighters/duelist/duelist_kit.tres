@@ -9,8 +9,7 @@
 [ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_death.tres" id="7_death"]
 [ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_victory.tres" id="8_victory"]
 [ext_resource type="Resource" path="res://assets/presentation/fighters/duelist/duelist_stance.tres" id="9_stance"]
-[ext_resource type="Texture2D" path="res://assets/presentation/fighters/duelist/wolf_symbol.png" id="10_symbol"]
-[ext_resource type="Texture2D" path="res://assets/presentation/fighters/duelist/wolf_symbol_alternate.png" id="11_symbol_alt"]
+[ext_resource type="Texture2D" path="res://assets/presentation/fighters/duelist/wolf_icon.png" id="10_symbol"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/voice/wolf_howl.mp3" id="12_howl"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/wolf_chant.mp3" id="13_chant"]
 [ext_resource type="AudioStream" path="res://assets/presentation/audio/crowd/wolf_name.mp3" id="14_name"]
@@ -55,7 +54,7 @@ vfx_cues = PackedStringArray()
 voice = SubResource("Resource_xpllm")
 intro = SubResource("Resource_intro")
 symbol = ExtResource("10_symbol")
-symbol_alternate = ExtResource("11_symbol_alt")
+symbol_alternate = ExtResource("10_symbol")
 character_call = ExtResource("12_howl")
 crowd_chant = ExtResource("13_chant")
 name_phrase = ExtResource("14_name")

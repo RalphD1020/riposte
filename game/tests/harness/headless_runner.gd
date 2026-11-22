@@ -13,7 +13,9 @@ extends RefCounted
 ## `pnpm test`) runs every correctness suite — the fast, focused and gate
 ## sizes, the CPU's laws included; `balance` (`pnpm test:balance`) the CPU
 ## balance smoke; `accept` (`pnpm test:balance:accept`) the held-out ladder;
-## `ship` (`pnpm test:contact:ship`) the long contact corpora. A slow audit
+## `ship` (`pnpm test:contact:ship`) the long contact corpora; `candidate`
+## (`pnpm test:candidate`) the real game with a local, unshipped presentation
+## candidate, which fails closed when that asset is absent. A slow audit
 ## therefore never makes the correctness run look hung; `verify` runs the gate
 ## and the smoke. Every suite is timed; one over its budget is reported, never
 ## failed — a budget makes growth visible, it is not a target.
@@ -26,6 +28,7 @@ const TIER_GATE := "gate"
 const TIER_BALANCE := "balance"
 const TIER_ACCEPT := "accept"
 const TIER_SHIP := "ship"
+const TIER_CANDIDATE := "candidate"
 ## The manifest sizes the gating run covers.
 const GATING := ["fast", "focused", "gate"]
 
@@ -58,7 +61,7 @@ static func entry(path: String) -> Dictionary:
 ## Whether `path` runs in `tier` (`gate` when unset or unknown).
 static func in_tier(path: String, tier: String) -> bool:
 	var size := String(entry(path).get("tier", ""))
-	if tier == TIER_BALANCE or tier == TIER_ACCEPT or tier == TIER_SHIP:
+	if tier == TIER_BALANCE or tier == TIER_ACCEPT or tier == TIER_SHIP or tier == TIER_CANDIDATE:
 		return size == tier
 	return GATING.has(size)
 

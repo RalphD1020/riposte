@@ -81,6 +81,43 @@ FACE_BAND = (0.0, 0.95)
 PASSES = 2
 ## Fingerprints round coordinates to this many metres' decimals (0.01 mm).
 FINGERPRINT_DECIMALS = 5
+## A symmetric foundation's source (resolution `symmetric`, `foundation_symmetric.py`): the
+## neutral bilateral bind rig (rest = the authoring A-pose, already the sculpt's space) and the
+## bilateral skin fields beside the sculpt — the v1 weights and key deltas, transferred once
+## and mirrored with Blender's own vertex-group and shape-key mirroring.
+BIND_RIG = "WolfRigNeutral"
+BIND_FIELDS = "BodyV2Bind"
+
+
+def bind_rig_name(resolution):
+    """The rig every character's armature is copied from."""
+    return BIND_RIG if resolution.get("symmetric") else "Armature"
+
+
+def stored_weights():
+    """{bone: numpy array} of the bilateral skin weights on the sculpt's topology."""
+    import numpy as np
+    fields = bpy.data.objects[BIND_FIELDS]
+    names = {g.index: g.name for g in fields.vertex_groups}
+    out = {n: np.zeros(len(fields.data.vertices)) for n in names.values()}
+    for v in fields.data.vertices:
+        for g in v.groups:
+            out[names[g.group]][v.index] = g.weight
+    return out
+
+
+def stored_deltas():
+    """{key name: (n, 3) delta} of the bilateral physique keys on the sculpt's topology."""
+    import numpy as np
+    blocks = bpy.data.objects[BIND_FIELDS].data.shape_keys.key_blocks
+
+    def co(block):
+        flat = np.empty(len(block.data) * 3)
+        block.data.foreach_get("co", flat)
+        return flat.reshape(-1, 3)
+
+    basis = co(blocks[0])
+    return {block.name: co(block) - basis for block in blocks[1:]}
 
 
 def _sculpt():
@@ -1565,6 +1602,10 @@ def build_face(source=CONSTRUCTION_HEAD, name=STUDY, parameters=None):
 
 
 def fingerprint(obj):
+    """A build's byte-level mesh digest: vertices in index order, then each face's vertex
+    indices in face-array order. Sensitive to index and face-array ordering (so it detects
+    any serialization change); the foundation lock pins these across the default-body sweep.
+    For an order-independent production identity use `canonical_geometry`."""
     import numpy as np
     co = np.empty(len(obj.data.vertices) * 3)
     obj.data.vertices.foreach_get("co", co)
@@ -1572,6 +1613,26 @@ def fingerprint(obj):
     for p in obj.data.polygons:
         digest.update(json.dumps(list(p.vertices)).encode())
     return {"vertices": len(obj.data.vertices), "faces": len(obj.data.polygons), "sha256": digest.hexdigest()}
+
+
+def canonical_geometry(obj):
+    """The order-independent production identity of a mesh (CHARACTER-BUILD-001), delegating
+    the digest to the pure `character_modeling.geometry`: each face carries its material index
+    and the `riposte_region` / `riposte_rim` face attributes, and the material-name list the
+    indices refer to. Vertex and face-array renumbering do not change it; a moved vertex,
+    flipped winding, changed material or changed region/rim annotation do, so two builds of the
+    same inputs match even when `bmesh.ops.extrude_edge_only` (rims) enumerated faces in a
+    different pointer-hash order."""
+    sys.path.insert(0, os.path.join(ROOT, "tools", "character_modeling"))
+    from character_modeling import geometry
+    region = obj.data.attributes.get("riposte_region")
+    rim = obj.data.attributes.get("riposte_rim")
+    region = [d.value for d in region.data] if region and region.domain == "FACE" else [0] * len(obj.data.polygons)
+    rim = [d.value for d in rim.data] if rim and rim.domain == "FACE" else [False] * len(obj.data.polygons)
+    faces = [(list(p.vertices), (p.material_index, region[n], int(rim[n]))) for n, p in enumerate(obj.data.polygons)]
+    sha = geometry.mesh_digest([tuple(v.co) for v in obj.data.vertices], faces,
+                               [m.name if m else "" for m in obj.data.materials], FINGERPRINT_DECIMALS)
+    return {"vertices": len(obj.data.vertices), "faces": len(obj.data.polygons), "sha256": sha}
 
 
 def record():

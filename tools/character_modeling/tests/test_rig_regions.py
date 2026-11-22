@@ -8,7 +8,7 @@ class Regions(unittest.TestCase):
     def test_every_limb_segment_is_classified_on_both_sides(self):
         ## ARRANGE: the rig's limb groups and their regions.
         expected = {"UpperArm": "upper_arm", "Forearm": "forearm", "Hand": "hand",
-                    "UpperLeg": "thigh", "LowerLeg": "calf", "Foot": "foot"}
+                    "UpperLeg": "upper_leg", "LowerLeg": "lower_leg", "Foot": "foot"}
         for bone, region in expected.items():
             for side in regions.SIDES:
                 ## ACT / ASSERT: each side, and the arm and leg sets.
@@ -19,6 +19,15 @@ class Regions(unittest.TestCase):
         self.assertTrue(regions.in_regions("Forearm.L", regions.ARM))
         self.assertFalse(regions.in_regions("Chest", regions.ARM))
         self.assertFalse(regions.in_regions("Shoulder.R", regions.ARM))
+
+    def test_the_legacy_leg_names_still_select_the_leg(self):
+        ## ARRANGE / PERTURB: callers written against the old `thigh` / `calf` names.
+        ## ACT / ASSERT: they resolve through the body_regions aliases to the same bones.
+        self.assertTrue(regions.in_regions("UpperLeg.R", ("thigh",)))
+        self.assertTrue(regions.in_regions("LowerLeg.L", ("calf",)))
+        self.assertFalse(regions.in_regions("Foot.L", ("thigh", "calf")))
+        self.assertEqual(regions.region_of("Chest"), "upper_torso")
+        self.assertEqual(regions.region_of("Spine"), "waist")
 
     def test_an_unknown_or_miscased_group_fails_closed(self):
         ## PERTURB: a renamed or miscased bone is an error, never a silent "not an arm".

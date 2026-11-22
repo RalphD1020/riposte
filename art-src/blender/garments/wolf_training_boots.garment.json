@@ -1,0 +1,77 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_training_boots",
+  "category": "structured",
+  "layer": 3,
+  "regions": ["lower_leg.L", "lower_leg.R", "foot.L", "foot.R"],
+  "materials": ["leather", "trim"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "TrainingBoots"
+  },
+  "coverage": {
+    "hides": ["lower_leg.L", "lower_leg.R", "foot.L", "foot.R"],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Boot.{s}",
+        "sides": ["L", "R"],
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "LowerLeg.{s}",
+            "at": 0.6
+          },
+          {
+            "bone": "LowerLeg.{s}",
+            "at": 1.0
+          },
+          {
+            "bone": "Foot.{s}",
+            "at": 1.0
+          },
+          {
+            "bone": "Foot.{s}",
+            "at": 1.4
+          }
+        ],
+        "centre_on": ["lower_leg.{s}"],
+        "centre_stations": 2,
+        "section": ["lower_leg.{s}", "foot.{s}"],
+        "around": 12,
+        "rows": 9,
+        "ease_m": 0.008,
+        "cap_end": true,
+        "cap_m": 0.02,
+        "sole_m": 0.012,
+        "thickness_m": 0.004,
+        "smooth": 6,
+        "material": "leather",
+        "edge_material": "trim"
+      }
+    ]
+  },
+  "notes": "Light leather training boots, lower and simpler than Ranger's.",
+  "slot": "footwear"
+}

@@ -19,6 +19,12 @@ SCHEMA = "riposte.garment"
 CATEGORIES = ("fitted", "structured", "loose")
 ## 0 is anatomy; 1 underlayer, 2 outer, 3 protection, 4 accessories.
 LAYERS = (1, 2, 3, 4)
+## Optional equipment-slot taxonomy (GARMENT-VALIDATION-001): what role a garment plays, for
+## organization, equipment selection and future character-creator tooling. A slot is NOT a render
+## order (that stays the outfit's ordered list and `layer`/`coverage`); two garments may share a
+## slot (an outer tunic and an outer vest), and a garment need not declare one. `hair` is the
+## intrinsic hairstyle slot.
+SLOTS = ("hair", "inner_torso", "outer_torso", "shoulder", "forearm", "waist", "legs", "footwear", "neckwear")
 METHODS = ("skinned", "rigid")
 ## keys: the garment carries the base's physique keys (garment_physique.py) and
 ## bakes with the body; none: it covers only regions no physique parameter shapes.
@@ -74,6 +80,25 @@ def load(path):
         return json.load(handle)
 
 
+def slot_of(garment):
+    """The garment's optional equipment slot, or None. Hair is always the `hair` slot."""
+    if garment.get("type") == "hair":
+        return "hair"
+    return garment.get("slot")
+
+
+def slots_in_outfit(definitions):
+    """A slot-indexed read-only view of an outfit's garment definitions (slot -> [ids]), for
+    tooling that organizes by role. The outfit's ordered list and coverage stay authoritative for
+    assembly; this never reorders or decides visibility."""
+    index = {}
+    for garment in definitions:
+        slot = slot_of(garment)
+        if slot is not None:
+            index.setdefault(slot, []).append(garment["id"])
+    return index
+
+
 def problems(garment, manifest, regions, worn_with=()):
     """Why `garment` may not be assembled onto the character `manifest`.
 
@@ -109,6 +134,8 @@ def problems(garment, manifest, regions, worn_with=()):
         out.append("%s: unknown category %s" % (gid, garment["category"]))
     if kind == "garment" and garment["layer"] not in LAYERS:
         out.append("%s: layer %s is not a garment layer" % (gid, garment["layer"]))
+    if "slot" in garment and garment["slot"] not in SLOTS:
+        out.append("%s: unknown slot %s" % (gid, garment["slot"]))
     if kind == "hair":
         out += _hair_problems(gid, garment)
     elif kind == "facial_hair":

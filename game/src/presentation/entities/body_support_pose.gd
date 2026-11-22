@@ -38,8 +38,10 @@ var sword_angle: float = 0.0
 var phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL
 ## The share of the full kinetic-chain follow the torso commits.
 var effort: float = EFFORT_READY
-## The cut's own angle through its arc (`CutPresentationCurve.cut_angle`).
+## The cut's own angle through its arc (`CutPresentationCurve.cut_angle`), and
+## the direction it was launched in (+1 right → left, −1 left → right).
 var cut_angle: float = 0.0
+var cut_direction: float = 1.0
 ## Charge gather (0–1) and how settled into the stance the pose is (0–1).
 var gather: float = 0.0
 var settled: float = 1.0
@@ -48,10 +50,16 @@ var load_side: float = 0.0
 ## How far the hands are carried toward the fighter's left (+) or right (−)
 ## (m), which places the reaching arm's elbow pole.
 var hand_lateral: float = 0.0
+## Presentation-state ownership: true while a death or a fall owns the body
+## (dead, falling, over the edge). The terminal clip is then the arms' base
+## pose — a body's authored guard, cut and load keys step aside — and the grip
+## alone holds the sword until its release fades it.
+var clip_owns_arms: bool = false
 
 
-func sample(angle: float, combat_phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL, side: float = 0.0, lateral: float = 0.0, gather_value: float = 0.0, settled_value: float = 1.0, cut: float = 0.0) -> BodySupportPose:
+func sample(angle: float, combat_phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL, side: float = 0.0, lateral: float = 0.0, gather_value: float = 0.0, settled_value: float = 1.0, cut: float = 0.0, direction: float = 1.0) -> BodySupportPose:
 	sword_angle = angle
+	cut_direction = 1.0 if direction >= 0.0 else -1.0
 	phase = combat_phase
 	load_side = side
 	hand_lateral = lateral

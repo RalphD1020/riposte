@@ -1,0 +1,92 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_vest",
+  "category": "structured",
+  "layer": 2,
+  "regions": ["neck", "upper_torso", "waist", "shoulder.L", "shoulder.R"],
+  "materials": ["leather", "trim"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerVest"
+  },
+  "coverage": {
+    "hides": ["upper_torso", "waist"],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Vest",
+        "kind": "torso",
+        "spine": [
+          {
+            "bone": "Spine",
+            "at": 0.05
+          },
+          {
+            "bone": "Chest",
+            "at": 0.35
+          }
+        ],
+        "around": 28,
+        "rows": 5,
+        "yoke_rows": 7,
+        "hem": {
+          "c1": -0.03,
+          "c2": -0.008
+        },
+        "neck": {
+          "deg": 30.0,
+          "v_deg": 22.0,
+          "v_width_deg": 38.0
+        },
+        "arms": {
+          "deg": 34.0,
+          "sides": ["L", "R"]
+        },
+        "ease_m": 0.004,
+        "smooth": 5,
+        "allowance": [
+          {
+            "t": [0.0, 1.0],
+            "toward": [0.0, -1.0, 0.0],
+            "deg": 45.0,
+            "m": -0.005
+          }
+        ],
+        "thickness_m": 0.004,
+        "material": "leather",
+        "edge_material": "trim"
+      }
+    ],
+    "weights": {
+      "arm_max": 0.1
+    }
+  },
+  "notes": "Leather vest shaped round the chest: a curved V opening, armholes cut clear of the shoulder, a lower edge dipping to the front, a lighter worn edge.",
+  "upper_boundary": {
+    "collar_height_m": 0.02,
+    "collar_opening_m": 0.13,
+    "contact": "clearance"
+  },
+  "slot": "outer_torso"
+}

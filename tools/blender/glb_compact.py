@@ -130,12 +130,22 @@ def _used_accessors(gltf):
     return used
 
 
+def _views_of(accessor):
+    """Every buffer view an accessor reads: its own, and a sparse accessor's indices and values
+    (the exporter writes morph targets sparse)."""
+    views = [accessor["bufferView"]] if "bufferView" in accessor else []
+    sparse = accessor.get("sparse")
+    if sparse:
+        views += [sparse["indices"]["bufferView"], sparse["values"]["bufferView"]]
+    return views
+
+
 def _repack(gltf, binary):
     """Keep only referenced accessors and their views, in original order."""
     used = sorted(_used_accessors(gltf))
     accessor_map = {old: new for new, old in enumerate(used)}
     accessors = [gltf["accessors"][i] for i in used]
-    views_used = sorted({a["bufferView"] for a in accessors if "bufferView" in a})
+    views_used = sorted({v for a in accessors for v in _views_of(a)})
     images = [img["bufferView"] for img in gltf.get("images", []) if "bufferView" in img]
     views_used = sorted(set(views_used) | set(images))
     view_map = {old: new for new, old in enumerate(views_used)}
@@ -152,6 +162,10 @@ def _repack(gltf, binary):
     for accessor in accessors:
         if "bufferView" in accessor:
             accessor["bufferView"] = view_map[accessor["bufferView"]]
+        sparse = accessor.get("sparse")
+        if sparse:
+            for part in ("indices", "values"):
+                sparse[part]["bufferView"] = view_map[sparse[part]["bufferView"]]
     for image in gltf.get("images", []):
         if "bufferView" in image:
             image["bufferView"] = view_map[image["bufferView"]]

@@ -136,8 +136,64 @@ var grip_weight: float = 1.0
 ## The hands' knuckle lines in their own bones' frames (PRES-GRIP-001), set
 ## with the grips; each grip frame is aimed along its arm before the IK.
 var grip_spans := PackedVector3Array()
+## The authored elbow owns the bend plane (`ElbowGuideField.clip_pole`): the IK
+## poles come from the clip's own elbows (this pass runs before the IK) instead
+## of the guide field's landmark offsets. Consumed from `SwordRig3D.elbow_from_clip`
+## (the one setting), never set on its own. Off on every shipping body.
+var elbow_from_clip: bool = false
+## Authored guard arms (PRES-GRIP-001): at each of `arm_key_degrees` (θ, ascending)
+## the six local rotations of `ARM_KEY_BONES`, rest-relative, eased between keys by
+## θ and held in the guard's share (`support.settled`) over the clip's arms, before
+## the elbow guides read them. Consumed from `SwordRig3D`; empty on every shipping body.
+var arm_key_degrees := PackedFloat64Array()
+var arm_key_rotations: Array[Quaternion] = []
+## Authored cut arms, the same layout keyed by the cut angle
+## (`BodySupportPose.cut_angle`: −135 the load … 0 the centre … +45 through),
+## one profile per launch direction (right → left, left → right), held in the
+## cut's share (1 − `support.settled`): the arms follow the blade's physical
+## travel, so a fast, stopped or rebounding cut shows the pose for where the
+## blade is, never a clip's clock. Empty on every shipping body.
+var arm_cut_degrees := PackedFloat64Array()
+var arm_cut_right_rotations: Array[Quaternion] = []
+var arm_cut_left_rotations: Array[Quaternion] = []
+## Authored load arms (the charged cut's high guard), the same layout keyed by
+## |θ|, one profile per load side (`support.cut_direction` +1 a right load), held
+## in the gather's share of the guard (`settled × gather`) instead of the charge
+## clip's arms. Empty on every shipping body.
+var arm_load_degrees := PackedFloat64Array()
+var arm_load_right_rotations: Array[Quaternion] = []
+var arm_load_left_rotations: Array[Quaternion] = []
+const ARM_KEY_BONES: PackedStringArray = ["UpperArm.R", "Forearm.R", "Hand.R", "UpperArm.L", "Forearm.L", "Hand.L"]
+## A target this much past the arm chain's length (as a share) still counts as
+## reachable: the IK's own numerical slack, not a stretch allowance.
+const REACH_TOLERANCE := 0.002
+
+## The rear-hand pivot (a body's declared presentation handling; weapon handling
+## data adopts it later): the off hand keeps its contact station on the handle
+## but turns about the handle's axis to the angle that best continues its
+## forearm, chosen afresh each update from the authored pose (no history). The
+## sword, the front hand and every physical quantity are untouched. Consumed
+## from `SwordRig3D.rear_hand_pivot` with the off hand's station (sword frame)
+## and inverse contact; off on every shipping body.
+var rear_pivot: bool = false
+var rear_station := Vector3.ZERO
+var rear_contact_inverse := Transform3D.IDENTITY
+## The last chosen turn (radians), for captures and tests.
+var rear_pivot_angle: float = 0.0
+## The turn search: a coarse sweep then a fine one around the best.
+const PIVOT_COARSE := deg_to_rad(5.0)
+const PIVOT_FINE := deg_to_rad(0.5)
+
+## The wrist nodes the IK reaches, one per grip (dominant, off hand), set with
+## the grips: with a grip frame's basis they are the Hand bone's wanted pose.
+var wrists: Array[Node3D] = []
+## Both hands' resolved targets for this update (`ResolvedHandTarget`): the one
+## record the IK and the hand pass consume. Preallocated, refreshed in place.
+var hand_targets: Array[ResolvedHandTarget] = [ResolvedHandTarget.new(), ResolvedHandTarget.new()]
 
 var _chain_bones := PackedInt32Array()
+var _arm_key_bones := PackedInt32Array()
+var _arm_lengths := PackedFloat64Array()
 var _arm_bones := PackedInt32Array()
 var _foot_bones := PackedInt32Array()
 var _elbows := ElbowGuideField.new()
@@ -150,11 +206,16 @@ func _validate_bone_names() -> void:
 	_chain_bones = PackedInt32Array()
 	_arm_bones = PackedInt32Array()
 	_foot_bones = PackedInt32Array()
+	_arm_key_bones = PackedInt32Array()
+	_arm_lengths = PackedFloat64Array()
 
 
 func _cache(skeleton: Skeleton3D) -> void:
-	if _chain_bones.size() == CHAIN.size() and _foot_bones.size() == foot_bones.size():
+	if _chain_bones.size() == CHAIN.size() and _foot_bones.size() == foot_bones.size() and _arm_key_bones.size() == ARM_KEY_BONES.size():
 		return
+	_arm_key_bones.resize(ARM_KEY_BONES.size())
+	for index in ARM_KEY_BONES.size():
+		_arm_key_bones[index] = skeleton.find_bone(ARM_KEY_BONES[index])
 	_chain_bones.resize(CHAIN.size())
 	for index in CHAIN.size():
 		_chain_bones[index] = skeleton.find_bone(CHAIN[index])
@@ -194,8 +255,185 @@ func _process_modification() -> void:
 		skeleton.set_bone_pose_rotation(bone, skeleton.get_bone_pose_rotation(bone) * twist)
 	_turn_feet(skeleton)
 	_raise_clavicles(skeleton)
+	_hold_guard_arms(skeleton)
+	_pivot_rear_hand(skeleton)
 	_guide_elbows(skeleton)
 	_aim_grips()
+	_resolve_hand_targets(skeleton)
+
+
+## Both hands' targets as the weapon decides them, before the IK: the wrist and
+## orientation from the grip frames, the elbow preference just placed, the grip
+## influence, reach, and the wrist bend the arm's pose will ask for.
+func _resolve_hand_targets(skeleton: Skeleton3D) -> void:
+	if grips.size() != 2 or wrists.size() != 2 or _arm_bones.size() != 2:
+		return
+	if _arm_lengths.size() != 2:
+		_arm_lengths.resize(2)
+		for arm in 2:
+			_arm_lengths[arm] = _chain_length(skeleton, _arm_bones[arm])
+	var skeleton_to_world := skeleton.global_transform
+	for arm in 2:
+		var resolved := hand_targets[arm]
+		resolved.valid = true
+		resolved.target = Transform3D(grips[arm].global_transform.basis.orthonormalized(), wrists[arm].global_position)
+		resolved.elbow_pole = poles[arm].global_position if poles.size() == 2 else resolved.elbow_pole
+		resolved.influence = clampf(grip_weight, 0.0, 1.0)
+		var upper := _arm_bones[arm]
+		if upper < 0:
+			continue
+		var shoulder := (skeleton_to_world * skeleton.get_bone_global_pose(upper)).origin
+		resolved.reach = shoulder.distance_to(resolved.target.origin) / maxf(_arm_lengths[arm], 1e-6)
+		resolved.feasible = resolved.reach <= 1.0 + REACH_TOLERANCE
+		var fore := skeleton.get_bone_children(upper)
+		if fore.is_empty():
+			continue
+		var elbow := (skeleton_to_world * skeleton.get_bone_global_pose(fore[0])).origin
+		var forearm := resolved.target.origin - elbow
+		resolved.predicted_wrist_bend = forearm.angle_to(resolved.target.basis.y) if forearm.length_squared() > 1e-10 else 0.0
+
+
+## Turn the off hand about the handle through its station (`rear_pivot`): the
+## grip node's frame becomes station · R_handle(ψ) · contact⁻¹ for the ψ that
+## best continues the forearm from the authored elbow.
+func _pivot_rear_hand(skeleton: Skeleton3D) -> void:
+	if not rear_pivot or grips.size() != 2 or _arm_bones.size() != 2 or _arm_bones[1] < 0:
+		return
+	var fore := skeleton.get_bone_children(_arm_bones[1])
+	if fore.is_empty():
+		return
+	var elbow := (skeleton.global_transform * skeleton.get_bone_global_pose(fore[0])).origin
+	var sword := (grips[1].get_parent() as Node3D).global_transform
+	rear_pivot_angle = best_shaft_turn(sword, rear_station, rear_contact_inverse, elbow)
+	grips[1].transform = shaft_turned(rear_station, rear_contact_inverse, rear_pivot_angle)
+
+
+## The off hand's grip frame (sword frame) turned `angle` about the handle's
+## axis (sword +Z) through `station`.
+static func shaft_turned(station: Vector3, contact_inverse: Transform3D, angle: float) -> Transform3D:
+	return Transform3D(Basis(SwordGripFrame.BLADE_AXIS, angle), station) * contact_inverse
+
+
+## The hand's wrist bend for a grip frame: the angle between the forearm (elbow
+## → wrist) and the hand bone's +Y.
+static func grip_wrist_bend(sword: Transform3D, grip: Transform3D, elbow: Vector3) -> float:
+	var hand := sword * grip
+	var forearm := hand.origin - elbow
+	return forearm.angle_to(hand.basis.y) if forearm.length_squared() > 1e-10 else 0.0
+
+
+## The turn about the handle that minimises the wrist bend from `elbow`: a
+## coarse full-turn sweep, then a fine sweep around the best; the smaller turn
+## wins a tie. Pure: the same pose gives the same turn.
+static func best_shaft_turn(sword: Transform3D, station: Vector3, contact_inverse: Transform3D, elbow: Vector3) -> float:
+	var best := 0.0
+	var best_bend := grip_wrist_bend(sword, shaft_turned(station, contact_inverse, 0.0), elbow)
+	var steps := int(round(TAU / PIVOT_COARSE))
+	for index in steps:
+		var angle := -PI + index * PIVOT_COARSE
+		var bend := grip_wrist_bend(sword, shaft_turned(station, contact_inverse, angle), elbow)
+		if bend < best_bend - 1e-9 or (absf(bend - best_bend) <= 1e-9 and absf(angle) < absf(best)):
+			best = angle
+			best_bend = bend
+	var centre := best
+	for index in range(-10, 11):
+		var angle := centre + index * PIVOT_FINE
+		var bend := grip_wrist_bend(sword, shaft_turned(station, contact_inverse, angle), elbow)
+		if bend < best_bend - 1e-9:
+			best = angle
+			best_bend = bend
+	return best
+
+
+## Upper arm + forearm length at rest (the IK's chain), from the arm root.
+static func _chain_length(skeleton: Skeleton3D, upper: int) -> float:
+	if upper < 0:
+		return 0.0
+	var fore := skeleton.get_bone_children(upper)
+	if fore.is_empty():
+		return 0.0
+	var hand := skeleton.get_bone_children(fore[0])
+	var length := skeleton.get_bone_rest(fore[0]).origin.length()
+	if not hand.is_empty():
+		length += skeleton.get_bone_rest(hand[0]).origin.length()
+	return length
+
+
+## The authored arms over the clip's: the guard keys at θ in the guard's share
+## (out of a cut, `settled`, less a charge's gather), the load keys at |θ| in the
+## gather's share, the cut keys at the cut angle in the cut's share, and all of
+## it only while the hands hold the grip — as the sword is released (a fall, a
+## death's own release time) the arms return to the clip. A profile not authored
+## leaves its share to the clip.
+func _hold_guard_arms(skeleton: Skeleton3D) -> void:
+	if not authored_arms_own(support):
+		return
+	var count := ARM_KEY_BONES.size()
+	var settled := clampf(support.settled, 0.0, 1.0)
+	var has_guard := not arm_key_degrees.is_empty() and arm_key_rotations.size() == arm_key_degrees.size() * count
+	var cut_rotations := arm_cut_right_rotations if support.cut_direction >= 0.0 else arm_cut_left_rotations
+	var has_cut := not arm_cut_degrees.is_empty() and cut_rotations.size() == arm_cut_degrees.size() * count
+	var load_rotations := arm_load_right_rotations if support.cut_direction >= 0.0 else arm_load_left_rotations
+	var has_load := not arm_load_degrees.is_empty() and load_rotations.size() == arm_load_degrees.size() * count
+	var shares := authored_arm_shares(settled, support.gather, has_guard, has_cut)
+	var load_share := authored_load_share(settled, support.gather, has_load)
+	var total := shares.x + shares.y + load_share
+	var hold := total * clampf(grip_weight, 0.0, 1.0)
+	if hold <= 0.0:
+		return
+	var degrees := rad_to_deg(support.sword_angle)
+	for index in count:
+		var bone := _arm_key_bones[index]
+		if bone < 0:
+			continue
+		var clip := skeleton.get_bone_pose_rotation(bone)
+		var rest := skeleton.get_bone_rest(bone).basis.get_rotation_quaternion()
+		var target := rest * guard_arm_rotation(arm_key_degrees, arm_key_rotations, index, degrees) if has_guard else clip
+		var held := shares.x
+		if has_cut and shares.y > 0.0:
+			held += shares.y
+			target = target.slerp(rest * guard_arm_rotation(arm_cut_degrees, cut_rotations, index, support.cut_angle), shares.y / held)
+		if has_load and load_share > 0.0:
+			held += load_share
+			target = target.slerp(rest * guard_arm_rotation(arm_load_degrees, load_rotations, index, absf(degrees)), load_share / held)
+		skeleton.set_bone_pose_rotation(bone, clip.slerp(target, hold))
+
+
+## The guard keys' and the cut keys' shares of the arms (x guard, y cut) for a
+## pose `settled` into the stance with a charge `gather`: the guard owns the
+## settled share outside a gather, the cut the rest; a profile not authored
+## owns nothing (the clip keeps it).
+static func authored_arm_shares(settled: float, gather: float, has_guard: bool, has_cut: bool) -> Vector2:
+	var s := clampf(settled, 0.0, 1.0)
+	return Vector2(s * (1.0 - clampf(gather, 0.0, 1.0)) if has_guard else 0.0, (1.0 - s) if has_cut else 0.0)
+
+
+## Whether a body's authored arm keys may own the arms this frame: never while
+## a death or a fall owns the body (`BodySupportPose.clip_owns_arms`) — the
+## terminal clip is the base pose then, and two systems never compete for the
+## same joints.
+static func authored_arms_own(pose: BodySupportPose) -> bool:
+	return not pose.clip_owns_arms
+
+
+## The load keys' share of the arms: the gather's part of the settled guard
+## (the charge's high guard, and the loaded cut's start until it leaves the
+## stance); nothing when no load profile is authored.
+static func authored_load_share(settled: float, gather: float, has_load: bool) -> float:
+	return clampf(settled, 0.0, 1.0) * clampf(gather, 0.0, 1.0) if has_load else 0.0
+
+
+## Bone `index`'s authored rest-relative rotation at `degrees`: eased between the
+## bracketing keys (as the lift keys are), held at the end keys beyond them.
+static func guard_arm_rotation(degrees_keys: PackedFloat64Array, rotations: Array[Quaternion], index: int, degrees: float) -> Quaternion:
+	var count := ARM_KEY_BONES.size()
+	if degrees <= degrees_keys[0]:
+		return rotations[index]
+	for key in range(1, degrees_keys.size()):
+		if degrees <= degrees_keys[key]:
+			var t := smoothstep(degrees_keys[key - 1], degrees_keys[key], degrees)
+			return rotations[(key - 1) * count + index].slerp(rotations[key * count + index], t)
+	return rotations[(degrees_keys.size() - 1) * count + index]
 
 
 ## Turn each foot about the skeleton's vertical at its ankle by the stance's
@@ -235,8 +473,17 @@ func _raise_clavicles(skeleton: Skeleton3D) -> void:
 			var reach := (to_skeleton * grips[arm].global_position) - root.origin
 			if reach.length_squared() > 1e-8:
 				direction = direction.lerp(reach.normalized(), clampf(grip_weight, 0.0, 1.0)).normalized()
-		var lift := clavicle.elevation(ClavicleResponse.arm_elevation(torso_pose.basis.y.normalized(), direction))
+		var up := torso_pose.basis.y.normalized()
+		var lift := clavicle.elevation(ClavicleResponse.arm_elevation(up, direction))
 		ClavicleResponse.raise(skeleton, collar, lift, torso_pose)
+		if clavicle.max_protraction_deg > 0.0:
+			## This arm's own side of the torso; forward follows from it (+X is the
+			## fighter's left, so left × up is forward and the right side flips).
+			var outward := root.origin - torso_pose.origin
+			outward = (outward - up * outward.dot(up)).normalized()
+			var forward := outward.cross(up) * (1.0 if arm == 1 else -1.0)
+			var turn := clavicle.protraction(ClavicleResponse.arm_reach_across(up, outward, forward, direction))
+			ClavicleResponse.protract(skeleton, collar, turn, torso_pose, forward)
 
 
 ## Turn each grip frame on the handle toward its forearm (PRES-GRIP-001), after
@@ -267,7 +514,13 @@ func _guide_elbows(skeleton: Skeleton3D) -> void:
 		_shoulders[arm] = into_frame * (skeleton.global_transform * skeleton.get_bone_global_pose(_arm_bones[arm])).origin
 	_elbows.sample(stance.arm_structure(), stance.chest_yaw(), _shoulders, _hands, support.sword_angle, support.gather, support.settled, support.cut_angle, support.load_side)
 	for arm in 2:
-		poles[arm].global_position = out_of_frame * _elbows.poles[arm]
+		var pole := _elbows.poles[arm]
+		if elbow_from_clip:
+			var fore := skeleton.get_bone_children(_arm_bones[arm])
+			if not fore.is_empty():
+				var elbow := into_frame * (skeleton.global_transform * skeleton.get_bone_global_pose(fore[0])).origin
+				pole = ElbowGuideField.clip_pole(_shoulders[arm], elbow, _hands[arm], ElbowGuideField.CLIP_POLE_OFFSET, pole)
+		poles[arm].global_position = out_of_frame * pole
 
 
 ## The elbow guides from the last solve (for tests, captures, debug).

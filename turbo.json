@@ -61,6 +61,10 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    "test:candidate": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "test:focused": {
       "cache": false
     },

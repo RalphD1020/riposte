@@ -7,7 +7,7 @@ and reports evidence; it never changes geometry. ``baseline`` states Wolf,
 the 1.0 reference; ``manifest`` records one reproducible build.
 """
 
-from . import baseline, diagnostics, manifest, measurements
+from . import baseline, body_regions, diagnostics, manifest, measurements
 from .anatomy import CONTROLS, REGION_DEFINITIONS, REGIONS, resolve_controls, validate_controls
 from .definition import load_profile, load_studies, migrate, resolve, self_check, validate
 from .parameters import BODY_INPUTS, BY_ID, SLIDERS, UI_IDS
@@ -25,6 +25,7 @@ __all__ = (
     "UI_IDS",
     "a_pose_joints",
     "baseline",
+    "body_regions",
     "diagnostics",
     "load_profile",
     "load_studies",

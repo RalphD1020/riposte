@@ -7,12 +7,18 @@ extends RefCounted
 ## acceleration and turn torque — never the motion itself (PHYS-003). These
 ## are continuous curves, not table switches.
 ##
+## Commitment is the core mechanic (COMBAT-CORE-001): what an attack spends,
+## opening an exposure (`ExposureModel`) that closes only when the fighter has
+## recovered — blade arrested (RECOVERY-001) and body turned to face the
+## opponent again (directional commitment below, against `α = τ / I`).
+##
 ## Commitment answers "how hard is this action to change?". It is a different
 ## question from structural coupling ("how well is the body supporting this
 ## impact?"), and the two must not be conflated: a fully charged swing thrown
 ## mid-sidestep is maximally committed and badly structured at the same time.
 ##
 ## Implements: /spec/invariants.md#phys-003
+## Implements: /spec/invariants.md#combat-core-001
 ## See also: /docs/concepts/combat.md
 
 ## One continuous, mirrored commitment (v36). A held charge carries

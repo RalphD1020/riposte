@@ -1,0 +1,26 @@
+{
+  "candidate_id": "p3_v7_hg",
+  "what": "The P3 presentation candidate CANDIDATE-E2E runs: Wolf's d6 production body with the v7 hands and grip contacts, the declared high guard and authored guard / load keys. Presentation only; it shares Wolf's fighter definition, handling, input and simulation.",
+  "tools": {
+    "blender": {"version": "Blender 5.2.2 LTS", "env": "BLENDER_BIN", "default": "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"},
+    "godot": {"version": "4.7.2.stable.official.ed1daf0bf", "env": "GODOT_BIN", "default": "C:/Users/Ralph/Tools/Godot_4.7.2/Godot_v4.7.2-stable_win64_console.exe"}
+  },
+  "rig_contract": "f724fd9d49bb84c2caeb34102bbadb5f2a0b671e07cae6d722408ebd3ff67bd2",
+  "inputs": {
+    "hands": {"path": ".reports/art/iterations/20261113_2235_f8_junctions_default_body/milestone_p3/p3_hand_v7.blend", "sha256": "e277ccfc91c033ac7944289b90243539d4a33a7b48c3751b802a7f9f70a3750a", "tracked": false},
+    "clips": {"path": ".reports/art/iterations/20261113_2235_f8_junctions_default_body/milestone_p3/clips_p3v7_center_wip.blend", "sha256": "eb5e6bc1a16c40e1b57192d6f94fa41139ea4ae29d1e5464f36e12229e6989cc", "tracked": false},
+    "fighter_timeline": {"path": "art-src/blender/fighters/wolf_production.blend", "sha256": "a7928f20b2109c2a3a26b68f24ace747db60c71d0e238d835f14721c0b18f2a7", "tracked": true},
+    "stage_script": {"path": ".reports/art/iterations/20261113_2235_f8_junctions_default_body/_d3_stage.py", "sha256": "b651e831f18cba7fc80933087bf57e40cf107cb37334c776366914c9f6c4d01e", "tracked": false},
+    "export_script": {"path": ".reports/art/iterations/20261113_2235_f8_junctions_default_body/_export_variant.py", "sha256": "d2a5507878fe557131d5e8b55fba8ff07665f926e955bddc1a1b9cd0598454a9", "tracked": false},
+    "wrapper": {"path": "tools/blender/candidates/p3_v7/prod_d6_p3v7_hg_wrapper.tscn", "sha256": "1ac545880dabb7f01046b5d252e29112f916903ccb06a775f29ca6e923b0e166", "tracked": true}
+  },
+  "steps": [
+    {"tool": "blender", "args": ["--background", "--factory-startup", "--python", "{stage_script}", "--", "{hands}", "{clips}", "{work}/staged.blend", "{work}/reference.json", "{fighter_timeline}"], "expect": "D3_STAGED"},
+    {"tool": "blender", "args": ["--background", "--factory-startup", "--python", "{export_script}", "--", "{work}/staged.blend", "prod", "{work}/prod_d6_p3v7.glb", "{rig_contract}", "--frame-step", "1", "--slide-to-zero"]}
+  ],
+  "outputs": {
+    "body": {"from": "{work}/prod_d6_p3v7.glb", "to": "game/assets/candidates/prod_d6_p3v7.glb", "sha256": "6df44b76a89e4d09df68fdaee3c385098cfa3c75ad35e5dd36a99386abfd24c8"},
+    "wrapper": {"from": "{wrapper}", "to": "game/assets/candidates/prod_d6_p3v7_hg_wrapper.tscn", "sha256": "1ac545880dabb7f01046b5d252e29112f916903ccb06a775f29ca6e923b0e166"}
+  },
+  "open": "The hands, clips, stage and export inputs are git-ignored iteration files; a fresh checkout cannot rebuild the body until the person promotes them to tracked sources (art-src / tools). Until then materialize verifies or reuses a local body and fails closed, naming what is missing."
+}

@@ -1,0 +1,111 @@
+{
+ "asset": "wolf_hair_training",
+ "records": [
+  {
+   "configuration": "h1.60_f0.850_m0.800",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training lean_160",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.60_f1.000_m1.000",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training reference_160",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.60_f1.150_m1.250",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training strongman_160",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.70_f0.850_m0.800",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training lean_170",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.70_f1.000_m1.000",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training reference_170",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.70_f1.150_m1.250",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training strongman_170",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.80_f0.850_m0.800",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training lean_180",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.80_f1.000_m1.000",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training reference_180",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.80_f1.150_m1.250",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training strongman_180",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.90_f0.850_m0.800",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training lean_190",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.90_f1.000_m1.000",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training reference_190",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h1.90_f1.150_m1.250",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training strongman_190",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h2.00_f0.850_m0.800",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training lean_200",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h2.00_f1.000_m1.000",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training reference_200",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  },
+  {
+   "configuration": "h2.00_f1.150_m1.250",
+   "date": "2026-11-07",
+   "evidence": ".reports/art/iterations/20261107_1500_hair_polish: hair_sweep_training strongman_200",
+   "foundation": "character.male_base.foundation",
+   "version": "v002"
+  }
+ ],
+ "schema": "riposte.library_validations"
+}

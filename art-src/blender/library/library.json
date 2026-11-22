@@ -62,26 +62,34 @@
   },
   "wolf_hair_ranger": {
    "category": "hair",
-   "current": "v001",
+   "current": "v002",
    "origin": "wolf",
    "subtype": "hairstyle",
    "uuid": "8728154d-8e65-55b2-a1ab-5ee962ad9633",
    "versions": {
     "v001": {
      "sha256": "6f4339a860f896833bfafd3ff37be54cdd8aa3ff2dd6dafa9c9a5e8591f43bc5",
+     "status": "superseded"
+    },
+    "v002": {
+     "sha256": "b6c3a14315e83f5157fb8eab77434259603bc719d254af34235e512fdeb7bc29",
      "status": "approved"
     }
    }
   },
   "wolf_hair_training": {
    "category": "hair",
-   "current": "v001",
+   "current": "v002",
    "origin": "wolf",
    "subtype": "hairstyle",
    "uuid": "b3b0e81e-ff8a-5010-bd54-a61d6a95b19d",
    "versions": {
     "v001": {
      "sha256": "c0d09b330b074880900a3903bd1b64a9f2d3d1737a906bcba641057e84aacfaa",
+     "status": "superseded"
+    },
+    "v002": {
+     "sha256": "7e0620ecf11314330fcff12edfcad4f05e122b9a9947d0a549c2a9a8706baff8",
      "status": "approved"
     }
    }

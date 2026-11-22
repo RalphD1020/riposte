@@ -1,0 +1,141 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_undertunic",
+  "category": "fitted",
+  "layer": 1,
+  "regions": [
+    "neck",
+    "upper_torso",
+    "waist",
+    "shoulder.L",
+    "shoulder.R",
+    "pelvis",
+    "upper_arm.L",
+    "upper_arm.R",
+    "forearm.L",
+    "forearm.R"
+  ],
+  "materials": ["fabric"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerUnderTunic"
+  },
+  "coverage": {
+    "hides": [
+      "upper_torso",
+      "waist",
+      "shoulder.L",
+      "shoulder.R",
+      "upper_arm.L",
+      "upper_arm.R",
+      "forearm.L",
+      "forearm.R"
+    ],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Tunic",
+        "kind": "torso",
+        "spine": [
+          {
+            "bone": "Hips",
+            "at": 0.0
+          },
+          {
+            "bone": "Chest",
+            "at": 0.35
+          }
+        ],
+        "around": 28,
+        "rows": 7,
+        "yoke_rows": 7,
+        "neck": {
+          "deg": 25.0,
+          "v_deg": 5.0,
+          "v_width_deg": 28.0
+        },
+        "arms": {
+          "deg": 45.0,
+          "armscye_m": 0.01,
+          "sides": ["L", "R"]
+        },
+        "sleeves": {
+          "sides": ["L", "R"],
+          "path": [
+            {
+              "bone": "UpperArm.{s}",
+              "at": 0.0
+            },
+            {
+              "bone": "UpperArm.{s}",
+              "at": 1.0
+            },
+            {
+              "bone": "Forearm.{s}",
+              "at": 0.9
+            }
+          ],
+          "centre_on": ["upper_arm.{s}", "forearm.{s}"],
+          "section": ["shoulder.{s}", "upper_arm.{s}", "forearm.{s}"],
+          "set_in": "bridge",
+          "lead": 0.008,
+          "cap_grade": 1.4,
+          "rows": 16,
+          "ease_m": [
+            [0.0, 0.012],
+            [0.15, 0.015],
+            [0.35, 0.019],
+            [0.5, 0.016],
+            [0.58, 0.018],
+            [0.66, 0.02],
+            [0.71, 0.008],
+            [0.92, 0.004],
+            [1.0, 0.0025]
+          ],
+          "allowance": [
+            {
+              "t": [0.1, 0.5],
+              "toward": [0.0, 1.0, 0.0],
+              "deg": 60.0,
+              "m": 0.006
+            }
+          ]
+        },
+        "ease_m": 0.006,
+        "thickness_m": 0.002,
+        "material": "fabric"
+      }
+    ],
+    "weights": {
+      "smooth": 1
+    }
+  },
+  "notes": "Close-fitting slate long-sleeve under-tunic: a crew neck, set-in sleeves, the cloth gathered above the bracers.",
+  "upper_boundary": {
+    "collar_height_m": 0.02,
+    "collar_opening_m": 0.13,
+    "contact": "clearance"
+  },
+  "slot": "inner_torso"
+}

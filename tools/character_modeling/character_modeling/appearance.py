@@ -70,6 +70,7 @@ def resolve(character, outfit, definitions, regions, target):
         components.append({"id": definition["id"], "type": definition.get("type", "garment"), "layer": layer,
                            "order": order, "source": dict(definition["source"]),
                            "deformation": dict(definition["deformation"]),
+                           "regions": list(definition["regions"]),
                            "coverage": dict(definition.get("coverage", {}))})
     components.sort(key=lambda c: (c["order"], c["id"]))
     order_of = {c["id"]: c["order"] for c in components}
@@ -93,6 +94,17 @@ def resolve(character, outfit, definitions, regions, target):
                 hidden_components.setdefault(other, []).append(component["id"])
     if problems:
         raise ValueError("; ".join(problems))
+    ## A garment beneath others: the regions of its own the garments above it may hide (the
+    ## build trims only its faces there that those garments actually cover).
+    garment_regions = {}
+    for component in components:
+        if component["type"] != "garment":
+            continue
+        above = {r for other in components if other["type"] == "garment" and other["order"] > component["order"]
+                 for r in other["coverage"].get("hides", []) if r not in preserved}
+        mine = sorted(set(component["regions"]) & above)
+        if mine:
+            garment_regions[component["id"]] = mine
     plan = {
         "schema": SCHEMA, "version": VERSION, "character": character["id"], "outfit": outfit,
         "foundation": target["base"]["id"], "foundation_fingerprint": target["base"]["topology_fingerprint"],
@@ -103,6 +115,7 @@ def resolve(character, outfit, definitions, regions, target):
             "margin_rings": dict(sorted(margins.items())),
             "preserved_regions": sorted(preserved),
             "hidden_components": {k: sorted(v) for k, v in sorted(hidden_components.items())},
+            "hidden_garment_regions": dict(sorted(garment_regions.items())),
         },
     }
     plan["fingerprint"] = fingerprint(plan)

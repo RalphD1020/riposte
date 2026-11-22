@@ -1,0 +1,63 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_bracers",
+  "category": "structured",
+  "layer": 3,
+  "regions": ["forearm.L", "forearm.R"],
+  "materials": ["leather", "trim"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerBracers"
+  },
+  "coverage": {
+    "hides": ["forearm.L", "forearm.R"],
+    "margin_rings": 2
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Bracer.{s}",
+        "sides": ["L", "R"],
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Forearm.{s}",
+            "at": 0.32
+          },
+          {
+            "bone": "Forearm.{s}",
+            "at": 0.86
+          }
+        ],
+        "centre_on": ["forearm.{s}"],
+        "around": 16,
+        "rows": 8,
+        "ease_m": 0.006,
+        "thickness_m": 0.004,
+        "material": "leather",
+        "edge_material": "trim"
+      }
+    ]
+  },
+  "notes": "Fitted leather forearm guards over the sleeve, a worn edge; the sleeve gathers above them; the elbow, wrist and hand clear.",
+  "slot": "forearm"
+}

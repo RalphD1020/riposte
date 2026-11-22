@@ -7,6 +7,7 @@
  * version | import | scripts:check (import + load) | test (gating suites) |
  * test:balance (CPU balance smoke) | test:balance:accept (held-out ladder) |
  * test:balance:audit (tuning-corpus report) | test:contact:ship (contact corpora) |
+ * test:candidate (real game with the local P3 presentation candidate) |
  * test:focused <area|suite>… | test:changed [files…] (TEST-TIER-001) |
  * test:perf (frame-cost report) | check (no harness)
  *
@@ -116,6 +117,7 @@ const TIERS = {
   balance: { tier: "balance" },
   accept: { tier: "accept" },
   ship: { tier: "ship" },
+  candidate: { tier: "candidate" },
 };
 
 // `suites` narrows the run to named suites (RIPOSTE_SUITE). The import is the
@@ -407,6 +409,7 @@ const commands = {
   "test:balance:accept": () => runTest(TIERS.accept),
   "test:balance:audit": runAudit,
   "test:contact:ship": () => runTest(TIERS.ship),
+  "test:candidate": () => runTest(TIERS.candidate),
   "test:focused": runFocused,
   "test:changed": runChanged,
   "test:perf": runPerf,

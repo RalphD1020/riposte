@@ -8,13 +8,13 @@ A character is a foundation plus layers. This guide is how every layer is mapped
 
 "Decorator" here means declarative composition: each layer is a definition that adds to the character and declares what it covers. `character_modeling.appearance.resolve` validates every chosen definition against the foundation, orders them and computes the visibility of everything beneath them, once, into a flat appearance plan (`riposte.appearance_plan`, with its own fingerprint). Nothing is a runtime wrapper; no layer changes another's visibility on its own.
 
-| Responsibility | Owns | Home |
-| --- | --- | --- |
-| Definitions | what a character is and wears, and what each piece covers | the character manifest (`foundation` block, `identity`, `outfits`); `riposte.garment` definitions (`type` `facial_hair`, `hair`, `garment`) |
-| Resolver | compatibility, order, coverage, the immutable plan | `appearance.resolve`, `garments.problems`, `foundation.garment_target` |
-| Blender builders | fitting, generated geometry, derived (masked) meshes, validation | `male_base_v2_variation.py` (`apply_layers`, `mask_layer`), `face_features`, `facial_hair`, `wolf_hair` |
-| Export manifest | the plan's fingerprint and the validated outputs | `export_assets.py` (from F10 on the foundation) |
-| Godot | static selection of prebuilt meshes, blend-shape weights | `FighterSkinKit`, `FacePresentation`; never geometry, never a second coverage rule |
+| Responsibility   | Owns                                                             | Home                                                                                                                                        |
+| ---------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Definitions      | what a character is and wears, and what each piece covers        | the character manifest (`foundation` block, `identity`, `outfits`); `riposte.garment` definitions (`type` `facial_hair`, `hair`, `garment`) |
+| Resolver         | compatibility, order, coverage, the immutable plan               | `appearance.resolve`, `garments.problems`, `foundation.garment_target`                                                                      |
+| Blender builders | fitting, generated geometry, derived (masked) meshes, validation | `male_base_v2_variation.py` (`apply_layers`, `mask_layer`), `face_features`, `facial_hair`, `wolf_hair`                                     |
+| Export manifest  | the plan's fingerprint and the validated outputs                 | `export_assets.py` (from F10 on the foundation)                                                                                             |
+| Godot            | static selection of prebuilt meshes, blend-shape weights         | `FighterSkinKit`, `FacePresentation`; never geometry, never a second coverage rule                                                          |
 
 The parity rule: one declaration, one resolved plan, one validated visual result. Blender realizes the plan; Godot reads its result.
 
@@ -22,13 +22,13 @@ The parity rule: one declaration, one resolved plan, one validated visual result
 
 Innermost first. A layer may hide only what lies beneath it.
 
-| Layer | Contents | Ownership vs coverage |
-| --- | --- | --- |
-| `foundation` | the resolved body, skeleton, head (cranium, face surface, landmarks) | never trimmed; hidden regions are removed from the character's own derived copy |
-| `identity.face` | the face marks: the foundation's default face, or a character's `face_refine` over it | eyes, brows, lash lines; the nose is the head surface |
-| `identity.facial_hair` | beard, moustache, goatee, sideburns (`type: facial_hair`) | identity, worn in every outfit; covers face skin, preserves the mouth |
-| `outfit.hair` | the outfit's hairstyle (`type: hair`) | a skin's choice; never shapes the skull |
-| `outfit.garment.<1..4>` | underlayer, outer, protection, accessories (`type: garment`, `layer`) | covers body regions and the layers beneath |
+| Layer                   | Contents                                                                              | Ownership vs coverage                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `foundation`            | the resolved body, skeleton, head (cranium, face surface, landmarks)                  | never trimmed; hidden regions are removed from the character's own derived copy |
+| `identity.face`         | the face marks: the foundation's default face, or a character's `face_refine` over it | eyes, brows, lash lines; the nose is the head surface                           |
+| `identity.facial_hair`  | beard, moustache, goatee, sideburns (`type: facial_hair`)                             | identity, worn in every outfit; covers face skin, preserves the mouth           |
+| `outfit.hair`           | the outfit's hairstyle (`type: hair`)                                                 | a skin's choice; never shapes the skull                                         |
+| `outfit.garment.<1..4>` | underlayer, outer, protection, accessories (`type: garment`, `layer`)                 | covers body regions and the layers beneath                                      |
 
 Ownership and coverage are separate properties: a beard is identity but hides chin skin; a helmet is attire but can hide the hairstyle.
 
@@ -41,14 +41,14 @@ Two mappings, chosen by whether topology is shared:
 
 Never reuse vertex indices across a different fingerprint; a retopology regenerates the regions and every binding.
 
-| Asset | Fitted to | Mapping |
-| --- | --- | --- |
-| Eyes, brows, lash lines | the resolved head's face | marks in the face chart on their mask anchors, columns walked on the surface (`face_features.place_marks`); `variation.face_response` follows head size and build |
-| Nose | the head surface | the mask's nose controls (`face_mask`), part of the head |
-| Scalp hair | the resolved cranium | the construction surface and hairline (`wolf_hair.head_frame_of`, `build_style`); primary masses cover the scalp and set the silhouette, secondary locks set the flow, tertiary detail the hairline ([large-to-small hair construction](https://hossimo.com/articles/tips-and-tricks-an-artist-friendly-approach-to-sculpt-groom-hair/)); roots on the scalp, never floating or buried ([Reallusion hair guide](https://wiki.reallusion.com/Content_Dev:CC_3.4_Hair_Mesh_Production)) |
-| Facial hair | the resolved face | masses designed as chart outlines (lower edge, cheek line, thickness, drop, clumps), each point projected onto the head and stood off along its smoothed normal (`facial_hair.build`); coverage on the head's sub-regions |
-| Garments | the resolved body | the foundation's fitting regions, surfaces and interfaces (`male_base.surfaces.json`), coverage by region |
-| Rigid accessories | named anchors on a bone | an anchor, a fit envelope, explicit coverage |
+| Asset                   | Fitted to                | Mapping                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Eyes, brows, lash lines | the resolved head's face | marks in the face chart on their mask anchors, columns walked on the surface (`face_features.place_marks`); `variation.face_response` follows head size and build                                                                                                                                                                                                                                                                                                                     |
+| Nose                    | the head surface         | the mask's nose controls (`face_mask`), part of the head                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Scalp hair              | the resolved cranium     | the construction surface and hairline (`wolf_hair.head_frame_of`, `build_style`); primary masses cover the scalp and set the silhouette, secondary locks set the flow, tertiary detail the hairline ([large-to-small hair construction](https://hossimo.com/articles/tips-and-tricks-an-artist-friendly-approach-to-sculpt-groom-hair/)); roots on the scalp, never floating or buried ([Reallusion hair guide](https://wiki.reallusion.com/Content_Dev:CC_3.4_Hair_Mesh_Production)) |
+| Facial hair             | the resolved face        | masses designed as chart outlines (lower edge, cheek line, thickness, drop, clumps), each point projected onto the head and stood off along its smoothed normal (`facial_hair.build`); coverage on the head's sub-regions                                                                                                                                                                                                                                                             |
+| Garments                | the resolved body        | the foundation's fitting regions, surfaces and interfaces (`male_base.surfaces.json`), coverage by region                                                                                                                                                                                                                                                                                                                                                                             |
+| Rigid accessories       | named anchors on a bone  | an anchor, a fit envelope, explicit coverage                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Fit order for every height and build: resolve the body and skeleton → the head and face anatomy → the character's identity → eyes, brows, nose → hair and facial hair → garments → coverage across all layers → derived visible geometry → validation. A hairstyle, beard or garment fitted once to the reference is never assumed to fit another body without the same checks.
 
@@ -56,13 +56,15 @@ Fit order for every height and build: resolve the body and skeleton → the head
 
 Every layer that covers anything declares it in its definition's `coverage`:
 
-| Field | Meaning |
-| --- | --- |
-| `hides` | foundation regions (body regions, head sub-regions) whose surface it covers |
-| `preserves` | regions that must stay visible whatever covers them (facial hair always preserves `mouth`) |
-| `hides_components` | components beneath it hidden whole (a closed helmet hides the hairstyle) |
-| `margin_rings` | how many face rings inside a covered region stay (`garments.masked_faces`) |
-| `requires`, `incompatible_with` | pairing rules (`garments.problems`) |
+| Field                           | Meaning                                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `hides`                         | foundation regions (body regions, head sub-regions) whose surface it covers                |
+| `preserves`                     | regions that must stay visible whatever covers them (facial hair always preserves `mouth`) |
+| `hides_components`              | components beneath it hidden whole (a closed helmet hides the hairstyle)                   |
+| `margin_rings`                  | how many face rings inside a covered region stay (`garments.masked_faces`)                 |
+| `requires`, `incompatible_with` | pairing rules (`garments.problems`)                                                        |
+
+A region in `hides` is a permission, not a verdict: regions are coarse (a whole torso, an arm segment), so the build removes only the faces of a permitted region that a garment above actually covers — a V neck, a sleeve's elbow above a bracer and a cuff above a boot stay. The body and lower garments follow the same rule: one coverage system for skin and cloth.
 
 `appearance.resolve` computes the plan's visibility from the whole selection: hidden regions per target object, margins, preserved regions, hidden components. It fails closed when a layer hides a preserved region, hides a component that is not beneath it, names an unknown region, or hides a region it does not occupy. A helmet never hides "everything on the face" by implication; a beard never the mouth.
 
@@ -86,32 +88,33 @@ An identity layer, never part of the canonical head, never hiding a weak jaw.
 
 ## Gates
 
-| Gate | Covers |
-| --- | --- |
+| Gate                        | Covers                                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A. Blender geometry and art | feature placement, head silhouette, hairline, beard and attachment fit, garment fit, coverage boundaries and exposed holes; front, side, rear, three-quarter, the match camera |
-| B. Facial animation | expressions, eye behaviour, mask clearance, facial-hair deformation |
-| C. Skeleton and animation | garment and hair deformation, coverage through combat poses and clips, export/import parity |
+| B. Facial animation         | expressions, eye behaviour, mask clearance, facial-hair deformation                                                                                                            |
+| C. Skeleton and animation   | garment and hair deformation, coverage through combat poses and clips, export/import parity                                                                                    |
 
 Automated checks catch missing mappings, incompatible layers, uncovered holes, invalid hidden regions and intersections; visual studies catch anatomy and silhouette. Neither replaces the other.
 
 ## What exists and what does not (verified 2026-11-02)
 
-| In place | Not yet |
-| --- | --- |
-| `appearance.resolve`: the plan, ordering, `hides` / `preserves` / `hides_components`, margins, fingerprint | region-level masking of a lower garment by a higher one (the garment's own regions); the plan in the export manifest (F10) |
-| `garments`: types `garment`, `hair`, `facial_hair`; `coverage.preserves`; `also_fitted`; head sub-regions (`parent`, `object`) | a calibrated cover reach per region |
-| the foundation's regions (`male_base.foundation.v002.regions.json`): 19 body regions and 7 head sub-regions | ankle regions mirror-symmetric (v1's weights are not) |
-| `facial_hair.build` and `mask_layer` in the `wolf` set | facial-hair deformation with a jaw; the pose-suite coverage check |
-| `foundation.character_marks` with `face_refine` | archetype-driven feature resolution (the face-identity layer) |
+| In place                                                                                                                                                                                                                                                                                                         | Not yet                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `appearance.resolve`: the plan, ordering, `hides` / `preserves` / `hides_components`, margins, fingerprint; `hidden_garment_regions` (each garment's own regions the garments above it may hide)                                                                                                                 | the plan in the export manifest (F10)                                                                                                     |
+| `garment_builder` and `apply_garments`: garments fitted per resolved body, each over the garments built before it (`under`, the layer order); the body and each lower garment trimmed only where a garment above actually covers it (a ray along the surface normal), margin rings inside, exposed edges counted | the pose-envelope (temporal) coverage check before trimming; a gusset where the deep armpit and the perineum stay unspanned in wide poses |
+| `garments`: types `garment`, `hair`, `facial_hair`; `coverage.preserves`; `also_fitted`; head sub-regions (`parent`, `object`)                                                                                                                                                                                   | a calibrated cover reach per region                                                                                                       |
+| the foundation's regions (`male_base.foundation.v002.regions.json`): 19 body regions and 7 head sub-regions                                                                                                                                                                                                      | ankle regions mirror-symmetric (v1's weights are not)                                                                                     |
+| `facial_hair.build` and `mask_layer` in the `wolf` set                                                                                                                                                                                                                                                           | facial-hair deformation with a jaw; the pose-suite coverage check                                                                         |
+| `foundation.character_marks` with `face_refine`                                                                                                                                                                                                                                                                  | archetype-driven feature resolution (the face-identity layer)                                                                             |
 
 The names `covers_body`, `covers_layers` and a separate visibility profile were planned vocabulary, never code: `coverage.hides`, `hides_components` and the plan's `visibility` are their implementation. There is one coverage system.
 
 ## What is source and what is evidence
 
-| Committed | Iteration evidence only |
-| --- | --- |
-| definitions (`*.garment.json`, the character manifest), the foundation document, record, lock and regions | candidate meshes, renders, boards, per-run logs |
-| the resolver, the builders, the coverage algorithms, the tests | review copies of a foundation or a character (`RIPOSTE_FOUNDATION_REVIEW`, `RIPOSTE_CHARACTER_REVIEW`) |
-| approved fixtures the tests read | probe scripts, intermediate scenes |
+| Committed                                                                                                 | Iteration evidence only                                                                                |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| definitions (`*.garment.json`, the character manifest), the foundation document, record, lock and regions | candidate meshes, renders, boards, per-run logs                                                        |
+| the resolver, the builders, the coverage algorithms, the tests                                            | review copies of a foundation or a character (`RIPOSTE_FOUNDATION_REVIEW`, `RIPOSTE_CHARACTER_REVIEW`) |
+| approved fixtures the tests read                                                                          | probe scripts, intermediate scenes                                                                     |
 
 Canonical geometry stays reproducible from committed source; an approval names the source revision, parameters, outputs and tests it was given.

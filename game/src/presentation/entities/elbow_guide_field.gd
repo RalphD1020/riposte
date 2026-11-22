@@ -121,6 +121,33 @@ func sample(profile: ArmStructureProfile, stance_yaw: float, shoulders: Array[Ve
 	return self
 
 
+## The pole that keeps an authored elbow (PRES-GRIP-001: the authored pose owns
+## the arm, the IK keeps contact): from the pose BEFORE the IK — shoulder `s`,
+## the clip's elbow `e` — and the wrist target `w`, the elbow's offset off the
+## shoulder→target line, `v = (e − s) − ((e − s)·d) d`, gives the bend plane,
+## and the pole sits `offset` beyond the elbow along it. Where the elbow lies
+## on that line (a nearly straight arm) `v` is not normalized: the pole fades
+## to `fallback` (the field's own pole) over `SOFT_BEND` of offset, so the
+## bend plane never whirls. No IK output is read, so there is no feedback.
+const SOFT_BEND := 0.02
+## How far beyond an authored elbow its pole sits (m): far enough that the IK's
+## plane is the elbow's, not a distance an elbow is pulled toward.
+const CLIP_POLE_OFFSET := 0.3
+
+
+static func clip_pole(s: Vector3, e: Vector3, w: Vector3, offset: float, fallback: Vector3) -> Vector3:
+	var line := w - s
+	if line.length_squared() < 1e-10:
+		return fallback
+	var d := line.normalized()
+	var v := (e - s) - d * (e - s).dot(d)
+	var bend := v.length()
+	if bend < 1e-6:
+		return fallback
+	var weight := clampf(bend / SOFT_BEND, 0.0, 1.0)
+	return fallback.lerp(e + v / bend * offset, weight)
+
+
 ## The component of `direction` perpendicular to the unit `axis`.
 static func _perpendicular(direction: Vector3, axis: Vector3) -> Vector3:
 	return direction - axis * direction.dot(axis)

@@ -1,0 +1,113 @@
+{
+  "schema": "riposte.garment",
+  "type": "garment",
+  "base_id": "character.male_base.foundation",
+  "base_topology_fingerprint": "f7268895fafdcf42b24e986c6c3d6e588fbcdb0286ee96031950a1b605b02332",
+  "skeleton_id": "WolfRig",
+  "rig_contract_sha256": "0f4429c89e4359316a1d6f2e757a9464c478d4689aa2c7ec805bb328403813bf",
+  "supported_configurations": [
+    "default",
+    "lean",
+    "lean_half",
+    "heavy_half",
+    "heavy",
+    "extreme_lean",
+    "extreme_heavy"
+  ],
+  "deformation": {
+    "method": "skinned",
+    "max_influences": 4,
+    "physique": "keys"
+  },
+  "id": "wolf_ranger_neckwrap",
+  "category": "fitted",
+  "layer": 4,
+  "regions": ["neck", "head", "upper_torso"],
+  "materials": ["scarf"],
+  "source": {
+    "builder": "tools/blender/authoring/garment_builder.py",
+    "object": "RangerNeckwrap"
+  },
+  "coverage": {
+    "hides": ["neck"],
+    "margin_rings": 1
+  },
+  "design": {
+    "pieces": [
+      {
+        "name": "Wrap",
+        "kind": "tube",
+        "path": [
+          {
+            "bone": "Neck",
+            "at": 0.4
+          },
+          {
+            "bone": "Neck",
+            "at": 1.0
+          },
+          {
+            "bone": "Head",
+            "at": 0.315
+          }
+        ],
+        "around": 24,
+        "rows": 13,
+        "start": {
+          "c1": -0.012,
+          "c2": -0.012,
+          "s1": 0.014
+        },
+        "end": {
+          "c1": 0.02,
+          "c2": 0.004,
+          "s1": -0.004
+        },
+        "ease_m": [
+          [0.0, 0.008],
+          [0.12, 0.012],
+          [0.28, 0.02],
+          [0.42, 0.009],
+          [0.58, 0.019],
+          [0.7, 0.009],
+          [0.84, 0.008],
+          [1.0, 0.005]
+        ],
+        "smooth": 4,
+        "reach_m": [
+          [0.0, 0.17],
+          [0.18, 0.13],
+          [0.35, 0.12],
+          [1.0, 0.25]
+        ],
+        "thickness_m": 0.006,
+        "material": "scarf"
+      }
+    ],
+    "weights": {
+      "rigid_above": {
+        "bone": "Head",
+        "from": {
+          "bone": "Head",
+          "at": 0.16
+        },
+        "blend_m": 0.06
+      }
+    },
+    "fit_head": true
+  },
+  "notes": "Thick charcoal gaiter-scarf: one wrap from under the nose round the jaw and neck, a skirt draping low over the collar, two broad folds, a diagonal lower edge outside the vest's opening.",
+  "upper_boundary": {
+    "collar_height_m": 0.11,
+    "collar_opening_m": 0.0,
+    "contact": "allowed"
+  },
+  "relationships": [
+    {
+      "with": "wolf_hair_ranger",
+      "relation": "beneath",
+      "depth_m": 0.04
+    }
+  ],
+  "slot": "neckwear"
+}
