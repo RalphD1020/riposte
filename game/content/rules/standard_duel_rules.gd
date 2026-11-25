@@ -56,7 +56,19 @@ static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter
 	## charge-0 cut on its first controllable tick, and a finger still down is a
 	## hold that becomes a charge (recovered from the wip-art rewrite that was
 	## committed broken; BUFFER behaviour is proven by the ATTACK suite).
-	rules.version = 61
+	## 63: predictive braking (the 90° / 180° contract) — the attack brakes with
+	## its own finite authority once one more driven tick could no longer stop by
+	## the commanded end, so a free cut settles there (±5°) instead of
+	## overswinging (a full charge used to run to ~242°). Torques, speed caps and
+	## the injury calibration are unchanged; the phases still follow progress.
+	## 65: the weapon coordinate's generalized dynamics (UNIFIED-MASS-001,
+	## M_θ·θ̈ + ½·M_θ′·θ̇² = τ): a torque-free step keeps ½·M_θ·θ̇², the motor's
+	## torque acts through the inertia where that step left the blade, the
+	## stopping rollout shares the law, the brake latch asks whether the full
+	## brake is still needed (a ceiling regulation under a held contact no
+	## longer brakes a cut dead), eight commitment bisections. Torques, speed
+	## targets, endpoints and the injury calibration are unchanged.
+	rules.version = 65
 	rules.combatants = [LoadoutCatalog.compile(fighter_0, weapon_0), LoadoutCatalog.compile(fighter_1, weapon_1)]
 	rules.combat = combat_tuning()
 	rules.materials = MaterialCatalog.standard_table()
@@ -85,16 +97,18 @@ static func with_combatants(fighter_0: StringName, weapon_0: StringName, fighter
 	return rules
 
 
-## The product pit. Same combat as version 61, with the edge closed. Quick Play
-## stays on `create()` until the pit mesh is the stage it loads. A version-61
+## The product pit. Same combat as version 63, with the edge closed. Quick Play
+## stays on `create()` until the pit mesh is the stage it loads. A version-63
 ## replay does not become this rules set.
 static func pit() -> DuelRules:
 	var rules := create()
-	## 59: the centre is held at the support radius. Version 61 stays open.
+	## 59: the centre is held at the support radius. Version 63 stays open.
 	## 60: swords meet the stone wall and the wooden gates
 	## (STRUCTURE-CONTACT-001). Bodies are still held by the support circle.
 	## 62: version-61 combat (the tap buffer) behind that closed edge.
-	rules.version = 62
+	## 64: version-63 combat (predictive braking) behind that closed edge.
+	## 66: version-65 combat (generalized weapon dynamics) behind that closed edge.
+	rules.version = 66
 	rules.edge_policy = DuelRules.EDGE_CLOSED
 	rules.structures = StageStructures.arena(rules.platform_radius)
 	return rules

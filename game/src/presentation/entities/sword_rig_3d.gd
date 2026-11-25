@@ -96,6 +96,23 @@ const HAND_LENGTH := 0.06
 @export var arm_cut_degrees := PackedFloat64Array()
 @export var arm_cut_right_rotations: Array[Quaternion] = []
 @export var arm_cut_left_rotations: Array[Quaternion] = []
+## Authored cut torso (`CombatPoseModifier3D.torso_cut_right_yaw`): per
+## `arm_cut_degrees` key, the chest's extra yaw in degrees (about its own up
+## axis, on top of the body's follow) one profile per launch direction, held in
+## the cut's share like the cut arms. The torso that lets both arms reach the
+## two grips without passing through the body (ART-ANATOMY-001). Empty
+## (or a profile left empty) adds nothing; empty on every shipping body.
+@export var torso_cut_right_yaw_degrees := PackedFloat64Array()
+@export var torso_cut_left_yaw_degrees := PackedFloat64Array()
+## Authored rear-hand roll (`CombatPoseModifier3D.rear_roll_cut_right`): per
+## `arm_cut_degrees` key, how far the off hand turns about the handle axis at
+## its fixed station (degrees), one profile per launch direction, in the cut's
+## share - the bounded follow-through grip the anatomy can hold
+## (ART-ANATOMY-001). The station along the handle, the sword and the front hand
+## never change. Needs authored contacts; exclusive with `rear_hand_pivot`.
+## Empty on every shipping body.
+@export var rear_hand_roll_cut_right_degrees := PackedFloat64Array()
+@export var rear_hand_roll_cut_left_degrees := PackedFloat64Array()
 ## The combat-aligned projection (`CombatPresentationField.configure_projection`):
 ## the drawn sword level at one fixed interaction height in every phase, its
 ## hands `interaction_raise` above the blade plane, no contact snap. The
@@ -105,15 +122,13 @@ const HAND_LENGTH := 0.06
 ## This body's charged-cut high guard (`CombatPresentationField.configure_load`):
 ## hands' height above the blade plane (m) and blade pitch (degrees) at full
 ## gather, and, when `load_roll_authored`, the blade's roll about its own axis
-## at a right load (degrees); the left load is its mirror image plus at most
-## `CombatPresentationField.LOAD_ROLL_CORRECTION_LIMIT` of right-handed
-## correction (`load_roll_left_correction_deg`) - both sides are one weapon
-## action. Charged cuts only. The shared load on every shipping body.
-@export var load_raise: float = CombatPresentationField.LOAD_RAISE
-@export var load_pitch_deg: float = CombatPresentationField.LOAD_PITCH_DEGREES
+## at a right load (degrees); the left load is its exact mirror image - the
+## weapon's path has no side, the skeleton adapts to it. Charged cuts only. The
+## shared load on every shipping body.
+@export var load_raise: float = WeaponPathDefinition.LOAD_RAISE
+@export var load_pitch_deg: float = WeaponPathDefinition.LOAD_PITCH_DEGREES
 @export var load_roll_authored: bool = false
 @export var load_roll_deg: float = 0.0
-@export var load_roll_left_correction_deg: float = 0.0
 ## The long edge leads the motion (`CombatPresentationField.configure_edge`):
 ## the blade's roll follows the strike region's direction of travel, the strike
 ## region `edge_strike_from_carriage` metres beyond the carriage (the sword's
@@ -136,6 +151,15 @@ const HAND_LENGTH := 0.06
 @export var arm_load_degrees := PackedFloat64Array()
 @export var arm_load_right_rotations: Array[Quaternion] = []
 @export var arm_load_left_rotations: Array[Quaternion] = []
+## Diagnostic only (PRES-SYMMETRY-001): derive every left-side arm key from
+## its sword-right partner - right and left bones swapped, each rest-relative
+## rotation reflected (`CombatPoseModifier3D.mirror_arm_rotations`; the rest
+## skeleton's arms are mirror images), the guard key at θ = 0 kept. The sword
+## is mirrored, the skeleton is not: with the right-over-left grip the hands
+## sit at different stations on each side, so mirrored arm keys collapse the
+## elbows; production sides are authored directional preferences. Off on every
+## shipping body.
+@export var arm_keys_mirrored: bool = false
 ## Clavicle participation (PRES-CLAVICLE-001): a body skinned to its
 ## `Shoulder.*` bones names one; a rigid-part body leaves it null and its
 ## shoulders stay at rest. Presentation only.
@@ -172,9 +196,20 @@ func contract_problems() -> PackedStringArray:
 	_key_problems(problems, "arm_guard", arm_guard_degrees, [arm_guard_rotations])
 	_key_problems(problems, "arm_cut", arm_cut_degrees, [arm_cut_right_rotations, arm_cut_left_rotations])
 	_key_problems(problems, "arm_load", arm_load_degrees, [arm_load_right_rotations, arm_load_left_rotations])
+	for profile: PackedFloat64Array in [torso_cut_right_yaw_degrees, torso_cut_left_yaw_degrees]:
+		if not profile.is_empty() and profile.size() != arm_cut_degrees.size():
+			problems.append("a cut torso profile needs one yaw per arm_cut key (%d given, %d keys)" % [profile.size(), arm_cut_degrees.size()])
+	var rolls_authored := not rear_hand_roll_cut_right_degrees.is_empty() or not rear_hand_roll_cut_left_degrees.is_empty()
+	for profile: PackedFloat64Array in [rear_hand_roll_cut_right_degrees, rear_hand_roll_cut_left_degrees]:
+		if not profile.is_empty() and profile.size() != arm_cut_degrees.size():
+			problems.append("a rear-hand roll profile needs one roll per arm_cut key (%d given, %d keys)" % [profile.size(), arm_cut_degrees.size()])
+	if rolls_authored and not has_contacts():
+		problems.append("the rear-hand roll turns an authored contact; it needs authored contacts")
+	if rolls_authored and rear_hand_pivot:
+		problems.append("the authored rear-hand roll and the rear-hand pivot would both turn the off hand")
 	if combat_aligned_projection and (centre_raise_delta != 0.0 or centre_pitch_delta_deg != 0.0):
 		problems.append("a combat-aligned projection fixes the sword's lift; centre deltas would be ignored")
-	if combat_aligned_projection and (load_raise != CombatPresentationField.LOAD_RAISE or load_pitch_deg != CombatPresentationField.LOAD_PITCH_DEGREES or load_roll_authored):
+	if combat_aligned_projection and (load_raise != WeaponPathDefinition.LOAD_RAISE or load_pitch_deg != WeaponPathDefinition.LOAD_PITCH_DEGREES or load_roll_authored):
 		problems.append("a combat-aligned projection fixes the sword's lift; a declared high guard would be ignored")
 	if rear_hand_pivot and not has_contacts():
 		problems.append("the rear-hand pivot turns an authored contact; it needs authored contacts")
@@ -184,8 +219,10 @@ func contract_problems() -> PackedStringArray:
 		problems.append("the edge's strike region must lie beyond the carriage (%.3f m)" % edge_strike_from_carriage)
 	if load_roll_authored and absf(load_roll_deg) > 180.0:
 		problems.append("load roll is one turn about the blade axis at most (%.1f)" % load_roll_deg)
-	if absf(load_roll_left_correction_deg) > CombatPresentationField.LOAD_ROLL_CORRECTION_LIMIT:
-		problems.append("the left load mirrors the right; a correction of %.1f° is past the %.0f° limit (an independent pose, not a correction)" % [load_roll_left_correction_deg, CombatPresentationField.LOAD_ROLL_CORRECTION_LIMIT])
+	if arm_keys_mirrored:
+		for degrees in arm_guard_degrees:
+			if degrees > 0.0 and not arm_guard_degrees.has(-degrees):
+				problems.append("a mirrored guard key at %.1f° needs its sword-right partner at %.1f°" % [degrees, -degrees])
 	return problems
 
 
@@ -229,35 +266,67 @@ func skeleton() -> Skeleton3D:
 	return _skeleton
 
 
+## This body's hand-bone offsets on a grip station (dominant first): how its
+## Hand bone sits where the weapon's station is — the authored contact's
+## inverse (`T_contact⁻¹`, PRES-GRIP-001) or the common grip's hand turn. The
+## body owns only these; the weapon owns the stations
+## (`WeaponPresentationConfig.weapon_grip_stations`).
+func hand_offsets() -> Array[Transform3D]:
+	var out: Array[Transform3D] = []
+	for index in 2:
+		if has_contacts():
+			out.append(grip_contacts[index].affine_inverse())
+		else:
+			out.append(Transform3D(SwordGripFrame.hand_basis(SwordGripFrame.COMMON_HAND_AXIS, hand_span_axes[index]), Vector3.ZERO))
+	return out
+
+
+## The wrist each hand's arm reaches, in its grip's own space.
+func hand_wrists() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for index in 2:
+		out.append(Vector3.ZERO if has_contacts() else SwordGripFrame.wrist_offset(HAND_LENGTH))
+	return out
+
+
+## The grip stations `weapon_model`'s GripDominant / GripOffhand markers name
+## (else the exported fallbacks): art's own record of where the hands go, held
+## to the weapon's stations by PRES-BODY, never a second source of them.
+func marker_stations(weapon_model: Node = null) -> PackedVector3Array:
+	return PackedVector3Array([_marker(weapon_model, GRIP_DOMINANT, dominant_grip), _marker(weapon_model, GRIP_OFFHAND, offhand_grip)])
+
+
+## Both hands' grips on `weapon_model` for a body bound without a weapon
+## definition (the showcase): its markers as stations.
+func grips_on(weapon_model: Node = null) -> WeaponPresentationConfig:
+	return WeaponPresentationConfig.shared().with_grips(marker_stations(weapon_model), hand_offsets(), hand_wrists())
+
+
 ## Build the modifier stack against `carriage`, the node the displayed sword
-## hangs from. `weapon_model` may carry GripDominant / GripOffhand markers;
-## otherwise the exported fallbacks are used. Idempotent.
-func bind_sword(carriage: Node3D, weapon_model: Node = null) -> void:
+## hangs from, with the grips of `config` (the evaluator's own), else those
+## `grips_on(weapon_model)` gives. Idempotent.
+func bind_sword(carriage: Node3D, weapon_model: Node = null, config: WeaponPresentationConfig = null) -> void:
 	var skel := skeleton()
 	if skel == null or _ik != null:
 		return
-	_targets = [
-		_target(carriage, "GripDominantTarget", _marker(weapon_model, GRIP_DOMINANT, dominant_grip)),
-		_target(carriage, "GripOffhandTarget", _marker(weapon_model, GRIP_OFFHAND, offhand_grip)),
-	]
+	var grips := config if config != null and config.has_grips() else grips_on(weapon_model)
+	_targets = [_target(carriage, "GripDominantTarget", Vector3.ZERO), _target(carriage, "GripOffhandTarget", Vector3.ZERO)]
 	_wrists = []
 	for index in 2:
-		var grip := _targets[index]
-		if has_contacts():
-			if index == 1:
-				_rear_station = grip.position
-			grip.transform = SwordGripFrame.contact_target(grip.position, grip_contacts[index])
-			_wrists.append(_target(grip, "Wrist", Vector3.ZERO))
-		else:
-			grip.transform = SwordGripFrame.frame(grip.position, SwordGripFrame.COMMON_HAND_AXIS, hand_span_axes[index])
-			_wrists.append(_target(grip, "Wrist", SwordGripFrame.wrist_offset(HAND_LENGTH)))
+		_targets[index].transform = grips.grip_frames[index]
+		_wrists.append(_target(_targets[index], "Wrist", grips.grip_wrists[index]))
+	if has_contacts():
+		_rear_station = grips.grip_stations[1]
 	_chain = CombatPoseModifier3D.new()
 	_chain.name = "KineticChain"
 	_chain.clavicle = clavicle_response
 	if rear_hand_pivot and has_contacts():
 		_chain.rear_pivot = true
+	if has_contacts():
 		_chain.rear_station = _rear_station
 		_chain.rear_contact_inverse = grip_contacts[1].affine_inverse()
+		_chain.rear_roll_cut_right = CombatPoseModifier3D.radians_of(rear_hand_roll_cut_right_degrees)
+		_chain.rear_roll_cut_left = CombatPoseModifier3D.radians_of(rear_hand_roll_cut_left_degrees)
 	skel.add_child(_chain)
 	var chest_mount := BoneAttachment3D.new()
 	chest_mount.name = "ChestPoles"
@@ -349,13 +418,15 @@ func apply_stance(stance: FighterStanceProfile) -> void:
 	_chain.poles = _guided
 	_chain.elbow_from_clip = elbow_from_clip
 	_chain.arm_key_degrees = arm_guard_degrees
-	_chain.arm_key_rotations = arm_guard_rotations
+	_chain.arm_key_rotations = CombatPoseModifier3D.mirrored_guard_keys(arm_guard_degrees, arm_guard_rotations) if arm_keys_mirrored else arm_guard_rotations
 	_chain.arm_cut_degrees = arm_cut_degrees
 	_chain.arm_cut_right_rotations = arm_cut_right_rotations
-	_chain.arm_cut_left_rotations = arm_cut_left_rotations
+	_chain.arm_cut_left_rotations = CombatPoseModifier3D.mirror_arm_rotations(arm_cut_right_rotations) if arm_keys_mirrored else arm_cut_left_rotations
+	_chain.torso_cut_right_yaw = CombatPoseModifier3D.radians_of(torso_cut_right_yaw_degrees)
+	_chain.torso_cut_left_yaw = CombatPoseModifier3D.radians_of(torso_cut_right_yaw_degrees, -1.0) if arm_keys_mirrored else CombatPoseModifier3D.radians_of(torso_cut_left_yaw_degrees)
 	_chain.arm_load_degrees = arm_load_degrees
 	_chain.arm_load_right_rotations = arm_load_right_rotations
-	_chain.arm_load_left_rotations = arm_load_left_rotations
+	_chain.arm_load_left_rotations = CombatPoseModifier3D.mirror_arm_rotations(arm_load_right_rotations) if arm_keys_mirrored else arm_load_left_rotations
 	_chain.frame = get_parent() as Node3D
 	_chain.arm_roots = PackedStringArray([dominant_bones[0], offhand_bones[0]])
 	_chain.wrists = _wrists

@@ -14,6 +14,7 @@ const SETTLE_MSEC := 1500
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	var rules := StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), rules)
 	kits.match_loadout = RiposteKits.match_loadout(kits.arena)
@@ -50,7 +51,7 @@ func _init() -> void:
 			camera.look_at_from_position(view[1], feet + Vector3(0.0, 0.45, 0.0), Vector3.UP)
 			await process_frame
 			await RenderingServer.frame_post_draw
-			root.get_texture().get_image().save_png("res://../.reports/death_%s_%s.png" % [label, view[0]])
+			SkeletonCapture.save(root, "res://../.reports/death_%s_%s.png" % [label, view[0]], "capture_deaths")
 		print("RIPOSTE_CAPTURE %s clip=%s" % [label, proxy.animation_clip(PresentationKit.ANIM_DEATH)])
 		world.queue_free()
 		await process_frame
@@ -98,7 +99,7 @@ func _capture_pair(rules: DuelRules, kits: DuelKits) -> void:
 	camera.look_at_from_position(middle + right * 4.0 + Vector3(0.0, 1.0, 0.0), middle + Vector3(0.0, 0.6, 0.0), Vector3.UP)
 	await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://../.reports/death_pair_side.png")
+	SkeletonCapture.save(root, "res://../.reports/death_pair_side.png", "capture_deaths")
 	print("RIPOSTE_CAPTURE pair striker=%s finishing=%s" % [striker.animation_clip(striker.current_semantic()), striker.is_finishing()])
 	world.queue_free()
 	await process_frame

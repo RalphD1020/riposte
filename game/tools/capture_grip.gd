@@ -65,6 +65,7 @@ var _lines: ImmediateMesh
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--body="):
 			_body = argument.trim_prefix("--body=")
@@ -127,7 +128,7 @@ func _run() -> void:
 				_proxy.apply_pose(Vector3.ZERO, PI * 0.5, row.weapon_angle, row, FRAME)
 				await process_frame
 			await RenderingServer.frame_post_draw
-			root.get_texture().get_image().save_png(_out.path_join("%s_%s.png" % [pose[0], view[0]]))
+			SkeletonCapture.save(root, _out.path_join("%s_%s.png" % [pose[0], view[0]]), "capture_grip", {"pose": pose[0], "view": view[0]})
 	print("RIPOSTE_CAPTURE grip %s -> %s" % [_body, _out])
 	quit()
 

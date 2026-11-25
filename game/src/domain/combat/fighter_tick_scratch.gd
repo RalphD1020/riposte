@@ -34,6 +34,10 @@ var dashed: bool = false
 ## under control that gained nothing over the tick is pinned. Overwritten
 ## each tick by `DuelSimulation`.
 var weapon_start_speed: float = 0.0
+## The speed the weapon motor acted on this tick: the start speed after the
+## coordinate's torque-free step, before any torque. The motor's work is its
+## torque over this speed and the one it ended at. Written by `WeaponSystem.step`.
+var weapon_motor_speed: float = 0.0
 ## Set when this tick's steel episode dipped impact authority, so the same
 ## tick does not also recover it (IMPACT-AUTHORITY-001). Cleared at tick start.
 var authority_dipped: bool = false

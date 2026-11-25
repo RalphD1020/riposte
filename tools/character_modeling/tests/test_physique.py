@@ -63,6 +63,31 @@ class InputIndependence(unittest.TestCase):
         self.assertFalse(any("stamina_recovery" in e.affects for e in BODY_INPUTS))
 
 
+class GripIsHeightOnly(unittest.TestCase):
+    """GRIP-HEIGHT-001: the grip radius is the reference grip scaled by height
+    alone. Frame build and muscularity (mass, girth, torso) never move it."""
+
+    def test_grip_radius_follows_height_and_nothing_else(self):
+        frames = [e for e in BODY_INPUTS if e.id == "frame_build"][0]
+        muscles = [e for e in BODY_INPUTS if e.id == "muscularity"][0]
+        for height in (1.6, 1.8, 2.0):
+            expected = baseline.REFERENCE_GRIP_RADIUS_M * height / 1.8
+            grips = set()
+            masses = set()
+            for frame, muscle in itertools.product((frames.minimum, 1.0, frames.maximum), (muscles.minimum, 1.0, muscles.maximum)):
+                out = physique.resolve_physique({"height_m": height, "frame_build": frame, "muscularity": muscle})
+                grips.add(out["grip_radius_m"])
+                masses.add(round(out["mass_kg"], 9))
+            self.assertGreater(len(masses), 1, "fixture: the builds at %.2f m differ in mass" % height)
+            self.assertEqual(len(grips), 1, "at %.2f m every build holds at one grip radius" % height)
+            self.assertAlmostEqual(grips.pop(), expected, places=12)
+
+    def test_no_body_input_but_height_declares_the_grip(self):
+        for entry in BODY_INPUTS:
+            if entry.id != "height_m":
+                self.assertNotIn("grip_radius_m", entry.affects, entry.id)
+
+
 class PhysicalOrdering(unittest.TestCase):
     def test_taller_is_heavier_stronger_and_wider_by_the_square_cube_laws(self):
         short = physique.resolve_physique(moved(WOLF, "height_m", 1.6))

@@ -8,6 +8,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	var rules := StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), rules)
 	kits.match_loadout = RiposteKits.match_loadout(kits.arena)
@@ -33,6 +34,5 @@ func _init() -> void:
 			proxy.apply_pose(feet, row.facing, row.weapon_angle, row, 1.0 / 60.0)
 			await process_frame
 		await RenderingServer.frame_post_draw
-		var image := root.get_texture().get_image()
-		image.save_png("res://../.reports/guard_%d.png" % int(degrees))
+		SkeletonCapture.save(root, "res://../.reports/guard_%d.png" % int(degrees), "capture_guard_angles", {"degrees": degrees})
 	quit()

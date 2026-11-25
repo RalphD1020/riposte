@@ -83,10 +83,10 @@ static func table(rules: DuelRules) -> String:
 		["grip", "Hand discs, presentation and self-clearance only", "m", "2 × %s; not a hurt shape" % _n(fighter.hand_radius, 3)],
 		["steel", "Sword-vs-sword steel", "—", "blade only (STEEL-TOPOLOGY-001)"],
 		["exposure", "Exposure in damage", "—", "reading only (PHYS-004)"],
-		["tap_swing", "Tap from the guard: release → overswing", "ticks", str(tap[0])],
+		["tap_swing", "Tap from the guard: release → stop (active phases end)", "ticks", str(tap[0])],
 		["tap_control", "Tap whiff: release → under control", "ticks", str(tap[1])],
 		["full_windback", "Full charge: press → fully wound", "ticks", str(full[2])],
-		["full_swing", "Full charge: release → overswing", "ticks", str(full[0])],
+		["full_swing", "Full charge: release → stop (active phases end)", "ticks", str(full[0])],
 		["full_control", "Full whiff: release → under control", "ticks", str(full[1])],
 	]
 	var lines := PackedStringArray(["| Quantity | Unit | Now (rules %d) | abb6a27 (rules 20) |" % rules.version, "| --- | --- | --- | --- |"])
@@ -118,7 +118,7 @@ static func rewritten(rules: DuelRules) -> String:
 	return text.substr(0, from + BEGIN.length()) + block + text.substr(to)
 
 
-## A tap from the right guard, idle: [release → overswing, release → neutral].
+## A tap from the right guard, idle: [release → stop (the active phases end), release → neutral].
 static func _tap(rules: DuelRules) -> PackedInt32Array:
 	var rig := WeaponRig.create(rules)
 	rig.step(true, true)
@@ -129,7 +129,7 @@ static func _tap(rules: DuelRules) -> PackedInt32Array:
 	return PackedInt32Array([swing, rig.tick - released])
 
 
-## A full charge from the right guard, idle: [release → overswing,
+## A full charge from the right guard, idle: [release → stop (the active phases end),
 ## release → neutral, press → full charge].
 static func _full(rules: DuelRules) -> PackedInt32Array:
 	var rig := WeaponRig.create(rules)

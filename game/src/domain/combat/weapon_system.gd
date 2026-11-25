@@ -45,6 +45,16 @@ const STOP_ARRIVAL_RAD := 1.0e-9
 ## the window. It is not a memory of the click. A bind that keeps the blade
 ## fast past the healthy brake from the speed at that moment drops the tap.
 const TAP_COAST_SLACK := 2
+## Longest brake the stopping rollout follows. The weakest legal brake (fatigue and injury floors, the heaviest
+## pose) stops the 18 rad/s ceiling in about 15 ticks; a longer stop is treated as one that cannot finish.
+const BRAKE_ROLLOUT_TICKS := 32
+## Bisection steps of the terminal-brake commitment: one tick's speed range (one tick of drive plus one of brake, under
+## 8 rad/s) to under 0.03 rad/s, so the stop lands at most about 1° short of the commanded end (the contract is ±5°). Each
+## step is a full stopping rollout, so the count is the commitment tick's cost.
+const COMMIT_BISECTIONS := 8
+## Fixed refinements of the torque-free step's end point (deterministic; two bring a free coast's energy within the
+## step's discretization).
+const INERTIAL_REFINEMENTS := 2
 
 
 static func can_start_attack(fighter: FighterState, weapon: WeaponDefinition) -> bool:
@@ -132,7 +142,6 @@ static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Arr
 		_clear_charge(weapon)
 		events.append(DuelEvent.create(DuelEventTypes.CHARGE_STARTED, tick, fighter.slot, DuelEvent.NONE, {DuelEventKeys.DIRECTION: weapon.swing_dir}))
 	var spec := rules.spec_of(fighter)
-	var inertia := WeaponKinematics.motor_inertia(spec, weapon.angle, scratch.motor_pose if scratch != null else null)
 	var speed_scale := condition.speed_scale if condition != null else 1.0
 	## Two drives, named at the boundary (STAMINA-004). `base_drive` is the
 	## damage term and feeds the neutral hold and the guard return. Fatigue
@@ -144,7 +153,13 @@ static func step(fighter: FighterState, rules: DuelRules, tick: int, events: Arr
 	var fatigue := condition.fatigue_scale if condition != null else 1.0
 	var base_drive := spec.fighter.weapon_torque_scale * damage_force
 	var fatigue_scaled_drive := base_drive * fatigue
-	if _drive_motor(weapon, definition, fatigue_scaled_drive, base_drive, speed_scale, inertia, rules.combat, return_scale, fighter.attack_held) and diagnostics != null:
+	var pose := scratch.motor_pose if scratch != null else BladePose.new()
+	## The coordinate's own torque-free dynamics first (no torque, no work); the motor acts on the speed it leaves.
+	weapon.speed = inertial_speed(spec, weapon.angle, weapon.speed, pose)
+	var inertia := kick_inertia(spec, weapon.angle, weapon.speed, pose)
+	if scratch != null:
+		scratch.weapon_motor_speed = weapon.speed
+	if _drive_motor(weapon, definition, fatigue_scaled_drive, base_drive, speed_scale, inertia, rules.combat, return_scale, fighter.attack_held, spec, pose) and diagnostics != null:
 		diagnostics.guard_hard_stop_hits += 1
 	## A held charge earns credit only while stamina remains (STAMINA-004); at
 	## zero it stops accumulating and is never released for the player.
@@ -331,7 +346,9 @@ static func _launch(fighter: FighterState, rules: DuelRules, charge: float, tick
 	}))
 
 
-static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, fatigue_scaled_drive: float, base_drive: float, speed_scale: float, inertia: float, combat: CombatTuning, return_scale: float, yield_attack: bool) -> bool:
+## The voluntary motor, on the speed the torque-free step left (`weapon.speed`), through `inertia` (`kick_inertia`).
+## The torque it records is its own change of that speed only.
+static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, fatigue_scaled_drive: float, base_drive: float, speed_scale: float, inertia: float, combat: CombatTuning, return_scale: float, yield_attack: bool, spec: CombatantPhysicsSpec, pose: BladePose) -> bool:
 	var dt := SimulationTimebase.TICK_SECONDS
 	var old_speed := weapon.speed
 	## Every drive is a bounded torque (`α = τ / M_θ`, at most `α·dt` per
@@ -345,8 +362,32 @@ static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, fati
 			weapon.speed = SimMath.approach(weapon.speed, -weapon.swing_dir * definition.windup_speed * speed_scale, definition.windup_accel(fatigue_scaled_drive, inertia) * dt)
 		CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_EARLY, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.ACTIVE_LATE:
 			var charge := weapon.swing_charge
+			## Predictive braking (90 / 180 contract): drive unless one more driven tick would leave the attack's own finite
+			## brake unable to stop by the commanded endpoint - then brake, before the centre if a fast cut needs it. The
+			## stop is rolled out with the brake at each angle it will pass (M_θ changes along the track). A cut the motor
+			## was braking keeps the full brake while that brake is still what stops it by the end (within one tick of the
+			## brake's own travel, finer than a tick can resolve): the last tick's torque and the stopping rollout are the
+			## latch, no new state. A negative torque that only held the speed target against the track's own speed-up is
+			## not a brake unless the rollout says so, and a cut a contact slowed well inside its stop drives on; a contact
+			## that reverses the cut or a new attack leaves through the usual phase logic. The phase (and so the attack's
+			## eligibility) still follows progress; nothing is clamped.
 			var ceiling := definition.achievable_swing_speed(charge, weapon.launch_preparation) * speed_scale
-			weapon.speed = SimMath.approach(weapon.speed, weapon.swing_dir * ceiling, definition.swing_accel(charge, fatigue_scaled_drive, inertia) * dt)
+			var driven := SimMath.approach(weapon.speed, weapon.swing_dir * ceiling, definition.swing_accel(charge, fatigue_scaled_drive, inertia) * dt)
+			var brake_step := definition.brake_accel(charge, fatigue_scaled_drive, inertia) * dt
+			var current := weapon.speed * weapon.swing_dir
+			var slowest := maxf(current - brake_step, 0.0)
+			var launched_this_tick := weapon.phase == CombatPhase.Id.LAUNCH and weapon.phase_ticks <= 1
+			var forward := driven * weapon.swing_dir
+			var remaining := (weapon.swing_end - weapon.angle) * weapon.swing_dir
+			var braking := current > 0.0 and not launched_this_tick and weapon.motor_torque * weapon.swing_dir < 0.0
+			if brake_step <= SimMath.EPSILON or current <= 0.0:
+				weapon.speed = driven
+			elif braking and _stop_travel(spec, definition, charge, fatigue_scaled_drive, weapon.angle, weapon.swing_dir, slowest, pose) >= remaining - brake_step * dt:
+				weapon.speed = weapon.swing_dir * slowest
+			elif forward > 0.0 and _stop_travel(spec, definition, charge, fatigue_scaled_drive, weapon.angle, weapon.swing_dir, forward, pose) > remaining:
+				weapon.speed = weapon.swing_dir * _committed_speed(spec, definition, charge, fatigue_scaled_drive, weapon.angle, weapon.swing_dir, slowest, forward, remaining, pose)
+			else:
+				weapon.speed = driven
 		_:
 			weapon.speed = coast_speed(weapon.speed, weapon.angle, weapon.phase, weapon.stable_side, weapon.swing_charge, definition, fatigue_scaled_drive, base_drive, inertia, combat, return_scale, yield_attack)
 	weapon.motor_torque = inertia * (weapon.speed - old_speed) / dt
@@ -356,6 +397,78 @@ static func _drive_motor(weapon: WeaponState, definition: WeaponDefinition, fati
 	var into := weapon.speed + accel * dt_limit
 	var stopped := assign_stop(weapon, weapon.angle + into * dt_limit, into, definition.guard_limit)
 	return is_hard_stop(into, angle_before, stopped, definition.guard_limit, definition.windup_accel(fatigue_scaled_drive, inertia))
+
+
+## One tick of the weapon coordinate's torque-free dynamics, `M_θ(θ) θ̈ + ½ M_θ′(θ) θ̇² = 0`, in its energy-conserving
+## form: `½ M_θ θ̇²` is unchanged from `angle` to where `speed` carries the blade this tick, so `θ̇` scales by
+## `sqrt(M_θ(θ) / M_θ(θ_next))` (the held inertia of UNIFIED-MASS-001, the body held still). A blade whose inertia falls
+## along the track speeds up, one whose inertia rises slows; no energy is made or lost. `pose` is scratch. `dt` is the
+## tick; only convergence tests pass another.
+static func inertial_speed(spec: CombatantPhysicsSpec, angle: float, speed: float, pose: BladePose, dt: float = SimulationTimebase.TICK_SECONDS) -> float:
+	var limit := spec.weapon.guard_limit
+	var here := WeaponKinematics.motor_inertia(spec, angle, pose)
+	if here <= SimMath.EPSILON:
+		return speed
+	## The angle advances with the new speed (semi-implicit), so the end point is found by a fixed number of
+	## refinements of `θ_next = θ + θ̇_new·dt` rather than from the old speed alone.
+	var next := speed
+	for _i in INERTIAL_REFINEMENTS:
+		var there := WeaponKinematics.motor_inertia(spec, clampf(angle + next * dt, -limit, limit), pose)
+		if there <= SimMath.EPSILON:
+			return speed
+		next = speed * sqrt(here / there)
+	return next
+
+
+## The inertia a tick's torque acts through: the coordinate's at the end of the torque-free step (`carried` from
+## `angle`), where that step left the blade's energy. The motor's work `τ·½(θ̇_carried + θ̇_new)·dt` is then the
+## energy it adds there, and the motor, its stopping rollout and the ledger share one law.
+static func kick_inertia(spec: CombatantPhysicsSpec, angle: float, carried: float, pose: BladePose) -> float:
+	var limit := spec.weapon.guard_limit
+	return WeaponKinematics.motor_inertia(spec, clampf(angle + carried * SimulationTimebase.TICK_SECONDS, -limit, limit), pose)
+
+
+## Radians from `angle` to rest if this tick ends at forward speed `speed` and every later tick brakes fully.
+static func _stop_travel(spec: CombatantPhysicsSpec, definition: WeaponDefinition, charge: float, drive: float, angle: float, dir: float, speed: float, pose: BladePose) -> float:
+	var dt := SimulationTimebase.TICK_SECONDS
+	return speed * dt + braked_travel(spec, definition, charge, drive, angle + dir * speed * dt, dir, speed, pose)
+
+
+## The terminal-brake commitment: the forward speed this tick should end at, between the full brake (`slowest`)
+## and the full drive (`fastest`), so that braking fully from the next tick stops at the commanded end. A fixed
+## bisection keeps it deterministic and mirror-exact, and it settles on the lower bracket so the cut never runs
+## past its end on this account; when even the full brake overruns, the full brake is the answer.
+static func _committed_speed(spec: CombatantPhysicsSpec, definition: WeaponDefinition, charge: float, drive: float, angle: float, dir: float, slowest: float, fastest: float, remaining: float, pose: BladePose) -> float:
+	if _stop_travel(spec, definition, charge, drive, angle, dir, slowest, pose) >= remaining:
+		return slowest
+	var low := slowest
+	var high := fastest
+	for _i in COMMIT_BISECTIONS:
+		var mid := (low + high) * 0.5
+		if _stop_travel(spec, definition, charge, drive, angle, dir, mid, pose) > remaining:
+			high = mid
+		else:
+			low = mid
+	return low
+
+
+## Radians a blade at `angle`, moving forward (along `dir`) at `forward` rad/s, still travels while the attack's
+## brake stops it: the runtime's own semi-implicit steps, each with the brake the inertia at that angle allows.
+## A stop that would not finish within `BRAKE_ROLLOUT_TICKS` counts as never stopping (brake now). `pose` is
+## scratch for the inertia samples.
+static func braked_travel(spec: CombatantPhysicsSpec, definition: WeaponDefinition, charge: float, drive: float, angle: float, dir: float, forward: float, pose: BladePose) -> float:
+	var dt := SimulationTimebase.TICK_SECONDS
+	var travel := 0.0
+	var speed := forward
+	for _tick in BRAKE_ROLLOUT_TICKS:
+		var at := angle + dir * travel
+		speed = inertial_speed(spec, at, dir * speed, pose) * dir
+		var removed := definition.brake_accel(charge, drive, kick_inertia(spec, at, dir * speed, pose)) * dt
+		speed = maxf(speed - removed, 0.0)
+		if speed <= 0.0:
+			return travel
+		travel += speed * dt
+	return INF
 
 
 ## The guard limit is an inelastic stop: a blade that reaches it keeps no

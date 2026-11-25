@@ -108,24 +108,45 @@ var _weapon_origin: Node3D
 var _carriage_node: Node3D
 ## The authoritative planar sword at this frame's angle, in the combat frame.
 var _planar := BladePose.new()
-var _field := CombatPresentationField.new()
+## The body's declared drawing, built once as the body binds, and the one
+## evaluation of the drawn weapon over it (`_field` is its lift). `_probe` is
+## the same evaluation for a boundary's branches: evaluating them never
+## touches what is drawn.
+var _config := WeaponPresentationConfig.shared()
+var _evaluator: WeaponPoseEvaluator
+var _probe: WeaponPoseEvaluator
+var _field: CombatPresentationField
+## The cut's turnover, stepped once per authoritative snapshot (`advance`).
 var _inflection := CutPresentationCurve.Inflection.new()
-## Inertialized lift: where the field's answer jumps (a phase boundary), the
-## jump in (height, pitch, roll) is carried as an offset that decays, so the
-## drawn sword never pops — and never leaves the orbit horizontally.
-var _carriage_phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL
-var _carriage_committed: bool = false
+## The action being drawn toward, read once per snapshot (its turnover, the
+## last boundary, the swing's launch); `_frame` is it at this frame's lift
+## inputs; `_drawn` / `_next` are a boundary's two branches.
+var _action := WeaponActionContext.new()
+var _frame := WeaponActionContext.new()
+var _drawn := WeaponActionContext.new()
+var _next := WeaponActionContext.new()
+## Inertialized lift: where the field's answer jumps (a phase or turnover
+## boundary, leaving a contact), the jump in (height, pitch, roll) is fixed
+## once, at the boundary, from both branches at the same authoritative state,
+## and decays with the presentation time elapsed since — so the drawn sword
+## never pops, never leaves the orbit horizontally, and never depends on which
+## frames were rendered.
 var _carry_lift := Vector3.ZERO
-var _shown_lift := Vector3.ZERO
 ## The body's hand-back to the stance (`BodySupportPose.settled`) is carried
 ## across the same boundaries, so the arms and torso never pop between the cut
 ## and guard support (a recovery handing over to the guard, a commit) wherever
 ## the blade stopped.
 var _carry_settled: float = 0.0
-var _settled_phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL
-var _settled_committed: bool = false
-## Whether the last frame's sword was anchored at a contact.
-var _anchored: bool = false
+## Presentation seconds at the last boundary, and at the sample being drawn.
+var _carry_from: float = 0.0
+var _clock: float = 0.0
+## False until the first pose: that one draws its own branch, no jump.
+var _branch_known: bool = false
+## The previous call's inputs, for a caller that poses single rows without
+## snapshots (`apply_pose` with no sample time): each call is its own tick.
+var _last := PresentationFighter.new()
+var _last_known: bool = false
+var _transition_planar := BladePose.new()
 ## Target bearing τ minus combat heading φ this frame (+ to the left).
 var _look_offset: float = 0.0
 var _blade_core: StandardMaterial3D
@@ -191,7 +212,7 @@ static func create(
 	proxy._weapon = spec.weapon
 	proxy._hilt = spec.weapon.blade_base_radius
 	proxy._tip = spec.weapon.tip_radius
-	proxy._field.carriage_radius = spec.handling.carriage_radius
+	proxy._config = proxy._config.with_carriage_radius(spec.handling.carriage_radius)
 	proxy._build(push_radius)
 	return proxy
 
@@ -211,13 +232,23 @@ func blade_color() -> Color:
 ## Pose for this frame. `world`, `facing`, and `weapon_angle` are the
 ## interpolated pose; `row` is the latest snapshot's facts for this fighter;
 ## `delta` is presentation-scaled time and `time_scale` its ratio to real time
-## (0 in hitstop), which the clips play at (PRES-TIME-001). `contact_height`
-## is the shared rendered height of a sword contact (`ContactPresentation`),
-## NAN when the swords are apart. `lift_progress` / `lift_charge` are the lift's
-## inputs interpolated between snapshots (`MatchPresenter.lift_inputs`); NAN
-## reads the row's own.
-func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: PresentationFighter, delta: float, time_scale: float = 1.0, contact_height: float = NAN, lift_progress: float = NAN, lift_charge: float = NAN) -> void:
+## (0 in hitstop), which the clips play at (PRES-TIME-001). A sword contact
+## never reaches the pose: the drawn sword stays on its continuous projection
+## through contact onset, contact and release (CONTACT-PRESENTATION-001).
+## `lift_progress` / `lift_charge` are the lift's inputs interpolated between
+## snapshots (`MatchPresenter.lift_inputs`); NAN reads the row's own.
+## `sample_seconds` is the presentation time being drawn (`MatchPresenter`,
+## which also `advance`s the proxy once per snapshot); NAN treats this call as
+## its own snapshot, `delta` after the previous one.
+func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: PresentationFighter, delta: float, time_scale: float = 1.0, lift_progress: float = NAN, lift_charge: float = NAN, sample_seconds: float = NAN) -> void:
 	_time += delta
+	## The presentation time being drawn, before anything reads it.
+	if is_nan(sample_seconds):
+		_clock += maxf(delta, 0.0)
+		var turnover := _turn(row, weapon_angle)
+		_boundary(_last if _last_known else row, row, _last.weapon_angle if _last_known else weapon_angle, turnover, _clock - maxf(delta, 0.0))
+	else:
+		_clock = sample_seconds
 	_is_falling = row.is_falling
 	if not _is_falling:
 		_fall_offset = 0.0
@@ -241,27 +272,17 @@ func apply_pose(world: Vector3, facing: float, weapon_angle: float, row: Present
 	_look_offset = angle_difference(facing, row.target_bearing)
 	_pose_planar(weapon_angle)
 	_guard.update(weapon_angle)
-	var committed := false
-	if CombatPresentationField.is_swing(row.phase) or row.phase == CombatPhase.Id.RECOVERY:
-		committed = _inflection.update(CutPresentationCurve.cut_angle(weapon_angle, row.cut_dir), row.weapon_speed * signf(row.cut_dir))
-	else:
-		_inflection.reset()
-	var progress := row.swing_progress if is_nan(lift_progress) else lift_progress
-	var charge := row.charge if is_nan(lift_charge) else lift_charge
-	_field.sample(weapon_angle, _planar.carriage_y, _planar.carriage_x, row.phase, progress, charge, row.swing_charge, _weapon_kit.blade_height, row.cut_dir, committed)
-	## A combat-aligned sword is already level at the interaction height: the
-	## contact changes its motion, not its drawn place (no anchoring snap).
-	var anchored := not is_nan(contact_height) and not _field.combat_aligned
-	if anchored:
-		## CONTACT-PRESENTATION-001: level at the shared contact height. The
-		## carriage and yaw stay the authoritative ones; roll is untouched.
-		_field.raise = contact_height - position.y - _visual_root.transform.origin.y - _weapon_kit.blade_height
-		_field.pitch = 0.0
-	_carry(row.phase, delta, anchored, committed)
+	_remember(row, weapon_angle)
+	_frame.read(row, row.swing_progress if is_nan(lift_progress) else lift_progress, row.charge if is_nan(lift_charge) else lift_charge, _action.committed)
+	_frame.swing_started = _action.swing_started
+	_frame.transition = _action.transition
+	## Show this frame's sword: the evaluated weapon plus the carried jump.
+	_evaluator.evaluate(_planar, weapon_angle, _weapon_kit.blade_height, _frame, _carry_lift * _decay())
+	_carriage_node.transform = _evaluator.weapon
 	## The elbows inflect on the blade's beat: the cut's own hand-back to the
 	## stance (its ends and the committed rise) is theirs too.
 	var cut := CutPresentationCurve.cut_angle(weapon_angle, row.cut_dir)
-	var settled := _carry_settled_for(row.phase, progress, cut, committed, delta)
+	var settled := clampf(settled_for(_frame.phase, _frame.progress, cut, _frame.committed) + _carry_settled * _decay(), 0.0, 1.0)
 	if _rig != null:
 		_support.sample(weapon_angle, row.phase, _guard.side(), _field.carriage_point.x, _field.gather, settled, cut, row.cut_dir)
 		_support.clip_owns_arms = not row.is_alive() or row.is_falling or row.body_over_edge
@@ -390,36 +411,82 @@ func set_pose_debug(on: bool) -> void:
 		_pose_debug.clear()
 
 
-## Show this frame's sword. On a phase change, or when a cut commits into the
-## opposite side, the field may answer from a different branch (guard ↔ cut,
-## gather ↔ none, the committed rise); the difference in lift from
-## what was on screen is kept as an offset and decays over
-## `CARRY_BLEND_SECONDS` of presentation time, so continuity never depends on
-## the branches agreeing. The carriage and yaw are the authoritative ones
-## every frame; only height, pitch and roll are blended.
-##
-## A sword contact is exact the moment it exists (CONTACT-PRESENTATION-001):
-## anchored, nothing is carried — the drawn sword is where the contact says.
-## Leaving a contact carries the anchored lift and lets it decay into the
-## free one, so the release never pops.
-func _carry(phase: CombatPhase.Id, delta: float, anchored: bool = false, committed: bool = false) -> void:
-	var target := Vector3(_field.raise, _field.pitch, _field.roll)
-	if anchored:
-		_carriage_phase = phase
-		_carriage_committed = committed
-		_carry_lift = Vector3.ZERO
-	elif phase != _carriage_phase or committed != _carriage_committed or _anchored:
-		_carriage_phase = phase
-		_carriage_committed = committed
-		_carry_lift = _shown_lift - target
-	_anchored = anchored
-	_carry_lift *= exp(-maxf(delta, 0.0) / CARRY_BLEND_SECONDS)
-	_field.raise += _carry_lift.x
-	_field.pitch += _carry_lift.y
-	_field.roll += _carry_lift.z
-	_field.compose()
-	_shown_lift = Vector3(_field.raise, _field.pitch, _field.roll)
-	_carriage_node.transform = _field.transform
+## Step the presentation once per authoritative snapshot: the cut's turnover
+## from `to`'s own sword, then the boundary between the branch drawn so far and
+## `to`'s, fixed at `start_seconds` — the presentation time the interpolation
+## toward `to` begins (the `from` snapshot's).
+func advance(from: PresentationFighter, to: PresentationFighter, start_seconds: float) -> void:
+	_boundary(from, to, from.weapon_angle, _turn(to, to.weapon_angle), start_seconds)
+
+
+## The cut's turnover (`CutPresentationCurve.Inflection`) at `row`'s phase and
+## the sword at `angle`; any other phase lets it go.
+func _turn(row: PresentationFighter, angle: float) -> bool:
+	if WeaponActionContext.is_cut_phase(row.phase):
+		return _inflection.update(CutPresentationCurve.cut_angle(angle, row.cut_dir), row.weapon_speed * signf(row.cut_dir))
+	_inflection.reset()
+	return false
+
+
+## On a phase change, or when a cut commits into the opposite side, the field
+## may answer from a different branch (guard ↔ cut, gather ↔ none, the
+## committed rise). The jump — the drawn branch minus `to`'s, both at `from`'s
+## sword (`from_angle`), plus what is left of earlier jumps — is fixed here at
+## `at` and decays over `CARRY_BLEND_SECONDS` of presentation time since, so
+## continuity never depends on the branches agreeing nor on the frames drawn.
+## The carriage and yaw are the authoritative ones every frame; only height,
+## pitch and roll are carried, and the body's hand-back with them. A sword
+## contact is not a boundary: the drawn sword stays on its continuous
+## projection through contact onset, contact and release
+## (CONTACT-PRESENTATION-001).
+func _boundary(from: PresentationFighter, to: PresentationFighter, from_angle: float, committed: bool, at: float) -> void:
+	var branch_changed := _branch_known and (to.phase != _action.phase or committed != _action.committed)
+	if branch_changed:
+		var keep := _decay_at(at)
+		_carry_lift *= keep
+		_carry_settled *= keep
+		_carry_from = at
+		## Both branches at `from`'s blade: the drawn one as it was drawn, the
+		## next with the lift inputs `MatchPresenter.lift_inputs` starts it on.
+		var same_phase := to.phase == from.phase
+		_drawn.read(from, from.swing_progress, from.charge, _action.committed)
+		_drawn.phase = _action.phase
+		_next.read(to, from.swing_progress if same_phase else to.swing_progress, from.charge if same_phase else to.charge, committed)
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, from_angle, _spec, _transition_planar)
+		var drawn := _probe.evaluate(_transition_planar, from_angle, _weapon_kit.blade_height, _drawn).lift
+		var next := _probe.evaluate(_transition_planar, from_angle, _weapon_kit.blade_height, _next).lift
+		_carry_lift += Vector3(drawn.x - next.x, drawn.y - next.y, wrapf(drawn.z - next.z, -PI, PI))
+		_carry_settled += settled_for(_drawn.phase, _drawn.progress, CutPresentationCurve.cut_angle(from_angle, _drawn.cut_dir), _drawn.committed) - settled_for(_next.phase, _next.progress, CutPresentationCurve.cut_angle(from_angle, _next.cut_dir), _next.committed)
+	if branch_changed or not _branch_known:
+		_action.transition = at
+	if to.phase == CombatPhase.Id.LAUNCH and (_action.phase != CombatPhase.Id.LAUNCH or not _branch_known):
+		_action.swing_started = at
+	elif not WeaponActionContext.is_cut_phase(to.phase):
+		_action.swing_started = NAN
+	_branch_known = true
+	_action.read(to, to.swing_progress, to.charge, committed)
+
+
+## The share of the last boundary's jump still carried at presentation time `t`.
+func _decay_at(t: float) -> float:
+	return exp(-maxf(t - _carry_from, 0.0) / CARRY_BLEND_SECONDS)
+
+
+func _decay() -> float:
+	return _decay_at(_clock)
+
+
+
+
+func _remember(row: PresentationFighter, angle: float) -> void:
+	_last.phase = row.phase
+	_last.swing_progress = row.swing_progress
+	_last.charge = row.charge
+	_last.swing_charge = row.swing_charge
+	_last.cut_dir = row.cut_dir
+	_last.weapon_speed = row.weapon_speed
+	_last.weapon_angle = angle
+	_last_known = true
 
 
 ## The body's hand-back to the stance this frame (`BodySupportPose.settled`):
@@ -428,31 +495,11 @@ static func settled_for(phase: CombatPhase.Id, progress: float, cut: float, comm
 	return maxf(CombatPresentationField.stance_weight_for(phase, progress), CutPresentationCurve.stance_share(cut, committed))
 
 
-## `settled_for` carried across a phase or commit boundary: only the jump the
-## boundary itself makes — the old branch minus the new one at this very angle
-## and progress — is carried and decays like the sword's lift, never the
-## blade's own travel since the last frame, so the body keeps pace with a fast
-## cut and still never pops where the branches disagree.
-func _carry_settled_for(phase: CombatPhase.Id, progress: float, cut: float, committed: bool, delta: float) -> float:
-	var target := settled_for(phase, progress, cut, committed)
-	if phase != _settled_phase or committed != _settled_committed:
-		_carry_settled += settled_for(_settled_phase, progress, cut, _settled_committed) - target
-		_settled_phase = phase
-		_settled_committed = committed
-	_carry_settled *= exp(-maxf(delta, 0.0) / CARRY_BLEND_SECONDS)
-	return clampf(target + _carry_settled, 0.0, 1.0)
-
-
 ## World positions of the displayed blade's hilt and tip (for trails and
 ## effects — what the player sees).
 func blade_points() -> PackedVector3Array:
 	var origin := _carriage_node.global_transform
 	return PackedVector3Array([origin * Vector3(0.0, 0.0, _hilt), origin * Vector3(0.0, 0.0, _tip)])
-
-
-## Whether the last pose anchored the sword at a contact.
-func is_contact_anchored() -> bool:
-	return _anchored
 
 
 ## World position of the drawn sword's axis `distance` from its pommel.
@@ -566,7 +613,13 @@ func reset_terminal() -> void:
 	_body_facing = NAN
 	_body_loose = 0.0
 	_corpse_fall_time = -1.0
+	## A new round draws its first snapshot fresh: nothing of the last carries.
 	_inflection.reset()
+	_action = WeaponActionContext.new()
+	_carry_lift = Vector3.ZERO
+	_carry_settled = 0.0
+	_branch_known = false
+	_last_known = false
 	_death_style = DeathPresentationProfile.STYLE_DEAD_DROP
 	if _rig != null:
 		_rig.set_pose_influence(1.0)
@@ -663,6 +716,21 @@ func is_cut_committed() -> bool:
 	return _inflection.committed
 
 
+## The body's declared drawing, and the one evaluation of its weapon (the
+## last pose's result).
+func weapon_config() -> WeaponPresentationConfig:
+	return _config
+
+
+func weapon_pose() -> WeaponPoseEvaluator:
+	return _evaluator
+
+
+## The action context the last pose was drawn from.
+func action_context() -> WeaponActionContext:
+	return _frame
+
+
 ## The lift solved for the last pose (hand position, stance weight, gather).
 func carriage() -> CombatPresentationField:
 	return _field
@@ -749,10 +817,7 @@ func _build_scene() -> void:
 	set_shadow_casting(model, true)
 	_rig = model as SwordRig3D
 	if _rig != null:
-		_field.configure_centre(_rig.centre_raise_delta, _rig.centre_pitch_delta_deg)
-		_field.configure_projection(_rig.combat_aligned_projection, _rig.interaction_raise)
-		_field.configure_load(_rig.load_raise, _rig.load_pitch_deg, _rig.load_roll_authored, _rig.load_roll_deg, _rig.load_roll_left_correction_deg)
-		_field.configure_edge(_rig.edge_leads_motion, _rig.edge_strike_from_carriage, SwordGripFrame.edge_normal(_rig.cutting_edge))
+		_config = _config.with_rig_lift(_rig)
 	_animation = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _animation != null:
 		## Clips play on Godot's own process step, ahead of the skeleton's
@@ -794,17 +859,22 @@ func _build_sword() -> void:
 	_weapon_origin = Node3D.new()
 	_weapon_origin.name = "WeaponOrigin"
 	_visual_root.add_child(_weapon_origin)
+	_weapon_model = CombatantVisuals.weapon_model(_combatant, side)
+	if _rig != null:
+		## The weapon owns the stations; the body only its hand offsets there.
+		_config = _config.with_grips(WeaponPresentationConfig.weapon_grip_stations(_spec.weapon), _rig.hand_offsets(), _rig.hand_wrists())
+	_evaluator = WeaponPoseEvaluator.new(_spec, _config)
+	_probe = WeaponPoseEvaluator.new(_spec, _config)
+	_field = _evaluator.field
 	var rest := -PhysicalBaseline.GUARD_ANGLE_RAD
 	_pose_planar(rest)
-	_field.sample(rest, _planar.carriage_y, _planar.carriage_x, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, _weapon_kit.blade_height)
-	_shown_lift = Vector3(_field.raise, _field.pitch, _field.roll)
+	_evaluator.evaluate(_planar, rest, _weapon_kit.blade_height, _frame)
 	_carriage_node = Node3D.new()
 	_carriage_node.name = "SwordCarriage"
-	_carriage_node.transform = _field.transform
+	_carriage_node.transform = _evaluator.weapon
 	_visual_root.add_child(_carriage_node)
 	var length := _tip - _hilt
 	var center := Vector3(0.0, 0.0, _hilt + length * 0.5)
-	_weapon_model = CombatantVisuals.weapon_model(_combatant, side)
 	if _weapon_model != null:
 		_carriage_node.add_child(_weapon_model)
 		## The sword casts too. At 512 its shadow broke into dots, and taking it
@@ -834,7 +904,7 @@ func _build_sword() -> void:
 		_x_ray(guard, 0)
 		_add_mesh(_carriage_node, "Guard", guard_mesh, guard, Vector3(0.0, 0.0, _hilt))
 	if _rig != null:
-		_rig.bind_sword(_carriage_node, _weapon_model)
+		_rig.bind_sword(_carriage_node, _weapon_model, _config)
 		_rig.apply_stance(_fighter_kit.stance)
 
 
@@ -897,7 +967,6 @@ func animation_clip(semantic: StringName) -> StringName:
 
 func animation_player() -> AnimationPlayer:
 	return _animation
-
 
 ## The clip rate for this frame's semantic: a gait plays at actual ground
 ## speed over the kit's reference (PRES-LOCO-001); every other clip at 1.

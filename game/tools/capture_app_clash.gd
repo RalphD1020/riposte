@@ -20,6 +20,7 @@ var _out: String = ""
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_out = ProjectSettings.globalize_path("res://../.reports/clash")
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--out="):
@@ -114,4 +115,4 @@ func _run() -> void:
 func _grab(shot_name: String) -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png(_out.path_join(shot_name + ".png"))
+	SkeletonCapture.save(root, _out.path_join(shot_name + ".png"), "capture_app_clash", {"shot": shot_name})

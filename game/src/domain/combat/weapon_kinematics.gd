@@ -39,10 +39,18 @@ static func pose_of(fighter: FighterState, spec: CombatantPhysicsSpec, out: Blad
 	return pose_at(fighter.x, fighter.y, fighter.facing, fighter.weapon.angle, spec, out)
 
 
+## The combat frame's heading pair, the one `motor_inertia` poses in; the same bits `pose_at` computes for facing 0.
+static var _frame_cos: float = SimMath.heading_cosine(0.0)
+static var _frame_sin: float = SimMath.heading_sine(0.0)
+
+
 ## Pose a sword from explicit centre, combat heading, and weapon angle.
 static func pose_at(x: float, y: float, facing: float, angle: float, spec: CombatantPhysicsSpec, out: BladePose) -> BladePose:
-	var cf := SimMath.heading_cosine(facing)
-	var sf := SimMath.heading_sine(facing)
+	return _pose_in(x, y, SimMath.heading_cosine(facing), SimMath.heading_sine(facing), angle, spec, out)
+
+
+## `pose_at` with the heading pair (`cf`, `sf`) already evaluated.
+static func _pose_in(x: float, y: float, cf: float, sf: float, angle: float, spec: CombatantPhysicsSpec, out: BladePose) -> BladePose:
 	var ca := SimMath.cosine(angle)
 	var sa := SimMath.sine(angle)
 	## û = R(φ)·(cos θ, sin θ). The heading uses the half-turn pair and θ the
@@ -145,10 +153,17 @@ static func held_inertia(spec: CombatantPhysicsSpec, pose: BladePose) -> float:
 ## held sword's generalized inertia there (`held_inertia`), which the motor
 ## divides its torque by exactly as every contact divides its impulse by it.
 ## A function of θ alone — the combat-frame pose is rotation invariant — so a
-## caller may pass any pose to sample into (`out`), or none.
+## caller may pass any pose to sample into (`out`), or none. For the weapons
+## this model expresses it is even in θ — the track is mirrored (forward even,
+## lateral odd), so `|P′|²` and the coupling are even (RULES proves it for the
+## reference sword) — and it is evaluated at `|θ|` so a blade and its mirror
+## see the same bits: the weapon-angle cosine (`SimMath.cosine`, a shifted sine)
+## is even only to rounding. Evenness belongs to the compiled mass and carriage
+## (an off-axis head does not by itself break it); a weapon whose compiled
+## inertia is not proven even by its own test must not be sampled at `|θ|`.
 static func motor_inertia(spec: CombatantPhysicsSpec, angle: float, out: BladePose = null) -> float:
 	var pose := out if out != null else BladePose.new()
-	pose_at(0.0, 0.0, 0.0, angle, spec, pose)
+	_pose_in(0.0, 0.0, _frame_cos, _frame_sin, absf(angle), spec, pose)
 	return held_inertia(spec, pose)
 
 

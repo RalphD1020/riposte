@@ -10,6 +10,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	var rules := StandardDuelRules.create()
 	var catalog := RiposteKits.build_catalog()
 	var skins: Array[StringName] = [&"", RiposteKits.SKIN_DUELIST_TRAINING]
@@ -41,6 +42,5 @@ func _init() -> void:
 		for _i in 4:
 			await process_frame
 	await RenderingServer.frame_post_draw
-	var image := root.get_texture().get_image()
-	image.save_png("res://../.reports/shot_%s.png" % ("close" if close else "gameplay"))
+	SkeletonCapture.save(root, "res://../.reports/shot_%s.png" % ("close" if close else "gameplay"), "capture_duel", {"close": close})
 	quit()

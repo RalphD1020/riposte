@@ -156,6 +156,19 @@ var arm_key_rotations: Array[Quaternion] = []
 var arm_cut_degrees := PackedFloat64Array()
 var arm_cut_right_rotations: Array[Quaternion] = []
 var arm_cut_left_rotations: Array[Quaternion] = []
+## Authored cut torso, keyed like the cut arms (`arm_cut_degrees`): the chest's
+## extra yaw (radians, about its own up axis, after the body's follow) per launch
+## direction, eased between keys and held in the cut's share
+## (`authored_cut_share`) - the torso the arm keys were fitted around
+## (ART-ANATOMY-001). A profile not authored adds nothing.
+var torso_cut_right_yaw := PackedFloat64Array()
+var torso_cut_left_yaw := PackedFloat64Array()
+## Authored rear-hand roll, keyed like the cut arms: the off hand's turn about
+## the handle axis at its station (radians), per launch direction, eased between
+## keys and held in the cut's share, so it returns smoothly to the nominal
+## contact and retraces on a reversal. A profile not authored adds nothing.
+var rear_roll_cut_right := PackedFloat64Array()
+var rear_roll_cut_left := PackedFloat64Array()
 ## Authored load arms (the charged cut's high guard), the same layout keyed by
 ## |θ|, one profile per load side (`support.cut_direction` +1 a right load), held
 ## in the gather's share of the guard (`settled × gather`) instead of the charge
@@ -246,17 +259,20 @@ func _process_modification() -> void:
 		if side_cap > 0.0:
 			limit = side_cap
 	effort *= coil_scale(sword_angle, effort, limit)
+	var torso := _cut_torso_yaw()
 	for index in CHAIN.size():
 		var bone := _chain_bones[index]
 		if bone < 0:
 			continue
 		var link := CHAIN[index]
-		var twist := Quaternion(Vector3.UP, float(LOCAL_SHARES[link]) * sword_angle * effort + _blade_for(link))
+		var extra := torso if link == &"Chest" else 0.0
+		var twist := Quaternion(Vector3.UP, float(LOCAL_SHARES[link]) * sword_angle * effort + _blade_for(link) + extra)
 		skeleton.set_bone_pose_rotation(bone, skeleton.get_bone_pose_rotation(bone) * twist)
 	_turn_feet(skeleton)
 	_raise_clavicles(skeleton)
 	_hold_guard_arms(skeleton)
 	_pivot_rear_hand(skeleton)
+	_roll_rear_hand()
 	_guide_elbows(skeleton)
 	_aim_grips()
 	_resolve_hand_targets(skeleton)
@@ -377,6 +393,9 @@ func _hold_guard_arms(skeleton: Skeleton3D) -> void:
 	var has_load := not arm_load_degrees.is_empty() and load_rotations.size() == arm_load_degrees.size() * count
 	var shares := authored_arm_shares(settled, support.gather, has_guard, has_cut)
 	var load_share := authored_load_share(settled, support.gather, has_load)
+	if cut_continues(support.phase, support.cut_angle, has_cut):
+		shares = Vector2(0.0, shares.x + shares.y + load_share)
+		load_share = 0.0
 	var total := shares.x + shares.y + load_share
 	var hold := total * clampf(grip_weight, 0.0, 1.0)
 	if hold <= 0.0:
@@ -399,6 +418,66 @@ func _hold_guard_arms(skeleton: Skeleton3D) -> void:
 		skeleton.set_bone_pose_rotation(bone, clip.slerp(target, hold))
 
 
+## The authored cut torso's yaw this frame: the launch direction's profile at
+## the cut angle in the cut's share of the authored arms, and nothing while a
+## death or a fall owns the body or no profile is authored.
+func _cut_torso_yaw() -> float:
+	return _cut_profile_value(torso_cut_right_yaw if support.cut_direction >= 0.0 else torso_cut_left_yaw)
+
+
+## Turn the off hand about the handle by the authored roll (station fixed, the
+## same grip-frame form as the pivot); untouched where no roll is authored.
+func _roll_rear_hand() -> void:
+	var rolls := rear_roll_cut_right if support.cut_direction >= 0.0 else rear_roll_cut_left
+	if rear_pivot or grips.size() != 2 or rolls.is_empty() or rolls.size() != arm_cut_degrees.size():
+		return
+	rear_pivot_angle = _cut_profile_value(rolls)
+	grips[1].transform = shaft_turned(rear_station, rear_contact_inverse, rear_pivot_angle)
+
+
+## A per-cut-key profile's value this frame, in the cut's share of the authored arms.
+func _cut_profile_value(values: PackedFloat64Array) -> float:
+	var yaws := values
+	if not authored_arms_own(support) or yaws.is_empty() or yaws.size() != arm_cut_degrees.size():
+		return 0.0
+	var count := ARM_KEY_BONES.size()
+	var cut_rotations := arm_cut_right_rotations if support.cut_direction >= 0.0 else arm_cut_left_rotations
+	var load_rotations := arm_load_right_rotations if support.cut_direction >= 0.0 else arm_load_left_rotations
+	var has_guard := not arm_key_degrees.is_empty() and arm_key_rotations.size() == arm_key_degrees.size() * count
+	var has_load := not arm_load_degrees.is_empty() and load_rotations.size() == arm_load_degrees.size() * count
+	var share := authored_cut_share(support.settled, support.gather, has_guard, cut_rotations.size() == arm_cut_degrees.size() * count, has_load, support.phase, support.cut_angle)
+	return share * clampf(grip_weight, 0.0, 1.0) * cut_torso_yaw(arm_cut_degrees, yaws, support.cut_angle)
+
+
+## The cut's share of the authored arms (as `_hold_guard_arms` holds them): the
+## unsettled share, or everything the authored keys hold while the cut
+## continues (`cut_continues`).
+static func authored_cut_share(settled: float, gather: float, has_guard: bool, has_cut: bool, has_load: bool, phase: CombatPhase.Id, cut_angle_degrees: float) -> float:
+	var shares := authored_arm_shares(settled, gather, has_guard, has_cut)
+	if cut_continues(phase, cut_angle_degrees, has_cut):
+		return shares.x + shares.y + authored_load_share(settled, gather, has_load)
+	return shares.y
+
+
+## A torso profile's yaw at `degrees`: eased between the bracketing keys as the
+## arm keys are, held at the end keys beyond them.
+static func cut_torso_yaw(degrees_keys: PackedFloat64Array, yaws: PackedFloat64Array, degrees: float) -> float:
+	if degrees <= degrees_keys[0]:
+		return yaws[0]
+	for key in range(1, degrees_keys.size()):
+		if degrees <= degrees_keys[key]:
+			return lerpf(yaws[key - 1], yaws[key], smoothstep(degrees_keys[key - 1], degrees_keys[key], degrees))
+	return yaws[yaws.size() - 1]
+
+
+## Degrees to radians for a profile, `reflection` -1 mirroring it (the sagittal mirror of a yaw negates it).
+static func radians_of(degrees_values: PackedFloat64Array, reflection: float = 1.0) -> PackedFloat64Array:
+	var out := PackedFloat64Array()
+	for value in degrees_values:
+		out.append(deg_to_rad(value) * reflection)
+	return out
+
+
 ## The guard keys' and the cut keys' shares of the arms (x guard, y cut) for a
 ## pose `settled` into the stance with a charge `gather`: the guard owns the
 ## settled share outside a gather, the cut the rest; a profile not authored
@@ -406,6 +485,23 @@ func _hold_guard_arms(skeleton: Skeleton3D) -> void:
 static func authored_arm_shares(settled: float, gather: float, has_guard: bool, has_cut: bool) -> Vector2:
 	var s := clampf(settled, 0.0, 1.0)
 	return Vector2(s * (1.0 - clampf(gather, 0.0, 1.0)) if has_guard else 0.0, (1.0 - s) if has_cut else 0.0)
+
+
+## Whether the cut owns the arms whatever the stance share says (WEAPON-PATH-004
+## handling context): a swing in flight (launch through overswing) and a
+## recovery on the cut's far side (cut angle > 0) are the active cut, not a
+## resting guard or a charged preparation, so a body with authored cut keys keeps
+## them there. Guard and load keys are fitted to their own contexts - a resting
+## guard's raised sword, a charge's coil - and reusing them in a swing missed the
+## sword by up to 0.16 m (the swing's torso drives harder than the charge's) or,
+## on the far side, put the pre-IK elbow and the pole read from it across the
+## chest. Bodies without cut keys are unchanged.
+static func cut_continues(phase: CombatPhase.Id, cut_angle_degrees: float, has_cut: bool) -> bool:
+	if not has_cut:
+		return false
+	if CombatPhase.is_striking(phase):
+		return true
+	return phase == CombatPhase.Id.RECOVERY and cut_angle_degrees > 0.0
 
 
 ## Whether a body's authored arm keys may own the arms this frame: never while
@@ -421,6 +517,39 @@ static func authored_arms_own(pose: BodySupportPose) -> bool:
 ## stance); nothing when no load profile is authored.
 static func authored_load_share(settled: float, gather: float, has_load: bool) -> float:
 	return clampf(settled, 0.0, 1.0) * clampf(gather, 0.0, 1.0) if has_load else 0.0
+
+
+## The mirror of an arm-key profile (the `ARM_KEY_BONES` layout, keys in a
+## row): each key's right and left bones swap and every rest-relative rotation
+## is reflected through the body's sagittal plane, (x, y, z, w) → (x, −y, −z, w)
+## — exact for a rest skeleton whose arms are mirror images (S·G_R·S = G_L).
+static func mirror_arm_rotations(rotations: Array[Quaternion]) -> Array[Quaternion]:
+	var count := ARM_KEY_BONES.size()
+	var half := floori(count / 2.0)
+	var mirrored: Array[Quaternion] = []
+	for key in floori(rotations.size() / float(count)):
+		for index in count:
+			var q := rotations[key * count + (index + half) % count]
+			mirrored.append(Quaternion(q.x, -q.y, -q.z, q.w))
+	return mirrored
+
+
+## Guard keys from one canonical profile: every key at θ > 0 is the mirror of
+## its sword-right partner at −θ; keys at θ ≤ 0 (the centre the grip's own) are
+## kept as authored.
+static func mirrored_guard_keys(degrees_keys: PackedFloat64Array, rotations: Array[Quaternion]) -> Array[Quaternion]:
+	var count := ARM_KEY_BONES.size()
+	var out: Array[Quaternion] = rotations.duplicate()
+	for key in degrees_keys.size():
+		var partner := degrees_keys.find(-degrees_keys[key])
+		if degrees_keys[key] <= 0.0 or partner < 0:
+			continue
+		var source: Array[Quaternion] = []
+		source.assign(rotations.slice(partner * count, (partner + 1) * count))
+		var mirrored := mirror_arm_rotations(source)
+		for index in count:
+			out[key * count + index] = mirrored[index]
+	return out
 
 
 ## Bone `index`'s authored rest-relative rotation at `degrees`: eased between the

@@ -30,6 +30,7 @@ var _out: String = ""
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_rules = StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), _rules)
 	kits.match_loadout = RiposteKits.match_loadout(kits.arena)
@@ -109,7 +110,7 @@ func _victory() -> void:
 			director.advance(FRAME)
 			await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png(_out.path_join("victory_%s_director.png" % beat))
+		SkeletonCapture.save(root, _out.path_join("victory_%s_director.png" % beat), "capture_production_match", {"beat": beat})
 		var actor := director.actor()
 		var at := actor.global_position
 		var close := Camera3D.new()
@@ -121,7 +122,7 @@ func _victory() -> void:
 		for _i in 2:
 			await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png(_out.path_join("victory_%s_closeup.png" % beat))
+		SkeletonCapture.save(root, _out.path_join("victory_%s_closeup.png" % beat), "capture_production_match", {"beat": beat})
 		close.queue_free()
 		await process_frame
 
@@ -177,4 +178,4 @@ func _shot(moment: String) -> void:
 			_presenter.render(1.0, 0.0)
 			await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png(_out.path_join("%s_%s.png" % [moment, view[0]]))
+		SkeletonCapture.save(root, _out.path_join("%s_%s.png" % [moment, view[0]]), "capture_production_match", {"moment": moment, "view": view[0]})

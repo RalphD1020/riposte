@@ -233,14 +233,19 @@ function importedSourceMd5(glbBase) {
 
 // The suite loads these glbs. A Blender save that was not exported fails
 // here. A glb Godot has already imported, byte for byte, does not.
+// An archival row (a frozen historical reference) is never held to its
+// source's current state: its glb must be exactly the recorded one
+// (`glb_sha256`) and its manifest must still name the source it was exported
+// from (`source_sha256`). It is never re-exported to pass.
 function checkPresentationAssets() {
   const problems = [];
   const stale = [];
   for (const row of requiredPresentationAssets()) {
+    const archival = row.role === "archival";
     const source = join(REPO_ROOT, "art-src", "blender", row.source);
     const output = join(GAME_ROOT, "assets", "generated", row.output);
     const manifestPath = `${output.slice(0, -".glb".length)}.manifest.json`;
-    if (!existsSync(source)) {
+    if (!archival && !existsSync(source)) {
       problems.push(`${row.output}: missing Blender source ${row.source}`);
       continue;
     }
@@ -255,7 +260,20 @@ function checkPresentationAssets() {
       problems.push(`${row.output}: manifest is not readable`);
       continue;
     }
-    if (manifest.source_sha256 !== fileHash(source, "sha256")) {
+    if (archival) {
+      if (!row.glb_sha256 || !row.source_sha256) {
+        problems.push(`${row.output}: an archival reference records its glb_sha256 and source_sha256`);
+        continue;
+      }
+      if (fileHash(output, "sha256") !== row.glb_sha256) {
+        problems.push(`${row.output}: the archival reference is not the recorded glb`);
+        continue;
+      }
+      if (manifest.source_sha256 !== row.source_sha256) {
+        problems.push(`${row.output}: the archival manifest no longer names its recorded source`);
+        continue;
+      }
+    } else if (manifest.source_sha256 !== fileHash(source, "sha256")) {
       problems.push(
         `${row.output}: Blender source changed after the last export`,
       );

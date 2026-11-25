@@ -1007,6 +1007,48 @@ func test_the_guard_blocks_its_protected_side_and_passes_the_grip_side() -> void
 	assert_eq(str(readings[0]), str(readings[1]), "and both quillons read alike")
 
 
+## The guard and hitbox contract end to end (person, 2026-11-25): only the blade and the crossguard's blade-facing side
+## are protective steel, and only the body hurt circle can be struck. A blade brought from the crossguard's underside
+## (the grip side, read in the sword's own frame) toward the pommel is never stopped by the guard, the handle or the hands
+## holding it — no steel contact of any pair, the guard pair never latched protected — and it reaches the defender's
+## body, whose contact stays eligible. Both quillons alike.
+func test_a_blade_from_under_the_guard_passes_the_hilt_and_reaches_the_body() -> void:
+	var weapon := _rules.combatant(1).weapon
+	var inside := weapon.crossguard_half_span * 0.8
+	var outcomes: Array = []
+	for across: float in [inside, -inside]:
+		## ARRANGE: fighter 0's blade square across fighter 1's sword, 6 cm under the bar on the grip side.
+		var runner := _drift(weapon.crossguard_centre_radius - 0.06, across)
+		assert_eq(_side_in(runner.state), -1, "fixture: the blade comes from under the guard (the grip side)")
+		assert_true(_guard_gap(runner.state) > 0.0, "fixture: clear of the guard at the start")
+		assert_eq(runner.state.weapon_body_contacts[0].phase, WeaponBodyContact.Phase.OUTSIDE, "fixture: not yet at the body")
+		## ACT: driven toward fighter 1's pommel — across the handle and the hands — until it meets the body.
+		var steel := 0
+		var protected := false
+		var reached := false
+		var ticks := 0
+		for _tick in 20:
+			_drive(runner, -8.0)
+			ticks += 1
+			for event in runner.events:
+				if event.type == DuelEventTypes.BLADE_CONTACT:
+					steel += 1
+				if (event.type == DuelEventTypes.BODY_HIT or event.type == DuelEventTypes.BODY_POKE) and event.actor == 0:
+					reached = true
+			protected = protected or runner.state.blade_contact.guard_mode[0] == SwordContactGeometry.GUARD_PROTECTED
+			if runner.state.weapon_body_contacts[0].phase != WeaponBodyContact.Phase.OUTSIDE:
+				reached = true
+			if reached:
+				break
+		## ASSERT
+		assert_eq(steel, 0, "the guard's underside, the handle and the hands stop nothing (%d steel contacts)" % steel)
+		assert_false(protected, "the guard pair never latched protected from the grip side")
+		assert_true(reached, "and the blade reaches the defender's body, whose contact stays eligible (%d ticks)" % ticks)
+		assert_true(runner.is_sound(), "every tick legal")
+		outcomes.append([steel, protected, reached, ticks])
+	assert_eq(str(outcomes[0]), str(outcomes[1]), "both quillons alike")
+
+
 ## The steel gap between the swords at `poses`, with each guard pair latched
 ## as `modes`.
 func _steel_gap(poses: Array[FighterPose], modes: PackedInt32Array) -> float:

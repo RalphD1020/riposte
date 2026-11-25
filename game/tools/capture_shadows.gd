@@ -28,6 +28,7 @@ var _out: String = ""
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_run.call_deferred()
 
 
@@ -200,10 +201,11 @@ func _bench(label: String) -> void:
 
 
 func _save(shot_name: String) -> void:
-	_viewport.get_texture().get_image().save_png(_out.path_join(shot_name + ".png"))
+	SkeletonCapture.save(_viewport, _out.path_join(shot_name + ".png"), "capture_shadows", {"shot": shot_name})
 
 
 func _save_crop(shot_name: String) -> void:
 	var image := _viewport.get_texture().get_image().get_region(CROP)
 	image.resize(CROP.size.x * CROP_SCALE, CROP.size.y * CROP_SCALE, Image.INTERPOLATE_NEAREST)
 	image.save_png(_out.path_join(shot_name + ".png"))
+	SkeletonCapture.write(_viewport, _out.path_join(shot_name + ".png"), image.get_size(), "capture_shadows", {"shot": shot_name}, Vector2(CROP.position), float(CROP_SCALE))

@@ -263,10 +263,25 @@ func test_a_reflected_world_with_swapped_specs_is_the_exact_reflection() -> void
 		assert_near(me.weapon.angle, twin.weapon.angle, 1e-6, "slot %d holds its twin's weapon angle" % slot)
 		assert_near(me.health, twin.health, 1e-6, "slot %d has its twin's health" % slot)
 	assert_eq(swapped.count(DuelEventTypes.BODY_HIT), first.count(DuelEventTypes.BODY_HIT), "the same hits land")
-	## PERTURB: the reflection without the spec swap is not the same duel.
+	## PERTURB: the reflection without the spec swap is not the same duel, by far more than the 1e-6 the comparison
+	## above allows any quantity — so that comparison would have seen a slot that read the wrong spec.
 	var unswapped := _duel(light, heavy, Pilot.idle(), Pilot.approach_and_tap(tap))
-	var gap := absf(unswapped.state.fighter(0).x + first.state.fighter(1).x) + absf(unswapped.state.fighter(0).y + first.state.fighter(1).y)
-	assert_true(gap > 1e-3, "control: keeping the specs on their slots breaks the reflection (%.4f m)" % gap)
+	var idle := unswapped.state.fighter(0)
+	var idle_twin := first.state.fighter(1)
+	var gap := absf(idle.x + idle_twin.x) + absf(idle.y + idle_twin.y) + absf(idle.weapon.angle - idle_twin.weapon.angle) + absf(idle.health - idle_twin.health)
+	assert_true(gap > 100.0 * 1e-6, "control: keeping the specs on their slots breaks the reflection (gap %s)" % String.num_scientific(gap))
+	## PERTURB: a small genuine contract violation — the swap carries a heavy fighter 1 % too massive — is also far outside
+	## the comparison's tolerance, so the assertions above can see an error of that size.
+	var nudged := _heavy()
+	nudged.fighter.mass *= 1.01
+	nudged.fighter.hand_mass = nudged.fighter.mass * PhysicalBaseline.HAND_REFLECTED_MASS_SHARE
+	var wrong := _duel(nudged, light, Pilot.idle(), Pilot.approach_and_tap(tap))
+	var small := 0.0
+	for slot in 2:
+		var twin := first.state.fighter(1 - slot)
+		var me := wrong.state.fighter(slot)
+		small += absf(me.x + twin.x) + absf(me.y + twin.y) + absf(me.weapon.angle - twin.weapon.angle) + absf(me.health - twin.health)
+	assert_true(small > 100.0 * 1e-6, "control: a 1 %% mass error in the swapped spec breaks the reflection too (gap %s)" % String.num_scientific(small))
 
 
 ## ASYMMETRIC-MASS-001: both fighters driving into each other — a Light and a

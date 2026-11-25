@@ -392,6 +392,12 @@
       "budget_ms": 2000
     },
     {
+      "name": "PRES-BODY",
+      "path": "res://tests/presentation/test_body_harness.gd",
+      "tier": "focused",
+      "budget_ms": 8000
+    },
+    {
       "name": "PRES-READABILITY",
       "path": "res://tests/presentation/test_readability.gd",
       "tier": "focused",
@@ -684,6 +690,7 @@
         "PRES-FEEDBACK",
         "PRES-PRESENTER",
         "PRES-CONTACT",
+        "PRES-BODY",
         "PRES-READABILITY",
         "PRES-RIG",
         "PRES-PRODUCTION",

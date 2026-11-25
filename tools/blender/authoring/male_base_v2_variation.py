@@ -1261,8 +1261,7 @@ def render_board(blend, out, views, frame="body", gameplay=(), only=""):
         scene.render.resolution_y = int(height_m * ppm)
         camera.location = ((len(roots) - 1) * spacing * 0.5, -render_views.CAMERA_DISTANCE_M, look_z)
         camera.rotation_euler = (math.radians(90.0), 0.0, 0.0)
-        scene.render.filepath = "%s_%s.png" % (out, view)
-        bpy.ops.render.render(write_still=True)
+        render_views.skeleton_capture.render_still(scene, "%s_%s.png" % (out, view), "male_base_v2_variation.board", {"view": view, "frame": frame})
         written.append(scene.render.filepath)
     for root in roots:
         root.rotation_euler = (0.0, 0.0, 0.0)
@@ -1280,8 +1279,7 @@ def render_board(blend, out, views, frame="body", gameplay=(), only=""):
         camera.location = render_views.GAMEPLAY_LOOK_AT + Vector((0.0, -math.cos(pitch), math.sin(pitch))) * render_views.GAMEPLAY_DISTANCE_M
         camera.rotation_euler = (math.radians(90.0) - pitch, 0.0, 0.0)
         scene.render.resolution_x, scene.render.resolution_y = 1280, 720
-        scene.render.filepath = "%s_gameplay_%s.png" % (out, name)
-        bpy.ops.render.render(write_still=True)
+        render_views.skeleton_capture.render_still(scene, "%s_gameplay_%s.png" % (out, name), "male_base_v2_variation.gameplay", {"character": name})
         written.append(scene.render.filepath)
         root.location.x = keep
     return written

@@ -32,6 +32,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "tools", "character_modeling"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "blender", "authoring"))
+sys.path.insert(0, HERE)
+import skeleton_capture  # noqa: E402
 from character_modeling import pose_suite  # noqa: E402
 import pose_fixture  # noqa: E402
 
@@ -198,8 +200,7 @@ def _blobs(mask, pixels=False):
 
 def _render(scene, path):
     import numpy as np
-    scene.render.filepath = path
-    bpy.ops.render.render(write_still=True)
+    skeleton_capture.render_still(scene, path, "exposure_check")
     img = bpy.data.images.load(path, check_existing=False)
     px = np.array(img.pixels[:]).reshape(img.size[1], img.size[0], 4)
     bpy.data.images.remove(img)

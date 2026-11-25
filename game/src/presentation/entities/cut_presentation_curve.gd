@@ -25,40 +25,12 @@ extends RefCounted
 ##              opposite side: it stops descending and rises into that guard
 ##
 ## A right→left cut (cut_dir +1) traces upper-right → lower-left; a left→right
-## cut mirrors it. Together they read as the X.
+## cut mirrors it. Together they read as the X. The numbers are the weapon's
+## path data (`WeaponPathDefinition`; the reference sword's by default): +12°
+## entering the corridor (−20°), +5° at Long Guard, −8° cutting through (+30°),
+## −15° at the inflection (+45°), hands a little above the belt past centre.
 ##
 ## See also: /docs/concepts/presentation.md
-
-## Cut angle keys (degrees) and, at each: blade pitch (degrees) and the hands'
-## height above blade height (m).
-## Seeds from the frozen landmark table: +12° entering the corridor (−20°), +5°
-## at Long Guard, −8° cutting through (+30°), −15° at the inflection (+45°); a
-## loaded cut's higher start (+65° → +35° by −75°) is the gathered load
-## descending on top, by physical progress. Past centre the hands stay a
-## little above the belt: the rules-40 track carries them in toward the
-## centreline, and lower they fold the support forearm into the gambeson.
-const KEYS: PackedFloat64Array = [-90.0, -20.0, 0.0, 30.0, 45.0]
-const PITCH_DEGREES: PackedFloat64Array = [12.0, 12.0, 5.0, -8.0, -15.0]
-const RAISE: PackedFloat64Array = [0.18, 0.19, 0.17, 0.10, 0.08]
-
-## Out at either end the curve hands the sword back to the stance: deep on the
-## load side (an uncharged swing from far back), and far past the opposite
-## guard — no cut is mid-arc out there.
-const LOAD_HANDOFF_START := -45.0
-const LOAD_HANDOFF_END := -90.0
-const FAR_HANDOFF_START := 80.0
-const FAR_HANDOFF_END := 110.0
-
-## The inflection: past `ENTER` with the blade still travelling into the
-## opposite side, the cut starts rising into that guard, fully by `RISE_END`;
-## it lets go only back inside `LEAVE`, so contact rattling the blade about one
-## threshold never bobs the point.
-const INFLECTION_ENTER := 45.0
-const INFLECTION_LEAVE := 30.0
-const INFLECTION_RISE_END := 80.0
-## The least angular velocity (rad/s, into the cut's side) that counts as
-## still travelling there.
-const INFLECTION_MIN_SPEED := 0.5
 
 
 ## The hysteresis that commits a cut to its opposite-side recovery. One per
@@ -66,15 +38,16 @@ const INFLECTION_MIN_SPEED := 0.5
 class Inflection:
 	extends RefCounted
 	var committed: bool = false
+	var path: WeaponPathDefinition = WeaponPathDefinition.reference_sword()
 
 	## Advance for this frame. `cut_angle` in degrees, `travel_speed` the
 	## angular velocity along the cut's direction (rad/s). Out of a cut, call
 	## `reset`.
 	func update(cut_angle: float, travel_speed: float) -> bool:
 		if committed:
-			if cut_angle < INFLECTION_LEAVE:
+			if cut_angle < path.inflection_leave:
 				committed = false
-		elif cut_angle > INFLECTION_ENTER and travel_speed > INFLECTION_MIN_SPEED:
+		elif cut_angle > path.inflection_enter and travel_speed > path.inflection_min_speed:
 			committed = true
 		return committed
 
@@ -88,18 +61,22 @@ static func cut_angle(angle: float, cut_dir: float) -> float:
 	return rad_to_deg(angle) * (1.0 if cut_dir >= 0.0 else -1.0)
 
 
-static func pitch(a: float) -> float:
-	return deg_to_rad(CombatPresentationField.sample_keys(KEYS, PITCH_DEGREES, a))
+## The blade's pitch (radians) at cut angle `a` (degrees).
+static func pitch(a: float, path: WeaponPathDefinition = null) -> float:
+	var p := path if path != null else WeaponPathDefinition.reference_sword()
+	return deg_to_rad(CombatPresentationField.sample_keys(p.cut_keys, p.cut_pitch_degrees, a))
 
 
 ## The hands' height above blade height at cut angle `a` (degrees).
-static func raise(a: float) -> float:
-	return CombatPresentationField.sample_keys(KEYS, RAISE, a)
+static func raise(a: float, path: WeaponPathDefinition = null) -> float:
+	var p := path if path != null else WeaponPathDefinition.reference_sword()
+	return CombatPresentationField.sample_keys(p.cut_keys, p.cut_raise, a)
 
 
 ## How much of the stance the cut defers to at cut angle `a`: the two ends
 ## where no cut is mid-arc, plus the committed rise into the opposite guard.
-static func stance_share(a: float, committed: bool) -> float:
-	var ends := maxf(smoothstep(-LOAD_HANDOFF_START, -LOAD_HANDOFF_END, -a), smoothstep(FAR_HANDOFF_START, FAR_HANDOFF_END, a))
-	var rise := smoothstep(INFLECTION_ENTER, INFLECTION_RISE_END, a) if committed else 0.0
+static func stance_share(a: float, committed: bool, path: WeaponPathDefinition = null) -> float:
+	var p := path if path != null else WeaponPathDefinition.reference_sword()
+	var ends := maxf(smoothstep(-p.load_handoff_start, -p.load_handoff_end, -a), smoothstep(p.far_handoff_start, p.far_handoff_end, a))
+	var rise := smoothstep(p.inflection_enter, p.inflection_rise_end, a) if committed else 0.0
 	return maxf(ends, rise)

@@ -65,6 +65,7 @@ var _clavicle: ClavicleResponse
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_out = ProjectSettings.globalize_path("res://../.reports/production")
 	var candidate_glb := CANDIDATE_GLB
 	var alive := true
@@ -212,4 +213,4 @@ func _shoot(pose_name: String) -> void:
 		for _i in 2:
 			await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png(_out.path_join("%s_%s.png" % [pose_name, view[0]]))
+		SkeletonCapture.save(root, _out.path_join("%s_%s.png" % [pose_name, view[0]]), "capture_production", {"pose": pose_name, "view": view[0]})

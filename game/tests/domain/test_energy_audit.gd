@@ -2,12 +2,14 @@ extends TestCase
 
 ## ENERGY-AUDIT: the weapon motor's work against the held sword's kinetic
 ## energy `K = ½·M_θ(θ)·θ̇²`, and what a clean hit actually delivers, on the
-## reference duelist. Characterization of the current law, measured, not tuned:
-## the motor integrates `M_θ·θ̈ = τ` (UNIFIED-MASS-001), which leaves the
-## configuration term `½·M_θ′·θ̇²` of the generalized equation out, so along a
-## track whose inertia changes, `K` changes by `Σ ½·ΔM_θ·θ̇²` that no torque
-## did. The audit pins that ledger so the versioned fix (weapons plan) is
-## measurable; it asserts no damage rule.
+## reference duelist. The coordinate obeys the generalized equation
+## `M_θ·θ̈ + ½·M_θ′·θ̇² = τ` (UNIFIED-MASS-001): each tick a torque-free step
+## that conserves `K` (`WeaponSystem.inertial_speed`), then the motor's torque
+## through the inertia where that step left the blade
+## (`WeaponSystem.kick_inertia`), so in free flight `K` changes by the motor's
+## work up to the 60 Hz step's own error terms. Earlier rules left the
+## configuration term out and this audit pinned that gap. It asserts no damage
+## rule.
 ##
 ## See also: /docs/concepts/combat.md
 
@@ -35,31 +37,55 @@ func _ledger(start: float, charged: bool) -> Dictionary:
 	else:
 		rig.step(true, true)
 	var limit_inner := spec.weapon.guard_limit - _rules.combat.guard_limit_zone
-	var out := {"dk": 0.0, "work": 0.0, "config": 0.0, "worst_tick_residual": 0.0, "peak_k": 0.0, "ticks": 0}
+	var dt := SimulationTimebase.TICK_SECONDS
+	var slope := _steepest_inertia(spec)
+	var out := {"dk": 0.0, "work": 0.0, "work_abs": 0.0, "residual_abs": 0.0, "residual_signed": 0.0, "worst_excess": -INF, "peak_k": 0.0, "ticks": 0}
 	for _i in 120:
 		var theta0 := w.angle
 		var omega0 := w.speed
 		var m0 := WeaponKinematics.motor_inertia(spec, theta0)
+		var carried := WeaponSystem.inertial_speed(spec, theta0, omega0, BladePose.new())
 		var phase0 := w.phase
 		rig.step()
 		var m1 := WeaponKinematics.motor_inertia(spec, w.angle)
 		var swinging := CombatPhase.is_swinging(phase0) or phase0 == CombatPhase.Id.OVERSWING
 		if swinging and absf(w.angle) < limit_inner and absf(theta0) < limit_inner:
-			var dk := 0.5 * m1 * w.speed * w.speed - 0.5 * m0 * omega0 * omega0
-			var work := w.motor_torque * 0.5 * (omega0 + w.speed) * SimulationTimebase.TICK_SECONDS
-			var config := 0.5 * (m1 - m0) * w.speed * w.speed
-			out["dk"] += dk
+			var k0 := 0.5 * m0 * omega0 * omega0
+			var k1 := 0.5 * m1 * w.speed * w.speed
+			var work := w.motor_torque * 0.5 * (carried + w.speed) * dt
+			var residual := absf(k1 - k0 - work)
+			## The step's own error terms: the torque-free step's (under 1 % of the energy, RULES), and the drift-kick
+			## splitting's — the kick moves the end of the tick by Δθ̇·dt from where the drift sampled the inertia, which
+			## changes ½·M_θ·θ̇² there by at most ½·max|M_θ′|·|Δθ̇|·dt·θ̇².
+			var kick := absf(w.speed - carried)
+			var bound := 0.01 * maxf(k0, k1) + 0.5 * slope * kick * dt * maxf(carried * carried, w.speed * w.speed)
+			out["dk"] += k1 - k0
 			out["work"] += work
-			out["config"] += config
+			out["work_abs"] += absf(work)
+			out["residual_abs"] += residual
+			out["residual_signed"] += k1 - k0 - work
+			out["worst_excess"] = maxf(out["worst_excess"], residual - bound)
 			out["ticks"] += 1
-			out["worst_tick_residual"] = maxf(out["worst_tick_residual"], absf(dk - work - config))
-			out["peak_k"] = maxf(out["peak_k"], 0.5 * m1 * w.speed * w.speed)
+			out["peak_k"] = maxf(out["peak_k"], k1)
 		if w.phase == CombatPhase.Id.NEUTRAL and _i > 5:
 			break
 	return out
 
 
-func test_the_motor_ledger_is_work_plus_the_unmodelled_configuration_term() -> void:
+## The steepest |dM_θ/dθ| along the track, from half-degree samples (a slight underestimate between samples is covered by
+## the step's own 1 % allowance).
+func _steepest_inertia(spec: CombatantPhysicsSpec) -> float:
+	var step := deg_to_rad(0.5)
+	var steepest := 0.0
+	var previous := WeaponKinematics.motor_inertia(spec, 0.0)
+	for i in range(1, 271):
+		var here := WeaponKinematics.motor_inertia(spec, step * float(i))
+		steepest = maxf(steepest, absf(here - previous) / step)
+		previous = here
+	return steepest
+
+
+func test_the_motor_ledger_is_the_work_and_the_configuration_term_is_modelled() -> void:
 	## ARRANGE: the inertia really changes along the track (the fixture the term needs).
 	var spec := _rules.combatant(0)
 	var m45 := WeaponKinematics.motor_inertia(spec, PI * 0.25)
@@ -68,19 +94,14 @@ func test_the_motor_ledger_is_work_plus_the_unmodelled_configuration_term() -> v
 	for case: Array in [["tap from Ready", -45.0, false], ["tap from the centre", 0.0, false], ["full charge", -45.0, true]]:
 		## ACT
 		var ledger := _ledger(float(case[1]), bool(case[2]))
-		## ASSERT: tick by tick, ΔK = motor work + ½·ΔM_θ·θ̇² exactly (the law as
-		## integrated), so nothing else — no hidden impulse, no speed assignment —
-		## moves the blade's energy in free flight.
+		## ASSERT: in free flight every tick's ΔK is the motor's work (its torque over the speeds it acted between) up to
+		## the step's own error terms — no torque-free energy change, no hidden impulse, no speed assignment. Soft-limit and
+		## contact ticks are outside this ledger (excluded above) and are attributed separately. The residual is the
+		## drift-kick splitting's first-order error: it falls with the tick (8.7 / 3.3 / 1.5 / 0.3 % of the work at 60 / 120 /
+		## 240 / 960 Hz on a constant-torque drive); the signed and absolute totals are reported with the gate.
 		assert_true(ledger["ticks"] > 4, "fixture: %s has free-flight ticks to audit (%d)" % [case[0], ledger["ticks"]])
-		assert_true(ledger["worst_tick_residual"] < 1e-9, "%s: every tick reconciles (worst %.2e J)" % [case[0], ledger["worst_tick_residual"]])
-		## The configuration term is the measured gap a generalized law would close:
-		## pinned in a band so its versioned fix shows up here.
-		assert_between(absf(ledger["config"]) / ledger["peak_k"], 0.0, 0.25, "%s: the unmodelled term is %.1f J of a %.1f J peak" % [case[0], ledger["config"], ledger["peak_k"]])
-	## PERTURB: a full charge sweeps more of the inertia profile at more speed,
-	## so its unmodelled term is larger than a Ready tap's.
-	var tap := _ledger(-45.0, false)
-	var full := _ledger(-45.0, true)
-	assert_true(absf(full["config"]) > absf(tap["config"]), "full charge %.1f J > Ready tap %.1f J" % [full["config"], tap["config"]])
+		assert_true(ledger["worst_excess"] <= 0.0, "%s: every tick reconciles within the step's error terms (worst excess %.3f J; signed total %+.2f J, absolute %.2f J of %.1f J work)" % [case[0], ledger["worst_excess"], ledger["residual_signed"], ledger["residual_abs"], ledger["work_abs"]])
+		assert_true(ledger["residual_abs"] < 0.25 * ledger["work_abs"], "%s: the unreconciled energy is a small share of the work done (%.1f of %.1f J)" % [case[0], ledger["residual_abs"], ledger["work_abs"]])
 
 
 func test_a_clean_hit_delivers_what_its_speed_earns_and_never_more() -> void:

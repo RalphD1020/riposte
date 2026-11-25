@@ -516,7 +516,7 @@ const artCheck = spawnSync(
   "python",
   [
     "-c",
-    "import character_art; character_art.load(); character_art.clearance_self_check()",
+    "import character_art; character_art.load(); character_art.clearance_self_check(); import skeleton_capture_core; skeleton_capture_core.self_check(); import anatomical_bounds_core; anatomical_bounds_core.self_check()",
   ],
   {
     cwd: join(GAME_ROOT, "..", "tools", "blender"),

@@ -164,6 +164,7 @@ func _step_active(state: MatchState, command_0: PlayerCommand, command_1: Player
 		var scratch := _scratch[slot]
 		_freeze_condition(starting, scratch)
 		scratch.weapon_start_speed = starting.weapon.speed
+		scratch.weapon_motor_speed = starting.weapon.speed
 		scratch.start_vx = starting.vx
 		scratch.start_vy = starting.vy
 		scratch.start_turn_rate = starting.turn_rate
@@ -272,13 +273,14 @@ func _measure_body_work(fighter: FighterState, body: FighterDefinition, slot: in
 	scratch.exertion += StaminaModel.channel(turn_power, dt, _turn_reference[slot], rules.combat.stamina_turn_cost, rules.combat)
 
 
-## The blade motor's work over the tick: its torque times the blade's
-## mid-step speed, read right after the motor, before any contact.
+## The blade motor's work over the tick: its torque times the mean of the
+## speeds it acted between (from where the torque-free step left the blade to
+## where the motor did), read right after the motor, before any contact.
 func _measure_blade_work(fighter: FighterState, slot: int) -> void:
 	if not fighter.is_alive():
 		return
 	var scratch := _scratch[slot]
-	var power := fighter.weapon.motor_torque * (scratch.weapon_start_speed + fighter.weapon.speed) * 0.5
+	var power := fighter.weapon.motor_torque * (scratch.weapon_motor_speed + fighter.weapon.speed) * 0.5
 	scratch.exertion += StaminaModel.channel(power, SimulationTimebase.TICK_SECONDS, _swing_reference[slot], rules.combat.stamina_swing_cost, rules.combat)
 
 

@@ -1027,8 +1027,8 @@ func _deflection_physics(state: MatchState) -> String:
 ## Seed 5 tick 1296 was the witness before a held attack could outlive the
 ## four-tick buffer. That duel no longer reaches this clash. Seed 23 tick 259
 ## is a redirected slot-0 cut under the current input.
-const DEFLECTION_SEED := 23
-const DEFLECTION_CLASH_TICK := 259
+const DEFLECTION_SEED := 7
+const DEFLECTION_CLASH_TICK := 105
 const DEFLECTION_LEAD := 1
 const DEFLECTION_CUTTER := 0
 const DEFLECTION_TICKS := 40

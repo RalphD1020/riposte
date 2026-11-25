@@ -11,6 +11,7 @@ extends TestCase
 ## Implements: /spec/invariants.md#content-002
 ## Implements: /spec/invariants.md#phys-005
 ## Implements: /spec/invariants.md#phys-006
+## Implements: /spec/invariants.md#grip-height-001
 ## See also: /docs/concepts/content.md, /docs/concepts/combat.md
 
 
@@ -389,3 +390,107 @@ func test_scale_never_touches_reaction_or_timing() -> void:
 	heavy_sword.mass = _weapon().mass * 2.0
 	assert_eq(heavy_sword.tap_threshold_ticks, _weapon().tap_threshold_ticks, "a heavy sword does not change what a tap is")
 	assert_eq(heavy_sword.buffer_ticks, _weapon().buffer_ticks, "or the input buffer")
+
+
+## Every weapon-geometry quantity a pose at `angle` exposes, in the fighter's own
+## frame (the carriage track, its derivative, the pommel offset, the blade axis).
+func _carriage_reading(spec: CombatantPhysicsSpec, angle: float) -> PackedFloat64Array:
+	var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, spec, BladePose.new())
+	return PackedFloat64Array([pose.carriage_forward, pose.carriage_left, pose.d_carriage_forward, pose.d_carriage_left,
+		pose.carriage_x, pose.carriage_y, pose.origin_x, pose.origin_y, pose.dorigin_x, pose.dorigin_y, pose.ux, pose.uy])
+
+
+## The held sword's radii: where the hands, the guard and the blade sit.
+func _weapon_radii(spec: CombatantPhysicsSpec) -> PackedFloat64Array:
+	var weapon := spec.weapon
+	return PackedFloat64Array([weapon.blade_base_radius, weapon.tip_radius, weapon.crossguard_centre_radius,
+		weapon.offhand_grip_radius, weapon.dominant_grip_radius, spec.handling.carriage_radius])
+
+
+## GRIP-HEIGHT-001: grip radius and the carriage it scales are a function of
+## height alone. At 1.60 / 1.80 / 2.00 m a heavier, thicker-torsoed body of the
+## same height holds the same sword on the same track: identical grip radius,
+## weapon radii, C(θ), C′(θ) and pommel offset at every angle. Its mass and
+## torso — which legitimately change inertia and the hurt circle — do not.
+func test_grip_and_carriage_depend_on_height_alone() -> void:
+	for height: float in [1.60, 1.80, 2.00]:
+		## ARRANGE: the prototype at this height, and a heavier, thicker one.
+		var scale := height / PhysicalBaseline.FIGHTER_HEIGHT_M
+		var base := FighterCatalog.prototype_at(scale)
+		var heavy := FighterCatalog.prototype_at(scale)
+		## PERTURB: mass and torso only.
+		heavy.mass = base.mass * 1.3
+		heavy.hurt_radius = base.hurt_radius * 1.12
+		heavy.push_radius = base.push_radius * 1.1
+		heavy.precompute()
+		assert_near(base.height, height, 1e-9, "fixture: the prototype stands %.2f m" % height)
+		assert_true(heavy.mass > base.mass and heavy.hurt_radius > base.hurt_radius, "fixture: the heavy body is heavier and thicker")
+		## ACT
+		var light_spec := LoadoutCatalog.assemble(base, WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, base.grip_radius))
+		var heavy_spec := LoadoutCatalog.assemble(heavy, WeaponCatalog.of(ContentIds.WEAPON_BASTARD_SWORD, heavy.grip_radius))
+		## ASSERT: grip follows height exactly, and nothing else moves it.
+		assert_near(base.grip_radius, PhysicalBaseline.GRIP_RADIUS_M * scale, 1e-12, "%.2f m: the grip radius is the baseline's scaled by height" % height)
+		assert_eq(heavy.grip_radius, base.grip_radius, "%.2f m: mass and torso leave the grip radius alone" % height)
+		assert_eq(_weapon_radii(heavy_spec), _weapon_radii(light_spec), "%.2f m: and the held sword's radii" % height)
+		for degrees in range(-135, 136, 5):
+			var angle := deg_to_rad(float(degrees))
+			assert_eq(_carriage_reading(heavy_spec, angle), _carriage_reading(light_spec, angle), "%.2f m at %+d°: the same carriage, slope and pommel" % [height, degrees])
+		assert_true(WeaponKinematics.motor_inertia(heavy_spec, 0.0) >= WeaponKinematics.motor_inertia(light_spec, 0.0) - 1e-12, "%.2f m: (inertia may legitimately differ; it is not geometry)" % height)
+
+
+## GRIP-HEIGHT-001: injury and fatigue never move the grip. Through a real duel
+## with wounds and spent stamina every tick's sword sits exactly on the canonical
+## track of a freshly compiled, healthy combatant at the angle it actually holds,
+## and the compiled specification is never mutated by condition. A cut wounded
+## mid-swing moves differently (its motor is weaker) but on the same geometry.
+func test_injury_and_fatigue_never_move_the_carriage() -> void:
+	## ARRANGE: a Hard v Hard duel that draws blood, and a healthy reference spec.
+	var duel := CpuLadder.session(MatchConfig.Difficulty.HARD, MatchConfig.Difficulty.HARD, 1)
+	var rules: DuelRules = duel.config.rules
+	var fresh := StandardDuelRules.create()
+	var before := [rules.combatant(0).fingerprint(), rules.combatant(1).fingerprint()]
+	var wounded_ticks := 0
+	var tired_ticks := 0
+	var mismatches := 0
+	while not duel.is_finished() and duel.state.tick < 700:
+		## ACT
+		duel.step()
+		for slot in 2:
+			var fighter := duel.state.fighter(slot)
+			if not fighter.is_alive():
+				continue
+			wounded_ticks += 1 if fighter.health < rules.combatant(slot).fighter.max_health else 0
+			tired_ticks += 1 if fighter.stamina < 1.0 else 0
+			var played := WeaponKinematics.pose_of(fighter, rules.combatant(slot), BladePose.new())
+			var canonical := WeaponKinematics.pose_at(fighter.x, fighter.y, fighter.facing, fighter.weapon.angle, fresh.combatant(slot), BladePose.new())
+			if played.carriage_x != canonical.carriage_x or played.carriage_y != canonical.carriage_y or played.origin_x != canonical.origin_x or played.origin_y != canonical.origin_y:
+				mismatches += 1
+	assert_true(wounded_ticks > 0, "fixture: someone was wounded (%d fighter-ticks)" % wounded_ticks)
+	assert_true(tired_ticks > 0, "fixture: and someone spent stamina (%d fighter-ticks)" % tired_ticks)
+	## ASSERT
+	assert_eq(mismatches, 0, "every tick's carriage is the healthy track at the angle actually held")
+	assert_eq([rules.combatant(0).fingerprint(), rules.combatant(1).fingerprint()], before, "and condition never rewrote a compiled specification")
+	## PERTURB: a quick cut wounded and exhausted on its third tick.
+	var whole := _cut_angles(rules, 1.0, 1.0)
+	var hurt := _cut_angles(rules, 0.2, 0.0)
+	assert_ne(hurt, whole, "the wounded, tired cut moves differently (less motor)")
+	var spec := rules.combatant(0)
+	for angle: float in hurt:
+		assert_eq(_carriage_reading(spec, angle), _carriage_reading(fresh.combatant(0), angle), "yet at %.4f rad it sits on the healthy carriage" % angle)
+
+
+## Fighter 0's weapon angle over a free tap, its health fraction and stamina
+## pinned from the third tick on.
+func _cut_angles(rules: DuelRules, health_fraction: float, stamina: float) -> PackedFloat64Array:
+	var runner := SimRunner.create(rules, 7)
+	runner.skip_intro()
+	var angles := PackedFloat64Array()
+	for i in 30:
+		var fighter := runner.state.fighter(0)
+		if i >= 3:
+			fighter.health = rules.combatant(0).fighter.max_health * health_fraction
+			fighter.stamina = stamina
+		var tick := runner.state.tick
+		runner.push(PlayerCommand.create(tick, 0.0, 0.0, i == 0, i == 1), PlayerCommand.idle(tick))
+		angles.append(fighter.weapon.angle)
+	return angles

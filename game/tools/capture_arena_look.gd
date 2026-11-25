@@ -7,6 +7,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_run.call_deferred()
 
 
@@ -304,8 +305,7 @@ func _figure(arena: Node3D, mesh: Mesh, pose: Transform3D) -> void:
 
 
 func _save(viewport: SubViewport, out: String, shot_name: String) -> void:
-	var image := viewport.get_texture().get_image()
-	image.save_png(out.path_join("%s.png" % shot_name))
+	SkeletonCapture.save(viewport, out.path_join("%s.png" % shot_name), "capture_arena_look", {"shot": shot_name})
 	var draw_calls := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 	var primitives := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
 	print("RIPOSTE_LOOK", shot_name, "draws", draw_calls, "prims", primitives)

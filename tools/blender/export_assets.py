@@ -155,10 +155,19 @@ def _selected(assets):
     return [row for row in assets if row[2] in wanted or row[3] in wanted]
 
 
+def _archival_ids():
+    """Frozen historical references (`"role": "archival"` in the required list): never re-exported."""
+    path = os.path.join(HERE, "required_presentation_assets.json")
+    with open(path, encoding="utf-8") as handle:
+        rows = json.load(handle)
+    return {row["id"] for row in rows if row.get("role") == "archival"}
+
+
 def main():
     _require_known()
     failed = []
-    chosen = _selected(ASSETS)
+    archival = _archival_ids()
+    chosen = [row for row in _selected(ASSETS) if row[2] not in archival]
     for source, kind, asset_id, output in chosen:
         source_path = os.path.join(SOURCES, source)
         if not os.path.exists(source_path):

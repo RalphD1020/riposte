@@ -267,11 +267,10 @@ func test_tap_sweeps_ninety_degrees_then_overswings() -> void:
 	var rig := _rig()
 	var start := rig.fighter.weapon.angle
 	rig.attack(3)
-	assert_true(rig.step_until_phase(CombatPhase.Id.OVERSWING), "reached overswing")
-	var one_tick := rad_to_deg(_rules.combatant(0).weapon.swing_speed_tap / float(SimulationTimebase.TICK_RATE))
-	assert_between(rad_to_deg(rig.fighter.weapon.angle - start), 90.0, 90.0 + one_tick, "active arc covers 90° (at most one tick of motion past the end)")
+	assert_true(rig.step_until_phase(CombatPhase.Id.OVERSWING), "reached the end of the active phases")
+	assert_between(rad_to_deg(rig.fighter.weapon.angle - start), 85.0, 95.0, "active arc covers its 90° (settled within ±5°)")
 	rig.settle()
-	assert_true(rig.fighter.weapon.angle > rig.fighter.weapon.swing_end, "momentum carries the blade past the arc end")
+	assert_between(rad_to_deg(rig.fighter.weapon.angle - rig.fighter.weapon.swing_end), -5.0, 5.0, "the brake settles the blade at the commanded end, never travelling on")
 
 
 func test_sides_alternate_from_actual_geometry() -> void:
@@ -419,7 +418,8 @@ func test_heavy_overswings_and_recovers_longer_than_tap() -> void:
 	heavy.attack(80)
 	heavy.step_until_phase(CombatPhase.Id.RECOVERY)
 	var heavy_overswing := (heavy.fighter.weapon.angle - heavy.fighter.weapon.swing_end) * heavy.fighter.weapon.swing_dir
-	assert_true(heavy_overswing > tap_overswing, "heavy carries further past its arc")
+	assert_between(rad_to_deg(tap_overswing), -5.0, 5.0, "a tap settles at its commanded end (±5°)")
+	assert_between(rad_to_deg(heavy_overswing), -5.0, 5.0, "and so does a heavy cut: its weaker brake starts earlier, it does not carry past")
 	## RECOVERY-001: the recovery phase itself is the same universal floor for
 	## both free whiffs (each overswing braked to rest first); the heavy one is
 	## longer only because its weak brake takes longer to stop it.
@@ -638,11 +638,13 @@ func test_recovery_is_a_floor_plus_the_blade_back_under_control() -> void:
 	w.speed = 24.0
 	w.commitment = 0.8
 	WeaponSystem.enter_recovery(w, _rules.combat.recovery_min_ticks)
-	var inertia := WeaponKinematics.motor_inertia(_rules.combatant(0), w.angle)
+	## The torque-free part of the tick is the baseline the brake acts on, through the inertia where it leaves the blade.
+	var carried := WeaponSystem.inertial_speed(_rules.combatant(0), w.angle, 24.0, BladePose.new())
+	var inertia := WeaponSystem.kick_inertia(_rules.combatant(0), w.angle, carried, BladePose.new())
 	var brake := definition.brake_accel(1.0, _rules.combatant(0).fighter.weapon_torque_scale, inertia)
 	## ACT: one tick, then to the end of recovery.
 	rig.step()
-	var first_drop := 24.0 - w.speed
+	var first_drop := carried - w.speed
 	var ticks := 1
 	while w.phase == CombatPhase.Id.RECOVERY and ticks < 240:
 		rig.step()
@@ -1114,6 +1116,9 @@ func test_fatigue_scales_weapon_force_and_not_its_speed_ceiling() -> void:
 		fighter.weapon.swing_dir = 1.0
 		fighter.weapon.swing_charge = 1.0
 		fighter.weapon.launch_preparation = 1.0
+		## Far from its commanded end, so the predictive brake has no reason to act this tick.
+		fighter.weapon.swing_start = -weapon.guard_limit
+		fighter.weapon.swing_end = weapon.guard_limit
 	_step_blade(rested_ceiling, 0, 1.0, null, fresh_state)
 	_step_blade(tired_ceiling, 0, 1.0, null, tired_state)
 	assert_eq(rested_ceiling.weapon.speed, ceiling, "a rested blade already on the ceiling is not pushed past it")
@@ -1125,8 +1130,10 @@ func test_fatigue_scales_weapon_force_and_not_its_speed_ceiling() -> void:
 		fighter.weapon.swing_charge = 0.0
 	_step_blade(rested_brake, 0, 1.0, null, fresh_state)
 	_step_blade(tired_brake, 0, 1.0, null, tired_state)
-	var rested_drop := 8.0 - rested_brake.weapon.speed
-	var tired_drop := 8.0 - tired_brake.weapon.speed
+	## The torque-free part of the tick (rules 65) is the same for both; the brake acts on it.
+	var carried := WeaponSystem.inertial_speed(_rules.combatant(0), 0.0, 8.0, BladePose.new())
+	var rested_drop := carried - rested_brake.weapon.speed
+	var tired_drop := carried - tired_brake.weapon.speed
 	assert_true(rested_drop > tired_drop, "the rested brake takes off more speed")
 	assert_near(tired_drop / rested_drop, tired_state.fatigue_scale / fresh_state.fatigue_scale, 1e-9, "brake force carries fatigue; the brake law does not change")
 	## v²/2a would be the stopping distance only if this deceleration held for
@@ -1148,10 +1155,11 @@ func test_one_coast_tick_matches_the_weapon_step() -> void:
 	var fighter := _idle_blade(0.2, 1.5, -1.0)
 	var definition := _rules.combatant(0).weapon
 	var spec := _rules.combatant(0)
-	var inertia := WeaponKinematics.motor_inertia(spec, fighter.weapon.angle)
 	var drive := spec.fighter.weapon_torque_scale
 	var out := PackedFloat64Array([0.0, 0.0])
-	var speed := WeaponSystem.coast_speed(fighter.weapon.speed, fighter.weapon.angle, fighter.weapon.phase, fighter.weapon.stable_side, fighter.weapon.swing_charge, definition, drive, drive, inertia, _rules.combat, 1.0, false)
+	var carried := WeaponSystem.inertial_speed(spec, fighter.weapon.angle, fighter.weapon.speed, BladePose.new())
+	var inertia := WeaponSystem.kick_inertia(spec, fighter.weapon.angle, carried, BladePose.new())
+	var speed := WeaponSystem.coast_speed(carried, fighter.weapon.angle, fighter.weapon.phase, fighter.weapon.stable_side, fighter.weapon.swing_charge, definition, drive, drive, inertia, _rules.combat, 1.0, false)
 	WeaponSystem.write_limited(out, fighter.weapon.angle, speed, definition.guard_limit, _rules.combat.guard_limit_zone, WeaponSystem.zone_spring(definition, drive, inertia, _rules.combat), _rules.combat.guard_limit_damping, WeaponSystem.limit_accel_cap(definition, drive, inertia))
 	_step_blade(fighter, 0)
 	assert_near(fighter.weapon.angle, out[0], 1e-12, "the step's angle is the shared coast")

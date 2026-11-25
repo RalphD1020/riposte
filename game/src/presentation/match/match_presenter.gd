@@ -108,9 +108,16 @@ func push(snapshot: PresentationSnapshot, events: Array[DuelEvent]) -> void:
 		for proxy in _fighters:
 			proxy.reset_terminal()
 	var style := _kits.match_loadout.vfx_style if _kits.match_loadout != null else null
-	## One rendered contact height for the tick (CONTACT-PRESENTATION-001):
-	## the drawn swords, the clash sparks and the grind all meet there.
-	_contact_height = _contact.contact_height(snapshot, _kits.weapon.blade_height)
+	## One rendered contact height for the tick's effects (CONTACT-PRESENTATION-001):
+	## the clash sparks, the highlight and the grind sit there, between the two
+	## drawn swords; the swords themselves stay on their projection.
+	var drawings: Array[WeaponPresentationConfig] = []
+	for proxy in _fighters:
+		drawings.append(proxy.weapon_config())
+	_contact_height = _contact.contact_height(snapshot, _kits.weapon.blade_height, drawings)
+	## The swords' presentation state steps with the snapshots, never the frames.
+	for slot in _fighters.size():
+		_fighters[slot].advance(_previous.fighter(slot), _current.fighter(slot), SimulationTimebase.ticks_to_seconds(_previous.tick))
 	_last_frame = CombatFeedbackDirector.process(snapshot, events, _kits.weapon, _options.flash_scale(), _options.particle_intensity, style, _contact_height)
 	_apply(_last_frame)
 	_grind(snapshot, style)
@@ -143,8 +150,8 @@ func render(alpha: float, real_delta: float, scaled_delta: float = -1.0) -> void
 		return
 	var scaled := real_delta if scaled_delta < 0.0 else scaled_delta
 	var weight := clampf(alpha, 0.0, 1.0)
-	var first := _pose(0, weight, real_delta, scaled, _contact_height)
-	var second := _pose(1, weight, real_delta, scaled, _contact_height)
+	var first := _pose(0, weight, real_delta, scaled)
+	var second := _pose(1, weight, real_delta, scaled)
 	_vectors.update(_current)
 	_vfx.advance(real_delta)
 	for drop in _drops.advance(scaled):
@@ -370,14 +377,15 @@ func _build(platform_radius: float, edge_warning_inset: float, first: Presentati
 ## crossing the two end poses do not contain. That is presentation. It does
 ## not write the weapon, and engine physics interpolation is not also applied
 ## to these proxies.
-func _pose(slot: int, weight: float, real_delta: float, scaled_delta: float, height: float = NAN) -> Vector3:
+func _pose(slot: int, weight: float, real_delta: float, scaled_delta: float) -> Vector3:
 	var from := _previous.fighter(slot)
 	var to := _current.fighter(slot)
 	var world := ArenaTransform.to_world(lerpf(from.x, to.x, weight), lerpf(from.y, to.y, weight))
 	var proxy := _fighters[slot]
 	var time_scale := scaled_delta / real_delta if real_delta > 0.0 else 1.0
 	var lift := lift_inputs(from, to, weight)
-	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to, scaled_delta, time_scale, height, lift.x, lift.y)
+	var sample := lerpf(SimulationTimebase.ticks_to_seconds(_previous.tick), SimulationTimebase.ticks_to_seconds(_current.tick), weight)
+	proxy.apply_pose(world, lerp_angle(from.facing, to.facing, weight), lerpf(from.weapon_angle, to.weapon_angle, weight), to, scaled_delta, time_scale, lift.x, lift.y, sample)
 	var blade := proxy.trail_points()
 	_trails[slot].add_sample(blade[0], blade[1], to.swing_potential, to.blade_speed, _kits.weapon.trail_min_speed)
 	_trails[slot].advance(real_delta)

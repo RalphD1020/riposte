@@ -12,7 +12,10 @@
   {
     "source": "fighters/wolf_production.blend",
     "id": "fighter.wolf.production",
-    "output": "fighters/wolf_production.glb"
+    "output": "fighters/wolf_production.glb",
+    "role": "archival",
+    "glb_sha256": "c9e1bc2e97c6e577f0c96fab7a6476c6da377d589364f6db8b168d839f878862",
+    "source_sha256": "7fc1f62d3ed5de1feb354e701b9658ebdc814843492207ee8cf749583a5e5c9d"
   },
   {
     "source": "characters/male_base.blend",

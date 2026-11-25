@@ -14,7 +14,7 @@ The abb6a27 column is a frozen record of rules 20 — the build whose feel the r
 <!-- prettier-ignore-start -->
 <!-- speed-ledger:begin -->
 
-| Quantity | Unit | Now (rules 61) | abb6a27 (rules 20) |
+| Quantity | Unit | Now (rules 65) | abb6a27 (rules 20) |
 | --- | --- | --- | --- |
 | Simulation rate | Hz | 60 | 60 |
 | Tap swing speed cap | rad/s | 10.5 | 10.5 |
@@ -40,11 +40,11 @@ The abb6a27 column is a frozen record of rules 20 — the build whose feel the r
 | Hand discs, presentation and self-clearance only | m | 2 × 0.035; not a hurt shape | — |
 | Sword-vs-sword steel | — | blade only (STEEL-TOPOLOGY-001) | blade only |
 | Exposure in damage | — | reading only (PHYS-004) | damage × 0.75–1.5 |
-| Tap from the guard: release → overswing | ticks | 10 | — |
-| Tap whiff: release → under control | ticks | 20 | — |
+| Tap from the guard: release → stop (active phases end) | ticks | 12 | — |
+| Tap whiff: release → under control | ticks | 19 | — |
 | Full charge: press → fully wound | ticks | 68 | — |
-| Full charge: release → overswing | ticks | 12 | — |
-| Full whiff: release → under control | ticks | 25 | — |
+| Full charge: release → stop (active phases end) | ticks | 16 | — |
+| Full whiff: release → under control | ticks | 23 | — |
 
 <!-- speed-ledger:end -->
 <!-- prettier-ignore-end -->

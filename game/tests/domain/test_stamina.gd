@@ -24,6 +24,9 @@ const CHARGE_TICKS := 20
 const SPENT_HOLD_TICKS := 40
 ## Ticks watched after a refused dash for one that fires later on its own.
 const BUFFER_WATCH_TICKS := 20
+## Largest relative change of a held contact impulse when the spar's two slots are exchanged (measured on the slot-ordered
+## `ContactLcp` solve of this spar: 1.2e-8, rounded up).
+const SOLVE_ASYMMETRY := 1.0e-8
 
 var _rules: DuelRules
 
@@ -274,14 +277,69 @@ func test_an_impossible_stamina_fails_closed() -> void:
 	state.fighter(0).stamina = 1.0
 
 
-## Two identical fighters in mirrored play spend and recover identically.
-func test_stamina_mirrors_exactly() -> void:
-	## ARRANGE: the canonical mirrored spar.
-	var runner := _runner()
-	## ACT: both fighters shuttle in mirror.
+## The canonical spar: both fighters shuttle forward, dashing every 60 ticks. Returns the first tick whose discrete
+## state differs between the slots (phase, contact lifecycles, holds, bursts so far), or -1. `excess` (optional) receives
+## the largest per-tick stamina gap between the slots beyond `SOLVE_ASYMMETRY` of the stamina spent so far.
+func _spar(runner: SimRunner, excess: Array = []) -> int:
+	var first := -1
+	var worst := -INF
 	for tick in MIRROR_TICKS:
 		var dash := tick % 60 == 0
 		runner.push(PlayerCommand.create(runner.state.tick, 0.0, 1.0, false, false, false, dash), PlayerCommand.create(runner.state.tick, 0.0, 1.0, false, false, false, dash))
+		var a := runner.state.fighter(0)
+		var b := runner.state.fighter(1)
+		var held := runner.state.weapon_body_contacts
+		var same := (
+			a.weapon.phase == b.weapon.phase
+			and a.weapon.phase_ticks == b.weapon.phase_ticks
+			and held[0].phase == held[1].phase
+			and held[0].hold_active == held[1].hold_active
+			and a.gesture.burst_kind == b.gesture.burst_kind
+			and a.gesture.burst_ticks_remaining == b.gesture.burst_ticks_remaining
+		)
+		if not same and first < 0:
+			first = runner.state.tick
+		var spent := 1.0 - minf(a.stamina, b.stamina)
+		worst = maxf(worst, absf(a.stamina - b.stamina) - SOLVE_ASYMMETRY * spent)
+	if excess.size() > 0:
+		excess[0] = worst
+	return first
+
+
+## Same build, same state, same inputs: the same stamina to the last bit (exact replay).
+func test_the_same_spar_replays_exactly() -> void:
+	## ARRANGE: two runs of the canonical spar from the same seed.
+	var first := _runner()
+	var second := _runner()
+	assert_eq(first.state.fighter(0).stamina, second.state.fighter(0).stamina, "fixture: both start from the same state")
+	## ACT
+	_spar(first)
+	_spar(second)
 	## ASSERT
-	assert_true(runner.state.fighter(0).stamina < 1.0, "fixture: both spent stamina (%.3f)" % runner.state.fighter(0).stamina)
-	assert_eq(runner.state.fighter(0).stamina, runner.state.fighter(1).stamina, "to the last bit")
+	assert_true(first.state.fighter(0).stamina < 1.0, "fixture: the spar spends stamina (%.3f)" % first.state.fighter(0).stamina)
+	for slot in 2:
+		assert_eq(second.state.fighter(slot).stamina, first.state.fighter(slot).stamina, "slot %d: the replay's stamina is bit-identical" % slot)
+
+
+## Two identical fighters in the spar are the same duel turned half a turn (a 180° rotation that also exchanges the
+## slots): every discrete decision agrees tick by tick, and on every tick they have spent the same stamina within the
+## contact solve's own slot-order sensitivity. The persisted holds both press their sword on the other's torso while the
+## bodies push, and the exact normal block (`ContactLcp`) solves those rows in slot order; on this spar exchanging the
+## slots moves a hold impulse by at most 1.2e-8 of itself (measured on the solve, not on stamina), so the stamina the
+## resulting motion costs may differ by that share of what has been spent — never more, at any tick.
+func test_the_rotated_spar_spends_the_same_stamina() -> void:
+	## ARRANGE: the spar's start is the half-turn of itself.
+	var runner := _runner()
+	var a := runner.state.fighter(0)
+	var b := runner.state.fighter(1)
+	assert_eq(a.x, -b.x, "fixture: the fighters stand point-symmetric (x)")
+	assert_eq(a.y, -b.y, "fixture: the fighters stand point-symmetric (y)")
+	assert_near(wrapf(b.facing - a.facing, 0.0, TAU), PI, 1e-12, "fixture: and face each other")
+	## ACT
+	var excess := [0.0]
+	var diverged := _spar(runner, excess)
+	## ASSERT
+	assert_eq(diverged, -1, "every discrete decision agrees on both sides, tick by tick")
+	var spent := 1.0 - a.stamina
+	assert_true(spent > 0.1, "fixture: the spar spends stamina (%.3f)" % spent)
+	assert_true(float(excess[0]) <= 0.0, "every tick's stamina gap stays within %s of the spend (worst excess %s)" % [String.num_scientific(SOLVE_ASYMMETRY), String.num_scientific(float(excess[0]))])

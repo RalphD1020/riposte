@@ -8,6 +8,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_run.call_deferred()
 
 
@@ -190,8 +191,7 @@ func _find_camera(node: Node) -> Camera3D:
 
 func _save(viewport: SubViewport, out: String, shot_name: String) -> void:
 	await RenderingServer.frame_post_draw
-	var image := viewport.get_texture().get_image()
-	image.save_png(out.path_join("%s.png" % shot_name))
+	SkeletonCapture.save(viewport, out.path_join("%s.png" % shot_name), "capture_ring_out", {"shot": shot_name})
 	var draw_calls := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 	var primitives := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
 	var frame_ms := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0

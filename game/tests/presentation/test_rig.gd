@@ -58,11 +58,23 @@ func _count_triangles(node: Node) -> int:
 	return count
 
 
+## A lift field for `config` (the shared drawing when null) on the fighter's
+## own carriage radius, as the proxy builds it.
+func _drawn_field(config: WeaponPresentationConfig = null) -> CombatPresentationField:
+	var declared := config if config != null else WeaponPresentationConfig.shared()
+	return CombatPresentationField.new(declared.with_carriage_radius(_rules.combatant(0).handling.carriage_radius))
+
+
+## The candidate drawing the field tests share: centre 0.15 m lower with 3° more
+## point, a declared high guard (0.50 m, 80°, +150° at the right load).
+func _candidate_drawing() -> WeaponPresentationConfig:
+	return WeaponPresentationConfig.shared().with_centre(-0.15, 3.0).with_load(0.5, 80.0, true, 150.0)
+
+
 ## The lift field sampled on the authoritative carriage at `angle`, as the
 ## proxy samples it.
 func _lift(field: CombatPresentationField, angle: float, phase: CombatPhase.Id = CombatPhase.Id.NEUTRAL, progress: float = 1.0, charge: float = 0.0, swing_charge: float = 0.0, blade_height: float = 1.0, cut_dir: float = 1.0, committed: bool = false) -> CombatPresentationField:
 	var planar := WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, _rules.combatant(0), BladePose.new())
-	field.carriage_radius = _rules.combatant(0).handling.carriage_radius
 	return field.sample(angle, planar.carriage_y, planar.carriage_x, phase, progress, charge, swing_charge, blade_height, cut_dir, committed)
 
 
@@ -499,15 +511,20 @@ func _sweep(rows: Array[PresentationFighter], refine: int, legs: bool = false) -
 	var held := proxy.authoritative_blade_points()[1]
 	var result := {"worst": 0.0, "at": "", "transitions": 0}
 	var side := 0.0
+	## A boundary's carried lift keeps moving the drawn blade after the boundary tick, while the blade itself may be
+	## still: those ticks are motion to refine too, for as long as the carry has not decayed (five time constants).
+	var carry_ticks := ceili(5.0 * FighterPresentation3D.CARRY_BLEND_SECONDS / tick)
+	var since_boundary := carry_ticks + 1
 	for i in range(1, rows.size()):
 		var row := rows[i]
 		var changed := row.phase != rows[i - 1].phase
-		var steps := refine if changed or absf(angle_difference(rows[i - 1].weapon_angle, row.weapon_angle)) > deg_to_rad(1.0) else 1
+		since_boundary = 0 if changed else since_boundary + 1
+		var steps := refine if since_boundary <= carry_ticks or absf(angle_difference(rows[i - 1].weapon_angle, row.weapon_angle)) > deg_to_rad(1.0) else 1
 		for k in range(1, steps + 1):
 			var weight := float(k) / float(steps)
 			var angle := lerp_angle(rows[i - 1].weapon_angle, row.weapon_angle, weight)
 			var lift := MatchPresenter.lift_inputs(rows[i - 1], row, weight)
-			proxy.apply_pose(Vector3.ZERO, PI * 0.5, angle, row, tick / float(steps), 1.0, NAN, lift.x, lift.y)
+			proxy.apply_pose(Vector3.ZERO, PI * 0.5, angle, row, tick / float(steps), 1.0, lift.x, lift.y)
 			proxy.animation_player().advance(tick / float(steps))
 			var now_drawn := proxy.blade_points()[1]
 			var now_held := proxy.authoritative_blade_points()[1]
@@ -566,7 +583,7 @@ func test_the_body_hands_back_to_the_guard_wherever_the_blade_stops() -> void:
 		var stop: float = case[2]
 		## ACT: drawn one frame per tick.
 		var previous := NAN
-		var previous_phase := rows[0].phase
+		var previous_row: PresentationFighter = rows[0]
 		var previous_committed := false
 		var reach := -INF
 		var boundaries := 0
@@ -576,22 +593,570 @@ func test_the_body_hands_back_to_the_guard_wherever_the_blade_stops() -> void:
 			var cut := CutPresentationCurve.cut_angle(row.weapon_angle, row.cut_dir)
 			var committed := proxy.is_cut_committed()
 			reach = maxf(reach, cut)
-			## ASSERT: a phase or commit boundary passes at most one tick of decay
-			## of the jump between the two branches (the old branch read at this
-			## very angle), plus what is left of earlier boundaries' carries: the
-			## body's own travel with the blade is not held back.
-			if not is_nan(previous) and (row.phase != previous_phase or committed != previous_committed):
+			## ASSERT: a phase or commit boundary keeps the drawn branch, read at the
+			## transition (the previous tick's blade), up to one tick of decay of its
+			## jump to the new branch there, plus the new branch's own travel since
+			## and what is left of earlier carries: the body's travel with the blade
+			## is not held back.
+			if not is_nan(previous) and (row.phase != previous_row.phase or committed != previous_committed):
 				boundaries += 1
-				var old_branch := FighterPresentation3D.settled_for(previous_phase, row.swing_progress, cut, previous_committed)
-				var new_branch := FighterPresentation3D.settled_for(row.phase, row.swing_progress, cut, committed)
-				assert_true(absf(settled - old_branch) <= 0.25 * absf(new_branch - old_branch) + 0.05, "%s: entering %s the support keeps the old branch's %.2f (shown %.2f, new branch %.2f)" % [label, CombatPhase.Id.keys()[row.phase], old_branch, settled, new_branch])
+				var from_cut := CutPresentationCurve.cut_angle(previous_row.weapon_angle, previous_row.cut_dir)
+				var progress := previous_row.swing_progress if row.phase == previous_row.phase else row.swing_progress
+				var old_branch := FighterPresentation3D.settled_for(previous_row.phase, previous_row.swing_progress, from_cut, previous_committed)
+				var new_branch := FighterPresentation3D.settled_for(row.phase, progress, from_cut, committed)
+				var travel := absf(FighterPresentation3D.settled_for(row.phase, row.swing_progress, cut, committed) - new_branch)
+				var earlier := absf(previous - old_branch)
+				assert_true(absf(settled - old_branch) <= 0.25 * absf(new_branch - old_branch) + travel + earlier + 0.05, "%s: entering %s the support keeps the drawn branch's %.2f (shown %.2f, new branch %.2f, travel %.2f, earlier carry %.2f)" % [label, CombatPhase.Id.keys()[row.phase], old_branch, settled, new_branch, travel, earlier])
 			previous = settled
-			previous_phase = row.phase
+			previous_row = row
 			previous_committed = committed
 		assert_true(boundaries >= 3, "fixture: %s crossed its phase boundaries (%d)" % [label, boundaries])
 		assert_true(previous >= 0.95, "%s: the body is back in the guard's support (%.3f)" % [label, previous])
 		assert_true(reach <= stop + 1e-6, "%s: without the blade travelling on (%.1f°)" % [label, reach])
 	proxy.queue_free()
+
+
+## The presentation clock in integer keys: every render rate's frames and every
+## tick boundary land on whole keys, so instants shared between rates compare.
+const PRESENTATION_KEYS_PER_SECOND := 720
+const KEYS_PER_TICK := 12
+const RENDER_RATES: PackedInt32Array = [30, 60, 120, 144]
+
+
+## WEAPON-PATH-004 Stage 2: the drawn sword and the body's hand-back are a
+## function of the snapshots, the transitions and the sample time — never of
+## which frames were drawn — through every transition the path declares.
+func test_the_drawn_sword_is_a_function_of_the_snapshots_not_the_frames() -> void:
+	assert_eq(KEYS_PER_TICK * SimulationTimebase.TICK_RATE, PRESENTATION_KEYS_PER_SECOND, "fixture: a tick is a whole number of keys")
+	var cases := _presentation_cases()
+	## One proxy throughout: a new round (`reset_terminal`) must leave nothing
+	## of the last for any rate to inherit.
+	var proxy := _proxy()
+	for case: Array in cases:
+		var label: String = case[0]
+		var rows: Array[PresentationFighter] = case[1]
+		var reset_at: int = case[2]
+		## ACT: the same snapshots drawn at four display rates.
+		var drawn: Array[Dictionary] = []
+		for rate in RENDER_RATES:
+			drawn.append(_presented(proxy, rows, rate, reset_at))
+		## ASSERT: every instant two rates share is drawn identically.
+		var shared := 0
+		var worst := 0.0
+		for key: int in drawn[0]:
+			for index in range(1, drawn.size()):
+				if drawn[index].has(key):
+					shared += 1
+					worst = maxf(worst, _drawn_difference(drawn[0][key], drawn[index][key]))
+		assert_true(shared > rows.size(), "fixture: %s shares instants across rates (%d)" % [label, shared])
+		assert_true(worst <= 1e-6, "%s: the drawn sword and body are the same at a shared instant at any rate (worst %s)" % [label, String.num_scientific(worst)])
+		## ASSERT: scrubbing inside an interval is pure — any order, the same pose.
+		proxy.reset_terminal()
+		var middle := rows.size() >> 1
+		for i in range(1, middle + 1):
+			if i == reset_at:
+				proxy.reset_terminal()
+				assert_false(proxy.is_cut_committed(), "%s: the reset lets go of the turnover" % label)
+			proxy.advance(rows[i - 1], rows[i], SimulationTimebase.ticks_to_seconds(i - 1))
+		var forward := _draw_at(proxy, rows[middle - 1], rows[middle], middle, 0.75)
+		_draw_at(proxy, rows[middle - 1], rows[middle], middle, 0.25)
+		var scrubbed := _draw_at(proxy, rows[middle - 1], rows[middle], middle, 0.75)
+		assert_true(_drawn_difference(forward, scrubbed) == 0.0, "%s: scrubbing back and forth inside a tick redraws the same pose" % label)
+	proxy.queue_free()
+
+
+## A boundary hands over without a pop: the first instant of an interval is
+## drawn where the last instant of the one before was, at every phase and
+## turnover boundary; only a new round (a declared reset) starts fresh.
+func test_every_boundary_hands_over_without_a_pop() -> void:
+	var turned := 0
+	var proxy := _proxy()
+	for case: Array in _presentation_cases():
+		var label: String = case[0]
+		var rows: Array[PresentationFighter] = case[1]
+		var reset_at: int = case[2]
+		proxy.reset_terminal()
+		var boundaries := 0
+		var worst := 0.0
+		var committed := false
+		for i in range(1, rows.size()):
+			var before := _draw_at(proxy, rows[i - 2], rows[i - 1], i - 1, 1.0) if i >= 2 else []
+			if i == reset_at:
+				proxy.reset_terminal()
+			proxy.advance(rows[i - 1], rows[i], SimulationTimebase.ticks_to_seconds(i - 1))
+			var after := _draw_at(proxy, rows[i - 1], rows[i], i, 0.0)
+			if i == reset_at:
+				## ASSERT: a new round carries nothing of the last one.
+				var fresh := _proxy()
+				fresh.advance(rows[i - 1], rows[i], SimulationTimebase.ticks_to_seconds(i - 1))
+				assert_true(_drawn_difference(after, _draw_at(fresh, rows[i - 1], rows[i], i, 0.0)) <= 1e-9, "%s: the reset draws its first snapshot fresh" % label)
+				fresh.queue_free()
+			if proxy.is_cut_committed() != committed:
+				committed = not committed
+				turned += 1
+			if i >= 2 and i != reset_at:
+				if rows[i].phase != rows[i - 1].phase:
+					boundaries += 1
+				worst = maxf(worst, _drawn_difference(before, after))
+		assert_true(boundaries >= 1, "fixture: %s crosses a boundary (%d)" % [label, boundaries])
+		assert_true(worst <= 1e-5, "%s: the drawn sword and body hand over continuously (worst %s)" % [label, String.num_scientific(worst)])
+	proxy.queue_free()
+	assert_true(turned >= 2, "fixture: the cases commit and let go of the cut's turnover (%d)" % turned)
+
+
+## WEAPON-PATH-004 Stage 2.1: the action context is read from the snapshots —
+## the latched origin, the swing's launch and the last boundary in
+## presentation seconds, the handling — never new simulation state, and never
+## moved by which frame is drawn.
+func test_the_action_context_is_read_from_the_snapshots() -> void:
+	## ARRANGE: three guard ticks, then a real full cut back to the guard.
+	var full := _cut_rows_at(1.0)
+	var guard := full[full.size() - 1]
+	var rows: Array[PresentationFighter] = []
+	for _step in 3:
+		rows.append(_row_like(guard, CombatPhase.Id.NEUTRAL, guard.weapon_angle, 0.0, 0.0))
+	rows.append_array(full)
+	assert_eq(rows[3].phase, CombatPhase.Id.LAUNCH, "fixture: the swing launches on the fourth snapshot")
+	var proxy := _proxy()
+	var launched := SimulationTimebase.ticks_to_seconds(2)
+	var last_change := NAN
+	for i in range(1, rows.size()):
+		proxy.advance(rows[i - 1], rows[i], SimulationTimebase.ticks_to_seconds(i - 1))
+		if rows[i].phase != rows[i - 1].phase:
+			last_change = SimulationTimebase.ticks_to_seconds(i - 1)
+		## PERTURB: two different frames inside the same interval.
+		var early := _draw_at(proxy, rows[i - 1], rows[i], i, 0.1)
+		var context := proxy.action_context()
+		var started := context.swing_started
+		_draw_at(proxy, rows[i - 1], rows[i], i, 0.9)
+		## ASSERT: the context is the snapshot's, the same at either frame.
+		assert_eq(context.phase, rows[i].phase, "tick %d: the phase is the snapshot's" % i)
+		assert_eq(context.cut_dir, rows[i].cut_dir, "tick %d: the latched origin is the snapshot's" % i)
+		assert_true(context.handling == rows[i].combatant_spec.handling, "tick %d: the handling is the fighter's own" % i)
+		assert_true(started == context.swing_started or (is_nan(started) and is_nan(context.swing_started)), "tick %d: the swing's launch does not move with the frame drawn" % i)
+		if context.is_cut():
+			assert_near(context.swing_started, launched, 1e-12, "tick %d: the swing launched where its snapshots say" % i)
+		else:
+			assert_true(i < 3 or is_nan(context.swing_started), "tick %d: out of the cut there is no swing in flight" % i)
+		if not is_nan(last_change):
+			assert_near(context.transition, last_change, 1e-12, "tick %d: the last boundary is the last phase change's" % i)
+		assert_true(early.size() == 2, "fixture: drawn")
+	assert_eq(rows[rows.size() - 1].phase, CombatPhase.Id.NEUTRAL, "fixture: the cut ends in the guard")
+	proxy.queue_free()
+
+
+## WEAPON-PATH-004 Stage 3: one pure evaluation. The same inputs give the same
+## bits from any evaluator in any order; the sword is rigid (a proper basis,
+## the blade's own length, fixed stations); each hand's target is exactly the
+## weapon times its grip frame, and the shipping proxy draws and grips exactly
+## that.
+func test_the_weapon_pose_is_one_pure_evaluation() -> void:
+	## ARRANGE: the shipping body's drawing (its grips included) and two
+	## evaluators over it; a grid of angles, phases, progress, directions and
+	## turnovers.
+	var proxy := _proxy()
+	var config := proxy.weapon_config()
+	assert_true(config.has_grips(), "fixture: the shipping body holds the sword with both hands")
+	assert_eq(config.problems().size(), 0, "fixture: its drawing is valid: %s" % ", ".join(config.problems()))
+	var spec := _rules.combatant(0)
+	var first := WeaponPoseEvaluator.new(spec, config)
+	var second := WeaponPoseEvaluator.new(spec, config)
+	var planar := BladePose.new()
+	var weapon := spec.weapon
+	var station_gap := config.grip_stations[0].distance_to(config.grip_stations[1])
+	var samples := 0
+	var worst_rigid := 0.0
+	for degrees in range(-135, 136, 15):
+		var angle := deg_to_rad(float(degrees))
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, spec, planar)
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.OVERSWING, CombatPhase.Id.RECOVERY]:
+			for progress: float in [0.0, 0.5, 1.0]:
+				for cut_dir: float in [-1.0, 1.0]:
+					for committed: bool in [false, true]:
+						var context := _context(phase, progress, 0.5, 0.5, cut_dir, committed)
+						## PERTURB: the second evaluator draws a different pose first.
+						second.evaluate(planar, -angle, 1.0, _context(CombatPhase.Id.STAGGER, 1.0 - progress, 0.0, 1.0, -cut_dir, not committed))
+						## ACT
+						first.evaluate(planar, angle, 1.0, context)
+						second.evaluate(planar, angle, 1.0, context)
+						samples += 1
+						## ASSERT: the same bits, a rigid sword, hands on the weapon's grips.
+						assert_true(first.weapon == second.weapon and first.grips == second.grips and first.wrists == second.wrists, "%d° phase %d: the same inputs give the same pose" % [degrees, phase])
+						var basis := first.weapon.basis
+						worst_rigid = maxf(worst_rigid, absf(basis.determinant() - 1.0))
+						worst_rigid = maxf(worst_rigid, absf(basis.x.dot(basis.y)) + absf(basis.y.dot(basis.z)) + absf(basis.z.dot(basis.x)))
+						worst_rigid = maxf(worst_rigid, absf(first.tip().distance_to(first.weapon.origin) - weapon.tip_radius))
+						worst_rigid = maxf(worst_rigid, absf(first.grip_station(0).distance_to(first.grip_station(1)) - station_gap))
+						for index in 2:
+							assert_true(first.grips[index] == first.weapon * config.grip_frames[index], "the hand's target is the weapon times its grip frame")
+							assert_true(first.grips[index].basis.determinant() > 0.0, "a hand is never mirrored")
+	assert_eq(samples, 19 * 6 * 3 * 2 * 2, "every angle, phase, progress, direction and turnover was evaluated")
+	assert_true(worst_rigid < 1e-5, "the drawn sword is rigid: a proper basis, the blade's own length, fixed grip stations (worst %s)" % String.num_scientific(worst_rigid))
+	assert_true(config.grip_stations[0].z > config.grip_stations[1].z, "the dominant (right) hand holds nearer the guard than the off hand")
+	## ASSERT: the proxy draws and grips exactly this evaluation.
+	var row := _row(deg_to_rad(-30.0))
+	proxy.apply_pose(Vector3.ZERO, PI * 0.5, deg_to_rad(-30.0), row, 1.0)
+	var evaluated := proxy.weapon_pose()
+	assert_true(proxy.carriage().transform == evaluated.weapon, "the drawn sword is the evaluated weapon")
+	var into_world := proxy.visual_root().global_transform
+	var dominant := proxy.rig().grip_target(0).global_transform
+	var wanted := into_world * evaluated.grips[0]
+	var grip_gap := dominant.origin.distance_to(wanted.origin)
+	assert_true(grip_gap < 1e-5, "the dominant hand holds the evaluated grip station (%s m)" % String.num_scientific(grip_gap))
+	if proxy.rig().has_contacts():
+		var grip_turn := maxf((dominant.basis.x - wanted.basis.x).length(), (dominant.basis.z - wanted.basis.z).length())
+		assert_true(grip_turn < 1e-5, "an authored contact keeps the evaluated hand frame exactly (%s)" % String.num_scientific(grip_turn))
+	else:
+		## The common grip: the hand pass turns the hand along its arm, inside the
+		## grip's range, about the evaluated station — never moving it.
+		var span := dominant.basis * proxy.rig().hand_span_axes[0]
+		var handle := into_world.basis * evaluated.weapon.basis.z
+		var along := span.normalized().dot(handle.normalized())
+		assert_true(absf(along) > 0.9, "the common grip's knuckle line stays along the handle (%.3f)" % along)
+	proxy.queue_free()
+
+
+## The drawn weapon has no side and the hands never swap: the left-origin
+## evaluation at −θ cutting −dir is the right-origin one at θ reflected through
+## the lateral axis (weapon and every station on the blade), while both hands
+## keep their stations and stay proper (unmirrored) hands.
+func test_the_weapon_pose_mirrors_and_never_swaps_hands() -> void:
+	var proxy := _proxy()
+	var config := proxy.weapon_config()
+	var spec := _rules.combatant(0)
+	var right := WeaponPoseEvaluator.new(spec, config)
+	var left := WeaponPoseEvaluator.new(spec, config)
+	var reflect := Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 1.0, 0.0), Vector3(0.0, 0.0, 1.0))
+	var planar := BladePose.new()
+	var worst := 0.0
+	var compared := 0
+	for degrees in range(-135, 136, 15):
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.RECOVERY]:
+			WeaponKinematics.pose_at(0.0, 0.0, 0.0, deg_to_rad(float(degrees)), spec, planar)
+			right.evaluate(planar, deg_to_rad(float(degrees)), 1.0, _context(phase, 0.5, 0.6, 0.6, 1.0, false))
+			WeaponKinematics.pose_at(0.0, 0.0, 0.0, deg_to_rad(float(-degrees)), spec, planar)
+			left.evaluate(planar, deg_to_rad(float(-degrees)), 1.0, _context(phase, 0.5, 0.6, 0.6, -1.0, false))
+			worst = maxf(worst, (left.weapon.origin - reflect * right.weapon.origin).length())
+			var mirrored := reflect * right.weapon.basis * reflect
+			worst = maxf(worst, maxf((left.weapon.basis.x - mirrored.x).length(), (left.weapon.basis.z - mirrored.z).length()))
+			for index in 2:
+				worst = maxf(worst, (left.grip_station(index) - reflect * right.grip_station(index)).length())
+				assert_true(left.grips[index].basis.determinant() > 0.0 and right.grips[index].basis.determinant() > 0.0, "%d°: hand %d stays a proper hand on both origins" % [degrees, index])
+			compared += 1
+	assert_eq(compared, 19 * 4, "every angle and phase compared")
+	assert_true(worst < 1e-5, "the weapon and its stations mirror exactly (worst %s)" % String.num_scientific(worst))
+	proxy.queue_free()
+
+
+## How the stations move per radian of θ is continuous through the path's own
+## knots (the cut keys in flight, the guard keys at rest): eased keys put no kink
+## in the drawn motion; and across the guard ↔ cut boundary the drawn tip's rate
+## stays bounded by the authoritative sword's own.
+func test_station_rates_are_continuous_through_the_path_knots() -> void:
+	var spec := _rules.combatant(0)
+	var evaluator := WeaponPoseEvaluator.new(spec)
+	var path := WeaponPathDefinition.reference_sword()
+	var nudge := deg_to_rad(0.05)
+	var worst := 0.0
+	var knots := 0
+	for spec_row: Array in [[CombatPhase.Id.ACTIVE_THREAT, path.cut_keys], [CombatPhase.Id.NEUTRAL, path.stance_degrees]]:
+		var phase: CombatPhase.Id = spec_row[0]
+		var keys: PackedFloat64Array = spec_row[1]
+		for key in keys:
+			for cut_dir: float in [-1.0, 1.0]:
+				var angle := deg_to_rad(key) * cut_dir
+				if absf(angle) >= spec.weapon.guard_limit:
+					continue
+				var context := _context(phase, 1.0, 0.0, 0.0, cut_dir, false)
+				var before := evaluator.station_rate(angle - nudge, 1.0, context, spec.weapon.tip_radius)
+				var after := evaluator.station_rate(angle + nudge, 1.0, context, spec.weapon.tip_radius)
+				worst = maxf(worst, (after - before).length() / maxf(before.length(), 1e-6))
+				knots += 1
+	assert_true(knots >= 12, "fixture: the cut and guard keys were crossed (%d)" % knots)
+	assert_true(worst < 0.02, "the drawn tip's rate is continuous through every knot (worst relative jump %.4f)" % worst)
+	## Across the guard ↔ cut boundary: each branch's drawn tip rate is bounded by
+	## the authoritative tip's own rate per radian (pitch foreshortens what the
+	## lift adds: the drawn point never outruns the sword's own turning; measured
+	## 0.9996× on the shipping drawing).
+	var ratio := 0.0
+	var planar := BladePose.new()
+	for degrees in range(-120, 121, 10):
+		var angle := deg_to_rad(float(degrees))
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle + WeaponPoseEvaluator.RATE_STEP_RAD, spec, planar)
+		var ahead := Vector2(planar.point_x(spec.weapon.tip_radius), planar.point_y(spec.weapon.tip_radius))
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle - WeaponPoseEvaluator.RATE_STEP_RAD, spec, planar)
+		var behind := Vector2(planar.point_x(spec.weapon.tip_radius), planar.point_y(spec.weapon.tip_radius))
+		var authoritative := (ahead - behind).length() / (2.0 * WeaponPoseEvaluator.RATE_STEP_RAD)
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_THREAT]:
+			var drawn := evaluator.station_rate(angle, 1.0, _context(phase, 0.0, 0.0, 0.0, 1.0, false), spec.weapon.tip_radius).length()
+			ratio = maxf(ratio, drawn / authoritative)
+	assert_true(ratio < 1.1, "on either side of the boundary the drawn tip never outruns the authoritative tip per radian (worst %.4f×)" % ratio)
+
+
+## GRIP-HEIGHT-001 through the evaluator: health, stamina and every condition
+## reading leave the drawn weapon and both hands' targets bit-identical — the
+## same carriage at the same θ, never a displaced grip.
+func test_the_drawn_weapon_is_condition_independent() -> void:
+	var proxy := _proxy()
+	var config := proxy.weapon_config()
+	var spec := _rules.combatant(0)
+	var rested := WeaponPoseEvaluator.new(spec, config)
+	var worn := WeaponPoseEvaluator.new(spec, config)
+	var planar := BladePose.new()
+	var context := WeaponActionContext.new()
+	var compared := 0
+	for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.RECOVERY]:
+		for degrees in range(-135, 136, 45):
+			var healthy := _row(deg_to_rad(float(degrees)), phase, 0.5, 0.5, 0.5)
+			## PERTURB: the same action by a wounded, exhausted fighter.
+			var hurt := _row_like(healthy, phase, healthy.weapon_angle, healthy.weapon_speed, healthy.charge)
+			hurt.health = 5.0
+			hurt.stamina = 0.05
+			hurt.force_scale = 0.4
+			hurt.speed_scale = 0.5
+			hurt.tracking_scale = 0.3
+			hurt.impact_authority = 0.3
+			hurt.condition = FighterCondition.Id.CRITICAL
+			WeaponKinematics.pose_at(0.0, 0.0, 0.0, healthy.weapon_angle, spec, planar)
+			rested.evaluate(planar, healthy.weapon_angle, 1.0, context.read(healthy, healthy.swing_progress, healthy.charge, false))
+			worn.evaluate(planar, hurt.weapon_angle, 1.0, context.read(hurt, hurt.swing_progress, hurt.charge, false))
+			assert_true(rested.weapon == worn.weapon and rested.grips == worn.grips, "%d° phase %d: the condition never moves the weapon or a hand" % [degrees, phase])
+			compared += 1
+	assert_eq(compared, 4 * 7, "every phase and angle compared")
+	proxy.queue_free()
+
+
+## The axial placeholder (no thrust handling yet, W-THRUST): a point carried in
+## a guard, a charge, a stagger or a death is drawn by the guard path alone, so
+## the cut curve never reaches it. A cut curve moved far off changes a cut in
+## flight and leaves every other phase bit-identical.
+func test_a_guard_borne_point_never_takes_the_cut_pitch() -> void:
+	var spec := _rules.combatant(0)
+	var variant := WeaponPathDefinition.reference_sword().copy()
+	for index in variant.cut_pitch_degrees.size():
+		variant.cut_pitch_degrees[index] += 40.0
+		variant.cut_raise[index] += 0.2
+	var shipping := WeaponPoseEvaluator.new(spec)
+	var bent := WeaponPoseEvaluator.new(spec, WeaponPresentationConfig.shared().with_carriage_radius(spec.handling.carriage_radius).with_path(variant))
+	var planar := BladePose.new()
+	WeaponKinematics.pose_at(0.0, 0.0, 0.0, 0.0, spec, planar)
+	shipping.evaluate(planar, 0.0, 1.0, _context(CombatPhase.Id.ACTIVE_THREAT, 1.0, 0.0, 0.0, 1.0, false))
+	bent.evaluate(planar, 0.0, 1.0, _context(CombatPhase.Id.ACTIVE_THREAT, 1.0, 0.0, 0.0, 1.0, false))
+	assert_true(absf(rad_to_deg(bent.lift.y - shipping.lift.y)) > 30.0, "fixture: the moved cut curve changes a cut in flight")
+	var compared := 0
+	for degrees in range(-135, 136, 5):
+		var angle := deg_to_rad(float(degrees))
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, spec, planar)
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.STAGGER, CombatPhase.Id.DEAD]:
+			var context := _context(phase, 0.5, 0.7, 0.0, 1.0, false)
+			shipping.evaluate(planar, angle, 1.0, context)
+			bent.evaluate(planar, angle, 1.0, context)
+			assert_true(shipping.weapon == bent.weapon, "%d° phase %d: a guard-borne point is drawn by the guard path alone" % [degrees, phase])
+			compared += 1
+	assert_eq(compared, 55 * 4, "every angle and non-cut phase compared")
+
+
+## WEAPON-PATH-004 Stage 4: which stations are steel, which guard and which are
+## held is the weapon's own topology (STEEL-TOPOLOGY-001, GUARD-PROTECTION-001)
+## — the same at every θ; where they are is the evaluator's. Across ±135° on
+## both origins the drawn regions keep their order along the drawn axis, the
+## guard root rises on the point's side of the bar, the bar straddles the axis
+## and both hands hold the handle; with the drawing level, every steel station
+## lies exactly where the planar solver places that steel.
+func test_the_guarded_topology_is_the_weapons_at_every_angle() -> void:
+	## ARRANGE
+	var proxy := _proxy()
+	var spec := _rules.combatant(0)
+	var weapon := spec.weapon
+	var regions := WeaponStationTopology.regions(weapon)
+	assert_eq(regions.size(), 3, "the sword is a handle, a guard root and a blade")
+	assert_eq([regions[0].kind, regions[1].kind, regions[2].kind], [WeaponStationTopology.Kind.HANDLE, WeaponStationTopology.Kind.GUARD_ROOT, WeaponStationTopology.Kind.BLADE], "in that order from the pommel")
+	for index in range(1, regions.size()):
+		assert_near(regions[index].from_radius, regions[index - 1].to_radius, 1e-12, "the regions meet without a gap")
+	assert_false(regions[0].steel, "the handle is never steel")
+	assert_true(regions[1].steel and regions[1].protected_side_only, "the guard root is steel from its protected side only")
+	assert_true(regions[2].steel and not regions[2].protected_side_only, "the blade is steel from either side")
+	assert_near(regions[2].from_radius, weapon.guard_root_apex_radius(), 1e-12, "the blade's steel starts at the guard root's apex")
+	var grips := WeaponStationTopology.grip_radii(weapon)
+	assert_true(grips[0] > grips[1] and grips[0] <= regions[0].to_radius and grips[1] >= 0.0, "both hands hold the handle, the dominant nearer the guard")
+	var config := proxy.weapon_config()
+	for index in 2:
+		assert_true(config.grip_stations[index].is_equal_approx(Vector3(0.0, 0.0, grips[index])), "the drawn hand %d holds the weapon's own grip station" % index)
+	var shipping := WeaponPoseEvaluator.new(spec, config)
+	var level := WeaponPoseEvaluator.new(spec, WeaponPresentationConfig.shared().with_carriage_radius(spec.handling.carriage_radius).with_projection(true, 0.0))
+	var planar := BladePose.new()
+	var steel := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+	var root := PackedFloat64Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+	var worst_order := INF
+	var worst_plane := 0.0
+	var samples := 0
+	## ACT: every degree of the window, both origins, rest and cut.
+	for degrees in range(-135, 136):
+		var angle := deg_to_rad(float(degrees))
+		WeaponKinematics.pose_at(0.0, 0.0, 0.0, angle, spec, planar)
+		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.RECOVERY]:
+			for cut_dir: float in [-1.0, 1.0]:
+				shipping.evaluate(planar, angle, 1.0, _context(phase, 0.5, 0.5, 0.5, cut_dir, false))
+				## ASSERT: order along the drawn axis, the root on the point's side,
+				## the bar straddling the axis, the hands on the handle.
+				var axis := shipping.weapon.basis.z.normalized()
+				var pommel := shipping.weapon.origin
+				var previous := -INF
+				for region in regions:
+					var ends := shipping.region_ends(region)
+					var along_from := (ends[0] - pommel).dot(axis)
+					var along_to := (ends[1] - pommel).dot(axis)
+					worst_order = minf(worst_order, minf(along_from - previous + 1e-6, along_to - along_from + 1e-6))
+					previous = along_to
+				var corners := shipping.guard_root_corners()
+				var bar := shipping.guard_root()
+				worst_order = minf(worst_order, (corners[2] - bar).dot(axis))
+				assert_true(((corners[0] + corners[1]) * 0.5).distance_to(bar) < 1e-5, "%d°: the bar straddles the drawn axis" % degrees)
+				for index in 2:
+					var held := (shipping.grip_station(index) - pommel).dot(axis)
+					assert_true(held >= -1e-6 and held <= regions[0].to_radius + 1e-6, "%d°: hand %d holds the drawn handle" % [degrees, index])
+				samples += 1
+		level.evaluate(planar, angle, 0.0, _context(CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0, false))
+		SwordContactGeometry.place(planar.origin_x, planar.origin_y, planar.ux, planar.uy, weapon, steel)
+		SwordContactGeometry.place_guard(planar.origin_x, planar.origin_y, planar.ux, planar.uy, weapon, root)
+		var drawn := PackedVector3Array([level.station(regions[2].from_radius), level.station(regions[2].to_radius)])
+		drawn.append_array(level.guard_root_corners())
+		var solved := PackedVector2Array([Vector2(steel[0], steel[1]), Vector2(steel[2], steel[3]), Vector2(root[0], root[1]), Vector2(root[2], root[3]), Vector2(root[4], root[5])])
+		for point in drawn:
+			var nearest := INF
+			for other in solved:
+				nearest = minf(nearest, Vector2(point.z, point.x).distance_to(other))
+			worst_plane = maxf(worst_plane, nearest)
+	assert_eq(samples, 271 * 4 * 2, "every degree, phase and origin was drawn")
+	assert_true(worst_order > 0.0, "every region keeps its order on the drawn axis and the root rises on the point's side (worst margin %.6f m)" % worst_order)
+	assert_true(worst_plane < 1e-5, "drawn level, every steel station is where the solver places it (worst %.9f m)" % worst_plane)
+	## PERTURB: the topology follows the weapon's data, not its picture.
+	var bare := _weapon_like(weapon)
+	bare.crossguard_half_span = 0.0
+	var no_guard := WeaponStationTopology.regions(bare)
+	assert_eq(no_guard.size(), 2, "a sword with no crossguard has no guard root")
+	assert_near(no_guard[1].from_radius, bare.blade_base_radius, 1e-12, "and its steel starts at the blade's base")
+	var passive := _weapon_like(weapon)
+	passive.crossguard_protects = false
+	assert_false(WeaponStationTopology.regions(passive)[1].protects, "a guard authored not to defend is still steel but never a defense")
+	assert_true(WeaponStationTopology.regions(passive)[1].steel, "(steel all the same)")
+	proxy.queue_free()
+
+
+func _weapon_like(source: WeaponDefinition) -> WeaponDefinition:
+	var out := WeaponDefinition.new()
+	for property in source.get_property_list():
+		if property["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			out.set(property["name"], source.get(property["name"]))
+	return out
+
+
+func _context(phase: CombatPhase.Id, progress: float, charge: float, swing_charge: float, cut_dir: float, committed: bool) -> WeaponActionContext:
+	var context := WeaponActionContext.new()
+	context.phase = phase
+	context.progress = progress
+	context.charge = charge
+	context.swing_charge = swing_charge
+	context.cut_dir = cut_dir
+	context.committed = committed
+	return context
+
+
+## Each case: [label, rows, contact heights per row (NAN apart), reset row or -1].
+func _presentation_cases() -> Array[Array]:
+	var full := _cut_rows_at(1.0)
+	var tap := _cut_rows_at(0.0)
+	var guard := full[full.size() - 1]
+	assert_eq(guard.phase, CombatPhase.Id.NEUTRAL, "fixture: the cut ends back in the guard")
+	## A charge let go without a swing: guard → charge → guard.
+	var cancelled: Array[PresentationFighter] = []
+	for spec: Array in [[CombatPhase.Id.NEUTRAL, 0.0, 6], [CombatPhase.Id.CHARGING, 0.6, 12], [CombatPhase.Id.NEUTRAL, 0.0, 12]]:
+		for step in int(spec[2]):
+			cancelled.append(_row_like(guard, spec[0], guard.weapon_angle, 0.0, float(spec[1]) * float(step + 1) / float(spec[2])))
+	## Guard straight into a recovery (a parried guard), and back.
+	var parried: Array[PresentationFighter] = []
+	for spec: Array in [[CombatPhase.Id.NEUTRAL, 6], [CombatPhase.Id.RECOVERY, 8], [CombatPhase.Id.NEUTRAL, 12]]:
+		for _step in int(spec[1]):
+			parried.append(_row_like(guard, spec[0], guard.weapon_angle, 0.0, 0.0))
+	## A death mid-guard, then the reset to a fresh guard.
+	var died: Array[PresentationFighter] = []
+	for spec: Array in [[CombatPhase.Id.NEUTRAL, 6], [CombatPhase.Id.DEAD, 8], [CombatPhase.Id.NEUTRAL, 10]]:
+		for _step in int(spec[1]):
+			died.append(_row_like(guard, spec[0], guard.weapon_angle, 0.0, 0.0))
+	## A cut that travels on past its turnover into the overswing, then
+	## reverses back inside it, and recovers.
+	var reversed: Array[PresentationFighter] = []
+	var last_swing: PresentationFighter = null
+	for row in full:
+		if not CombatPresentationField.is_swing(row.phase) and last_swing != null:
+			break
+		reversed.append(row)
+		if CombatPresentationField.is_swing(row.phase):
+			last_swing = row
+	var sense := 1.0 if last_swing.cut_dir >= 0.0 else -1.0
+	var travelled := CutPresentationCurve.cut_angle(last_swing.weapon_angle, last_swing.cut_dir)
+	assert_true(travelled < WeaponPathDefinition.INFLECTION_ENTER + 5.0, "fixture: the braked cut alone stops near its end (%.1f°)" % travelled)
+	for degrees: float in [55.0, 70.0, 85.0, 95.0]:
+		reversed.append(_row_like(last_swing, CombatPhase.Id.OVERSWING, deg_to_rad(degrees) * sense, 6.0 * sense, last_swing.charge))
+	for degrees: float in [80.0, 60.0, 40.0, 25.0, 20.0]:
+		reversed.append(_row_like(last_swing, CombatPhase.Id.RECOVERY, deg_to_rad(degrees) * sense, -6.0 * sense, last_swing.charge))
+	for _step in 12:
+		reversed.append(_row_like(guard, CombatPhase.Id.NEUTRAL, guard.weapon_angle, 0.0, 0.0))
+	## A sword contact is not among them: it never reaches the drawn pose
+	## (PRES-CONTACT `test_contact_onset_hold_and_release_never_move_the_swords`).
+	return [
+		["full cut", full, -1],
+		["tap", tap, -1],
+		["charge let go", cancelled, -1],
+		["guard to recovery", parried, -1],
+		["death then reset", died, 14],
+		["turnover reversed", reversed, -1],
+	]
+
+
+func _row_like(source: PresentationFighter, phase: CombatPhase.Id, angle: float, speed: float, charge: float) -> PresentationFighter:
+	var row := PresentationFighter.new()
+	for property in source.get_property_list():
+		if property["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			row.set(property["name"], source.get(property["name"]))
+	row.phase = phase
+	row.weapon_angle = angle
+	row.weapon_speed = speed
+	row.charge = charge
+	return row
+
+
+## Draw `rows` as `MatchPresenter` does — one `advance` per snapshot, frames at
+## `rate` Hz on the presentation clock — keyed by presentation instant.
+func _presented(proxy: FighterPresentation3D, rows: Array[PresentationFighter], rate: int, reset_at: int) -> Dictionary:
+	proxy.reset_terminal()
+	var step := roundi(float(PRESENTATION_KEYS_PER_SECOND) / float(rate))
+	var drawn := {}
+	var key := 0
+	for i in range(1, rows.size()):
+		if i == reset_at:
+			proxy.reset_terminal()
+		proxy.advance(rows[i - 1], rows[i], SimulationTimebase.ticks_to_seconds(i - 1))
+		while key <= i * KEYS_PER_TICK:
+			drawn[key] = _draw_at(proxy, rows[i - 1], rows[i], i, float(key - (i - 1) * KEYS_PER_TICK) / float(KEYS_PER_TICK))
+			key += step
+	return drawn
+
+
+## One frame at `weight` between `from` and `to` (the snapshot of tick `tick`),
+## drawn exactly as `MatchPresenter._pose` draws it: [sword transform, hand-back].
+func _draw_at(proxy: FighterPresentation3D, from: PresentationFighter, to: PresentationFighter, tick: int, weight: float) -> Array:
+	var lift := MatchPresenter.lift_inputs(from, to, weight)
+	var sample := lerpf(SimulationTimebase.ticks_to_seconds(tick - 1), SimulationTimebase.ticks_to_seconds(tick), weight)
+	proxy.apply_pose(Vector3.ZERO, PI * 0.5, lerpf(from.weapon_angle, to.weapon_angle, weight), to, SimulationTimebase.TICK_SECONDS, 1.0, lift.x, lift.y, sample)
+	return [proxy.carriage().transform, proxy.rig().combat_pose().support.settled]
+
+
+func _drawn_difference(a: Array, b: Array) -> float:
+	var ta: Transform3D = a[0]
+	var tb: Transform3D = b[0]
+	var basis := maxf(maxf((ta.basis.x - tb.basis.x).length(), (ta.basis.y - tb.basis.y).length()), (ta.basis.z - tb.basis.z).length())
+	return maxf(maxf((ta.origin - tb.origin).length(), basis), absf(float(a[1]) - float(b[1])))
 
 
 func _cut_rows_at(charge: float) -> Array[PresentationFighter]:
@@ -617,10 +1182,18 @@ func _arrested_rows(rows: Array[PresentationFighter], stop_degrees: float) -> Ar
 	var out: Array[PresentationFighter] = []
 	var last: PresentationFighter = null
 	for row in rows:
-		if CombatPresentationField.is_swing(row.phase) and CutPresentationCurve.cut_angle(row.weapon_angle, row.cut_dir) >= stop_degrees:
-			last = row
+		if not CombatPresentationField.is_swing(row.phase):
+			if last != null:
+				break
+			out.append(row)
+			continue
+		last = row
+		if CutPresentationCurve.cut_angle(row.weapon_angle, row.cut_dir) >= stop_degrees:
 			break
 		out.append(row)
+	## A braked cut may settle within a degree short of its commanded end: then its last swinging row is the arrest.
+	if last != null and CutPresentationCurve.cut_angle(last.weapon_angle, last.cut_dir) < stop_degrees:
+		out.resize(out.size() - 1)
 	var angle := deg_to_rad(stop_degrees) * (1.0 if last.cut_dir >= 0.0 else -1.0)
 	for spec: Array in [[CombatPhase.Id.OVERSWING, 1], [CombatPhase.Id.RECOVERY, 6], [CombatPhase.Id.NEUTRAL, 20]]:
 		for _i in int(spec[1]):
@@ -711,6 +1284,15 @@ func test_the_body_commits_more_to_a_swing_than_to_a_guard() -> void:
 	assert_true(swing > guard_ready and swing >= 1.0, "the swing commits the whole chain")
 	assert_true(recovery < swing and recovery > 0.0, "recovery is softer than the swing but still present")
 	assert_eq(dead, 0.0, "a dead body does not support the blade")
+	## Recovery relaxes with the blade: far round it hands over from the
+	## overswing without a step, and it softens monotonically toward the guard.
+	var far := deg_to_rad(100.0)
+	assert_near(BodySupportPose.effort_for(CombatPhase.Id.RECOVERY, far), BodySupportPose.effort_for(CombatPhase.Id.OVERSWING, far), 1e-9, "an overswing hands over to recovery without stepping the torso")
+	var previous := INF
+	for step in 21:
+		var effort := BodySupportPose.effort_for(CombatPhase.Id.RECOVERY, deg_to_rad(lerpf(100.0, 45.0, step / 20.0)))
+		assert_true(effort <= previous + 1e-12, "recovery effort only relaxes as the sword returns (%.3f)" % effort)
+		previous = effort
 	var scaled := CombatPoseModifier3D.world_follow(&"Chest", PI * 0.5, guard_thrust)
 	var full := CombatPoseModifier3D.world_follow(&"Chest", PI * 0.5)
 	assert_true(scaled < full and scaled > 0.0, "effort scales the follow magnitude without reordering it")
@@ -1395,11 +1977,9 @@ func test_an_authored_elbow_sets_the_bend_plane_and_a_straight_arm_falls_back() 
 func test_a_declared_centre_moves_only_its_own_long_guard_key() -> void:
 	## ARRANGE: the shipping field, a field configured with zero deltas, and a
 	## candidate centre 0.15 m lower with 3° more point; the shipping rig default.
-	var shipping := CombatPresentationField.new()
-	var zero := CombatPresentationField.new()
-	zero.configure_centre(0.0, 0.0)
-	var candidate := CombatPresentationField.new()
-	candidate.configure_centre(-0.15, 3.0)
+	var shipping := _drawn_field()
+	var zero := _drawn_field(WeaponPresentationConfig.shared().with_centre(0.0, 0.0))
+	var candidate := _drawn_field(WeaponPresentationConfig.shared().with_centre(-0.15, 3.0))
 	var rig := SwordRig3D.new()
 	assert_eq(rig.centre_raise_delta, 0.0, "shipping bodies keep the shared centre height")
 	assert_eq(rig.centre_pitch_delta_deg, 0.0, "and the shared centre pitch")
@@ -1522,11 +2102,9 @@ func test_each_hand_lands_on_its_one_resolved_target() -> void:
 func test_a_combat_aligned_sword_meets_in_3d_where_the_plane_says() -> void:
 	## ARRANGE: two combat-aligned fields at one interaction height and a shipping
 	## field (the shared lifts), the shipping rig default.
-	var a := CombatPresentationField.new()
-	var b := CombatPresentationField.new()
-	a.configure_projection(true, 0.04)
-	b.configure_projection(true, 0.04)
-	var shipping := CombatPresentationField.new()
+	var a := _drawn_field(WeaponPresentationConfig.shared().with_projection(true, 0.04))
+	var b := _drawn_field(WeaponPresentationConfig.shared().with_projection(true, 0.04))
+	var shipping := _drawn_field()
 	var rig := SwordRig3D.new()
 	assert_false(rig.combat_aligned_projection, "shipping bodies keep the shared lifts")
 	rig.free()
@@ -1585,14 +2163,12 @@ func test_the_arms_follow_the_cut_by_its_angle_not_a_clock() -> void:
 func test_a_declared_high_guard_loads_each_side_by_gather_without_a_jump() -> void:
 	## ARRANGE: the shipping field, a field configured with the shared load, and
 	## a high guard (hands 0.45 m, pitch 80°, roll +150° at the right load, the
-	## left its mirror with a +10° right-handed correction).
-	var shipping := CombatPresentationField.new()
-	var shared := CombatPresentationField.new()
-	shared.configure_load(CombatPresentationField.LOAD_RAISE, CombatPresentationField.LOAD_PITCH_DEGREES)
-	var high := CombatPresentationField.new()
-	high.configure_load(0.45, 80.0, true, 150.0, 10.0)
+	## left its exact mirror).
+	var shipping := _drawn_field()
+	var shared := _drawn_field(WeaponPresentationConfig.shared().with_load(WeaponPathDefinition.LOAD_RAISE, WeaponPathDefinition.LOAD_PITCH_DEGREES))
+	var high := _drawn_field(WeaponPresentationConfig.shared().with_load(0.45, 80.0, true, 150.0))
 	var rig := SwordRig3D.new()
-	assert_eq(rig.load_raise, CombatPresentationField.LOAD_RAISE, "shipping bodies keep the shared load height")
+	assert_eq(rig.load_raise, WeaponPathDefinition.LOAD_RAISE, "shipping bodies keep the shared load height")
 	assert_false(rig.load_roll_authored, "and the side-signed guard roll")
 	## ACT / ASSERT: the shared load reproduces the shipping lift in every phase.
 	for degrees: float in [-135.0, -60.0, 0.0, 60.0, 135.0]:
@@ -1608,12 +2184,7 @@ func test_a_declared_high_guard_loads_each_side_by_gather_without_a_jump() -> vo
 	assert_near(rad_to_deg(high.pitch), 80.0, 1e-6, "with the declared pitch")
 	assert_near(rad_to_deg(high.roll), 150.0, 1e-6, "and the right load's own roll")
 	high.sample(deg_to_rad(135.0), -0.16, 0.33, CombatPhase.Id.CHARGING, 0.0, 1.0, 0.0, 1.0, -1.0)
-	assert_near(rad_to_deg(high.roll), -140.0, 1e-6, "the left load is the right's mirror (-150°) plus its small correction")
-	## Symmetry by construction: a correction past the limit is clamped, never a
-	## second independent pose.
-	var limit := CombatPresentationField.LOAD_ROLL_CORRECTION_LIMIT
-	assert_near(rad_to_deg(CombatPresentationField.mirrored_load_roll(deg_to_rad(150.0), 0.0)), -150.0, 1e-9, "no correction: the exact mirror")
-	assert_near(rad_to_deg(CombatPresentationField.mirrored_load_roll(deg_to_rad(150.0), deg_to_rad(55.0))), -150.0 + limit, 1e-9, "a 55° 'correction' (an independent left pose) is clamped to %.0f°" % limit)
+	assert_near(rad_to_deg(high.roll), -150.0, 1e-6, "the left load is the right's exact mirror: the weapon has no side")
 	## The lift and roll follow the blade's angle as the charge winds it back
 	## (the shared X projection): monotone, small steps, never a jump.
 	var previous_roll := NAN
@@ -1647,18 +2218,35 @@ func test_a_declared_high_guard_loads_each_side_by_gather_without_a_jump() -> vo
 	rig.load_roll_deg = 190.0
 	assert_true(rig.contract_problems().size() == 1, "a load roll beyond one turn is rejected")
 	rig.load_roll_deg = 150.0
-	rig.load_roll_left_correction_deg = 55.0
-	assert_true(rig.contract_problems().size() == 1, "an independent left load (a correction past the limit) is rejected")
-	rig.load_roll_left_correction_deg = 0.0
 	rig.combat_aligned_projection = true
 	assert_true(rig.contract_problems().size() == 1, "a combat-aligned body cannot also declare a high guard")
 	rig.free()
 
 
+## Render rates the edge is read at (frames per second; the simulation stays at 60 Hz).
+const EDGE_RENDER_RATES := [30.0, 60.0, 120.0, 144.0]
+## Half-width of the central difference that reads the drawn path's instantaneous direction (rad of θ).
+const EDGE_DERIVATIVE_RAD := 1.0e-4
+
+
+## The strike station's drawn position at `theta` with the given context (the field is left sampled at `theta`).
+func _strike_at(field: CombatPresentationField, spec: CombatantPhysicsSpec, pose: BladePose, theta: float, row: PresentationFighter, progress: float) -> Vector3:
+	WeaponKinematics.pose_at(0.0, 0.0, 0.0, theta, spec, pose)
+	field.sample(theta, pose.carriage_left, pose.carriage_forward, row.phase, progress, row.charge, row.swing_charge, 1.0, row.cut_dir)
+	return field.transform * Vector3(0.0, 0.0, 0.864)
+
+
 ## The sword-only gate (art plan p3-sword-only-hema): with the long edge
-## declared to lead, the long edge (local +X) faces the strike region's actual
-## direction of travel through both full-charge diagonals.
-func _edge_alignment(field: CombatPresentationField, side: float) -> Array:
+## declared to lead, the long edge (local +X) faces the strike region's direction
+## of travel through both full-charge diagonals. The direction is the drawn
+## path's own instantaneous tangent (a central difference of the evaluated
+## projection at the same state, across the blade axis), so the reading does not
+## depend on how densely frames sample the path. It is taken at the instants a
+## presenter rendering at `rate` frames per second draws, with the presenter's
+## interpolation (`MatchPresenter.render`: θ, progress and charge lerped between
+## the two snapshots, the later snapshot's phase). Each reading: [θ°, alignment,
+## roll°, tick]. `rate` 60 reads one instant per tick.
+func _edge_alignment(field: CombatPresentationField, side: float, rate: float = 60.0) -> Array:
 	var spec := _rules.combatant(0)
 	var motor := WeaponRig.create(_rules)
 	motor.fighter.weapon.reset(spec.weapon.guard_angle * side)
@@ -1667,19 +2255,34 @@ func _edge_alignment(field: CombatPresentationField, side: float) -> Array:
 		motor.step()
 	motor.release()
 	var readings := []
-	var previous := Vector3.INF
-	for _i in 30:
+	var last_angle := NAN
+	var last_progress := 0.0
+	var pose := BladePose.new()
+	var frame_time := 1.0 / rate
+	var next_frame := 0.0
+	for tick in 30:
 		var row := SnapshotProjector._fighter(motor.fighter, motor.opponent, _rules)
-		var pose := WeaponKinematics.pose_at(0.0, 0.0, 0.0, row.weapon_angle, spec, BladePose.new())
-		field.sample(row.weapon_angle, pose.carriage_left, pose.carriage_forward, row.phase, row.swing_progress, row.charge, row.swing_charge, 1.0, row.cut_dir)
-		var strike := field.transform * Vector3(0.0, 0.0, 0.864)
-		if previous != Vector3.INF and (CombatPresentationField.is_swing(row.phase)):
-			var axis := field.transform.basis.z.normalized()
-			var travel := strike - previous
-			travel -= axis * travel.dot(axis)
-			if travel.length() / SimulationTimebase.TICK_SECONDS > 1.0:
-				readings.append([rad_to_deg(row.weapon_angle), field.transform.basis.x.normalized().dot(travel.normalized()), rad_to_deg(field.roll)])
-		previous = strike
+		var tick_start := float(tick - 1) * SimulationTimebase.TICK_SECONDS
+		if not is_nan(last_angle) and CombatPresentationField.is_swing(row.phase):
+			var direction := signf(row.weapon_angle - last_angle)
+			var theta_rate := absf(row.weapon_angle - last_angle) / SimulationTimebase.TICK_SECONDS
+			while next_frame <= tick_start + SimulationTimebase.TICK_SECONDS + 1e-12:
+				var alpha := clampf((next_frame - tick_start) / SimulationTimebase.TICK_SECONDS, 0.0, 1.0)
+				var theta := lerpf(last_angle, row.weapon_angle, alpha)
+				var progress := lerpf(last_progress, row.swing_progress, alpha)
+				var behind := _strike_at(field, spec, pose, theta - direction * EDGE_DERIVATIVE_RAD, row, progress)
+				var ahead := _strike_at(field, spec, pose, theta + direction * EDGE_DERIVATIVE_RAD, row, progress)
+				_strike_at(field, spec, pose, theta, row, progress)
+				var axis := field.transform.basis.z.normalized()
+				var tangent := ahead - behind
+				tangent -= axis * tangent.dot(axis)
+				if tangent.length() / (2.0 * EDGE_DERIVATIVE_RAD) * theta_rate > 1.0:
+					readings.append([rad_to_deg(theta), field.transform.basis.x.normalized().dot(tangent.normalized()), rad_to_deg(field.roll), tick])
+				next_frame += frame_time
+		else:
+			next_frame = maxf(next_frame, tick_start + SimulationTimebase.TICK_SECONDS)
+		last_angle = row.weapon_angle
+		last_progress = row.swing_progress
 		motor.step()
 	return readings
 
@@ -1687,26 +2290,15 @@ func _edge_alignment(field: CombatPresentationField, side: float) -> Array:
 func test_the_long_edge_leads_both_diagonals_when_declared() -> void:
 	## ARRANGE: the candidate's lift (centre -0.15 / +3°, high guard 0.50 m / 80°)
 	## with the edge declared to lead, and the same lift without it.
-	var leading := CombatPresentationField.new()
-	leading.configure_centre(-0.15, 3.0)
-	leading.configure_load(0.5, 80.0, true, 150.0)
-	leading.configure_edge(true, 0.6765)
-	var heuristic := CombatPresentationField.new()
-	heuristic.configure_centre(-0.15, 3.0)
-	heuristic.configure_load(0.5, 80.0, true, 150.0)
+	var leading := _drawn_field(_candidate_drawing().with_edge(true, 0.6765))
+	var heuristic := _drawn_field(_candidate_drawing())
 	## The cutting edge is a declared sword-frame edge, not an axis name: edge B
 	## leading is the same blade half a turn over.
-	var edge_b := CombatPresentationField.new()
-	edge_b.configure_centre(-0.15, 3.0)
-	edge_b.configure_load(0.5, 80.0, true, 150.0)
-	edge_b.configure_edge(true, 0.6765, SwordGripFrame.edge_normal(SwordGripFrame.Edge.B))
+	var edge_b := _drawn_field(_candidate_drawing().with_edge(true, 0.6765, SwordGripFrame.edge_normal(SwordGripFrame.Edge.B)))
 	leading.sample(deg_to_rad(-60.0), -0.1, 0.5, CombatPhase.Id.ACTIVE_EARLY, 0.4, 0.0, 1.0, 1.0, 1.0)
 	edge_b.sample(deg_to_rad(-60.0), -0.1, 0.5, CombatPhase.Id.ACTIVE_EARLY, 0.4, 0.0, 1.0, 1.0, 1.0)
 	assert_near(absf(wrapf(edge_b.roll - leading.roll, -PI, PI)), PI, 1e-9, "edge B leads with the blade half a turn from edge A")
-	leading = CombatPresentationField.new()
-	leading.configure_centre(-0.15, 3.0)
-	leading.configure_load(0.5, 80.0, true, 150.0)
-	leading.configure_edge(true, 0.6765)
+	leading = _drawn_field(_candidate_drawing().with_edge(true, 0.6765))
 	var rig := SwordRig3D.new()
 	assert_eq(rig.cutting_edge, SwordGripFrame.Edge.A, "the long edge under the approved front-hand grip is edge A")
 	assert_false(rig.edge_leads_motion, "shipping bodies keep the side-signed roll")
@@ -1727,7 +2319,8 @@ func test_the_long_edge_leads_both_diagonals_when_declared() -> void:
 			var reading: Array = led[index]
 			worst = minf(worst, reading[1])
 			if index > 0:
-				largest_turn = maxf(largest_turn, absf(reading[2] - led[index - 1][2]))
+				## Whole turns are the same pose: the turn is the wrapped one.
+				largest_turn = maxf(largest_turn, absf(wrapf(reading[2] - led[index - 1][2], -180.0, 180.0)))
 		assert_true(largest_turn < 90.0, "%s: the roll turns at most %.1f° between frames" % ["right-origin" if side < 0.0 else "left-origin", largest_turn])
 		assert_true(worst > 0.9, "%s: the long edge leads everywhere (worst alignment %.3f)" % ["right-origin" if side < 0.0 else "left-origin", worst])
 		## PERTURB: the heuristic roll lets the short edge or the flat lead somewhere.
@@ -1735,6 +2328,16 @@ func test_the_long_edge_leads_both_diagonals_when_declared() -> void:
 		for reading: Array in shared:
 			heuristic_worst = minf(heuristic_worst, reading[1])
 		assert_true(heuristic_worst < 0.0, "without it the short edge leads somewhere (%.3f)" % heuristic_worst)
+		## PERTURB: the instants a presenter draws at other render rates — the same gate at every rate (the reading is an
+		## instantaneous tangent, so a denser schedule cannot pass what a sparser one fails).
+		for rate: float in EDGE_RENDER_RATES:
+			var rendered := _drawn_field(_candidate_drawing().with_edge(true, 0.6765))
+			var frames := _edge_alignment(rendered, side, rate)
+			var worst_at_rate := 1.0
+			for reading: Array in frames:
+				worst_at_rate = minf(worst_at_rate, reading[1])
+			assert_true(frames.size() > 4, "fixture: %.0f FPS draws the moving cut (%d frames)" % [rate, frames.size()])
+			assert_true(worst_at_rate > 0.9, "%s at %.0f FPS: the long edge leads on every drawn frame (worst %.3f)" % ["right-origin" if side < 0.0 else "left-origin", rate, worst_at_rate])
 
 
 func test_the_rear_hand_turns_about_the_handle_on_its_fixed_station() -> void:
@@ -2103,8 +2706,8 @@ func test_the_elbows_hold_a_stable_open_structure() -> void:
 ## The lifted sword is one mirrored function: a left-side pose is the
 ## right-side pose reflected across the combat frame.
 func test_the_carriage_mirrors_left_and_right() -> void:
-	var right := CombatPresentationField.new()
-	var left := CombatPresentationField.new()
+	var right := _drawn_field()
+	var left := _drawn_field()
 	for degrees: float in [0.0, 20.0, 45.0, 80.0, 90.0, 135.0]:
 		for phase: CombatPhase.Id in [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING]:
 			_lift(right, deg_to_rad(-degrees), phase, 1.0, 0.7, 0.0)
@@ -2116,11 +2719,314 @@ func test_the_carriage_mirrors_left_and_right() -> void:
 			assert_true(tip_right.is_equal_approx(Vector3(-tip_left.x, tip_left.y, tip_left.z)), "and so does the point")
 
 
+## WEAPON-PATH-004 Stage 1: the X projection's numbers are the weapon's path
+## data. The reference sword's path is a valid, immutable definition the field
+## and the cut curve read by default (no side-specific copy: its mirror policy
+## reflects the weapon only), and a field handed a variant path draws that path
+## — so the numbers live in one place and are not shadowed by a constant.
+func test_the_weapon_path_is_data_the_field_reads() -> void:
+	## ARRANGE
+	var sword_path := WeaponPathDefinition.reference_sword()
+	assert_eq(sword_path.problems().size(), 0, "the sword_path sword's path is a valid definition: %s" % ", ".join(sword_path.problems()))
+	assert_eq(sword_path.mirror_policy, WeaponPathDefinition.MirrorPolicy.WEAPON_GEOMETRY_ONLY, "one path for both origins: only the weapon is reflected")
+	assert_true(WeaponPathDefinition.reference_sword() == sword_path, "one shared sword_path instance")
+	var shipping := _drawn_field()
+	assert_true(shipping.path == sword_path, "a field reads the sword_path sword's path by default")
+	var variant := sword_path.copy()
+	variant.cut_pitch_degrees[2] += 10.0
+	variant.stance_raise[1] += 0.05
+	var drawn := _drawn_field(WeaponPresentationConfig.shared().with_path(variant))
+	## ACT: the centre of a cut in flight, and the Ready guard.
+	shipping.sample(0.0, 0.0, 0.6, CombatPhase.Id.ACTIVE_THREAT, 0.5, 0.0, 0.0, 1.0, 1.0)
+	drawn.sample(0.0, 0.0, 0.6, CombatPhase.Id.ACTIVE_THREAT, 0.5, 0.0, 0.0, 1.0, 1.0)
+	var cut_delta := rad_to_deg(drawn.pitch - shipping.pitch)
+	shipping.sample(deg_to_rad(-45.0), -0.3, 0.5, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	drawn.sample(deg_to_rad(-45.0), -0.3, 0.5, CombatPhase.Id.NEUTRAL, 0.0, 0.0, 0.0, 1.0)
+	## ASSERT
+	assert_near(cut_delta, 10.0, 1e-9, "the variant's centre pitch is drawn")
+	assert_near(drawn.raise - shipping.raise, 0.05, 1e-12, "and its Ready hand height")
+	assert_eq(sword_path.cut_pitch_degrees[2], WeaponPathDefinition.CUT_PITCH_DEGREES[2], "a variant never writes the shared sword_path")
+
+
+## WEAPON-PATH-004: every transition the path declares, driven as authoritative
+## snapshot pairs through the real proxy and rig, hands over without a pop at
+## every render instant around it; every declared reset (a new round after a
+## death) draws its first snapshot exactly as a fresh fighter would. Directed,
+## so the rare transitions (guard → recovery, stagger → death) are always met.
+func test_every_declared_transition_is_drawn_continuously() -> void:
+	## ARRANGE
+	var representative := {
+		WeaponPathDefinition.Context.GUARD: CombatPhase.Id.NEUTRAL,
+		WeaponPathDefinition.Context.CHARGE: CombatPhase.Id.CHARGING,
+		WeaponPathDefinition.Context.SWING: CombatPhase.Id.ACTIVE_THREAT,
+		WeaponPathDefinition.Context.RECOVERY: CombatPhase.Id.RECOVERY,
+		WeaponPathDefinition.Context.STAGGER: CombatPhase.Id.STAGGER,
+		WeaponPathDefinition.Context.DEATH: CombatPhase.Id.DEAD,
+	}
+	var proxy := _proxy()
+	var fresh := _proxy()
+	var transitions := 0
+	var resets := 0
+	for list: PackedInt32Array in [WeaponPathDefinition.TRANSITIONS, WeaponPathDefinition.RESETS]:
+		var is_reset := list == WeaponPathDefinition.RESETS
+		for index in range(0, list.size(), 2):
+			var from_phase: CombatPhase.Id = representative[list[index]]
+			var to_phase: CombatPhase.Id = representative[list[index + 1]]
+			for degrees: float in [-60.0, 35.0]:
+				var rows: Array[PresentationFighter] = []
+				for step in 6:
+					var phase := from_phase if step < 3 else to_phase
+					rows.append(_row(deg_to_rad(degrees + float(step)), phase, 0.2 + 0.1 * float(step), 0.5, 0.5))
+				## ACT: the snapshots through the proxy; the boundary drawn on both sides.
+				proxy.reset_terminal()
+				var before: Array = []
+				var after: Array = []
+				for i in range(1, rows.size()):
+					var last := _draw_at(proxy, rows[i - 2], rows[i - 1], i - 1, 1.0) if i >= 2 else []
+					if i == 3 and is_reset:
+						proxy.reset_terminal()
+					proxy.advance(rows[i - 1], rows[i], SimulationTimebase.ticks_to_seconds(i - 1))
+					var first := _draw_at(proxy, rows[i - 1], rows[i], i, 0.0)
+					if i == 3:
+						before = last
+						after = first
+				## ASSERT
+				var label := "%s → %s at %.0f°" % [CombatPhase.Id.keys()[from_phase], CombatPhase.Id.keys()[to_phase], degrees]
+				if is_reset:
+					fresh.reset_terminal()
+					fresh.advance(rows[2], rows[3], SimulationTimebase.ticks_to_seconds(2))
+					assert_true(_drawn_difference(after, _draw_at(fresh, rows[2], rows[3], 3, 0.0)) <= 1e-9, "%s: the reset draws its first snapshot fresh" % label)
+					resets += 1
+				else:
+					assert_true(_drawn_difference(before, after) <= 1e-5, "%s: hands over without a pop (%s)" % [label, String.num_scientific(_drawn_difference(before, after))])
+					transitions += 1
+	assert_eq(transitions, WeaponPathDefinition.TRANSITIONS.size(), "every declared transition at both angles")
+	assert_eq(resets, WeaponPathDefinition.RESETS.size(), "every declared reset at both angles")
+	proxy.queue_free()
+	fresh.queue_free()
+
+
+## WEAPON-PATH-004 Stage 1: play crosses nothing undeclared. One live duel
+## (wander pilots) maps each fighter's phase to a path context every tick;
+## every change between ticks must be a declared transition or reset (the
+## directed test above draws each one).
+func test_every_transition_play_makes_is_declared_by_the_path() -> void:
+	## ARRANGE
+	var seen := {}
+	var undeclared := PackedStringArray()
+	## ACT: one wandering match, the real-play witness.
+	for seed_value: int in [3]:
+		var runner := SimRunner.create(DuelFixture.rules(), seed_value)
+		var pilots := [Pilot.wander(seed_value, 11), Pilot.wander(seed_value, 23)]
+		var previous := [-1, -1]
+		for _tick in 1200:
+			if runner.state.is_finished():
+				break
+			runner.push(pilots[0].command(runner.state, 0), pilots[1].command(runner.state, 1))
+			for slot in 2:
+				var context := _path_context(runner.state.fighter(slot).weapon.phase)
+				if previous[slot] >= 0 and context != previous[slot]:
+					var key := "%d->%d" % [previous[slot], context]
+					seen[key] = true
+					var declared := WeaponPathDefinition.allows(previous[slot], context) or WeaponPathDefinition.resets(previous[slot], context)
+					if not declared and not undeclared.has(key):
+						undeclared.append(key)
+				previous[slot] = context
+	## ASSERT
+	assert_true(seen.size() >= 12, "fixture: play crossed its known transition kinds (%d of 12: %s)" % [seen.size(), ", ".join(PackedStringArray(seen.keys()))])
+	assert_eq(undeclared.size(), 0, "every transition play makes is declared: undeclared %s" % ", ".join(undeclared))
+
+
+func _path_context(phase: CombatPhase.Id) -> WeaponPathDefinition.Context:
+	match phase:
+		CombatPhase.Id.CHARGING:
+			return WeaponPathDefinition.Context.CHARGE
+		CombatPhase.Id.RECOVERY:
+			return WeaponPathDefinition.Context.RECOVERY
+		CombatPhase.Id.STAGGER:
+			return WeaponPathDefinition.Context.STAGGER
+		CombatPhase.Id.DEAD:
+			return WeaponPathDefinition.Context.DEATH
+	if CombatPresentationField.is_swing(phase):
+		return WeaponPathDefinition.Context.SWING
+	return WeaponPathDefinition.Context.GUARD
+
+
+## PRES-SYMMETRY-001: the drawn weapon has no side. Over the whole 270° window,
+## every phase, progress, charge and commitment, the left-origin sword at −θ
+## cutting −dir is the right-origin sword at θ cutting dir reflected through the
+## fighter's lateral axis (T_L = S·T_R·S, full transform, tight tolerance) — on
+## the shipping field and on a declared high guard. An edge-leading body adds
+## exactly one half turn about the blade axis (the bastard sword is the same
+## shape after it), so the long edge leads both diagonals and the drawn image is
+## still the exact mirror. Grips are the only side-specific layer.
+func test_the_drawn_weapon_is_an_exact_mirror_over_the_whole_window() -> void:
+	## ARRANGE: the three field modes and the reflection.
+	var reflect := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1))
+	var half_turn := Basis(Vector3(0, 0, 1), PI)
+	var modes: Array[String] = ["shipping", "high guard", "edge leads"]
+	var phases: Array[CombatPhase.Id] = [CombatPhase.Id.NEUTRAL, CombatPhase.Id.CHARGING, CombatPhase.Id.LAUNCH, CombatPhase.Id.ACTIVE_EARLY, CombatPhase.Id.ACTIVE_THREAT, CombatPhase.Id.ACTIVE_LATE, CombatPhase.Id.OVERSWING, CombatPhase.Id.RECOVERY]
+	var worst_mm := 0.0
+	var worst_basis := 0.0
+	var samples := 0
+	for mode in modes:
+		for degrees in range(-135, 136, 5):
+			for phase in phases:
+				for progress: float in [0.1, 0.6, 1.0]:
+					for committed: bool in [false, true]:
+						## ACT: the right-origin state and its mirror, fresh fields.
+						var right := _mirror_field(mode)
+						var left := _mirror_field(mode)
+						_lift(right, deg_to_rad(degrees), phase, progress, 0.7, 0.9, 1.0, 1.0, committed)
+						_lift(left, deg_to_rad(-degrees), phase, progress, 0.7, 0.9, 1.0, -1.0, committed)
+						var expected := Transform3D(reflect * right.transform.basis * reflect, reflect * right.transform.origin)
+						if mode == "edge leads":
+							expected.basis = expected.basis * half_turn
+						worst_mm = maxf(worst_mm, left.transform.origin.distance_to(expected.origin) * 1000.0)
+						for column in 3:
+							worst_basis = maxf(worst_basis, (left.transform.basis[column] - expected.basis[column]).length())
+						samples += 1
+	## ASSERT: exact to float precision everywhere.
+	assert_eq(samples, 3 * 55 * 8 * 3 * 2, "every mode, angle, phase, progress and commitment was compared")
+	assert_true(worst_mm < 1e-6, "the drawn sword's position mirrors exactly (worst %.9f mm)" % worst_mm)
+	assert_true(worst_basis < 1e-5, "and so does its whole orientation (worst basis error %.9f)" % worst_basis)
+	## PERTURB: the old pose — a left load turned 10° off its mirror — is a
+	## side-specific sword and the comparison catches it.
+	var right_load := _mirror_field("high guard")
+	var crooked := _drawn_field(_mirror_drawing("high guard").with_load(0.5, 80.0, true, 140.0))
+	_lift(right_load, deg_to_rad(-135.0), CombatPhase.Id.CHARGING, 1.0, 1.0, 0.0, 1.0, 1.0)
+	_lift(crooked, deg_to_rad(135.0), CombatPhase.Id.CHARGING, 1.0, 1.0, 0.0, 1.0, -1.0)
+	var mirrored_load := reflect * right_load.transform.basis * reflect
+	assert_true((crooked.transform.basis.x - mirrored_load.x).length() > 0.1, "a left load off its mirror is a second, side-specific weapon path")
+
+
+## PRES-SYMMETRY-001 diagnostic: with `arm_keys_mirrored` every left-side arm
+## key is the mirror table of its sword-right partner — bones swapped,
+## rotations reflected — which is the body-plane reflection S·R·S exactly; the
+## centre key stays the grip's own; a mirrored key with no partner is a
+## contract problem. (Production arms are authored per side; this proves the
+## diagnostic is exact.)
+func test_the_left_arm_keys_are_the_mirror_of_the_canonical_right_profile() -> void:
+	## ARRANGE: three guard keys of six distinct rotations each.
+	var count := CombatPoseModifier3D.ARM_KEY_BONES.size()
+	var degrees := PackedFloat64Array([-90.0, 0.0, 90.0])
+	var authored: Array[Quaternion] = []
+	for i in degrees.size() * count:
+		authored.append(Quaternion(Vector3(0.3 + i, -0.7, 0.2 * i - 1.0).normalized(), 0.15 + 0.11 * i))
+	assert_eq(authored.size(), 18, "three keys of six bones")
+	## ACT
+	var keys := CombatPoseModifier3D.mirrored_guard_keys(degrees, authored)
+	var reflect := Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1))
+	## ASSERT: the sword-right key and the centre are as authored; the left key
+	## is the right key's mirror, bone for partner bone.
+	for index in count:
+		assert_true(keys[index].is_equal_approx(authored[index]), "the -90° key is the authored canonical one")
+		assert_true(keys[count + index].is_equal_approx(authored[count + index]), "the centre key is the grip's own")
+		var partner := authored[(index + 3) % count]
+		var expected := reflect * Basis(partner) * reflect
+		var mirrored := Basis(keys[2 * count + index])
+		for column in 3:
+			assert_true(mirrored[column].is_equal_approx(expected[column]), "+90° %s is the reflection of its partner bone at -90°" % CombatPoseModifier3D.ARM_KEY_BONES[index])
+	var twice := CombatPoseModifier3D.mirror_arm_rotations(CombatPoseModifier3D.mirror_arm_rotations(authored))
+	for index in authored.size():
+		assert_true(twice[index].is_equal_approx(authored[index]), "the mirror is an involution")
+	## PERTURB: a positive key without a sword-right partner keeps its authored
+	## rotations, and the contract names it.
+	var lopsided := PackedFloat64Array([-90.0, 0.0, 45.0])
+	var kept := CombatPoseModifier3D.mirrored_guard_keys(lopsided, authored)
+	assert_true(kept[2 * count].is_equal_approx(authored[2 * count]), "no partner: nothing to mirror from")
+	var rig := SwordRig3D.new()
+	rig.arm_keys_mirrored = true
+	rig.arm_guard_degrees = degrees
+	assert_false(_names_missing_partner(rig.contract_problems()), "a symmetric key set has every partner")
+	rig.arm_guard_degrees = lopsided
+	assert_true(_names_missing_partner(rig.contract_problems()), "a mirrored key at +45° without -45° is rejected")
+	rig.free()
+
+
+## WEAPON-PATH-004 handling context: a swing in flight (launch through
+## overswing) and a recovery on the cut's far side keep the body's cut keys (the
+## guard keys are fitted to a resting guard's raised sword and the load keys to a
+## charge's coil); a resting guard, a charge, the launch-side recovery, a stagger
+## and a body without cut keys keep the old ownership.
+func test_a_far_side_overswing_keeps_the_cut_keys_not_the_guard_keys() -> void:
+	## ARRANGE: the context rule's inputs.
+	var far := 94.0
+	var near := -40.0
+	## ACT / ASSERT: the swing in flight and the far-side recovery are the cut's.
+	assert_true(CombatPoseModifier3D.cut_continues(CombatPhase.Id.OVERSWING, far, true), "a far-side overswing is the cut continuing")
+	assert_true(CombatPoseModifier3D.cut_continues(CombatPhase.Id.RECOVERY, far, true), "and so is its recovery on that side")
+	assert_true(CombatPoseModifier3D.cut_continues(CombatPhase.Id.LAUNCH, -130.0, true), "a launch from the load is the active cut, not the charge")
+	assert_true(CombatPoseModifier3D.cut_continues(CombatPhase.Id.ACTIVE_THREAT, 0.0, true), "and so is the centre")
+	## PERTURB: every other context keeps the old ownership.
+	assert_false(CombatPoseModifier3D.cut_continues(CombatPhase.Id.CHARGING, -130.0, true), "a charge keeps its load keys")
+	assert_false(CombatPoseModifier3D.cut_continues(CombatPhase.Id.NEUTRAL, far, true), "a resting guard at the same angle uses the guard keys")
+	assert_false(CombatPoseModifier3D.cut_continues(CombatPhase.Id.RECOVERY, near, true), "a recovery still on the launch side is not a far-side continuation")
+	assert_false(CombatPoseModifier3D.cut_continues(CombatPhase.Id.STAGGER, far, true), "a stagger is not a cut")
+	assert_false(CombatPoseModifier3D.cut_continues(CombatPhase.Id.OVERSWING, far, false), "without cut keys nothing changes (every shipping body)")
+	assert_eq(CombatPoseModifier3D.authored_arm_shares(1.0, 0.0, true, true), Vector2(1.0, 0.0), "a settled pose is the guard keys' by default")
+
+
+## ART-ANATOMY-001: the chest yaw the cut arms were fitted around is held
+## exactly where the cut arms are, eased between keys like them, and adds
+## nothing where nothing is authored (every shipping body).
+func test_the_cut_torso_follows_the_cut_arms_share_and_keys() -> void:
+	## ARRANGE: three cut keys and a yaw profile; a body with nothing authored.
+	var keys := PackedFloat64Array([-30.0, 0.0, 30.0])
+	var yaws := CombatPoseModifier3D.radians_of(PackedFloat64Array([0.0, -10.0, -10.0]))
+	var shipping := SwordRig3D.new()
+	assert_true(shipping.torso_cut_right_yaw_degrees.is_empty() and shipping.torso_cut_left_yaw_degrees.is_empty(), "shipping bodies author no cut torso")
+	## ACT / ASSERT: keys held exactly, eased between, held beyond the ends.
+	assert_near(CombatPoseModifier3D.cut_torso_yaw(keys, yaws, 0.0), deg_to_rad(-10.0), 1e-9, "a key's yaw is held at its angle")
+	assert_near(CombatPoseModifier3D.cut_torso_yaw(keys, yaws, -15.0), deg_to_rad(-5.0), 1e-9, "eased between keys (smoothstep midpoint)")
+	assert_near(CombatPoseModifier3D.cut_torso_yaw(keys, yaws, -90.0), 0.0, 1e-9, "held at the first key before it")
+	assert_near(CombatPoseModifier3D.cut_torso_yaw(keys, yaws, 120.0), deg_to_rad(-10.0), 1e-9, "and at the last key past it")
+	assert_near(CombatPoseModifier3D.radians_of(PackedFloat64Array([10.0]), -1.0)[0], deg_to_rad(-10.0), 1e-9, "a mirrored yaw is negated")
+	## PERTURB: the share follows the cut arms - all of it while the cut continues, the unsettled share otherwise.
+	assert_eq(CombatPoseModifier3D.authored_cut_share(0.3, 0.0, true, true, false, CombatPhase.Id.ACTIVE_THREAT, 0.0), 1.0, "a swing in flight holds the whole torso")
+	assert_near(CombatPoseModifier3D.authored_cut_share(0.3, 0.0, true, true, false, CombatPhase.Id.RECOVERY, -40.0), 0.7, 1e-6, "a near-side recovery holds the cut's unsettled share (Vector2 is single precision)")
+	assert_eq(CombatPoseModifier3D.authored_cut_share(1.0, 0.0, true, true, false, CombatPhase.Id.NEUTRAL, 0.0), 0.0, "a settled guard holds none")
+	assert_eq(CombatPoseModifier3D.authored_cut_share(0.3, 0.0, true, false, false, CombatPhase.Id.ACTIVE_THREAT, 0.0), 0.0, "without cut arms there is no cut torso")
+	## The contract: one yaw per cut key.
+	shipping.arm_cut_degrees = keys
+	shipping.torso_cut_right_yaw_degrees = PackedFloat64Array([0.0, -10.0])
+	assert_true(Array(shipping.contract_problems()).any(func(p: String) -> bool: return p.contains("cut torso profile")), "a torso profile with the wrong key count is a contract problem")
+	## The rear-hand roll (the follow-through grip): authored per cut key, only on authored contacts, never with the pivot.
+	assert_true(shipping.rear_hand_roll_cut_right_degrees.is_empty() and shipping.rear_hand_roll_cut_left_degrees.is_empty(), "shipping bodies author no rear-hand roll")
+	shipping.rear_hand_roll_cut_right_degrees = PackedFloat64Array([0.0, 20.0, 40.0])
+	shipping.rear_hand_pivot = true
+	var problems := Array(shipping.contract_problems())
+	assert_true(problems.any(func(p: String) -> bool: return p.contains("needs authored contacts") and p.contains("rear-hand roll")), "a roll needs authored contacts")
+	assert_true(problems.any(func(p: String) -> bool: return p.contains("would both turn the off hand")), "and never runs with the pivot")
+	assert_false(problems.any(func(p: String) -> bool: return p.contains("rear-hand roll profile needs")), "one roll per cut key passes the count check")
+	assert_near(CombatPoseModifier3D.cut_torso_yaw(keys, CombatPoseModifier3D.radians_of(shipping.rear_hand_roll_cut_right_degrees), 15.0), deg_to_rad(30.0), 1e-9, "the roll eases between keys like the arms")
+	shipping.free()
+
+
+func _names_missing_partner(problems: PackedStringArray) -> bool:
+	for problem in problems:
+		if problem.contains("sword-right partner"):
+			return true
+	return false
+
+
+func _mirror_field(mode: String) -> CombatPresentationField:
+	return _drawn_field(_mirror_drawing(mode))
+
+
+func _mirror_drawing(mode: String) -> WeaponPresentationConfig:
+	if mode == "shipping":
+		return WeaponPresentationConfig.shared()
+	if mode == "edge leads":
+		return _candidate_drawing().with_edge(true, 0.6765)
+	return _candidate_drawing()
+
+
 ## No pop anywhere in the field: one-degree steps through the guard and the
 ## charge, and 0.5% steps through a tap and a full-charge cut, move the hands
 ## and turn the blade by small amounts only — through centre included.
 func test_the_carriage_never_pops() -> void:
-	var field := CombatPresentationField.new()
+	var field := _drawn_field()
 	var worst_move := 0.0
 	var worst_turn := 0.0
 	var sweeps: Array[Array] = []
@@ -2156,7 +3062,7 @@ func test_the_carriage_never_pops() -> void:
 ## loaded cut comes down off it, is near horizontal through centre, dips past
 ## it, and — once committed into the opposite side — inflects back up.
 func test_charge_raises_the_point_and_the_cut_descends_then_inflects() -> void:
-	var field := CombatPresentationField.new()
+	var field := _drawn_field()
 	var pitches: Array[float] = []
 	for charge: float in [0.0, 0.25, 0.5, 0.75, 1.0]:
 		_lift(field, deg_to_rad(lerpf(-45.0, -135.0, charge)), CombatPhase.Id.CHARGING, 1.0, charge, 0.0)
@@ -2198,7 +3104,7 @@ const CORRIDOR_TIP_ERROR := 0.03
 
 
 func test_the_drawn_sword_is_the_authoritative_sword_lifted() -> void:
-	var field := CombatPresentationField.new()
+	var field := _drawn_field()
 	var worst := 0.0
 	var worst_carriage := 0.0
 	var worst_yaw := 0.0
@@ -2234,7 +3140,7 @@ func test_the_stance_blades_the_body_not_the_combat_frame() -> void:
 	assert_eq(stance.lead_side, FighterStanceProfile.LeadSide.RIGHT, "a fixed right-foot lead")
 	assert_near(proxy.rig().rotation.y, stance.hip_yaw(), 1e-6, "the body turns by the pelvis's blade")
 	assert_true(stance.hip_yaw() > 0.0, "toward his left, bringing the right shoulder forward")
-	var square := _lift(CombatPresentationField.new(), -PhysicalBaseline.GUARD_ANGLE_RAD, CombatPhase.Id.NEUTRAL, 1.0, 0.0, 0.0, proxy.blade_height())
+	var square := _lift(_drawn_field(), -PhysicalBaseline.GUARD_ANGLE_RAD, CombatPhase.Id.NEUTRAL, 1.0, 0.0, 0.0, proxy.blade_height())
 	proxy.apply_pose(Vector3.ZERO, 0.0, -PhysicalBaseline.GUARD_ANGLE_RAD, _row(-PhysicalBaseline.GUARD_ANGLE_RAD), 1.0)
 	assert_true(proxy.sword_carriage().transform.origin.is_equal_approx(square.transform.origin), "the carriage is the combat frame's, not the body's")
 	assert_true(stance.load_coil(1.0) > stance.load_coil(-1.0), "the rear-side (left) load coils a little more than the lead side")

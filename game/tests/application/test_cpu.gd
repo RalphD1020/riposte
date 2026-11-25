@@ -1404,13 +1404,15 @@ func test_a_smothered_cpu_that_can_act_steps_back_out_before_it_attacks() -> voi
 
 ## THREAT-001 / FIRST-CONTACT-001 as the CPU sees it: in a constructed scene
 ## the predictor's own reading needs its in-tick steel sweep — slot 0 at rest
-## and able to strike; slot 1 1.8 m ahead, 0.2 m to the side, its own cut in
+## and able to strike; slot 1 2.1 m ahead, 0.2 m to the side, its own cut in
 ## flight (from −0.8 rad at 8 rad/s), so the two blades cross between the
 ## predictor's ticks. The route estimate reads steel first, and on the tick the
 ## duel meets it: the duel, continued as the estimate assumes (slot 0's route
-## tap, slot 1 carrying on), meets slot 1's blade before any flesh. (A copy of
-## the predictor without the sweep reads the torso here; the same scene at
-## 2.4 m reads the same, so the distance is no knife edge.)
+## tap, slot 1 carrying on), meets slot 1's blade before any flesh. Staged in
+## the middle of the band (1.9–2.3 m) where the predictor finds the steel only
+## with its in-tick sweep and the duel meets steel first; nearer (1.7–1.8 m)
+## slot 1's own cut lands on slot 0 in the same tick, a mutual hit this
+## fighter's route estimate does not order.
 func test_the_route_estimate_sees_a_blade_crossing_between_its_ticks() -> void:
 	## ARRANGE
 	var rules := StandardDuelRules.create()
@@ -1418,7 +1420,7 @@ func test_the_route_estimate_sees_a_blade_crossing_between_its_ticks() -> void:
 	runner.skip_intro()
 	var weapon := rules.combatant(0).weapon
 	ContactFixture.arm(runner.state.fighter(0), 0.0, 0.0, 0.0, -weapon.guard_angle, 0.0, CombatPhase.Id.NEUTRAL, 0.0, weapon)
-	ContactFixture.arm(runner.state.fighter(1), 1.8, 0.2, PI, -0.8, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.5, weapon)
+	ContactFixture.arm(runner.state.fighter(1), 2.1, 0.2, PI, -0.8, 8.0, CombatPhase.Id.ACTIVE_THREAT, 0.5, weapon)
 	var me := runner.state.fighter(0)
 	var them := runner.state.fighter(1)
 	assert_true(WeaponSystem.can_start_attack(me, weapon), "fixture: slot 0 can strike")

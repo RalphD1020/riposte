@@ -34,6 +34,9 @@ from character_modeling import grip_contact
 import importlib
 ## A live MCP session keeps modules between runs; always measure with the current code.
 grip_contact = importlib.reload(grip_contact)
+sys.path.insert(0, os.path.join(_ROOT, "tools", "blender", "inspect"))
+import skeleton_capture  # noqa: E402
+skeleton_capture = importlib.reload(skeleton_capture)
 
 PATCH_NAMES = {1: "palm", 2: "fingers", 3: "thumb"}
 PALM_DIRECTION = {"R": (0.5787, 0.0, 0.8156), "L": (-0.5787, 0.0, 0.8156)}  ## hand_frame.json, Hand-bone space
@@ -109,8 +112,7 @@ out = {"side": SIDE, "section": "oval" if section else "circle", "patches": repo
 
 
 def _render(path):
-    bpy.context.scene.render.filepath = path
-    bpy.ops.render.render(write_still=True)
+    skeleton_capture.render_still(bpy.context.scene, path, "hand_grip_contact", {"side": SIDE})
     return path
 
 

@@ -25,6 +25,7 @@ var _out: String = ""
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_run.call_deferred()
 
 
@@ -139,4 +140,4 @@ func _report_floor(variant: String) -> void:
 
 
 func _save(shot_name: String) -> void:
-	_viewport.get_texture().get_image().save_png(_out.path_join(shot_name + ".png"))
+	SkeletonCapture.save(_viewport, _out.path_join(shot_name + ".png"), "capture_readability", {"shot": shot_name})

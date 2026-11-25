@@ -203,6 +203,84 @@ combinations: relative shape keys add linearly, so a pose clean at 0 and 1 can s
 head between them. `--negative` pushes an eye behind the head and must fail; the pre-correction
 brow is the positive control the contour gate must still reject.
 
+## Every skeleton image carries its skeleton (SKELETON-CAPTURE-001)
+
+Any character tooling image that shows a skeleton-bearing body — Blender inspect / authoring
+renders, Godot capture tools, art-iteration probes and the boards composed from them — writes a
+sidecar beside the PNG, `<image>.skeleton.json` (schema `riposte.skeleton_capture`): the camera
+(projection and transform), every visible skeleton's bones for the exact frame shown (world
+position and rotation, the image pixel each joint lands on, in front of the camera / inside the
+frame), per skeleton the arm readings (elbow flexion, upper-arm elevation, forearm pitch, elbow
+above shoulder and above wrist) and checks with a severity - `hard` (joint lengths preserved
+against the rest) makes a pose invalid, `warning`s (elbow lift, an elbow more than 5 cm above its
+wrist, upper-arm elevation, a locked or folded elbow) are provisional quality signals, and
+silhouette / HEMA credibility / readability stay visual review; a level forearm is fine and the
+grip's handedness is the palm attachment order on the handle, never wrist order, the primary skeleton (most
+joints in frame) lifted to the top level, and whatever the tool knows about the state (`extra`:
+pose, clip, view, grip readings). A board writes `<board>.skeleton.json` with its row / column
+sections and each cell's skeletons mapped into board pixels, and can draw the arm joints over the
+board (`_joints.png`). Reviews and scorers read pose from that data, never guessed from pixels.
+A sword-contact capture (`game/tools/capture_contact_audit.gd`) adds `extra.contact_audit` — the
+contact's readings from `ContactRenderAudit` (witness error, visible steel gap, station
+correspondence with its near-parallel ambiguity flag, onset discontinuity, vertical separation; m and
+gameplay-camera px) — and `extra.weapons` (each drawn sword's steel ends and contact station, the
+solver point; world and pixels). Its 2–4 px goal is camera-space readability, never a physical
+tolerance: the drawn swords are a declared approximation of the exact planar contact
+(CONTACT-PRESENTATION-001).
+
+One format, two writers, one shared definition: `tools/blender/skeleton_capture_core.py` (schema,
+arm readings, heuristics, board mapping; self-checked by the game lint),
+`tools/blender/inspect/skeleton_capture.py` (`render_still` replaces
+`bpy.ops.render.render(write_still=True)`) and `game/tools/skeleton_capture.gd` (`SkeletonCapture.save`
+replaces `get_image().save_png`). Godot rolls a skeleton back to its pre-modifier pose after each
+update, so the drawn pose is only readable in `skeleton_updated`: a capture tool calls
+`SkeletonCapture.watch(self)` before its first shot, and a sidecar written without it says
+`pose_source: animation` instead of `final`. The heuristic limits are review targets, not
+approvals; change them in both writers together.
+
+## The body bounds its skeleton (ART-ANATOMY-001)
+
+A two-bone IK solution that holds both palms on the sword is not yet a credible pose: the arm can pass through the
+ribs, bend its elbow like a ball joint, or leave the wrist to absorb a turn the forearm should make. One
+`ArtAnatomyProfile` per production body states what the body allows; poses are fitted against it and judged by it.
+
+- **Fit** — `tools/blender/inspect/anatomical_bounds.py` (Blender, read-only on the blend) fits the volumes from the
+  body's dominant-weight vertices (≥ 0.6; a blend-zone bone such as the neck falls back to any weight and says so):
+  limb, hand, neck and head capsules (radius balancing skin outside against volume outside, both reported), torso
+  sections as convex prisms whose outline follows the section's own vertices (a box or round section stands proud of a
+  heroic ribcage exactly where two-handed elbows live). It records each volume's fit quality, the rig's chains and
+  capabilities (WolfRig has clavicles as `Shoulder.*`, no twist or finger bones: forearm pronation is the forearm's own
+  roll), coordination profiles, the joint frames and the provisional joint ranges. The elbow hinge is calibrated from
+  approved bent clip frames whose rest matches the body's (the rest arm is straight, so a straight pose never
+  calibrates a hinge); the calibration's spread is reported and frames that disagree (falls, flailing arms) are left
+  out and named. Wrist axes come from each palm's normal, signed toward its grip contact.
+- **Evaluate** — `tools/blender/anatomical_bounds_core.py` (geometry, pair table, bands, self-checked by the lint) and
+  its Godot port `game/tools/anatomical_clearance.gd` (pair clearances; per-arm readings in the calibrated frames:
+  shoulder swing / twist, elbow flexion and bend-plane error, forearm roll, wrist flexion / deviation / residual twist,
+  each PASS / WARNING / FAIL). Rest-pose clearances match between the engines.
+- **Fit poses** — offline only: for each key, candidate chest yaws (where the runtime has a consumer: the cut torso)
+  and the elbow around its reach circle, each candidate built as a hinge elbow with forearm roll; hard joint limits and
+  proxy overlaps past the hard band are infeasible, everything else is cost; one smooth path per key family is chosen
+  over joint (torso, right, left) states with elbow travel and an elbow-speed cap. The output is ordinary key data.
+  A key with no feasible candidate is reported as infeasible handling, never relaxed.
+- **Second layer** — `tools/blender/inspect/anatomical_mesh_gate.py` applies the final Godot poses 1:1 to the staged rig
+  (elbow parity reported), evaluates the deformed body after the armature, and measures arm skin inside the torso and
+  inside the other arm by majority ray parity (the regions are open surfaces). The shoulder joint and the two palms on
+  the grip are not defects.
+
+- **Judge motion, not keys** — approve a whole trajectory: no bend-branch flip, no oscillating torso between keys, and
+  articulation rates evaluated along trajectories recorded from the 60 Hz simulation (`φ̇ = φ′(θ)·θ̇`,
+  `φ̈ = φ″(θ)·θ̇² + φ′(θ)·θ̈`). Add keys only where an approved continuous path cannot be represented by interpolation.
+- **Trust in proportion to accuracy** — a proxy overlap within the proxies' measured fit error is a lead for the mesh gate,
+  not a defect; calibrate joints on independent poses (repeated frames of one held pose are one example).
+- **Tools fail closed** — fitting / merge / audit scripts are import-safe, validate inputs before searching, write
+  atomically, never overwrite a reference candidate, leave a manifest (input and output hashes), and a failed step stops the
+  chain; an audit never measures a scene it could not load.
+
+Bands (proxy overlap, provisional project QA tolerances, not industry thresholds): ≤ 3 mm minor, ≤ 8 mm warning,
+≤ 15 mm significant, beyond hard. Joint ranges are provisional until recalibrated on approved reference postures
+(longpoint, both high guards, low follow-through). Fit and calibration evidence stay in the iteration folder.
+
 ## LOD: profile before building a pipeline
 
 Do not build custom LOD meshes, an optimizer and parity tests before profiling. Run one

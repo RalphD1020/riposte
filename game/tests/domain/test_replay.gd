@@ -28,19 +28,19 @@ func test_identical_commands_reproduce_identical_duels() -> void:
 	assert_eq(first.hashes, second.hashes, "every tick hash matches")
 
 
-func test_a_pit_recording_is_version_62_and_refused_on_the_open_disc() -> void:
+func test_a_pit_recording_is_the_pit_version_and_refused_on_the_open_disc() -> void:
 	var pit := StandardDuelRules.pit()
 	var runner := SimRunner.create(DuelFixture.mirror(pit), 3)
 	runner.idle(20)
 	runner.seal()
-	assert_eq(runner.record.rules_version, 62, "the pit records version 62")
+	assert_eq(runner.record.rules_version, 66, "the pit records version 66")
 	assert_true(runner.record.matches_rules(pit), "and matches those rules")
-	assert_false(runner.record.matches_rules(StandardDuelRules.create()), "version 61 is a different rules set")
+	assert_false(runner.record.matches_rules(StandardDuelRules.create()), "version 65 is a different rules set")
 	assert_eq(ReplayVerifier.verify(runner.record, pit), ReplayVerifier.VERIFIED, "it replays on the pit")
 	assert_eq(ReplayVerifier.verify(runner.record, StandardDuelRules.create()), ReplayVerifier.RULES_MISMATCH, "and is refused on the open disc")
 	var open := _played(5)
-	assert_eq(open.record.rules_version, 61, "fixture: the golden path is still version 61")
-	assert_false(open.record.matches_rules(pit), "a version-61 recording is not the pit")
+	assert_eq(open.record.rules_version, 65, "fixture: the golden path is still version 65")
+	assert_false(open.record.matches_rules(pit), "a version-65 recording is not the pit")
 
 
 func test_different_seeds_diverge() -> void:
@@ -233,10 +233,10 @@ func _replay_disc_gap(pose: BladePose, weapon: WeaponDefinition, point: Vector2,
 ## faithful reconstruction, not a law change; a human ratifies them.
 func test_golden_final_hashes_are_pinned() -> void:
 	var golden := {
-		3: "3725a69f34e10647439a52c3d37865d487d245326c3f7ecf24b4f176856bab10",
-		5: "06014cdc3605f4bab81c1f16f933740cc1fc1e895d06b9f6efef526058500af3",
-		9: "903f883d9669f585a3a0459e7b4a0f7e67dd7a1e94b28e9038e60153eb71c044",
-		17: "a881d347a14d98d3451682f0f8271918aa5eb862c04fe61d330941c5784d0a00",
+		3: "b3e5696b98ef6047f7cc1cabf1a0d06fe52ba463db825b187583a88efd31bbf6",
+		5: "477b4b4716b225028bea47f34d903db5128eb23ea20890ffcff0f8b1c95ed290",
+		9: "9b572bc475848013e59682d9c7d7ba78ea47358e2366d0a12e42324e60bf477d",
+		17: "17d456ff378c33fd16206c3608482341249fa2b49f272c5df9caab6dfe1452e3",
 	}
 	for seed_value: int in golden:
 		var runner := _played(seed_value)
@@ -849,12 +849,38 @@ func test_golden_final_hashes_are_pinned() -> void:
 ## Both first fields are the outward speed the band removes. The pins below
 ## are those duels continued, not a claim that the fighting improved. 1e-9
 ## stays; it was not narrowed to recover the old hashes.
+##
+## Rules 63 review (corpus totals, rules 61 → 63; predictive braking with the
+## inertia-aware stop, the commitment tick and the brake latch). Seed 3 keeps
+## every metric (its hash moves). Attacks 151 → 158, blade collisions 63 → 76,
+## parries 15 → 14, body hits 66 → 58, criticals 8 → 4, pokes 3 → 3, kills
+## 11 → 9, rounds 11 → 9. A free cut now settles at its commanded end (the far
+## Ready) instead of running out to ~+70..+108°, so the blade is back in line
+## sooner and these fixed scripts meet steel a little more often. Measured on
+## the 8-seed Hard v Hard CPU duels: attacks 235 → 247, hits 112 → 119, parries
+## 37 → 42, kills 16 → 14. The balance tiers decide whether it is intended.
+##
+## Rules 65 review (rules 63 → 65; the weapon coordinate's generalized dynamics,
+## the kick inertia, the physical brake latch, eight commitment bisections).
+## These four scripted duels move a lot (seed 9 blade collisions 20 → 8, body
+## hits 15 → 20; seed 17 collisions 24 → 13, hits 11 → 25), and they are not
+## representative: the paths part about 2 s in from sub-millimetre motion
+## differences and the wander pilots then react to different spacing. With
+## rules 63's exact recorded commands replayed on rules 65, seed 17's hits do
+## not rise (11 → 10) and its held steel doubles, and seed 9's first lost clash
+## is a bounce-and-re-clash replaced by continuous held steel, not a blade
+## pushed through a guard. Over 24 paired seeds no material average change was
+## detected at that comparison's sensitivity (clashes −0.2 ± 3.8, held steel
+## +39 ± 53 ticks, parries −0.2 ± 0.9, body hits −0.2 ± 1.5, kills +0.04 ± 0.3
+## per duel) — not a claim of equivalence; smaller shifts are for playtests.
+## The rules-63 pins are kept as the Stage A witness outside the suite. These
+## pins only reproduce rules 65.
 func test_golden_combat_metrics_are_pinned() -> void:
 	var golden := {
-		3: {"attack_released": 28, "blade_collision": 1, "parry": 0, "deflection": 0, "body_hit": 16, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 4, "ring_out": 0, "round_ended": 4},
-		5: {"attack_released": 49, "blade_collision": 28, "parry": 7, "deflection": 0, "body_hit": 14, "body_poke": 1, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
-		9: {"attack_released": 41, "blade_collision": 22, "parry": 4, "deflection": 0, "body_hit": 16, "body_poke": 0, "body_thrust": 0, "critical_hit": 1, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
-		17: {"attack_released": 33, "blade_collision": 12, "parry": 4, "deflection": 0, "body_hit": 20, "body_poke": 2, "body_thrust": 0, "critical_hit": 3, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
+		3: {"attack_released": 29, "blade_collision": 1, "parry": 0, "deflection": 0, "body_hit": 15, "body_poke": 0, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 4, "ring_out": 0, "round_ended": 4},
+		5: {"attack_released": 56, "blade_collision": 33, "parry": 6, "deflection": 0, "body_hit": 16, "body_poke": 1, "body_thrust": 0, "critical_hit": 0, "fighter_killed": 2, "ring_out": 0, "round_ended": 2},
+		9: {"attack_released": 33, "blade_collision": 8, "parry": 2, "deflection": 0, "body_hit": 20, "body_poke": 2, "body_thrust": 0, "critical_hit": 2, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
+		17: {"attack_released": 33, "blade_collision": 13, "parry": 1, "deflection": 0, "body_hit": 25, "body_poke": 2, "body_thrust": 0, "critical_hit": 4, "fighter_killed": 3, "ring_out": 0, "round_ended": 3},
 	}
 	for seed_value: int in [3, 5, 9, 17]:
 		var runner := _played(seed_value)

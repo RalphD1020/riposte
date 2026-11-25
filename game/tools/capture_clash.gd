@@ -29,6 +29,7 @@ var _segment := SegmentContact.new()
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_rules = StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), _rules)
 	kits.match_loadout = RiposteKits.match_loadout(kits.arena)
@@ -175,7 +176,7 @@ func _shot(shot_name: String, from: Vector3, at: Vector3, fov: float) -> void:
 	for _i in 2:
 		await process_frame
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png(_out.path_join(shot_name + ".png"))
+	SkeletonCapture.save(root, _out.path_join(shot_name + ".png"), "capture_clash", {"shot": shot_name})
 
 
 func _wide_at() -> Vector3:

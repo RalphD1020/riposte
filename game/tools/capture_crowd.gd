@@ -7,6 +7,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	_run.call_deferred()
 
 
@@ -78,5 +79,4 @@ func _run() -> void:
 
 
 func _save(viewport: SubViewport, out: String, shot_name: String) -> void:
-	var image := viewport.get_texture().get_image()
-	image.save_png("%s/%s.png" % [out, shot_name])
+	SkeletonCapture.save(viewport, "%s/%s.png" % [out, shot_name], "capture_crowd", {"shot": shot_name})

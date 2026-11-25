@@ -252,6 +252,7 @@ static func estimate(
 			launched = true
 			ceiling = definition.achievable_swing_speed(charge, definition.preparation(theta)) * speed
 			swing_end = clampf(theta + dir * definition.arc(charge), -definition.guard_limit, definition.guard_limit)
+		omega = WeaponSystem.inertial_speed(attacker_spec, theta, omega, pose)
 		if launched:
 			if (theta - swing_end) * dir < 0.0:
 				inertia = WeaponKinematics.motor_inertia(attacker_spec, theta, pose)
@@ -279,6 +280,7 @@ static func estimate(
 		## Where in the tick a sampled steel crossing was found (> 1: none).
 		var swept_at := 2.0
 		if steel:
+			their_omega = WeaponSystem.inertial_speed(target_spec, their_theta, their_omega, their_pose)
 			if their_swinging and (their_theta - target.weapon.swing_end) * target.weapon.swing_dir < 0.0:
 				var their_inertia := WeaponKinematics.motor_inertia(target_spec, their_theta, their_pose)
 				their_omega = SimMath.approach(their_omega, target.weapon.swing_dir * their_ceiling, their.swing_accel(target.weapon.swing_charge, their_fatigue_scaled_drive, their_inertia) * dt)

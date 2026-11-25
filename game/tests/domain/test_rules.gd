@@ -117,8 +117,8 @@ func test_arc_grows_ninety_degrees_with_charge() -> void:
 
 
 ## ATTACK-ARC-001: the 270° control domain is not an attack. A full charge
-## commands 180° from the guard limit (−135° → +45°); the blade then sweeps on
-## into its overswing until its own brake stops it, still inside the domain.
+## commands 180° from the guard limit (−135° → +45°); its own brake, started
+## from the stopping distance, settles it there, still inside the domain.
 ## The left attack is the exact mirror.
 func test_the_control_domain_is_not_the_attack_arc() -> void:
 	var rules := StandardDuelRules.create()
@@ -151,12 +151,12 @@ func test_the_control_domain_is_not_the_attack_arc() -> void:
 	assert_near(rad_to_deg(right[3]), 180.0, 1e-9, "the released full attack reports 180°")
 	assert_near(rad_to_deg(right[0]), -135.0, 1e-9, "a full right attack starts at the guard limit")
 	assert_near(rad_to_deg(right[1]), 45.0, 1e-9, "and is commanded to +45°")
-	assert_true(right[2] > right[1], "its blade sweeps on past the commanded end into the overswing (%.1f°)" % rad_to_deg(right[2]))
+	assert_between(rad_to_deg(right[2] - right[1]), -5.0, 5.0, "its own brake settles the blade at the commanded end (%.1f°)" % rad_to_deg(right[2]))
 	assert_true(right[2] <= weapon.guard_limit, "and stays inside the domain")
 	assert_true(right[2] - right[0] < domain, "so no attack sweeps the whole domain")
 	assert_near(left[0], -right[0], 1e-12, "the left attack starts at the mirrored limit")
 	assert_near(left[1], -right[1], 1e-12, "is commanded to the mirrored end")
-	assert_near(left[2], -right[2], 1e-9, "and overswings to the mirrored angle")
+	assert_near(left[2], -right[2], 1e-9, "and settles at the mirrored angle")
 
 
 ## The Combat Speed Ledger page is the shipped rules, not a memory of them:
@@ -312,12 +312,139 @@ func test_motor_accelerations_derive_from_torque_over_inertia() -> void:
 	assert_true(weapon.brake_accel(0.0, 1.0, inertia) > weapon.brake_accel(1.0, 1.0, inertia), "a full swing is far more reluctant to be arrested than a tap")
 
 
+## A torque-free blade stepped over `horizon` seconds from `start` at `omega` with only the coordinate's inertial step
+## (`WeaponSystem.inertial_speed`) and the runtime's semi-implicit angle update, at tick `dt`: [end angle, end speed,
+## worst relative kinetic-energy drift ½ M_θ θ̇² from the start].
+func _coast(spec: CombatantPhysicsSpec, start: float, omega: float, horizon: float, dt: float) -> PackedFloat64Array:
+	var pose := BladePose.new()
+	var energy := 0.5 * WeaponKinematics.motor_inertia(spec, start) * omega * omega
+	var theta := start
+	var drift := 0.0
+	for _i in roundi(horizon / dt):
+		omega = WeaponSystem.inertial_speed(spec, theta, omega, pose, dt)
+		theta = clampf(theta + omega * dt, -spec.weapon.guard_limit, spec.weapon.guard_limit)
+		drift = maxf(drift, absf(0.5 * WeaponKinematics.motor_inertia(spec, theta) * omega * omega - energy) / energy)
+	return PackedFloat64Array([theta, omega, drift])
+
+
+## M_θ is even in θ: the track is mirrored (forward even, lateral odd), so `|P′|²` and the coupling term are even. That
+## is what lets `motor_inertia` evaluate it at |θ|. The plain pose evaluation agrees on both sides to the trigonometry's
+## rounding (a few ulps through the pose arithmetic, 1e-12 relative), and the sampler agrees bit for bit.
+func test_the_weapon_inertia_is_even_in_its_angle() -> void:
+	## ARRANGE: the reference held sword on its curved track.
+	var spec := StandardDuelRules.create().combatant(0)
+	assert_false(spec.handling.attack_path.is_fixed(), "fixture: the reference sword rides a curved track")
+	var worst := 0.0
+	var least := INF
+	var most := 0.0
+	for i in 271:
+		## ACT: both sides of every half degree.
+		var theta := deg_to_rad(0.5 * float(i))
+		var plus := WeaponKinematics.held_inertia(spec, WeaponKinematics.pose_at(0.0, 0.0, 0.0, theta, spec, BladePose.new()))
+		var minus := WeaponKinematics.held_inertia(spec, WeaponKinematics.pose_at(0.0, 0.0, 0.0, -theta, spec, BladePose.new()))
+		worst = maxf(worst, absf(plus - minus) / plus)
+		least = minf(least, plus)
+		most = maxf(most, plus)
+		## ASSERT
+		assert_eq(WeaponKinematics.motor_inertia(spec, -theta), WeaponKinematics.motor_inertia(spec, theta), "%.1f°: the sampler is even bit for bit" % (0.5 * float(i)))
+	assert_true(most / least > 1.2, "fixture: the inertia really varies along the track (%.3f .. %.3f)" % [least, most])
+	assert_true(worst < 1e-12, "the plain evaluation is even to rounding (worst %s relative)" % String.num_scientific(worst))
+
+
+## Rules 65 (UNIFIED-MASS-001 dynamics): the weapon coordinate obeys M_θ θ̈ + ½ M_θ′ θ̇² = τ. With no torque the step
+## keeps ½ M_θ θ̇² (the speed changes instead), in both directions and mirror-exact; its energy error is the step's
+## discretization, second order in the tick (each halving of dt at least nearly quarters it), and under 1 % of what the
+## blade carries at 60 Hz. On a track of constant inertia the speed is kept exactly.
+func test_a_torque_free_blade_keeps_its_kinetic_energy() -> void:
+	## ARRANGE: the reference held sword, coasting 0.1 s from five angles at the ceiling and below.
+	var spec := StandardDuelRules.create().combatant(0)
+	var drifts := PackedFloat64Array([0.0, 0.0, 0.0])
+	var rates := [60.0, 120.0, 240.0]
+	var fastest := 0.0
+	for start: float in [-120.0, -90.0, -60.0, -30.0, 0.0]:
+		for omega: float in [18.0, 8.0]:
+			for r in rates.size():
+				## ACT
+				var dt := 1.0 / float(rates[r])
+				var forward := _coast(spec, deg_to_rad(start), omega, 0.1, dt)
+				var mirrored := _coast(spec, deg_to_rad(-start), -omega, 0.1, dt)
+				## ASSERT: the mirror is the exact reflection.
+				assert_eq(mirrored[0], -forward[0], "%.0f° at %.0f rad/s, %.0f Hz: the mirrored coast ends at the reflected angle" % [start, omega, rates[r]])
+				assert_eq(mirrored[1], -forward[1], "%.0f° at %.0f rad/s, %.0f Hz: and at the reflected speed" % [start, omega, rates[r]])
+				drifts[r] = maxf(drifts[r], forward[2])
+				fastest = maxf(fastest, absf(forward[1]))
+	assert_true(fastest > 18.5, "fixture: the speed rises where the inertia falls (%.2f rad/s)" % fastest)
+	assert_true(drifts[0] < 0.01, "60 Hz: the step makes or loses under 1 %% of the energy (%s)" % String.num_scientific(drifts[0]))
+	assert_true(drifts[1] < 0.3 * drifts[0], "120 Hz: the energy error shrinks at second order (%s vs %s)" % [String.num_scientific(drifts[1]), String.num_scientific(drifts[0])])
+	assert_true(drifts[2] < 0.3 * drifts[1], "240 Hz: and again (%s vs %s)" % [String.num_scientific(drifts[2]), String.num_scientific(drifts[1])])
+	## PERTURB: the fixed pivot, whose inertia never changes.
+	var pivot := StandardDuelRules.create().combatant(0)
+	pivot.handling.attack_path = WeaponAttackPath.fixed_pivot()
+	assert_eq(WeaponSystem.inertial_speed(pivot, 0.4, 12.5, BladePose.new()), 12.5, "constant inertia: the speed is kept exactly")
+
+
+## The swing's speed target (`achievable_swing_speed`) is held by the motor's bounded torque, never by assignment:
+## where the track's inertia falls the blade speeds up on its own and the motor takes the excess off with negative work
+## (|τ| at most the attack's torque); a blade driven over the target from outside is brought back no faster than that
+## torque allows.
+func test_the_speed_target_is_a_bounded_torque() -> void:
+	var rules := StandardDuelRules.create()
+	var spec := rules.combatant(0)
+	var definition := spec.weapon
+	var drive := spec.fighter.weapon_torque_scale
+	## ARRANGE: a full charge from Ready, which reaches its ceiling before the centre.
+	var rig := WeaponRig.create(rules)
+	rig.fighter.weapon.reset(-definition.guard_angle)
+	rig.press()
+	while rig.fighter.weapon.charge < 1.0 and rig.tick < 240:
+		rig.step()
+	rig.release()
+	var w := rig.fighter.weapon
+	var regulated := 0
+	for _i in 40:
+		rig.step()
+		if not CombatPhase.is_swinging(w.phase):
+			break
+		var limit := maxf(drive * SimMath.mix(definition.swing_torque_tap, definition.swing_torque_full, w.swing_charge), drive * SimMath.mix(definition.brake_torque_tap, definition.brake_torque_full, w.swing_charge))
+		## ASSERT: every tick's torque is within the attack's authority.
+		assert_true(absf(w.motor_torque) <= limit * (1.0 + 1e-12), "tick %d: |τ| %.1f ≤ %.1f N·m" % [rig.tick, absf(w.motor_torque), limit])
+		var ceiling := definition.achievable_swing_speed(w.swing_charge, w.launch_preparation)
+		if absf(w.speed) == ceiling and w.motor_torque * w.swing_dir < 0.0:
+			regulated += 1
+	assert_true(regulated > 0, "fixture: the cut held its ceiling against the track's own speed-up with negative torque (%d ticks)" % regulated)
+	## PERTURB: a blade carried 6 rad/s over the ceiling mid-swing (as a contact can).
+	var fighter := FighterState.new()
+	fighter.weapon.reset(-definition.guard_angle)
+	fighter.weapon.swing_dir = 1.0
+	fighter.weapon.swing_charge = 1.0
+	fighter.weapon.launch_preparation = 1.0
+	fighter.weapon.swing_start = deg_to_rad(-80.0)
+	fighter.weapon.swing_end = deg_to_rad(100.0)
+	fighter.weapon.angle = deg_to_rad(-40.0)
+	fighter.weapon.set_phase(CombatPhase.Id.ACTIVE_EARLY)
+	fighter.weapon.phase_ticks = 3
+	var ceiling_full := definition.achievable_swing_speed(1.0, 1.0)
+	fighter.weapon.speed = ceiling_full + 6.0
+	var carried := WeaponSystem.inertial_speed(spec, fighter.weapon.angle, fighter.weapon.speed, BladePose.new())
+	var kick := WeaponSystem.kick_inertia(spec, fighter.weapon.angle, carried, BladePose.new())
+	var authority := maxf(definition.swing_accel(1.0, drive, kick), definition.brake_accel(1.0, drive, kick)) * SimulationTimebase.TICK_SECONDS
+	var events: Array[DuelEvent] = []
+	## ACT
+	WeaponSystem.step(fighter, rules, 0, events)
+	## ASSERT: one tick takes off something, at most the attack's largest torque allows, and the blade stays over the target.
+	assert_true(authority < 6.0, "fixture: one tick of the attack's torque cannot remove the excess (%.2f rad/s)" % authority)
+	var removed := carried - fighter.weapon.speed
+	assert_true(removed > 0.0 and removed <= authority * (1.0 + 1e-12), "the excess comes off by torque: %.3f of at most %.3f rad/s" % [removed, authority])
+	assert_true(fighter.weapon.speed > ceiling_full, "and the blade is still over its target after the tick (%.2f > %.2f)" % [fighter.weapon.speed, ceiling_full])
+
+
 ## UNIFIED-MASS-001: the weapon coordinate has one inertia. Through the real
 ## motor step, a swing launched from rest at θ gains exactly `τ·dt / M_θ(θ)` of
 ## speed in one tick — `M_θ` the held sword's generalized inertia at that pose,
 ## the very one every contact divides its impulse by — so the motor feels the
 ## hilt track and the hands as a contact does, and the same torque turns the
 ## sword at different rates where the track makes it heavier.
+
 func test_the_motor_and_every_contact_share_one_weapon_inertia() -> void:
 	var rules := StandardDuelRules.create()
 	var weapon := rules.combatant(0).weapon
@@ -390,10 +517,10 @@ func test_damage_curve_is_monotonic_and_nonlinear() -> void:
 
 func test_current_rules_version() -> void:
 	var rules := StandardDuelRules.create()
-	assert_eq(rules.version, 61, "rules version tracks gameplay-affecting changes (61: the tap buffer ships a held charge and a blocking-action tap)")
-	assert_false(rules.is_closed_edge(), "version 61 is the open disc")
+	assert_eq(rules.version, 65, "rules version tracks gameplay-affecting changes (65: the weapon coordinate's generalized dynamics, M_θ θ̈ + ½ M_θ′ θ̇² = τ)")
+	assert_false(rules.is_closed_edge(), "version 65 is the open disc")
 	var pit := StandardDuelRules.pit()
-	assert_eq(pit.version, 62, "the pit is the closed-edge selection with its walls")
+	assert_eq(pit.version, 66, "the pit is the closed-edge selection with its walls")
 	assert_true(pit.is_closed_edge(), "and it holds the rim")
 	assert_eq(pit.id, rules.id, "it is the same rules id, pinned by version")
 	assert_true(pit.is_valid(), "the pit rules start a duel")

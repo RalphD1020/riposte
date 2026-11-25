@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(_ROOT, "tools", "blender", "authoring"))
 sys.path.insert(0, os.path.join(_ROOT, "tools", "character_modeling"))
 import exposure_check  # noqa: E402
 import pose_fixture  # noqa: E402
+import skeleton_capture  # noqa: E402
 
 a = sys.argv[sys.argv.index("--") + 1:]
 bpy.ops.wm.open_mainfile(filepath=a[0])
@@ -89,6 +90,5 @@ for v in views:
     ang = math.radians(angles[v])
     cam.location = target + Vector((math.sin(ang), -math.cos(ang), 0.0)) * 6.0
     cam.rotation_euler = (math.radians(90.0), 0.0, ang)
-    sc.render.filepath = "%s_%s.png" % (out, v)
-    bpy.ops.render.render(write_still=True)
+    skeleton_capture.render_still(sc, "%s_%s.png" % (out, v), "clip_render", {"view": v, "clip": clipspec})
 print("RIPOSTE_CLIP_RENDER", len(views))

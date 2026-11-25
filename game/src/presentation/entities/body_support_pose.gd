@@ -83,13 +83,26 @@ static func effort_for(combat_phase: CombatPhase.Id, angle: float) -> float:
 		CombatPhase.Id.OVERSWING:
 			return EFFORT_OVERSWING
 		CombatPhase.Id.RECOVERY:
-			return EFFORT_RECOVERY
+			return recovery_effort(angle)
 		CombatPhase.Id.STAGGER:
 			return EFFORT_STAGGER
 		CombatPhase.Id.DEAD:
 			return 0.0
 		_:
 			return guard_effort(angle)
+
+
+## Recovery relaxes with the blade, not at the phase change: far round, where an
+## overswing hands over, the torso is still as engaged as the overswing; it
+## softens to the recovery's support as the sword comes back to its guard
+## (|θ| from `RECOVERY_RELAX_END` down to `RECOVERY_RELAX_START`), so the
+## cut-to-recovery boundary never steps the chest.
+const RECOVERY_RELAX_START := deg_to_rad(45.0)
+const RECOVERY_RELAX_END := deg_to_rad(95.0)
+
+
+static func recovery_effort(angle: float) -> float:
+	return lerpf(EFFORT_RECOVERY, EFFORT_OVERSWING, smoothstep(RECOVERY_RELAX_START, RECOVERY_RELAX_END, absf(angle)))
 
 
 static func guard_effort(angle: float) -> float:

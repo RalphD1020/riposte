@@ -34,6 +34,8 @@ static func arm(
 	DuelFixture.place(fighter, x, y, facing)
 	fighter.weapon.angle = weapon_angle
 	fighter.weapon.speed = angular_speed
+	## A planted scene has no motor history: the last tick's torque is read by the terminal-brake latch.
+	fighter.weapon.motor_torque = 0.0
 	fighter.weapon.swing_dir = 1.0 if angular_speed >= 0.0 else -1.0
 	fighter.weapon.swing_start = weapon_angle
 	fighter.weapon.swing_end = clampf(weapon_angle + fighter.weapon.swing_dir * weapon.arc(charge), -weapon.guard_limit, weapon.guard_limit)

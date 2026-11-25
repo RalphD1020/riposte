@@ -24,6 +24,7 @@ const BEATS := {
 
 
 func _init() -> void:
+	SkeletonCapture.watch(self)
 	var rules := StandardDuelRules.create()
 	var kits := DuelKits.resolve(RiposteKits.build_catalog(), rules)
 	var director := VictoryDirector.create(kits.combatant(0), DuelSide.Id.LIGHT_SOUTH, rules.combatant(0).fighter.push_radius, rules.combatant(0).weapon.blade_base_radius, rules.combatant(0).weapon.tip_radius)
@@ -45,7 +46,7 @@ func _init() -> void:
 			card.advance(STEP)
 			await process_frame
 		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("res://../.reports/victory_%s.png" % beat)
+		SkeletonCapture.save(root, "res://../.reports/victory_%s.png" % beat, "capture_victory", {"beat": beat})
 		print("RIPOSTE_VICTORY %s t=%.2f sword=%s stage=%d" % [beat, director.elapsed(), director.actor().display_sword_angle(), director.stage()])
 	director.queue_free()
 	await process_frame

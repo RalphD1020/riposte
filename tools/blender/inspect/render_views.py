@@ -23,6 +23,9 @@ import sys
 import bpy
 from mathutils import Vector
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import skeleton_capture  # noqa: E402
+
 AUTHORING_POSE = "riposte_authoring_pose"
 VIEWS = {"front": 0.0, "three_quarter": 35.0, "side": 90.0, "rear": 180.0, "three_quarter_other": -35.0, "side_other": -90.0}
 BODY_FRAME = (2.0, Vector((0.0, 0.0, 0.92)), (700, 900))
@@ -227,8 +230,7 @@ def main():
             angle = math.radians(VIEWS[view])
             camera.location = target + Vector((math.sin(angle), -math.cos(angle), 0.0)) * CAMERA_DISTANCE_M
             camera.rotation_euler = (math.radians(90.0), 0.0, angle)
-        scene.render.filepath = "%s_%s.png" % (out, view)
-        bpy.ops.render.render(write_still=True)
+        skeleton_capture.render_still(scene, "%s_%s.png" % (out, view), "render_views", {"view": view, "pose": args.pose, "clip": args.clip, "clip_frame": args.frame})
         print("RIPOSTE_VIEW", scene.render.filepath)
         if args.beside:
             baselines = [os.path.abspath(p) + "_%s.png" % view for p in args.beside.split(",")]
